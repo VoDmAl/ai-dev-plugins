@@ -1,7 +1,10 @@
-# docs-sync - Automatic Documentation Synchronization
+---
+name: docs-sync
+description: Synchronize code changes with product documentation. Use this skill when implementing features, adding commands, modifying user-facing behavior, or making any product changes. Ensures docs/features/ always reflects current product state.
+license: MIT
+---
 
-> **Skill Type**: Autonomous behavioral pattern (not a command)
-> **Activation**: Automatic for any product-facing code changes
+# docs-sync - Automatic Documentation Synchronization
 
 ## Purpose
 
