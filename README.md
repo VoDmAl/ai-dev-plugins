@@ -39,7 +39,16 @@ your-project/
 
 ## How It Works
 
-### Automatic Feature Detection
+### Automatic Hook (v1.1.0+)
+
+The plugin installs a `UserPromptSubmit` hook that:
+1. Checks if your project has `docs/features/` directory
+2. If yes — automatically injects the documentation protocol into Claude's context
+3. No keyword matching — purely project structure based
+
+This means Claude will **always** remember to follow the documentation protocol in projects with the proper structure.
+
+### Feature Detection
 
 When you start working on code, Claude announces the detected feature:
 
