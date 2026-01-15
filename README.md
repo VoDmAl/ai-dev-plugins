@@ -16,7 +16,7 @@ This plugin establishes a behavioral pattern where Claude automatically:
 
 ```bash
 claude plugin marketplace add git@git.vorobyev.name:claude-code-marketplace.git
-claude plugin install docs-sync@claude-code-marketplace --scope user
+claude plugin install docs-sync@vodmal-claude-code-marketplace --scope user
 ```
 
 ## Project Structure Requirements
