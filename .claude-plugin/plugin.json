@@ -1,0 +1,19 @@
+{
+  "name": "docs-sync",
+  "version": "1.0.0",
+  "description": "Automatic synchronization between code changes and product documentation. Ensures docs/features/ always reflects current product state.",
+  "author": {
+    "name": "Dmitry Vorobyev",
+    "url": "https://vorobyev.org"
+  },
+  "homepage": "https://vorobyev.org",
+  "license": "MIT",
+  "keywords": [
+    "documentation",
+    "docs",
+    "sync",
+    "features",
+    "sdlc",
+    "workflow"
+  ]
+}
