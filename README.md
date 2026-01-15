@@ -4,13 +4,7 @@ A Claude Code plugin for automatic synchronization between code changes and prod
 
 ## What It Does
 
-This plugin establishes a behavioral pattern where Claude automatically:
-
-1. **Detects features** — At the start of work, identifies which feature is being modified
-2. **Tracks changes** — Monitors what product capabilities are affected
-3. **Syncs documentation** — Ensures `docs/features/` reflects the current product state before completing tasks
-
-**Key principle**: Documentation is part of Definition of Done. Code changes affecting user-facing behavior are not complete without corresponding documentation updates.
+Ensures `docs/features/` always reflects current product state. Documentation is part of Definition of Done — code changes are not complete without corresponding documentation updates.
 
 ## Installation
 
@@ -41,16 +35,25 @@ your-project/
 
 ### Automatic Hook (v1.1.0+)
 
-The plugin installs a `UserPromptSubmit` hook that:
-1. Checks if your project has `docs/features/` directory
-2. If yes — automatically injects the documentation protocol into Claude's context
-3. No keyword matching — purely project structure based
+The plugin installs a `UserPromptSubmit` hook that runs on **every prompt** and adds:
 
-This means Claude will **always** remember to follow the documentation protocol in projects with the proper structure.
+```
+[docs-sync] Run /docs-sync for documentation protocol.
+```
+
+This reminds Claude to invoke the `/docs-sync` skill which contains the full documentation protocol.
+
+### Skill Protocol (`/docs-sync`)
+
+When invoked, the skill instructs Claude to:
+
+1. **Detect features** — Identify which feature is being modified
+2. **Track changes** — Monitor what product capabilities are affected
+3. **Sync documentation** — Update `docs/features/` before completing tasks
 
 ### Feature Detection
 
-When you start working on code, Claude announces the detected feature:
+When working on code, Claude announces the detected feature:
 
 ```
 📋 Feature: /remind → docs/features/reminder.md
