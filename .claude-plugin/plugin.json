@@ -1,6 +1,6 @@
 {
   "name": "docs-sync",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Automatic synchronization between code changes and product documentation. Ensures docs/features/ always reflects current product state.",
   "author": {
     "name": "Dmitry Vorobyev",
