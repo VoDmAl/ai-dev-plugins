@@ -12,7 +12,11 @@ Ensures `docs/features/` always reflects the current state of product capabiliti
 
 ## Automatic Activation
 
-This skill activates automatically when:
+**Via Hook (v1.1.0+):** A `UserPromptSubmit` hook automatically injects this protocol when the project has `docs/features/` directory. No manual invocation needed.
+
+**Via Skill:** Invoke `/docs-sync` explicitly for full protocol details.
+
+This skill activates when:
 - Working on code that affects user-facing product behavior
 - Adding, modifying, or removing product features
 - Changing commands, UI, API endpoints, or user workflows
@@ -97,33 +101,18 @@ Link code to documentation using language-appropriate annotations:
 | Rust | `//! @see docs/features/core.md` |
 | Shell | `# @see docs/features/cli.md` |
 
-## Feature Documentation Template
+## Feature Documentation Templates
 
-When creating new feature documentation, use this structure:
+When creating new documentation, use the templates from this plugin:
 
-```markdown
-# {Feature Name}
+**Location:** `~/.claude/plugins/cache/vodmal-claude-code-marketplace/docs-sync/*/templates/`
 
-## Overview
-Brief description of what this feature does for users.
+| Template | Purpose | Target |
+|----------|---------|--------|
+| `feature-template.md` | User-facing feature docs | `docs/features/{feature}.md` |
+| `llm-template.md` | Technical/LLM guidance | `docs/llm/{topic}.md` |
 
-## Usage
-How to use the feature:
-- Commands, buttons, API endpoints
-- Parameters and options
-- Examples
-
-## Configuration
-Any settings or configuration options (if applicable).
-
-## Implementation
-Key files:
-- `path/to/main/file.ext`
-- `path/to/supporting/file.ext`
-
-## Changelog
-- YYYY-MM-DD: Initial implementation
-```
+Copy the appropriate template and fill in the placeholders.
 
 ## Integration with TodoWrite
 
@@ -165,7 +154,7 @@ Working on: Adding --priority flag to /remind command
 ✅ Tests passing
 📝 Updating docs/features/reminder.md:
    - Usage section: Added --priority parameter documentation
-   - Changelog: 2025-01-15: Added priority flag for reminder urgency levels
+   - Changelog: 2026-01-15: Added priority flag for reminder urgency levels
 ```
 
 ### Example 2: Refactoring without behavior change
@@ -179,7 +168,7 @@ Working on: Extracting authentication logic to separate class
 ✅ Refactoring complete
 ✅ All tests passing (behavior unchanged)
 📝 Updating docs/features/pocket.md:
-   - Changelog only: 2025-01-15: Internal refactoring, no behavior changes
+   - Changelog only: 2026-01-15: Internal refactoring, no behavior changes
 ```
 
 ### Example 3: Project without docs structure
