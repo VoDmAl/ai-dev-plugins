@@ -14,36 +14,9 @@ This plugin establishes a behavioral pattern where Claude automatically:
 
 ## Installation
 
-### Option 1: Install from Git Repository
-
 ```bash
-# Add as a marketplace (if you host multiple plugins)
-claude /plugin marketplace add git.vorobyev.name/docs-sync-plugin
-
-# Or install directly
-claude plugin install docs-sync@git.vorobyev.name/docs-sync-plugin
-```
-
-### Option 2: Local Installation
-
-```bash
-# Clone the repository
-git clone git@git.vorobyev.name/docs-sync-plugin.git ~/.claude/plugins/docs-sync-plugin
-
-# Install from local path
-claude --plugin-dir ~/.claude/plugins/docs-sync-plugin
-```
-
-### Option 3: Add to Project
-
-For project-specific installation, add to your project's `.claude/settings.json`:
-
-```json
-{
-  "enabledPlugins": [
-    "docs-sync@your-marketplace"
-  ]
-}
+claude plugin marketplace add git@git.vorobyev.name:claude-code-marketplace.git
+claude plugin install docs-sync@claude-code-marketplace --scope user
 ```
 
 ## Project Structure Requirements
@@ -86,7 +59,7 @@ Before declaring work complete, Claude will:
 
 Proposed documentation changes:
 - Usage section: Added --priority parameter
-- Changelog: 2025-01-15: Added priority flag
+- Changelog: 2026-01-15: Added priority flag
 
 Proceed with documentation update?
 ```
@@ -114,8 +87,6 @@ The plugin includes templates for consistent documentation:
 - `templates/feature-template.md` — For `docs/features/` files
 - `templates/llm-template.md` — For `docs/llm/` files
 
-Copy these to your project when creating new documentation files.
-
 ## Behavior Summary
 
 | Scenario | Claude's Action |
@@ -124,16 +95,6 @@ Copy these to your project when creating new documentation files.
 | Refactoring (tests pass) | Add changelog entry only |
 | New feature | Create `docs/features/{feature}.md` from template |
 | No docs structure | Propose creating `docs/features/` and `docs/llm/` |
-
-## Configuration
-
-No configuration required. The plugin activates automatically for any project with code changes.
-
-## Compatibility
-
-- **Claude Code**: 1.0+
-- **Works with**: Any programming language/framework
-- **Integrates with**: SuperClaude Framework, standard Claude Code workflows
 
 ## License
 
