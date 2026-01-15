@@ -18,17 +18,17 @@ This plugin establishes a behavioral pattern where Claude automatically:
 
 ```bash
 # Add as a marketplace (if you host multiple plugins)
-claude /plugin marketplace add git.vorobyev.name/vdm/docs-sync-plugin
+claude /plugin marketplace add git.vorobyev.name/docs-sync-plugin
 
 # Or install directly
-claude plugin install docs-sync@git.vorobyev.name/vdm/docs-sync-plugin
+claude plugin install docs-sync@git.vorobyev.name/docs-sync-plugin
 ```
 
 ### Option 2: Local Installation
 
 ```bash
 # Clone the repository
-git clone https://git.vorobyev.name/vdm/docs-sync-plugin.git ~/.claude/plugins/docs-sync-plugin
+git clone git@git.vorobyev.name/docs-sync-plugin.git ~/.claude/plugins/docs-sync-plugin
 
 # Install from local path
 claude --plugin-dir ~/.claude/plugins/docs-sync-plugin
