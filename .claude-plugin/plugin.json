@@ -1,7 +1,7 @@
 {
-  "name": "docs-sync",
-  "version": "1.1.0",
-  "description": "Automatic synchronization between code changes and product documentation. Ensures docs/features/ always reflects current product state.",
+  "name": "vdm",
+  "version": "1.2.0",
+  "description": "VDM's Claude Code plugins collection. Currently includes: docs-sync (automatic documentation synchronization).",
   "author": {
     "name": "Dmitry Vorobyev",
     "url": "https://vorobyev.org"
