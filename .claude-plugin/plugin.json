@@ -1,6 +1,6 @@
 {
   "name": "vdm",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "VDM's Claude Code plugins collection. Currently includes: docs-sync (automatic documentation synchronization).",
   "author": {
     "name": "Dmitry Vorobyev",
