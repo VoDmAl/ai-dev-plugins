@@ -15,6 +15,5 @@
     "features",
     "sdlc",
     "workflow"
-  ],
-  "hooks": "./hooks/hooks.json"
+  ]
 }
