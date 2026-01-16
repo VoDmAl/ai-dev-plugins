@@ -1,6 +1,12 @@
-# docs-sync
+# vdm — Claude Code Plugins
 
-A Claude Code plugin for automatic synchronization between code changes and product documentation.
+A collection of Claude Code plugins by Dmitry Vorobyev.
+
+## Available Skills
+
+| Skill | Command | Description |
+|-------|---------|-------------|
+| docs-sync | `/vdm:docs-sync` | Automatic documentation synchronization |
 
 ## What It Does
 
@@ -10,7 +16,7 @@ Ensures `docs/features/` always reflects current product state. Documentation is
 
 ```bash
 claude plugin marketplace add git@git.vorobyev.name:claude-code-marketplace.git
-claude plugin install docs-sync@vodmal-claude-code-marketplace --scope user
+claude plugin install vdm@vodmal-claude-code-marketplace --scope user
 ```
 
 ## Project Structure Requirements
@@ -43,7 +49,7 @@ The plugin installs a `UserPromptSubmit` hook that runs on **every prompt** and 
 
 This reminds Claude to invoke the `/docs-sync` skill which contains the full documentation protocol.
 
-### Skill Protocol (`/docs-sync`)
+### Skill Protocol (`/vdm:docs-sync`)
 
 When invoked, the skill instructs Claude to:
 
@@ -107,6 +113,39 @@ The plugin includes templates for consistent documentation:
 | Refactoring (tests pass) | Add changelog entry only |
 | New feature | Create `docs/features/{feature}.md` from template |
 | No docs structure | Propose creating `docs/features/` and `docs/llm/` |
+
+## Project CLAUDE.md Integration
+
+For maximum reliability, add this rule to your project's `CLAUDE.md`:
+
+```markdown
+## Documentation Sync
+
+**ALWAYS update docs/features/** when changing user-facing behavior:
+1. Before declaring any task complete, identify affected `docs/features/{feature}.md`
+2. Update documentation to reflect current product state
+3. Add changelog entry with date
+
+Invoke `/vdm:docs-sync` for full documentation protocol.
+```
+
+This ensures Claude treats documentation as part of Definition of Done even if the hook reminder is missed.
+
+### Recommended CLAUDE.md Rules
+
+Add to your critical rules section:
+
+```markdown
+- **Documentation is Definition of Done** — Never complete user-facing changes without updating `docs/features/`
+- **Invoke /vdm:docs-sync** — Run before completing feature work for full protocol
+```
+
+## Namespace
+
+This plugin uses `vdm` as namespace. All skills appear as `vdm:{skill-name}`:
+- `vdm:docs-sync` — documentation synchronization
+
+Future skills will be added under the same namespace.
 
 ## License
 

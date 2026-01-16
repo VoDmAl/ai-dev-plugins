@@ -1,6 +1,6 @@
 ---
 name: docs-sync
-description: Synchronize code changes with product documentation. Use this skill when implementing features, adding commands, modifying user-facing behavior, or making any product changes. Ensures docs/features/ always reflects current product state.
+description: "INVOKE BEFORE COMPLETING any task that changes user-facing behavior. Required step in Definition of Done: sync docs/features/ with code changes. Never declare task complete without documentation update."
 license: MIT
 ---
 
