@@ -1,5 +1,5 @@
 {
-  "description": "VDM plugin hooks - documentation sync and knowledge capture reminders",
+  "description": "VDM plugin hooks - documentation sync, knowledge capture, and changelog reminders",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -12,6 +12,11 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/learn-reminder.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/changelog-reminder.sh",
             "timeout": 5
           }
         ]
