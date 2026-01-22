@@ -1,5 +1,5 @@
 {
-  "description": "Documentation sync reminder hook - adds context when code changes are detected",
+  "description": "VDM plugin hooks - documentation sync and knowledge capture reminders",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -7,6 +7,11 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/docs-sync-reminder.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/learn-reminder.sh",
             "timeout": 5
           }
         ]

@@ -6,17 +6,46 @@ A collection of Claude Code plugins by Dmitry Vorobyev.
 
 | Skill | Command | Description |
 |-------|---------|-------------|
-| docs-sync | `/vdm:docs-sync` | Automatic documentation synchronization |
+| docs-sync | `/vdm:docs-sync` | Automatic documentation synchronization for `docs/features/` |
+| learn | `/vdm:learn` | Intelligent knowledge integration with scenario detection |
 
 ## What It Does
 
+### docs-sync
 Ensures `docs/features/` always reflects current product state. Documentation is part of Definition of Done — code changes are not complete without corresponding documentation updates.
+
+### learn
+Systematically captures and preserves project knowledge. Auto-detects scenario type (problem/discovery/standard) and routes through appropriate analysis:
+- **Problems** → `/sc:troubleshoot` → root cause analysis → knowledge integration
+- **Discoveries** → Technical documentation → `docs/llm/` patterns
+- **Standards** → Systematic documentation across CLAUDE.md, Serena Memory, and `docs/llm/`
+
+**Auto-activation**: Claude will proactively invoke this skill when:
+- Finding solutions after struggling with issues
+- Discovering effective patterns worth preserving
+- Making mistakes that should never repeat
 
 ## Installation
 
 ```bash
 claude plugin marketplace add git@git.vorobyev.name:claude-code-marketplace.git
 claude plugin install vdm@vodmal-claude-code-marketplace --scope user
+```
+
+## How docs-sync and learn Work Together
+
+| Aspect | docs-sync | learn |
+|--------|-----------|-------|
+| Focus | `docs/features/` | `docs/llm/` + CLAUDE.md + Serena Memory |
+| Audience | Users, stakeholders | LLMs, developers |
+| Trigger | Code changes | Knowledge capture |
+| Content | Product capabilities | Technical patterns, lessons |
+
+**Typical workflow:**
+```bash
+# After implementing a feature
+/vdm:docs-sync              # Update user-facing docs in docs/features/
+/vdm:learn "Pattern I used" # Capture technical knowledge in docs/llm/
 ```
 
 ## Project Structure Requirements
@@ -39,15 +68,21 @@ your-project/
 
 ## How It Works
 
-### Automatic Hook (v1.1.0+)
+### Automatic Hooks (v1.2.0+)
 
-The plugin installs a `UserPromptSubmit` hook that runs on **every prompt** and adds:
+The plugin installs `UserPromptSubmit` hooks that run on **every prompt**:
 
+**docs-sync reminder:**
 ```
-[docs-sync] Run /docs-sync for documentation protocol.
+[docs-sync] ⚠️ BEFORE completing user-facing changes...
 ```
 
-This reminds Claude to invoke the `/docs-sync` skill which contains the full documentation protocol.
+**learn reminder:**
+```
+[learn] 💡 After resolving issues or discovering patterns...
+```
+
+These hooks remind Claude about documentation and knowledge capture without requiring manual invocation.
 
 ### Skill Protocol (`/vdm:docs-sync`)
 
@@ -145,7 +180,23 @@ Add to your critical rules section:
 This plugin uses `vdm` as namespace. All skills appear as `vdm:{skill-name}`:
 - `vdm:docs-sync` — documentation synchronization
 
-Future skills will be added under the same namespace.
+- `vdm:learn` — knowledge integration
+
+## learn Skill Quick Reference
+
+```bash
+# Auto-detection (most common usage)
+/vdm:learn "Database migration deleted prod tables"   # Problem → troubleshoot
+/vdm:learn "Found caching pattern for API calls"      # Discovery → document
+/vdm:learn "All errors must use RFC 7807 format"      # Standard → systematic
+
+# Manual override when needed
+/vdm:learn "Complex issue" --force-problem
+/vdm:learn "New pattern" --force-discovery
+/vdm:learn "New rule" --force-standard
+```
+
+See `skills/learn/SKILL.md` for full documentation.
 
 ## License
 
