@@ -8,6 +8,7 @@ A collection of Claude Code plugins by Dmitry Vorobyev.
 |-------|---------|-------------|
 | docs-sync | `/vdm:docs-sync` | Automatic documentation synchronization for `docs/features/` |
 | learn | `/vdm:learn` | Intelligent knowledge integration with scenario detection |
+| changelog | `/vdm:changelog` | Project change tracking in `PROJECT_CHANGELOG.md` |
 
 ## What It Does
 
@@ -25,6 +26,20 @@ Systematically captures and preserves project knowledge. Auto-detects scenario t
 - Discovering effective patterns worth preserving
 - Making mistakes that should never repeat
 
+### changelog
+Maintains `PROJECT_CHANGELOG.md` as a concise record of significant project changes. Focus on **what changed and why**, with links to detailed documentation instead of inline descriptions.
+
+**Key principle**: Keep entries SHORT. Link to details, don't duplicate them.
+
+**Entry format**:
+```markdown
+### ✨ FEATURE: Feature Name
+Brief description (1-2 sentences max).
+**Ref**: docs/features/feature-name.md
+```
+
+**Entry types**: ✨ FEATURE | 🐛 BUG | 🔧 TOOLING | 🏗️ ARCH | 📝 DOCS | ⚡ PERF | 🔒 SEC
+
 ## Installation
 
 ```bash
@@ -32,20 +47,21 @@ claude plugin marketplace add git@git.vorobyev.name:claude-code-marketplace.git
 claude plugin install vdm@vodmal-claude-code-marketplace --scope user
 ```
 
-## How docs-sync and learn Work Together
+## How the Skills Work Together
 
-| Aspect | docs-sync | learn |
-|--------|-----------|-------|
-| Focus | `docs/features/` | `docs/llm/` + CLAUDE.md + Serena Memory |
-| Audience | Users, stakeholders | LLMs, developers |
-| Trigger | Code changes | Knowledge capture |
-| Content | Product capabilities | Technical patterns, lessons |
+| Aspect | docs-sync | learn | changelog |
+|--------|-----------|-------|-----------|
+| Focus | `docs/features/` | `docs/llm/` + Serena Memory | `PROJECT_CHANGELOG.md` |
+| Audience | Users, stakeholders | LLMs, developers | Project history |
+| Trigger | Code changes | Knowledge capture | Significant changes |
+| Content | Product capabilities | Technical patterns | Change summaries + refs |
 
 **Typical workflow:**
 ```bash
 # After implementing a feature
 /vdm:docs-sync              # Update user-facing docs in docs/features/
 /vdm:learn "Pattern I used" # Capture technical knowledge in docs/llm/
+/vdm:changelog              # Add compact entry to PROJECT_CHANGELOG.md
 ```
 
 ## Project Structure Requirements
@@ -68,7 +84,7 @@ your-project/
 
 ## How It Works
 
-### Automatic Hooks (v1.2.0+)
+### Automatic Hooks (v1.4.0+)
 
 The plugin installs `UserPromptSubmit` hooks that run on **every prompt**:
 
@@ -82,7 +98,12 @@ The plugin installs `UserPromptSubmit` hooks that run on **every prompt**:
 [learn] 💡 After resolving issues or discovering patterns...
 ```
 
-These hooks remind Claude about documentation and knowledge capture without requiring manual invocation.
+**changelog reminder:**
+```
+[changelog] 📋 After completing significant work...
+```
+
+These hooks remind Claude about documentation, knowledge capture, and change tracking without requiring manual invocation.
 
 ### Skill Protocol (`/vdm:docs-sync`)
 
@@ -139,6 +160,7 @@ The plugin includes templates for consistent documentation:
 
 - `templates/feature-template.md` — For `docs/features/` files
 - `templates/llm-template.md` — For `docs/llm/` files
+- `templates/changelog-template.md` — For initializing `PROJECT_CHANGELOG.md`
 
 ## Behavior Summary
 
@@ -179,8 +201,26 @@ Add to your critical rules section:
 
 This plugin uses `vdm` as namespace. All skills appear as `vdm:{skill-name}`:
 - `vdm:docs-sync` — documentation synchronization
-
 - `vdm:learn` — knowledge integration
+- `vdm:changelog` — project change tracking
+
+## changelog Skill Quick Reference
+
+```bash
+# Auto-invoke after completing work
+/vdm:changelog   # Claude will detect change type and create entry
+
+# Entry types with emoji:
+# ✨ FEATURE - new user-facing functionality
+# 🐛 BUG     - bug fixes
+# 🔧 TOOLING - infrastructure, CI/CD
+# 🏗️ ARCH    - architectural decisions
+# 📝 DOCS    - documentation restructuring
+# ⚡ PERF    - performance improvements
+# 🔒 SEC     - security fixes
+```
+
+See `skills/changelog/SKILL.md` for full documentation.
 
 ## learn Skill Quick Reference
 
