@@ -1,6 +1,6 @@
 {
   "name": "vdm",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "VDM's Claude Code plugins collection. Includes: docs-sync (feature documentation), learn (knowledge capture), changelog (project change tracking).",
   "author": {
     "name": "Dmitry Vorobyev",

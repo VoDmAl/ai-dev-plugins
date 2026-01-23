@@ -127,11 +127,20 @@ N. **Rule title** — Brief explanation (historical context if applicable)
 
 ### → Serena Memory (write_memory)
 
-**Best for**:
-- Operational procedures (commands, environment setup)
-- Session workflows (development processes, validation checklists)
-- Cross-session context (project-specific operational knowledge)
-- Quick-access procedures (testing commands, deployment steps)
+**Best for TRANSIENT knowledge that may become outdated**:
+- Current environment configuration (may change with infrastructure updates)
+- Session workflows (processes that evolve over time)
+- Cross-session context (project-specific state that changes)
+- Temporary workarounds (until proper fix is implemented)
+
+**NOT for permanent technical knowledge**:
+- ❌ Version conflicts (e.g., PHPUnit 9.6 vs 10.5) → use docs/llm/ instead
+- ❌ API constraints that won't change → use docs/llm/ instead
+- ❌ Tool incompatibilities → use docs/llm/ instead
+
+**Key question**: "Will this knowledge become stale if I don't update it?"
+- YES → Serena Memory (ephemeral, needs maintenance)
+- NO → docs/llm/ + CLAUDE.md Quick Access (permanent)
 
 **Format**:
 ```bash
@@ -155,11 +164,17 @@ write_memory("{topic}_procedure", "Step-by-step operational knowledge")
 Is this a SAFETY-CRITICAL rule that prevents disasters?
 ├─ YES → CLAUDE.md (brief rule) + docs/llm/ (details)
 └─ NO
-   ├─ Is this an OPERATIONAL procedure (commands, steps)?
-   │  └─ YES → Serena Memory
-   └─ Is this TECHNICAL knowledge (patterns, architecture)?
+   ├─ Is this PERMANENT technical knowledge (version conflicts, API behaviors, tool quirks)?
+   │  └─ YES → docs/llm/ + CLAUDE.md Quick Access (permanent, won't become stale)
+   ├─ Is this TRANSIENT operational procedure (current env setup, workflow that may change)?
+   │  └─ YES → Serena Memory (session-persistent, may become outdated)
+   └─ Is this TECHNICAL pattern knowledge (patterns, architecture)?
       └─ YES → docs/llm/
 ```
+
+**Key distinction**:
+- **PERMANENT** = Version conflicts, API constraints, tool incompatibilities → docs/llm/ (won't change without code change)
+- **TRANSIENT** = Environment variables, current workflow steps, session context → Serena Memory (may need updates)
 
 ## Integration with Technical Writer Principles
 
@@ -349,6 +364,38 @@ N. **Review all migrations before execution** — Prevents data loss from auto-g
 
 # docs/llm/database-migrations.md
 [Full migration safety protocol with examples]
+```
+
+### Example 4: Permanent vs Transient Knowledge
+
+**Input**: `/vdm:learn "Use composer test:unit:phpunit, not bin/phpunit — version conflict"`
+
+**Detection**: Discovery (keyword: "use"), but requires PERMANENCE analysis
+
+**Analysis**:
+- Is this transient? NO — PHPUnit version conflict (9.6 vs 10.5) is baked into project structure
+- Will it become stale? NO — won't change unless composer.json or Symfony Bridge changes
+- Conclusion: PERMANENT technical knowledge
+
+**Output**:
+```markdown
+# docs/llm/testing-standards.md (PERMANENT)
+⚠️ PHPUnit Version Conflict Warning
+- bin/phpunit uses Symfony Bridge with PHPUnit 9.6
+- composer.json requires PHPUnit 10.5
+- ALWAYS use: composer test:unit:phpunit
+
+# CLAUDE.md Quick Access (PERMANENT reference)
+- **PHPUnit Tests**: `composer test:unit:phpunit` (NEVER use bin/phpunit — version conflict!)
+
+# ❌ NOT Serena Memory — this is permanent, not transient
+```
+
+**Contrast with transient knowledge**:
+```
+/vdm:learn "Current dev server uses port 8080 instead of 8000"
+→ This IS transient (may change with next docker-compose update)
+→ Route to Serena Memory
 ```
 
 ## Manual Override Flags
