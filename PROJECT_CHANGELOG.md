@@ -8,6 +8,12 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ---
 
+## 2026-01-23
+
+### 📝 DOCS: learn skill routing clarification
+Clarified permanent vs transient knowledge routing: version conflicts and API constraints → docs/llm/ (permanent), environment config → Serena Memory (transient).
+**Ref**: skills/learn/SKILL.md (Example 4, Decision Tree)
+
 ## 2026-01-22
 
 ### ✨ FEATURE: changelog skill (v1.4.0)
