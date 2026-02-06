@@ -1,7 +1,7 @@
 {
   "name": "vdm",
-  "version": "1.4.1",
-  "description": "VDM's Claude Code plugins collection. Includes: docs-sync (feature documentation), learn (knowledge capture), changelog (project change tracking).",
+  "version": "1.5.0",
+  "description": "VDM's Claude Code plugins collection. Includes: git-guard (git safety & workflow protection), docs-sync (feature documentation), learn (knowledge capture), changelog (project change tracking).",
   "author": {
     "name": "Dmitry Vorobyev",
     "url": "https://vorobyev.org"
@@ -9,6 +9,9 @@
   "homepage": "https://vorobyev.org",
   "license": "MIT",
   "keywords": [
+    "git",
+    "safety",
+    "guard",
     "documentation",
     "docs",
     "sync",
