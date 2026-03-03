@@ -8,6 +8,12 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ---
 
+## 2026-03-03
+
+### ✨ FEATURE: learn skill — interactive clarification phase (v1.6.0)
+Added Phase 1.5: Interactive Clarification between scenario detection and routing. Analyzes conversation context, proposes 2-4 concrete knowledge formulations via AskUserQuestion (multiSelect), lets user select/edit before integration. Auto-skips when input is already precise or `--no-ask` flag is set.
+**Ref**: skills/learn/SKILL.md (Phase 1.5, Manual Override Flags)
+
 ## 2026-01-23
 
 ### 📝 DOCS: learn skill routing clarification
