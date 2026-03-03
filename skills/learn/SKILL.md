@@ -241,6 +241,54 @@ STANDARD keywords: rule, convention, requirement, guideline, establish, define, 
    Route: {tool to invoke}
 ```
 
+### Phase 1.5: Interactive Clarification
+
+**Skip with `--no-ask`** when the user's formulation is already precise and unambiguous.
+
+**Purpose**: Before routing, clarify WHAT exactly to capture. Analyze conversation context — recent actions, files touched, errors encountered — and propose concrete knowledge formulations.
+
+**Process**:
+1. **Context scan** — review recent conversation: what was done, which files were modified, what errors occurred, what solutions were found
+2. **Extract candidates** — formulate 2-4 specific, actionable knowledge statements derived from context
+3. **Present via AskUserQuestion** — let user select, combine, or rewrite
+
+**Auto-skip conditions** (behave as `--no-ask`):
+- User provided an explicit, complete formulation (e.g., `/vdm:learn "Always use composer test:unit:phpunit"`)
+- Input is a single clear rule or fact with no ambiguity
+- Flag `--no-ask` is present
+
+**When to clarify** (default):
+- Proactive invocation after problem resolution (context is rich, need to pick what matters)
+- Vague input: "remember this", "save what we learned", "that pattern"
+- Multiple potential insights exist in recent context
+
+```
+🔍 Analyzing conversation context for knowledge candidates...
+
+📋 Proposed knowledge to capture:
+   1. "{concrete formulation extracted from context}"
+   2. "{another formulation}"
+   3. "{yet another formulation}"
+
+→ AskUserQuestion:
+   question: "What knowledge should we capture from this session?"
+   header: "Knowledge"
+   multiSelect: true
+   options:
+     - label: "{formulation 1}"
+       description: "{brief context why this matters}"
+     - label: "{formulation 2}"
+       description: "{brief context}"
+     - label: "{formulation 3}"
+       description: "{brief context}"
+   # User can select multiple, edit via "Other", or add their own
+```
+
+**After user responds**:
+- Selected items become the input for Phase 2 (each item may route independently)
+- User's "Other" text replaces/supplements proposed formulations
+- Multiple selections may produce multiple knowledge entries across different locations
+
 ### Phase 2: Execute Route
 
 **IF Problem detected:**
@@ -408,6 +456,11 @@ When automatic detection needs adjustment:
 /vdm:learn "topic" --force-standard     # Force systematic establishment
 ```
 
+Clarification control:
+```bash
+/vdm:learn "topic" --no-ask            # Skip interactive clarification, use input as-is
+```
+
 Routing control:
 ```bash
 /vdm:learn "topic" --critical-only      # Only CLAUDE.md update
@@ -419,6 +472,7 @@ Routing control:
 
 **Knowledge integration is NOT complete until:**
 
+- [ ] Interactive clarification passed (or skipped via --no-ask / auto-skip)
 - [ ] Scenario correctly detected and routed
 - [ ] Appropriate agents/analysis completed
 - [ ] Knowledge routed to correct location(s)
