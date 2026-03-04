@@ -46,8 +46,13 @@ Brief description (1-2 sentences max).
 
 ## Installation
 
+This repository is both the marketplace and the plugin source.
+
 ```bash
-claude plugin marketplace add git@git.vorobyev.name:claude-code-marketplace.git
+# Add as marketplace
+claude plugin marketplace add git@git.vorobyev.name:cc-vdm-plugins.git
+
+# Install the plugin
 claude plugin install vdm@vodmal-claude-code-marketplace --scope user
 ```
 

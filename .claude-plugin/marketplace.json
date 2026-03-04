@@ -1,0 +1,25 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "vodmal-claude-code-marketplace",
+  "version": "1.7.0",
+  "description": "Personal Claude Code plugins collection for consistent SDLC workflows across projects.",
+  "owner": {
+    "name": "Dmitry Vorobyev",
+    "url": "https://vorobyev.org"
+  },
+  "plugins": [
+    {
+      "name": "vdm",
+      "description": "VDM's Claude Code plugins collection. Includes: git-guard (git safety & workflow protection), docs-sync (smart documentation discovery & sync), learn (knowledge capture), changelog (project change tracking).",
+      "version": "1.7.0",
+      "author": {
+        "name": "Dmitry Vorobyev"
+      },
+      "source": {
+        "source": "url",
+        "url": "git@git.vorobyev.name:cc-vdm-plugins.git"
+      },
+      "category": "workflow"
+    }
+  ]
+}
