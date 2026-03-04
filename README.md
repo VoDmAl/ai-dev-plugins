@@ -6,14 +6,18 @@ A collection of Claude Code plugins by Dmitry Vorobyev.
 
 | Skill | Command | Description |
 |-------|---------|-------------|
-| docs-sync | `/vdm:docs-sync` | Automatic documentation synchronization for `docs/features/` |
+| docs-sync | `/vdm:docs-sync` | Smart documentation discovery & sync (adapts to any project structure) |
 | learn | `/vdm:learn` | Intelligent knowledge integration with scenario detection |
 | changelog | `/vdm:changelog` | Project change tracking in `PROJECT_CHANGELOG.md` |
 
 ## What It Does
 
 ### docs-sync
-Ensures `docs/features/` always reflects current product state. Documentation is part of Definition of Done — code changes are not complete without corresponding documentation updates.
+Ensures project documentation always reflects current product state. Adapts to any documentation structure — not limited to `docs/features/`.
+
+**Hook (automatic)**: On every prompt, performs lightweight discovery — detects changed files, maps all `.md` docs, extracts `@see` references, finds potentially affected docs via keyword matching.
+
+**Skill (manual `/vdm:docs-sync`)**: Deep analysis with relevance scoring, cross-reference chains, and concrete "file X, section Y needs change Z" recommendations.
 
 ### learn
 Systematically captures and preserves project knowledge. Auto-detects scenario type (problem/discovery/standard) and routes through appropriate analysis:
@@ -51,7 +55,7 @@ claude plugin install vdm@vodmal-claude-code-marketplace --scope user
 
 | Aspect | docs-sync | learn | changelog |
 |--------|-----------|-------|-----------|
-| Focus | `docs/features/` | `docs/llm/` + Serena Memory | `PROJECT_CHANGELOG.md` |
+| Focus | All project `.md` docs | `docs/llm/` + Serena Memory | `PROJECT_CHANGELOG.md` |
 | Audience | Users, stakeholders | LLMs, developers | Project history |
 | Trigger | Code changes | Knowledge capture | Significant changes |
 | Content | Product capabilities | Technical patterns | Change summaries + refs |
@@ -84,13 +88,17 @@ your-project/
 
 ## How It Works
 
-### Automatic Hooks (v1.4.0+)
+### Automatic Hooks (v1.7.0+)
 
 The plugin installs `UserPromptSubmit` hooks that run on **every prompt**:
 
-**docs-sync reminder:**
+**docs-sync discovery:**
 ```
-[docs-sync] ⚠️ BEFORE completing user-facing changes...
+[docs-sync] 📋 Documentation sync context:
+Changed files (3): src/auth.ts, src/config.ts, .env.example
+Project docs (5): README.md, docs/setup.md, docs/api.md, ...
+Potentially affected docs: docs/setup.md, docs/api.md
+For deep analysis with relevance scoring → run /vdm:docs-sync
 ```
 
 **learn reminder:**
@@ -107,11 +115,11 @@ These hooks remind Claude about documentation, knowledge capture, and change tra
 
 ### Skill Protocol (`/vdm:docs-sync`)
 
-When invoked, the skill instructs Claude to:
+When invoked, the skill performs deep discovery:
 
-1. **Detect features** — Identify which feature is being modified
-2. **Track changes** — Monitor what product capabilities are affected
-3. **Sync documentation** — Update `docs/features/` before completing tasks
+1. **Discovery** — Detect changed files, map all `.md` docs, extract `@see` references, keyword matching
+2. **Relevance scoring** — Rank docs by priority (direct references → keyword matches → thematic → general)
+3. **Concrete output** — Actionable checklist: "in file X, section Y doesn't reflect change Z"
 
 ### Feature Detection
 
