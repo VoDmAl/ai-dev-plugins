@@ -8,6 +8,12 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ---
 
+## 2026-03-04
+
+### ✨ FEATURE: docs-sync v2.0 — smart discovery (hook + skill)
+Hook upgraded from static reminder to dynamic discovery: git diff detection, .md mapping, @see extraction, keyword matching. SKILL.md enhanced with Deep Discovery Protocol (Phase 1-3: Discovery → Relevance Scoring → Concrete Output), adaptive project structure support, and actionable checklists.
+**Ref**: scripts/docs-sync-reminder.sh, skills/docs-sync/SKILL.md
+
 ## 2026-03-03
 
 ### ✨ FEATURE: learn skill — interactive clarification phase (v1.6.0)
