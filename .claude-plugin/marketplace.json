@@ -11,7 +11,7 @@
     {
       "name": "vdm",
       "description": "SDLC workflow plugins: docs-sync (documentation synchronization), learn (knowledge capture), changelog (project change tracking).",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "Dmitry Vorobyev"
       },
