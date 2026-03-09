@@ -16,8 +16,8 @@
         "name": "Dmitry Vorobyev"
       },
       "source": {
-        "source": "url",
-        "url": "git@git.vorobyev.name:cc-vdm-plugins.git"
+        "source": "github",
+        "repo": "VoDmAl/ai-dev-plugins"
       },
       "category": "workflow"
     }
