@@ -108,14 +108,15 @@ The skill analyzes input to determine the best processing route:
 
 ## Knowledge Routing Decision Matrix
 
-**CRITICAL PRINCIPLE**: Keep CLAUDE.md lean — only truly critical safety rules.
+**CRITICAL PRINCIPLE**: Keep CLAUDE.md lean — but not only for safety rules.
 
-### → CLAUDE.md Critical Rules
+### → CLAUDE.md Rules
 
-**Criteria** (ALL must apply):
+**Criteria** (ANY applies):
 - Safety violations that can cause data loss or unauthorized actions
 - Historical disasters that must never repeat
 - Absolute prohibitions: "NEVER do X under any circumstances"
+- **Concise behavioral rules** when `docs/llm/` doesn't exist and creating it would be overkill for a single rule
 
 **Limit**: Maximum 2-3 new rules per learn execution
 
@@ -125,7 +126,11 @@ The skill analyzes input to determine the best processing route:
 N. **Rule title** — Brief explanation (historical context if applicable)
 ```
 
-### → Serena Memory (write_memory)
+### → Serena Memory (write_memory) — OPTIONAL
+
+**Requires**: [Serena MCP](https://github.com/oraios/serena) installed and configured. This is a **recommended enhancement**, not a requirement.
+
+**If Serena is unavailable**: Skip memory operations silently. Route transient knowledge to `docs/llm/` with a `⚠️ Transient` marker, or to CLAUDE.md for concise rules.
 
 **Best for TRANSIENT knowledge that may become outdated**:
 - Current environment configuration (may change with infrastructure updates)
@@ -139,13 +144,15 @@ N. **Rule title** — Brief explanation (historical context if applicable)
 - ❌ Tool incompatibilities → use docs/llm/ instead
 
 **Key question**: "Will this knowledge become stale if I don't update it?"
-- YES → Serena Memory (ephemeral, needs maintenance)
+- YES → Serena Memory (if available) or docs/llm/ with transient marker
 - NO → docs/llm/ + CLAUDE.md Quick Access (permanent)
 
 **Format**:
 ```bash
 write_memory("{topic}_procedure", "Step-by-step operational knowledge")
 ```
+
+**Availability check**: Before using Serena Memory, verify the MCP is available. If `mcp__serena__write_memory` tool is not accessible, fall back to file-based storage without error.
 
 ### → docs/llm/ Technical Documentation
 
@@ -158,23 +165,41 @@ write_memory("{topic}_procedure", "Step-by-step operational knowledge")
 
 **Format**: Use `templates/llm-template.md` structure
 
+### → docs/llm/ Bootstrap
+
+**If `docs/llm/` doesn't exist**: Create it. Don't silently fall back to memory or auto-memory.
+
+```
+docs/llm/ exists?
+├─ YES → Write/update file there
+└─ NO
+   ├─ Knowledge is substantial (pattern, procedure, multiple rules)?
+   │  └─ Create docs/llm/ directory + file from template
+   ├─ Knowledge is a single concise rule?
+   │  └─ CLAUDE.md is acceptable (even if not safety-critical)
+   └─ NEVER fall back to auto-memory or Serena Memory just because docs/llm/ is missing
+```
+
 ### Routing Decision Tree
 
 ```
 Is this a SAFETY-CRITICAL rule that prevents disasters?
-├─ YES → CLAUDE.md (brief rule) + docs/llm/ (details)
+├─ YES → CLAUDE.md (brief rule) + docs/llm/ (details, create dir if needed)
 └─ NO
-   ├─ Is this PERMANENT technical knowledge (version conflicts, API behaviors, tool quirks)?
-   │  └─ YES → docs/llm/ + CLAUDE.md Quick Access (permanent, won't become stale)
-   ├─ Is this TRANSIENT operational procedure (current env setup, workflow that may change)?
+   ├─ Is this a CONCISE behavioral rule (1-2 lines)?
+   │  └─ YES → CLAUDE.md (acceptable even if not safety-critical)
+   ├─ Is this PERMANENT technical knowledge (patterns, constraints, quirks)?
+   │  └─ YES → docs/llm/ (create dir if needed) + CLAUDE.md Quick Access
+   ├─ Is this TRANSIENT operational procedure (current env, workflow that may change)?
    │  └─ YES → Serena Memory (session-persistent, may become outdated)
    └─ Is this TECHNICAL pattern knowledge (patterns, architecture)?
-      └─ YES → docs/llm/
+      └─ YES → docs/llm/ (create dir if needed)
 ```
 
 **Key distinction**:
 - **PERMANENT** = Version conflicts, API constraints, tool incompatibilities → docs/llm/ (won't change without code change)
 - **TRANSIENT** = Environment variables, current workflow steps, session context → Serena Memory (may need updates)
+- **NEVER** use auto-memory as a fallback for project knowledge — it's for Claude's own operational state, not project docs
 
 ## Integration with Technical Writer Principles
 
@@ -214,14 +239,19 @@ When documenting discoveries and patterns, apply these principles:
 | Discovery | `Task(subagent_type="technical-writer", prompt="Document pattern...")` |
 | Standard | `Task(subagent_type="technical-writer", prompt="Create standard docs...")` |
 
-### MCP Server Usage — EXPLICIT TOOL CALLS
+### MCP Server Usage — OPTIONAL
 
-| Purpose | Tool |
-|---------|------|
-| Write operational knowledge | `mcp__serena__write_memory(memory_file_name, content)` |
-| Read existing memories | `mcp__serena__read_memory(memory_file_name)` |
-| List memories | `mcp__serena__list_memories()` |
-| Create/update docs/llm/ | `Write` or `Edit` tools |
+Serena MCP enhances this skill but is **not required**. Check availability before use.
+
+| Purpose | Tool | Required? |
+|---------|------|-----------|
+| Write operational knowledge | `mcp__serena__write_memory(memory_file_name, content)` | Optional |
+| Read existing memories | `mcp__serena__read_memory(memory_file_name)` | Optional |
+| List memories | `mcp__serena__list_memories()` | Optional |
+| Create/update docs/llm/ | `Write` or `Edit` tools | **Core** |
+| Update CLAUDE.md | `Read` + `Edit` tools | **Core** |
+
+**If Serena is unavailable**: All memory operations are skipped. Knowledge routes to `docs/llm/` or `CLAUDE.md` instead.
 
 ## Execution Protocol
 

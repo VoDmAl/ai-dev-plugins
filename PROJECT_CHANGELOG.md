@@ -18,6 +18,10 @@ Repository renamed from `cc-vdm-plugins` to `ai-dev-plugins`. `dev` chosen over 
 Monolithic `vdm` plugin split into two independently installable plugins via `git-subdir`: `vdm` (core: docs-sync, learn, changelog) and `vdm-git` (optional: guard). git-guard skill renamed to `guard` under `vdm-git` namespace (`/vdm-git:guard`).
 **Ref**: README.md (Installation, Namespaces)
 
+### ✨ FEATURE: learn skill — improved routing & Serena optional (v2.1.0)
+Learn skill routing updated: CLAUDE.md now accepts concise behavioral rules (not only safety-critical), `docs/llm/` is auto-created when missing instead of falling back to memory. Serena Memory marked as optional enhancement with graceful degradation.
+**Ref**: plugins/vdm/skills/learn/SKILL.md
+
 ## 2026-03-04
 
 ### ✨ FEATURE: docs-sync v2.0 — smart discovery (hook + skill)
