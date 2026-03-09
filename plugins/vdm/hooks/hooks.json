@@ -1,25 +1,9 @@
 {
-  "description": "VDM plugin hooks - git safety, documentation sync, knowledge capture, and changelog reminders",
+  "description": "VDM core hooks - documentation sync, knowledge capture, and changelog reminders",
   "hooks": {
-    "PreToolUse": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-hook.py",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
     "UserPromptSubmit": [
       {
         "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-reminder.sh",
-            "timeout": 5
-          },
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/docs-sync-reminder.sh",

@@ -1,0 +1,27 @@
+{
+  "description": "VDM git hooks - commit/push safety guard",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-hook.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-reminder.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

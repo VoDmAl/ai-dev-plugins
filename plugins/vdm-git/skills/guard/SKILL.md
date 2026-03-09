@@ -1,5 +1,5 @@
 ---
-name: git-guard
+name: guard
 description: "Git safety guard. Blocks git commit and push via pre-tool-use hook. Requires explicit user permission before executing. Invoke manually for pre-commit review."
 license: MIT
 ---
@@ -57,7 +57,7 @@ Claude: [executes git commit]
 
 ## Manual Invocation
 
-`/vdm:git-guard` — run pre-commit review:
+`/vdm-git:guard` — run pre-commit review:
 
 ### Phase 1: Status
 

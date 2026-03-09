@@ -4,7 +4,7 @@ Pre-Tool-Use Hook: Block dangerous git operations
 Protects against accidental commits, pushes, merges, and other
 history-modifying operations by Claude Code AI assistant.
 
-Part of vdm:git-guard skill.
+Part of vdm-git:guard skill.
 """
 import json
 import sys
