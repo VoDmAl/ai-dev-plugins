@@ -100,6 +100,10 @@ claude plugin install vdm-git@vodmal --scope user
 qwen extensions install VoDmAl/ai-dev-plugins
 ```
 
+**Limitations**: Qwen Code does not support `git-subdir` source type. The `qwen-extension.json` at repo root exposes core skills (`vdm`) only. `vdm-git` is not available in Qwen Code until `git-subdir` support is added.
+
+<!-- TODO: Remove qwen-extension.json workaround when Qwen Code adds git-subdir support -->
+
 ## How the Skills Work Together
 
 **`vdm` plugin:**
