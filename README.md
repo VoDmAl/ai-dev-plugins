@@ -20,14 +20,21 @@ AI-powered plugins and extensions for development tools.
 
 Until specialization is needed, everything lives here.
 
-## Available Skills
+## Available Plugins
+
+### `vdm` — Core SDLC Workflow
 
 | Skill | Command | Description |
 |-------|---------|-------------|
 | docs-sync | `/vdm:docs-sync` | Smart documentation discovery & sync (adapts to any project structure) |
 | learn | `/vdm:learn` | Intelligent knowledge integration with scenario detection |
 | changelog | `/vdm:changelog` | Project change tracking in `PROJECT_CHANGELOG.md` |
-| git-guard | `/vdm:git-guard` | Git safety guard — blocks commit/push until user confirms |
+
+### `vdm-git` — Git Safety (optional)
+
+| Skill | Command | Description |
+|-------|---------|-------------|
+| guard | `/vdm-git:guard` | Blocks commit/push until user confirms, enforces commit message format |
 
 ## What It Does
 
@@ -63,12 +70,12 @@ Brief description (1-2 sentences max).
 
 **Entry types**: ✨ FEATURE | 🐛 BUG | 🔧 TOOLING | 🏗️ ARCH | 📝 DOCS | ⚡ PERF | 🔒 SEC
 
-### git-guard
+### guard (vdm-git plugin)
 Prevents Claude from running `git commit` and `git push` without explicit user permission. All other git operations (merge, rebase, status, diff, etc.) are allowed freely.
 
 **Hook (automatic)**: On every prompt, displays a reminder that commit/push are blocked. When Claude attempts a blocked command, it acknowledges the block, suggests a commit message, and waits for confirmation.
 
-**Skill (manual `/vdm:git-guard`)**: Pre-commit review — checks branch, staged files, recent history, and runs safety checks (no secrets, intentional changes) before asking user to confirm or abort.
+**Skill (manual `/vdm-git:guard`)**: Pre-commit review — checks branch, staged files, recent history, and runs safety checks (no secrets, intentional changes) before asking user to confirm or abort.
 
 **Commit message format**: `[+]` new feature, `[-]` bugfix, `[*]` other change. Max 50 chars.
 
@@ -77,11 +84,14 @@ Prevents Claude from running `git commit` and `git push` without explicit user p
 ### Claude Code
 
 ```bash
-# Add as marketplace
+# Add marketplace
 claude plugin marketplace add VoDmAl/ai-dev-plugins
 
-# Install the plugin
-claude plugin install vdm@vodmal-claude-code-marketplace --scope user
+# Install core workflow (docs-sync, learn, changelog)
+claude plugin install vdm@vodmal --scope user
+
+# Install git safety (optional)
+claude plugin install vdm-git@vodmal --scope user
 ```
 
 ### Qwen Code
@@ -92,12 +102,23 @@ qwen extensions install VoDmAl/ai-dev-plugins
 
 ## How the Skills Work Together
 
-| Aspect | docs-sync | learn | changelog | git-guard |
-|--------|-----------|-------|-----------|-----------|
-| Focus | All project `.md` docs | `docs/llm/` + Serena Memory | `PROJECT_CHANGELOG.md` | `git commit` / `git push` |
-| Audience | Users, stakeholders | LLMs, developers | Project history | Developer safety |
-| Trigger | Code changes | Knowledge capture | Significant changes | Every git commit/push |
-| Content | Product capabilities | Technical patterns | Change summaries + refs | Pre-commit review |
+**`vdm` plugin:**
+
+| Aspect | docs-sync | learn | changelog |
+|--------|-----------|-------|-----------|
+| Focus | All project `.md` docs | `docs/llm/` + Serena Memory | `PROJECT_CHANGELOG.md` |
+| Audience | Users, stakeholders | LLMs, developers | Project history |
+| Trigger | Code changes | Knowledge capture | Significant changes |
+| Content | Product capabilities | Technical patterns | Change summaries + refs |
+
+**`vdm-git` plugin:**
+
+| Aspect | guard |
+|--------|-------|
+| Focus | `git commit` / `git push` |
+| Audience | Developer safety |
+| Trigger | Every git commit/push |
+| Content | Pre-commit review |
 
 **Typical workflow:**
 ```bash
@@ -127,9 +148,9 @@ your-project/
 
 ## How It Works
 
-### Automatic Hooks (v1.7.0+)
+### Automatic Hooks
 
-The plugin installs `UserPromptSubmit` hooks that run on **every prompt**:
+Each plugin installs its own hooks that run on **every prompt**:
 
 **docs-sync discovery:**
 ```
@@ -244,13 +265,17 @@ Add to your critical rules section:
 - **Invoke /vdm:docs-sync** — Run before completing feature work for full protocol
 ```
 
-## Namespace
+## Namespaces
 
-This plugin uses `vdm` as namespace. All skills appear as `vdm:{skill-name}`:
+Two plugin namespaces:
+
+**`vdm`** (core):
 - `vdm:docs-sync` — documentation synchronization
 - `vdm:learn` — knowledge integration
 - `vdm:changelog` — project change tracking
-- `vdm:git-guard` — git safety guard (commit/push protection)
+
+**`vdm-git`** (optional):
+- `vdm-git:guard` — git safety guard (commit/push protection)
 
 ## changelog Skill Quick Reference
 
@@ -268,7 +293,7 @@ This plugin uses `vdm` as namespace. All skills appear as `vdm:{skill-name}`:
 # 🔒 SEC     - security fixes
 ```
 
-See `skills/changelog/SKILL.md` for full documentation.
+See `plugins/vdm/skills/changelog/SKILL.md` for full documentation.
 
 ## learn Skill Quick Reference
 
@@ -284,7 +309,7 @@ See `skills/changelog/SKILL.md` for full documentation.
 /vdm:learn "New rule" --force-standard
 ```
 
-See `skills/learn/SKILL.md` for full documentation.
+See `plugins/vdm/skills/learn/SKILL.md` for full documentation.
 
 ## License
 

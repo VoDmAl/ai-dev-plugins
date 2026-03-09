@@ -11,8 +11,12 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 ## 2026-03-09
 
 ### 🏗️ ARCH: Rename to ai-dev-plugins, move to GitHub
-Repository renamed from `cc-vdm-plugins` to `ai-dev-plugins`. `dev` chosen over `code` to cover full SDLC (QA, docs, DevOps). Remote moved from own git server to `github.com/VoDmAl/ai-dev-plugins`. Marketplace source switched to GitHub shorthand. Added git-guard to README.
+Repository renamed from `cc-vdm-plugins` to `ai-dev-plugins`. `dev` chosen over `code` to cover full SDLC (QA, docs, DevOps). Remote moved from own git server to `github.com/VoDmAl/ai-dev-plugins`. Marketplace source switched to GitHub shorthand.
 **Ref**: README.md (Naming Convention & Scope)
+
+### 🏗️ ARCH: Split into modular plugins (v2.0.0)
+Monolithic `vdm` plugin split into two independently installable plugins via `git-subdir`: `vdm` (core: docs-sync, learn, changelog) and `vdm-git` (optional: guard). git-guard skill renamed to `guard` under `vdm-git` namespace (`/vdm-git:guard`).
+**Ref**: README.md (Installation, Namespaces)
 
 ## 2026-03-04
 

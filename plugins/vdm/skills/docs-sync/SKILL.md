@@ -184,7 +184,7 @@ Link code to documentation using language-appropriate annotations:
 
 When creating new documentation, use the templates from this plugin:
 
-**Location:** `~/.claude/plugins/cache/vodmal-claude-code-marketplace/docs-sync/*/templates/`
+**Location:** `${CLAUDE_PLUGIN_ROOT}/templates/`
 
 | Template | Purpose | Target |
 |----------|---------|--------|
