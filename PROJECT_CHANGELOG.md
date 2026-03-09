@@ -8,6 +8,12 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ---
 
+## 2026-03-09
+
+### 🏗️ ARCH: Rename to ai-dev-plugins, move to GitHub
+Repository renamed from `cc-vdm-plugins` to `ai-dev-plugins`. `dev` chosen over `code` to cover full SDLC (QA, docs, DevOps). Remote moved from own git server to `github.com/VoDmAl/ai-dev-plugins`. Marketplace source switched to GitHub shorthand. Added git-guard to README.
+**Ref**: README.md (Naming Convention & Scope)
+
 ## 2026-03-04
 
 ### ✨ FEATURE: docs-sync v2.0 — smart discovery (hook + skill)

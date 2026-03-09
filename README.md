@@ -1,6 +1,24 @@
-# vdm — Claude Code Plugins
+# ai-dev-plugins — Dmitry Vorobyev
 
-A collection of Claude Code plugins by Dmitry Vorobyev.
+AI-powered plugins and extensions for development tools.
+
+## Naming Convention & Scope
+
+**`ai-dev-plugins`** — the umbrella repository for plugins across AI-assisted development tools (Claude Code, Qwen Code, and others).
+
+`dev` was chosen over `code` intentionally: it covers the full development lifecycle — coding, QA, tech writing, DevOps, and beyond.
+
+**Specialization path** (when this repo grows too broad):
+
+| Repository | Scope |
+|------------|-------|
+| `ai-dev-plugins` | Cross-tool, general-purpose (this repo) |
+| `ai-code-plugins` | Code-specific: linters, refactoring, code generation |
+| `ai-qa-plugins` | QA: test generation, coverage, bug detection |
+| `ai-docs-plugins` | Documentation: tech writing, API docs, changelogs |
+| `ai-ops-plugins` | DevOps: CI/CD, deployment, monitoring |
+
+Until specialization is needed, everything lives here.
 
 ## Available Skills
 
@@ -9,6 +27,7 @@ A collection of Claude Code plugins by Dmitry Vorobyev.
 | docs-sync | `/vdm:docs-sync` | Smart documentation discovery & sync (adapts to any project structure) |
 | learn | `/vdm:learn` | Intelligent knowledge integration with scenario detection |
 | changelog | `/vdm:changelog` | Project change tracking in `PROJECT_CHANGELOG.md` |
+| git-guard | `/vdm:git-guard` | Git safety guard — blocks commit/push until user confirms |
 
 ## What It Does
 
@@ -44,13 +63,22 @@ Brief description (1-2 sentences max).
 
 **Entry types**: ✨ FEATURE | 🐛 BUG | 🔧 TOOLING | 🏗️ ARCH | 📝 DOCS | ⚡ PERF | 🔒 SEC
 
+### git-guard
+Prevents Claude from running `git commit` and `git push` without explicit user permission. All other git operations (merge, rebase, status, diff, etc.) are allowed freely.
+
+**Hook (automatic)**: On every prompt, displays a reminder that commit/push are blocked. When Claude attempts a blocked command, it acknowledges the block, suggests a commit message, and waits for confirmation.
+
+**Skill (manual `/vdm:git-guard`)**: Pre-commit review — checks branch, staged files, recent history, and runs safety checks (no secrets, intentional changes) before asking user to confirm or abort.
+
+**Commit message format**: `[+]` new feature, `[-]` bugfix, `[*]` other change. Max 50 chars.
+
 ## Installation
 
 This repository is both the marketplace and the plugin source.
 
 ```bash
 # Add as marketplace
-claude plugin marketplace add git@git.vorobyev.name:cc-vdm-plugins.git
+claude plugin marketplace add VoDmAl/ai-dev-plugins
 
 # Install the plugin
 claude plugin install vdm@vodmal-claude-code-marketplace --scope user
@@ -58,12 +86,12 @@ claude plugin install vdm@vodmal-claude-code-marketplace --scope user
 
 ## How the Skills Work Together
 
-| Aspect | docs-sync | learn | changelog |
-|--------|-----------|-------|-----------|
-| Focus | All project `.md` docs | `docs/llm/` + Serena Memory | `PROJECT_CHANGELOG.md` |
-| Audience | Users, stakeholders | LLMs, developers | Project history |
-| Trigger | Code changes | Knowledge capture | Significant changes |
-| Content | Product capabilities | Technical patterns | Change summaries + refs |
+| Aspect | docs-sync | learn | changelog | git-guard |
+|--------|-----------|-------|-----------|-----------|
+| Focus | All project `.md` docs | `docs/llm/` + Serena Memory | `PROJECT_CHANGELOG.md` | `git commit` / `git push` |
+| Audience | Users, stakeholders | LLMs, developers | Project history | Developer safety |
+| Trigger | Code changes | Knowledge capture | Significant changes | Every git commit/push |
+| Content | Product capabilities | Technical patterns | Change summaries + refs | Pre-commit review |
 
 **Typical workflow:**
 ```bash
@@ -216,6 +244,7 @@ This plugin uses `vdm` as namespace. All skills appear as `vdm:{skill-name}`:
 - `vdm:docs-sync` — documentation synchronization
 - `vdm:learn` — knowledge integration
 - `vdm:changelog` — project change tracking
+- `vdm:git-guard` — git safety guard (commit/push protection)
 
 ## changelog Skill Quick Reference
 
