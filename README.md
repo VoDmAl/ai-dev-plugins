@@ -74,7 +74,7 @@ Prevents Claude from running `git commit` and `git push` without explicit user p
 
 ## Installation
 
-This repository is both the marketplace and the plugin source.
+### Claude Code
 
 ```bash
 # Add as marketplace
@@ -82,6 +82,12 @@ claude plugin marketplace add VoDmAl/ai-dev-plugins
 
 # Install the plugin
 claude plugin install vdm@vodmal-claude-code-marketplace --scope user
+```
+
+### Qwen Code
+
+```bash
+qwen extensions install VoDmAl/ai-dev-plugins
 ```
 
 ## How the Skills Work Together
