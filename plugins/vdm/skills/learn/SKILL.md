@@ -21,6 +21,38 @@ Systematically capture and preserve project knowledge for future LLM sessions. A
 /vdm:learn "API errors should follow RFC 7807 format"          # Standard → systematic
 ```
 
+## Configuration Sub-commands
+
+`/vdm:learn [subcommand]` recognizes these as the first word of arguments. When no subcommand matches, behave as the regular learn skill described below.
+
+| Subcommand | Effect on `.claude/vdm-plugins.json` → `learn` section |
+|------------|--------------------------------------------------------|
+| `off` / `disable` | Set `enabled = false` (hook stays silent) |
+| `on` / `enable` | Set `enabled = true` |
+| `proactive` | Set `mode = "proactive"` (fires every prompt — default) |
+| `conditional` | Set `mode = "conditional"` (fires only when tree has changes) |
+| `quiet` | Set `mode = "quiet"` (same as conditional today; tightened in fase 3) |
+| `silent` | Set `mode = "silent"` (never fires) |
+| `config` / `status` | Read and display the current section |
+| `reset` | Remove the `learn` key (revert to defaults) |
+
+**Defaults when the section is missing:** `enabled: true`, `mode: "proactive"`. Learn is intentionally proactive by default — knowledge capture moments are easy to miss.
+
+### Config file path detection
+
+1. `project_root` = `git rev-parse --show-toplevel` (fallback: `pwd`)
+2. If `<project_root>/.claude/` exists → `<project_root>/.claude/vdm-plugins.json`
+3. Else if `<project_root>/.qwen/` exists → `<project_root>/.qwen/vdm-plugins.json`
+4. Else create `<project_root>/.claude/` and write to `<project_root>/.claude/vdm-plugins.json`
+
+### Patching rules
+
+1. Read the file (if missing, start with `{}`).
+2. Modify only the `learn` key — preserve `changelog`, `docs-sync`, `git-guard` verbatim.
+3. For `reset`, delete the `learn` key (do not leave `"learn": {}`).
+4. Use the Edit/Write tool — **do not** invoke `jq`; users may not have it.
+5. Final file must be valid JSON, 2-space indent, trailing newline.
+
 ## EXECUTION INSTRUCTIONS
 
 **YOU MUST follow these tool invocation rules:**

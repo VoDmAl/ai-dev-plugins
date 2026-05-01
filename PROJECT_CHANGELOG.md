@@ -10,6 +10,10 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ## 2026-05-01
 
+### ✨ FEATURE: per-project hook config + skill self-config (vdm v2.2.0, vdm-git v2.1.0)
+Adds `.claude/vdm-plugins.json` (or `.qwen/vdm-plugins.json`) for granular per-project control of every reminder hook. Each skill (`/vdm:changelog`, `/vdm:learn`, `/vdm:docs-sync`, `/vdm-git:guard`) now accepts subcommands `off` / `on` / `proactive` / `conditional` / `quiet` / `silent` / `config` / `reset` to edit its own section without manual JSON editing. Modes: `proactive` (always fires), `conditional` (fires only when working tree has changes — now sees untracked files via `git status --porcelain`), `quiet` (alias for conditional in this release; tightened in fase 3), `silent` (never fires). Note: `git-guard`'s PreToolUse blocking hook is intentionally not configurable — only the reminder text is.
+**Ref**: plugins/vdm/lib/, plugins/vdm-git/lib/, README.md (Configuration section)
+
 ### 🔧 TOOLING: hooks silent on clean tree (vdm v2.1.1)
 `changelog` and `docs-sync` reminders now exit silently when the working tree has no uncommitted changes. Reduces ambient noise — feedback from real sessions showed agents starting to ignore reminders that fired regardless of relevance (habituation). `learn` and `git-guard` remain proactive by design.
 **Ref**: plugins/vdm/scripts/changelog-reminder.sh, plugins/vdm/scripts/docs-sync-reminder.sh

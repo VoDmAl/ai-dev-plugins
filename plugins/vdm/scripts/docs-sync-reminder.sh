@@ -1,24 +1,32 @@
 #!/bin/bash
-# docs-sync smart discovery hook
-# Performs lightweight project scanning to provide concrete documentation context.
+# docs-sync smart discovery hook.
+# Behavior governed by .claude/vdm-plugins.json:
+#   enabled=false       → never fires
+#   mode=silent         → never fires
+#   mode=conditional|quiet → fires only when working tree has changes (default)
+#   mode=proactive      → fires every prompt, even on a clean tree (skinny payload)
 # Budget: must complete within 5s timeout.
+
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/config-read.sh"
+
+vdm_is_enabled "docs-sync" || exit 0
+mode=$(vdm_get_mode "docs-sync" "conditional")
+[ "$mode" = "silent" ] && exit 0
 
 # --- Discovery Phase ---
 
-# 1. Changed files (staged + unstaged vs HEAD)
+# 1. Changed files — modified, staged, and untracked. We use porcelain status
+# so newly created files (which `git diff` ignores) also surface in reminders.
+# Strip the 2-char status code and any rename arrow ("old -> new" → "new").
 changed_files=""
 if git rev-parse --is-inside-work-tree &>/dev/null; then
-  changed_files=$(git diff --name-only HEAD 2>/dev/null)
-  # If no diff vs HEAD (fresh commit or clean), check staged
-  if [ -z "$changed_files" ]; then
-    changed_files=$(git diff --name-only --cached 2>/dev/null)
-  fi
+  changed_files=$(git status --porcelain 2>/dev/null | sed -E 's/^.{2} //;s/^.* -> //')
 fi
 
-# Early exit: no signal to report. Avoids ambient noise on clean working trees
-# and outside git repos. The downstream blocks (see_refs, relevant_docs) all
-# derive from changed_files, so an empty changed_files means an empty payload.
-if [ -z "$changed_files" ]; then
+# Conditional firing: nothing to report when the tree is clean.
+# Proactive mode falls through and emits a skinny payload (project docs map only).
+if [ -z "$changed_files" ] && [ "$mode" != "proactive" ]; then
   exit 0
 fi
 
@@ -71,10 +79,13 @@ fi
 
 context="[docs-sync] 📋 Documentation sync context:"
 
-# Changed files summary (changed_files is guaranteed non-empty by early exit above)
-file_count=$(echo "$changed_files" | wc -l | tr -d ' ')
-file_list=$(echo "$changed_files" | head -10 | tr '\n' ', ' | sed 's/,$//')
-context="${context}\n\nChanged files (${file_count}): ${file_list}"
+# Changed files summary. In proactive mode this block may be skipped when the
+# tree is clean — the rest of the payload (project docs map, footer) still emits.
+if [ -n "$changed_files" ]; then
+  file_count=$(echo "$changed_files" | wc -l | tr -d ' ')
+  file_list=$(echo "$changed_files" | head -10 | tr '\n' ', ' | sed 's/,$//')
+  context="${context}\n\nChanged files (${file_count}): ${file_list}"
+fi
 
 # @see references
 if [ -n "$see_refs" ]; then

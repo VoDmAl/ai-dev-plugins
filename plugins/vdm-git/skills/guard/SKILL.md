@@ -10,6 +10,40 @@ license: MIT
 
 Prevents Claude from executing git commit and push without explicit user permission. Everything else (merge, rebase, reset, checkout, add, diff, status, etc.) is allowed freely.
 
+## Configuration Sub-commands
+
+`/vdm-git:guard [subcommand]` recognizes these as the first word of arguments. When no subcommand matches, behave as the regular guard skill (pre-commit review, see below).
+
+| Subcommand | Effect on `.claude/vdm-plugins.json` → `git-guard` section |
+|------------|------------------------------------------------------------|
+| `off` / `disable` | Set `enabled = false` (UserPromptSubmit reminder stays silent) |
+| `on` / `enable` | Set `enabled = true` |
+| `proactive` | Set `mode = "proactive"` (fires every prompt — default safety reminder) |
+| `conditional` | Set `mode = "conditional"` (fires only when tree has changes) |
+| `quiet` | Set `mode = "quiet"` (same as conditional today; tightened in fase 3) |
+| `silent` | Set `mode = "silent"` (never fires) |
+| `config` / `status` | Read and display the current section |
+| `reset` | Remove the `git-guard` key (revert to defaults) |
+
+**Defaults when the section is missing:** `enabled: true`, `mode: "proactive"`.
+
+> **Important:** these subcommands only affect the **UserPromptSubmit reminder** (the visible text). The PreToolUse blocking hook that intercepts `git commit` / `git push` is **not** affected by config and remains active. To fully disable git-guard in a project, uninstall the plugin.
+
+### Config file path detection
+
+1. `project_root` = `git rev-parse --show-toplevel` (fallback: `pwd`)
+2. If `<project_root>/.claude/` exists → `<project_root>/.claude/vdm-plugins.json`
+3. Else if `<project_root>/.qwen/` exists → `<project_root>/.qwen/vdm-plugins.json`
+4. Else create `<project_root>/.claude/` and write to `<project_root>/.claude/vdm-plugins.json`
+
+### Patching rules
+
+1. Read the file (if missing, start with `{}`).
+2. Modify only the `git-guard` key — preserve `learn`, `changelog`, `docs-sync` verbatim.
+3. For `reset`, delete the `git-guard` key (do not leave `"git-guard": {}`).
+4. Use the Edit/Write tool — **do not** invoke `jq`; users may not have it.
+5. Final file must be valid JSON, 2-space indent, trailing newline.
+
 ## Blocked Operations
 
 | Operation | Reason |
