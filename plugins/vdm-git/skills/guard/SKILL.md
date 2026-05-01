@@ -8,7 +8,7 @@ license: MIT
 
 ## Purpose
 
-Prevents Claude from executing git commit and push without explicit user permission. Everything else (merge, rebase, reset, checkout, add, diff, status, etc.) is allowed freely.
+Prevents the AI assistant from executing `git commit` and `git push` without explicit user permission. Everything else (merge, rebase, reset, checkout, add, diff, status, etc.) is allowed freely.
 
 ## Configuration Sub-commands
 
@@ -73,21 +73,42 @@ Avoid verbose descriptions or unnecessary details.
 
 ## When Blocked
 
-When the hook blocks a command, Claude should:
+Since v2.2.0, when the hook intercepts `git commit` it does the heavy lifting itself: detects the **project's** commit message convention, lists the staged files, and emits explicit instructions for the assistant to compose a ready-to-paste command.
 
-1. Acknowledge the block
-2. Tell the user what was attempted
-3. Suggest a commit message (following the format above)
-4. Ask for permission to proceed
-5. Execute only after explicit confirmation
+**Format detection priority** (built into the Python hook):
 
-**Example:**
-```
-Claude: Changes staged. Suggested message: "[-] Fix token expiry handling"
-        Should I commit, or will you do it manually?
-User: go ahead
-Claude: [executes git commit]
-```
+1. `git config commit.template` (Git's native template system)
+2. `.gitmessage`, `.gitmessage.txt`, or `.git-commit-template` in the repo root
+3. `commitlint.config.*` / `.commitlintrc*` → signals Conventional Commits
+4. Commit section in `CLAUDE.md`, `CONTRIBUTING.md`, `docs/CONTRIBUTING.md`, or `README.md`
+5. Pattern detection from `git log -30` (recognizes `[+]/[-]/[*]`, `feat:/fix:`, gitmoji)
+6. Generic fallback (brief imperative ≤ 50 chars)
+
+When you (the assistant) see the block message:
+
+1. Read the **PROJECT COMMIT FORMAT** section the hook emitted — that's the source of truth for this repo, not the in-skill table below.
+2. Use your session context (what was actually changed and why) to compose a concise, accurate subject under those rules.
+3. Combine into a single shell-safe command: `git commit -m "<prefix> <subject>"`.
+4. **Present that command as INLINE CODE** (single backticks) on its own line. **Do NOT** wrap in a fenced code block — fenced blocks add leading whitespace that breaks copy-paste.
+5. Wait for the user to confirm or run the command themselves.
+
+**Example presentation to the user:**
+
+> Changes look good. Suggested commit:
+>
+> `git commit -m "[-] Fix token expiry handling"`
+>
+> Run it, or want me to adjust the wording?
+
+The fallback table below applies only when the hook's detection has nothing to go on (a fresh repo with no log, no docs, no config — rare in practice).
+
+### Default fallback table (when nothing else detected)
+
+| Prefix | Meaning |
+|--------|---------|
+| `[+]` | New feature |
+| `[-]` | Bugfix |
+| `[*]` | Other change |
 
 ## Manual Invocation
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "vodmal",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "AI-powered plugins for development tools by Dmitry Vorobyev.",
   "owner": {
     "name": "Dmitry Vorobyev",
@@ -25,7 +25,7 @@
     {
       "name": "vdm-git",
       "description": "Git safety plugin: blocks commit/push until user confirms, enforces commit message format.",
-      "version": "2.1.0",
+      "version": "2.2.0",
       "author": {
         "name": "Dmitry Vorobyev"
       },

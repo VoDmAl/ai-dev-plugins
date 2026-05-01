@@ -10,6 +10,18 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ## 2026-05-01
 
+### 📝 DOCS: agent-agnostic skill text standard
+Replaced hardcoded "Claude" agent-name references in `plugins/vdm-git/skills/guard/SKILL.md`, `plugins/vdm/skills/learn/SKILL.md`, and `plugins/vdm/scripts/learn-reminder.sh` with generic "the assistant" terminology. The plugins run under multiple AI harnesses (Claude Code primary, Qwen Code supported), so naming any one model implicitly tells the others "this isn't for you." Standard captured in `CLAUDE.md` → "Authoring standard: agent-agnostic skill text".
+**Ref**: CLAUDE.md, plugins/vdm-git/skills/guard/SKILL.md, plugins/vdm/skills/learn/SKILL.md, plugins/vdm/scripts/learn-reminder.sh
+
+### ✨ FEATURE: project-aware commit suggestions in git-guard (vdm-git v2.2.0)
+When `git-guard` intercepts a `git commit`, it now detects the project's commit message convention (priority: `git config commit.template` → `.gitmessage*` → `commitlint*` → Commit section in `CLAUDE.md` / `CONTRIBUTING.md` / `README.md` → pattern detection from `git log -30`) and emits instructions for the assistant to compose a ready-to-paste command using session context. Output includes the staged file list and an explicit hint to present the command as inline code (single backticks) so copy-paste preserves no leading whitespace. `git push` continues to block without suggestions.
+**Ref**: plugins/vdm-git/scripts/git-guard-hook.py, docs/tasks/phase-3-hook-extensions.md (deferred work)
+
+### 📝 DOCS: phase-3 deferred work captured as PRD
+Adds `docs/tasks/phase-3-hook-extensions.md` describing the deferred extensions (`prompt_keywords`, `ignore_paths`, real `quiet` thresholds, optional cooldown) with explicit decision criteria — what real-session feedback would justify reopening, and what would close the task entirely.
+**Ref**: docs/tasks/phase-3-hook-extensions.md
+
 ### 🔧 TOOLING: dev-time lib-sync guard
 Adds `scripts/check-lib-sync.sh` plus `.githooks/pre-commit` that detect drift between `plugins/vdm/lib/` and `plugins/vdm-git/lib/` (must stay byte-identical modulo cross-reference comments). Activate locally via `git config core.hooksPath .githooks`. A SessionStart hook in `.claude/settings.json` warns (warn-only — never auto-modifies `.git/config`) when the dev hooks aren't wired up after a fresh clone, plus a top-level `CLAUDE.md` documents the dev setup. A matching GitHub Actions workflow is documented in README but not committed (blocked by local security hook).
 **Ref**: scripts/check-lib-sync.sh, scripts/ensure-githooks.sh, .githooks/pre-commit, .claude/settings.json, CLAUDE.md, README.md (Development section)
