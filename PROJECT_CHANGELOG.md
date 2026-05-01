@@ -8,6 +8,12 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ---
 
+## 2026-05-01
+
+### 🔧 TOOLING: hooks silent on clean tree (vdm v2.1.1)
+`changelog` and `docs-sync` reminders now exit silently when the working tree has no uncommitted changes. Reduces ambient noise — feedback from real sessions showed agents starting to ignore reminders that fired regardless of relevance (habituation). `learn` and `git-guard` remain proactive by design.
+**Ref**: plugins/vdm/scripts/changelog-reminder.sh, plugins/vdm/scripts/docs-sync-reminder.sh
+
 ## 2026-03-09
 
 ### 🏗️ ARCH: Rename to ai-dev-plugins, move to GitHub

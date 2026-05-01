@@ -159,7 +159,9 @@ your-project/
 
 ### Automatic Hooks
 
-Each plugin installs its own hooks that run on **every prompt**:
+Each plugin installs its own hooks that run on **every prompt**.
+
+Since v2.1.1, `changelog` and `docs-sync` reminders **stay silent on a clean working tree** — no uncommitted changes means nothing to remind about. `learn` and `git-guard` remain proactive by design (capture moments / safety gate). Per-project granular control over hook firing modes is planned for the next minor release.
 
 **docs-sync discovery:**
 ```

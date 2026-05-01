@@ -15,6 +15,13 @@ if git rev-parse --is-inside-work-tree &>/dev/null; then
   fi
 fi
 
+# Early exit: no signal to report. Avoids ambient noise on clean working trees
+# and outside git repos. The downstream blocks (see_refs, relevant_docs) all
+# derive from changed_files, so an empty changed_files means an empty payload.
+if [ -z "$changed_files" ]; then
+  exit 0
+fi
+
 # 2. Find all .md files in project (exclude node_modules, vendor, .git)
 md_files=$(find . -name "*.md" \
   -not -path "./.git/*" \
@@ -64,14 +71,10 @@ fi
 
 context="[docs-sync] 📋 Documentation sync context:"
 
-# Changed files summary
-if [ -n "$changed_files" ]; then
-  file_count=$(echo "$changed_files" | wc -l | tr -d ' ')
-  file_list=$(echo "$changed_files" | head -10 | tr '\n' ', ' | sed 's/,$//')
-  context="${context}\n\nChanged files (${file_count}): ${file_list}"
-else
-  context="${context}\n\nNo uncommitted changes detected."
-fi
+# Changed files summary (changed_files is guaranteed non-empty by early exit above)
+file_count=$(echo "$changed_files" | wc -l | tr -d ' ')
+file_list=$(echo "$changed_files" | head -10 | tr '\n' ', ' | sed 's/,$//')
+context="${context}\n\nChanged files (${file_count}): ${file_list}"
 
 # @see references
 if [ -n "$see_refs" ]; then
