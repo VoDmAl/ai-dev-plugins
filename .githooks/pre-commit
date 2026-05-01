@@ -1,0 +1,10 @@
+#!/bin/bash
+# Local pre-commit hook. Activated by:
+#     git config core.hooksPath .githooks
+# Currently runs the lib-sync check only when relevant files are staged.
+
+set -eu
+
+if git diff --cached --name-only | grep -qE '^plugins/(vdm|vdm-git)/lib/'; then
+  exec scripts/check-lib-sync.sh
+fi
