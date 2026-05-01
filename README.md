@@ -161,7 +161,9 @@ your-project/
 
 Each plugin installs its own hooks that run on **every prompt**.
 
-Since v2.1.1, `changelog` and `docs-sync` reminders **stay silent on a clean working tree** — no uncommitted changes means nothing to remind about. `learn` and `git-guard` remain proactive by design (capture moments / safety gate). Per-project granular control over hook firing modes is planned for the next minor release.
+Since v2.1.1, `changelog` and `docs-sync` reminders **stay silent on a clean working tree** — no uncommitted changes means nothing to remind about. `learn` and `git-guard` remain proactive by design (capture moments / safety gate).
+
+Since v2.2.0, every hook is **configurable per project** — see [Configuration](#configuration) below.
 
 **docs-sync discovery:**
 ```
@@ -249,6 +251,60 @@ The plugin includes templates for consistent documentation:
 | Refactoring (tests pass) | Add changelog entry only |
 | New feature | Create `docs/features/{feature}.md` from template |
 | No docs structure | Propose creating `docs/features/` and `docs/llm/` |
+
+## Configuration
+
+Since v2.2.0 every reminder hook is configurable per project via `.claude/vdm-plugins.json` (or `.qwen/vdm-plugins.json` for Qwen Code).
+
+### Quick disable / enable via skill subcommands
+
+Each skill accepts subcommands as the first argument — no manual JSON editing required:
+
+```bash
+/vdm:learn off          # disable learn reminder in this project
+/vdm:changelog quiet    # changelog: fire only on strong signals
+/vdm-git:guard silent   # silence the git-guard reminder text
+/vdm:docs-sync proactive  # always fire, even on clean tree
+/vdm:learn config       # show current config for this section
+/vdm:learn reset        # restore defaults for this section
+```
+
+Recognized subcommands: `off` / `disable`, `on` / `enable`, `proactive`, `conditional`, `quiet`, `silent`, `config` / `status`, `reset`.
+
+### Config file shape
+
+```json
+{
+  "learn":      { "enabled": true,  "mode": "proactive" },
+  "changelog":  { "enabled": true,  "mode": "conditional" },
+  "docs-sync":  { "enabled": true,  "mode": "conditional" },
+  "git-guard":  { "enabled": true,  "mode": "proactive" }
+}
+```
+
+Sections may be partial — missing keys fall back to defaults. Missing sections fall back to defaults entirely.
+
+### Modes
+
+| Mode | When the reminder fires |
+|------|-------------------------|
+| `proactive` | Every prompt, unconditionally |
+| `conditional` | Only when working tree has changes (modified, staged, or untracked) |
+| `quiet` | Same as `conditional` today; fase 3 will tighten further |
+| `silent` | Never (synonym for `enabled: false`) |
+
+### Defaults
+
+| Plugin | Default mode | Reasoning |
+|--------|--------------|-----------|
+| `learn` | `proactive` | Knowledge-capture moments are easy to miss |
+| `changelog` | `conditional` | Nothing to changelog when tree is clean |
+| `docs-sync` | `conditional` | No diff → no docs to flag |
+| `git-guard` | `proactive` | Safety reminder, should always be visible |
+
+### Important note about `git-guard`
+
+The config controls only the **UserPromptSubmit reminder** (the visible text). The **PreToolUse blocking hook** that intercepts `git commit` / `git push` is intentionally not configurable — it remains active even with `git-guard.enabled = false`. To fully disable the safety guard, uninstall the `vdm-git` plugin.
 
 ## Project CLAUDE.md Integration
 

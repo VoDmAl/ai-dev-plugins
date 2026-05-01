@@ -12,6 +12,38 @@ Ensures project documentation always reflects the current state of product capab
 
 Adapts to any project documentation structure — not limited to `docs/features/`.
 
+## Configuration Sub-commands
+
+`/vdm:docs-sync [subcommand]` recognizes these as the first word of arguments. When no subcommand matches, behave as the regular docs-sync skill described below.
+
+| Subcommand | Effect on `.claude/vdm-plugins.json` → `docs-sync` section |
+|------------|------------------------------------------------------------|
+| `off` / `disable` | Set `enabled = false` (hook stays silent) |
+| `on` / `enable` | Set `enabled = true` |
+| `proactive` | Set `mode = "proactive"` (fires every prompt — skinny payload on clean tree) |
+| `conditional` | Set `mode = "conditional"` (fires only when tree has changes) |
+| `quiet` | Set `mode = "quiet"` (same as conditional today; tightened in fase 3) |
+| `silent` | Set `mode = "silent"` (never fires) |
+| `config` / `status` | Read and display the current section |
+| `reset` | Remove the `docs-sync` key (revert to defaults) |
+
+**Defaults when the section is missing:** `enabled: true`, `mode: "conditional"`.
+
+### Config file path detection
+
+1. `project_root` = `git rev-parse --show-toplevel` (fallback: `pwd`)
+2. If `<project_root>/.claude/` exists → `<project_root>/.claude/vdm-plugins.json`
+3. Else if `<project_root>/.qwen/` exists → `<project_root>/.qwen/vdm-plugins.json`
+4. Else create `<project_root>/.claude/` and write to `<project_root>/.claude/vdm-plugins.json`
+
+### Patching rules
+
+1. Read the file (if missing, start with `{}`).
+2. Modify only the `docs-sync` key — preserve `learn`, `changelog`, `git-guard` verbatim.
+3. For `reset`, delete the `docs-sync` key (do not leave `"docs-sync": {}`).
+4. Use the Edit/Write tool — **do not** invoke `jq`; users may not have it.
+5. Final file must be valid JSON, 2-space indent, trailing newline.
+
 ## Automatic Activation
 
 **Via Hook (v2.0.0+):** A `UserPromptSubmit` hook performs lightweight discovery on every prompt:
