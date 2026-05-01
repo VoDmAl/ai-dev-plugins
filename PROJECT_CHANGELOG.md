@@ -10,6 +10,10 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ## 2026-05-01
 
+### 🔧 TOOLING: dev-time lib-sync guard
+Adds `scripts/check-lib-sync.sh` plus `.githooks/pre-commit` that detect drift between `plugins/vdm/lib/` and `plugins/vdm-git/lib/` (must stay byte-identical modulo cross-reference comments). Activate locally via `git config core.hooksPath .githooks`. A SessionStart hook in `.claude/settings.json` warns (warn-only — never auto-modifies `.git/config`) when the dev hooks aren't wired up after a fresh clone, plus a top-level `CLAUDE.md` documents the dev setup. A matching GitHub Actions workflow is documented in README but not committed (blocked by local security hook).
+**Ref**: scripts/check-lib-sync.sh, scripts/ensure-githooks.sh, .githooks/pre-commit, .claude/settings.json, CLAUDE.md, README.md (Development section)
+
 ### ✨ FEATURE: per-project hook config + skill self-config (vdm v2.2.0, vdm-git v2.1.0)
 Adds `.claude/vdm-plugins.json` (or `.qwen/vdm-plugins.json`) for granular per-project control of every reminder hook. Each skill (`/vdm:changelog`, `/vdm:learn`, `/vdm:docs-sync`, `/vdm-git:guard`) now accepts subcommands `off` / `on` / `proactive` / `conditional` / `quiet` / `silent` / `config` / `reset` to edit its own section without manual JSON editing. Modes: `proactive` (always fires), `conditional` (fires only when working tree has changes — now sees untracked files via `git status --porcelain`), `quiet` (alias for conditional in this release; tightened in fase 3), `silent` (never fires). Note: `git-guard`'s PreToolUse blocking hook is intentionally not configurable — only the reminder text is.
 **Ref**: plugins/vdm/lib/, plugins/vdm-git/lib/, README.md (Configuration section)

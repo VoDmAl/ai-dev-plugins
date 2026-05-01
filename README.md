@@ -378,6 +378,32 @@ See `plugins/vdm/skills/changelog/SKILL.md` for full documentation.
 
 See `plugins/vdm/skills/learn/SKILL.md` for full documentation.
 
+## Development
+
+The two plugins ship duplicated copies of `lib/config-path.sh` and `lib/config-read.sh` (each plugin must be self-contained for independent installation). To prevent drift, this repo includes a pre-commit hook that diff-checks the two `lib/` directories.
+
+### Activate the dev hook
+
+After cloning, run once:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hook fires only when files under `plugins/{vdm,vdm-git}/lib/` are staged.
+
+If you forget, a SessionStart hook in `.claude/settings.json` will print a one-line `[vdm-dev]` reminder at the top of each Claude Code session in this repo. The warner is **idempotent and warn-only** — it never modifies your `.git/config`. To opt out, point `core.hooksPath` somewhere else (e.g. `git config core.hooksPath .git/hooks`); the warner only stays quiet when it's exactly `.githooks`.
+
+### Run the check manually
+
+```bash
+bash scripts/check-lib-sync.sh
+```
+
+Exits 0 when in sync, 1 with a unified diff and `DRIFT` / `ORPHAN` / `MISSING` markers otherwise. The check normalizes the cross-reference comments that name the opposite plugin (`plugins/vdm/lib` ↔ `plugins/vdm-git/lib`); everything else must match byte-for-byte.
+
+A GitHub Actions workflow that runs the same check on PRs is planned but not yet wired up (the file `.github/workflows/lib-sync.yml` was blocked by a local security hook during this commit).
+
 ## License
 
 MIT
