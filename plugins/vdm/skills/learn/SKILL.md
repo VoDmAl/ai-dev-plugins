@@ -1,6 +1,6 @@
 ---
 name: learn
-description: "PROACTIVELY capture knowledge. Auto-invoke when: (1) finding solutions after struggling with issues - the struggle itself is valuable to document, (2) discovering effective patterns worth preserving, (3) making mistakes that should never repeat, (4) establishing new project standards. Claude SHOULD invoke this automatically after resolving complex problems WITHOUT waiting for user request."
+description: "PROACTIVELY capture knowledge. Auto-invoke when: (1) finding solutions after struggling with issues - the struggle itself is valuable to document, (2) discovering effective patterns worth preserving, (3) making mistakes that should never repeat, (4) establishing new project standards. The assistant SHOULD invoke this automatically after resolving complex problems WITHOUT waiting for user request."
 license: MIT
 ---
 
@@ -231,7 +231,7 @@ Is this a SAFETY-CRITICAL rule that prevents disasters?
 **Key distinction**:
 - **PERMANENT** = Version conflicts, API constraints, tool incompatibilities → docs/llm/ (won't change without code change)
 - **TRANSIENT** = Environment variables, current workflow steps, session context → Serena Memory (may need updates)
-- **NEVER** use auto-memory as a fallback for project knowledge — it's for Claude's own operational state, not project docs
+- **NEVER** use auto-memory as a fallback for project knowledge — it's for the assistant's own operational state, not project docs
 
 ## Integration with Technical Writer Principles
 

@@ -1,6 +1,16 @@
 # cc-vdm-plugins — Project Notes
 
-Two Claude Code plugins (`vdm`, `vdm-git`) live under `plugins/`. Their `lib/` folders are duplicated and must stay byte-identical (modulo cross-reference comments). A pre-commit hook enforces this.
+Two plugins (`vdm`, `vdm-git`) live under `plugins/`. They run under multiple AI coding harnesses — Claude Code (primary) and Qwen Code (via `qwen-extension.json`). Their `lib/` folders are duplicated and must stay byte-identical (modulo cross-reference comments). A pre-commit hook enforces this.
+
+## Authoring standard: agent-agnostic skill text
+
+When writing prompts, hook output, or instructions inside `plugins/**/skills/**/SKILL.md` and `plugins/**/scripts/**`:
+
+- **Don't hardcode the assistant's name** ("Claude", "Qwen", "GPT", etc.). The same files load under multiple harnesses, and naming one model implicitly tells the others "this isn't for you."
+- **Use generic terms** instead: "the assistant", "the AI assistant", "you (the assistant)", or `Assistant:` as a label prefix.
+- **OK to mention by name:** product-level harness names (`Claude Code`, `Qwen Code`) when describing where files live or which install path is used — e.g. `.claude/` vs `.qwen/`. That's harness, not agent identity.
+
+**Why:** plugins ship through multiple marketplaces; agent-agnostic text means a single source of truth and no per-harness forks. Caught during the v2.2.0 work — fix touched 5 files (guard SKILL.md, learn SKILL.md, learn-reminder.sh, hook output) where "Claude" had crept in.
 
 ## Dev setup (one-time per clone)
 
