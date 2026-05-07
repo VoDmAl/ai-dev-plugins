@@ -1,10 +1,38 @@
 #!/bin/bash
 # Local pre-commit hook. Activated by:
 #     git config core.hooksPath .githooks
-# Currently runs the lib-sync check only when relevant files are staged.
+#
+# Runs three independent gates. Each fails fast — failure in any gate blocks
+# the commit:
+#   1. lib-sync       — plugins/{vdm,vdm-git}/lib/ must stay byte-identical
+#                       (caught by scripts/check-lib-sync.sh)
+#   2. version-bump   — staged plugin file change requires bump in
+#                       plugins/X/.claude-plugin/plugin.json; also asserts
+#                       marketplace.json ↔ plugin.json parity unconditionally
+#                       (caught by scripts/check-version-bump.sh)
+#   3. skill-paths    — plugins/*/skills/**/SKILL.md and plugins/*/templates/*.md
+#                       must use ${CLAUDE_PLUGIN_ROOT}, not dev-tree paths
+#                       (caught by scripts/check-skill-paths.sh)
 
 set -eu
 
-if git diff --cached --name-only | grep -qE '^plugins/(vdm|vdm-git)/lib/'; then
-  exec scripts/check-lib-sync.sh
+staged=$(git diff --cached --name-only)
+
+# Gate 1 — lib-sync: only relevant when lib/ is staged.
+if printf '%s\n' "$staged" | grep -qE '^plugins/(vdm|vdm-git)/lib/'; then
+  scripts/check-lib-sync.sh
 fi
+
+# Gate 2 — version-bump: bump check fires for any plugin file change; the
+# parity check inside the script runs unconditionally either way.
+if printf '%s\n' "$staged" | grep -qE '^plugins/[^/]+/'; then
+  scripts/check-version-bump.sh
+else
+  # No plugin file staged, but we still want the marketplace ↔ plugin.json
+  # parity check to run on every commit.
+  scripts/check-version-bump.sh
+fi
+
+# Gate 3 — skill-paths: invariant must hold on every commit, regardless of
+# what's staged. Fast (single grep per file).
+scripts/check-skill-paths.sh

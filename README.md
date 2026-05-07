@@ -380,9 +380,9 @@ See `plugins/vdm/skills/learn/SKILL.md` for full documentation.
 
 ## Development
 
-The two plugins ship duplicated copies of `lib/config-path.sh` and `lib/config-read.sh` (each plugin must be self-contained for independent installation). To prevent drift, this repo includes a pre-commit hook that diff-checks the two `lib/` directories.
+This repo carries deterministic gates that enforce structural invariants the project has chosen to hold. Each gate is a pure-shell script with a remediation message; CLAUDE.md describes the rule, the gate enforces it. See `docs/llm/soft-guidance-vs-deterministic-gates.md` for why we layer rules and gates rather than relying on either alone.
 
-### Activate the dev hook
+### Activate the dev hooks
 
 After cloning, run once:
 
@@ -390,19 +390,49 @@ After cloning, run once:
 git config core.hooksPath .githooks
 ```
 
-The hook fires only when files under `plugins/{vdm,vdm-git}/lib/` are staged.
+If you forget, a SessionStart hook in `.claude/settings.json` prints a one-line `[vdm-dev]` reminder at the top of each Claude Code session in this repo. The warner is **idempotent and warn-only** — it never modifies your `.git/config`. To opt out, point `core.hooksPath` somewhere else (e.g. `git config core.hooksPath .git/hooks`); the warner only stays quiet when it's exactly `.githooks`.
 
-If you forget, a SessionStart hook in `.claude/settings.json` will print a one-line `[vdm-dev]` reminder at the top of each Claude Code session in this repo. The warner is **idempotent and warn-only** — it never modifies your `.git/config`. To opt out, point `core.hooksPath` somewhere else (e.g. `git config core.hooksPath .git/hooks`); the warner only stays quiet when it's exactly `.githooks`.
+### Pre-commit gates
 
-### Run the check manually
+`.githooks/pre-commit` runs the relevant gate for whatever you've staged:
+
+| Gate | Script | Triggers when |
+|------|--------|---------------|
+| lib-sync | `scripts/check-lib-sync.sh` | any file under `plugins/{vdm,vdm-git}/lib/**` is staged |
+| version-bump | `scripts/check-version-bump.sh` | any file under `plugins/X/**` is staged (bump check) **and** unconditionally (marketplace ↔ plugin.json parity) |
+| skill-paths | `scripts/check-skill-paths.sh` | unconditionally — user-time files must not reference `plugins/X/<subdir>/` (use `${CLAUDE_PLUGIN_ROOT}/...` instead) |
+
+All three can be run manually:
 
 ```bash
-bash scripts/check-lib-sync.sh
+bash scripts/check-lib-sync.sh         # 0 = clean, 1 = drift report
+bash scripts/check-version-bump.sh     # 0 = bumped + in parity, 1 = drift
+bash scripts/check-skill-paths.sh      # 0 = clean, 1 = dev-path leak found
 ```
 
-Exits 0 when in sync, 1 with a unified diff and `DRIFT` / `ORPHAN` / `MISSING` markers otherwise. The check normalizes the cross-reference comments that name the opposite plugin (`plugins/vdm/lib` ↔ `plugins/vdm-git/lib`); everything else must match byte-for-byte.
+**lib-sync.** The two plugins ship duplicated copies of `lib/config-path.sh` and `lib/config-read.sh` (each plugin must be self-contained for independent installation). The check normalizes the cross-reference comments that name the opposite plugin (`plugins/vdm/lib` ↔ `plugins/vdm-git/lib`); everything else must match byte-for-byte. A GitHub Actions workflow running the same check on PRs is planned but not yet wired up (the file `.github/workflows/lib-sync.yml` was blocked by a local security hook during a prior commit).
 
-A GitHub Actions workflow that runs the same check on PRs is planned but not yet wired up (the file `.github/workflows/lib-sync.yml` was blocked by a local security hook during this commit).
+**version-bump.** Two independent checks:
+
+1. *Bump check (conditional).* Any change inside `plugins/X/**` requires a new version in `plugins/X/.claude-plugin/plugin.json` (compared via `git show :path` vs `git show HEAD:path`). The check accepts any version difference — choose semver level appropriate to the change (PATCH for fixes, MINOR for new behavior, MAJOR for breaking).
+2. *Marketplace parity (unconditional).* For each plugin, the `plugins[].version` field in `.claude-plugin/marketplace.json` must equal the `version` in `plugins/X/.claude-plugin/plugin.json`. Catches the case where one is bumped without the other — the marketplace catalog must always advertise what plugin.json actually ships.
+
+Always pair the bump with a `PROJECT_CHANGELOG.md` entry.
+
+**skill-paths.** Lints `plugins/*/skills/**/SKILL.md` and `plugins/*/templates/*.md` for direct references to `plugins/(vdm|vdm-git)/(scripts|lib|hooks|templates|skills)/...`. Those paths only resolve inside this dev clone — at user time the plugin lives under `${CLAUDE_PLUGIN_ROOT}` (resolved by Claude Code). Use `${CLAUDE_PLUGIN_ROOT}/<subdir>/...` everywhere in user-time files. Bare plugin names (e.g. "the vdm plugin") are not flagged — only concrete subpaths.
+
+### Runtime hook (ships with the plugin)
+
+`plugins/vdm/scripts/orphan-guard-hook.sh` is wired in `plugins/vdm/hooks/hooks.json` as a `PostToolUse` hook on `Write|Edit|MultiEdit`. It fires after the assistant writes to any `docs/llm/*.md` and runs the orphan audit on that single file. Without a discovery hook (CLAUDE.md ref / source-code @see / `docs/features/` ref / sibling `docs/llm/` ref) it exits 2 with a remediation message — surfacing as actionable feedback the assistant must address before the turn ends.
+
+The audit script can also be invoked manually against any project that has `docs/llm/`:
+
+```bash
+bash plugins/vdm/scripts/check-llm-orphans.sh                 # audit all
+bash plugins/vdm/scripts/check-llm-orphans.sh --file PATH     # one file
+```
+
+The same script is what `/vdm:docs-sync` Phase 1.5 calls — single source of truth.
 
 ## License
 

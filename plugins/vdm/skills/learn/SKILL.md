@@ -403,6 +403,50 @@ Based on analysis results, determine storage locations:
 → If not: Write(file_path="docs/llm/{topic}.md", content="...from template...")
 ```
 
+#### Discovery Hook Gate — ENFORCED after creating a NEW docs/llm/ file
+
+A `docs/llm/{topic}.md` without a back-reference is orphan: it lives on disk but is invisible at runtime, because only `CLAUDE.md` is auto-loaded into every LLM session. Existence on disk ≠ availability in context.
+
+**Enforcement is automated.** A `PostToolUse` hook (`${CLAUDE_PLUGIN_ROOT}/scripts/orphan-guard-hook.sh`) runs `check-llm-orphans.sh --file {path}` after every `Write`/`Edit`/`MultiEdit` to `docs/llm/*.md`. If the file has no hook, the harness blocks with exit 2 and surfaces the remediation on stderr — so the assistant cannot silently leave an orphan behind in Claude Code. In harnesses without `PostToolUse` support, this section is the manual fallback contract.
+
+**Treat the discovery hook as a hard step of Phase 4, not a recommendation.** Phase 4 is not complete without it.
+
+After every `Write(docs/llm/{topic}.md)` for a brand-new file, you MUST add at least ONE of:
+
+**(a) CLAUDE.md back-reference** — preferred for cross-cutting rules, anti-patterns, and behavioral guidance:
+```
+→ Read(file_path="CLAUDE.md")
+→ Edit(file_path="CLAUDE.md", add a brief NEVER/ALWAYS rule that links to docs/llm/{topic}.md)
+```
+
+**(b) Source-code comment** — for module-local technical details (e.g. patterns specific to one script/service):
+```
+→ Edit(file_path="path/to/relevant/module.{ext}", insert a language-appropriate comment near the code the doc explains:
+        # See docs/llm/{topic}.md     (shell / python)
+        // @see docs/llm/{topic}.md    (js / ts / go / php / java / rust)
+        <!-- @see docs/llm/{topic}.md --> (html / xml)
+)
+```
+
+**Both (a) and (b)** are also fine, and often the right answer when the doc covers both a high-level rule and a specific module.
+
+**Decision aid** — if it's unclear which hook fits, ask the user via `AskUserQuestion`:
+```
+question: "How should docs/llm/{topic}.md be discoverable in future sessions?"
+header:   "Discovery hook"
+options:
+  - label: "CLAUDE.md rule + link"
+    description: "Best for cross-cutting rules / NEVER-DO patterns the assistant must always know"
+  - label: "Source-code comment"
+    description: "Best for module-local detail; specify which file"
+  - label: "Both"
+    description: "Cross-cutting rule with a specific anchor in code"
+```
+
+**Editing an existing `docs/llm/` file** is exempt — the hook already exists (or its absence will be caught by `/vdm:docs-sync` Phase 1.5 orphan audit).
+
+**Anti-pattern** to avoid: writing a new `docs/llm/{topic}.md`, declaring "the rule is already covered by an abstract clause in CLAUDE.md" and skipping the back-reference. Abstract rule ≠ concrete page; without the explicit link the page is unreachable.
+
 ### Phase 5: Verification
 
 ```
@@ -542,6 +586,7 @@ Routing control:
 - [ ] docs/llm/ follows template structure
 - [ ] Cross-references enable future discoverability
 - [ ] No knowledge orphaned or made inaccessible
+- [ ] **Every newly-created `docs/llm/*.md` has at least one discovery hook** (CLAUDE.md back-ref OR source-code comment) — see Phase 4 "Discovery Hook Gate"
 
 ## Templates
 

@@ -89,6 +89,38 @@ When invoked via `/vdm:docs-sync`, perform the full discovery pipeline:
 - Check found docs for links to other docs → follow one level deep
 - If doc A references doc B, and A is affected, B may need review too
 
+### Phase 1.5: docs/llm/ Orphan Audit
+
+Independent of which files changed: audit `docs/llm/` for **discovery-hook drift**. Skip this phase if `docs/llm/` does not exist or is empty.
+
+**Why this matters.** Only `CLAUDE.md` is auto-loaded into every LLM session. Every other doc has to be grep'd into context from some entry point. A `docs/llm/{name}.md` with **no back-reference anywhere** is functionally invisible at runtime — it lives on disk but future sessions can't reach it. Treat the discovery hook as a mandatory artifact of every `docs/llm/` file, not an optional nicety.
+
+**Source of truth — the audit is a script, not a checklist.** The skill must shell out to it rather than re-derive the algorithm:
+
+```bash
+Bash(command="bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-llm-orphans.sh", ...)
+```
+
+Exit codes:
+- `0` — clean, no orphans (or no `docs/llm/` to audit)
+- `1` — at least one orphan; stderr lists each file with remediation options
+- `2` — usage error
+
+The script categorizes hooks into: `CLAUDE.md` ref, source-code ref (broad set of source extensions), `docs/features/` ref, sibling `docs/llm/` ref. It explicitly **discounts** `PROJECT_CHANGELOG.md` matches — changelog entries describe history, not a discovery path.
+
+**Wiring into Phase 3 output.** When the script reports orphans (exit 1), surface them as a dedicated section in the deep-discovery report:
+
+```
+🚨 docs/llm/ orphans (no discovery hooks — invisible to future LLM sessions):
+  - docs/llm/{name}.md
+    Pick one:
+      (a) Add a brief rule + link in CLAUDE.md (preferred for cross-cutting rules / anti-patterns)
+      (b) Add `# See docs/llm/{name}.md` (or language-appropriate comment) in the relevant module/script
+      (c) Retire — delete the file if the knowledge is stale
+```
+
+The same script is also wired as a `PostToolUse` hook (`${CLAUDE_PLUGIN_ROOT}/scripts/orphan-guard-hook.sh`) that fires automatically after Write/Edit/MultiEdit on a `docs/llm/*.md` file — so creation-time drift is caught even outside `/vdm:docs-sync` invocations. Phase 1.5 here is the audit-mode counterpart for files that already exist.
+
 ### Phase 2: Relevance Scoring
 
 Rank discovered documents by relevance:
@@ -121,6 +153,10 @@ Present results as an actionable checklist:
 
 🟢 Probably fine, quick check:
   - README.md — mentions Stripe integration in overview, verify still accurate
+
+🚨 docs/llm/ orphans (Phase 1.5 audit):
+  - docs/llm/feature-flags.md — no back-reference outside the file itself
+    Pick one: (a) CLAUDE.md rule  (b) source-code comment  (c) retire
 
 Changes to sync:
   - [specific section] in [specific file]: [what needs to change]
@@ -242,6 +278,7 @@ When creating task lists for feature work, always include documentation:
 - [ ] Tests pass (confirm behavior change or preservation)
 - [ ] Relevant documentation reflects current product state
 - [ ] Bidirectional links verified (code @see → docs, docs → code)
+- [ ] No new `docs/llm/` orphans — every file in `docs/llm/` has a discovery hook (CLAUDE.md ref, source-code comment, feature-doc link, or sibling LLM ref); `PROJECT_CHANGELOG.md` mentions don't count
 
 ## Priority Levels
 
