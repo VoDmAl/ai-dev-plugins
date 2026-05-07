@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# git-guard-prepare — write a commit message to a stable temp path and emit a
+# single-line `git commit -F <path>` command for the user to run.
+#
+# Part of vdm-git:guard. Exposed via the plugin's bin/ directory, which the
+# Claude Code / Qwen Code harnesses add to PATH automatically.
+#
+# Usage:
+#   git-guard-prepare "<commit message>"
+#   echo "<message>" | git-guard-prepare -
+#
+# Output (stdout):
+#   <single-line shell command>           # the user copy-pastes this
+#
+# Side effects:
+#   Writes the message to:
+#     ${TMPDIR:-/tmp}/<repo-basename>-<branch-safe>-commit.txt
+#   On collision against an unconsumed file (same HEAD, recent mtime), appends
+#   -2, -3, ... so a prior prep is not silently overwritten.
+#
+# Exit codes:
+#   0 success
+#   1 missing message / not a git repo / write failed
+
+set -eu
+
+usage() {
+  cat >&2 <<'USAGE'
+Usage: git-guard-prepare "<commit message>"
+       echo "<message>" | git-guard-prepare -
+
+Writes the message to ${TMPDIR:-/tmp}/<repo>-<branch>-commit.txt and prints a
+single-line `git commit -F <path>` command for the user to run.
+USAGE
+}
+
+if [ $# -lt 1 ]; then
+  usage
+  exit 1
+fi
+
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+  usage
+  exit 0
+fi
+
+if [ "$1" = "-" ]; then
+  message=$(cat)
+else
+  message="$1"
+fi
+
+if [ -z "${message//[[:space:]]/}" ]; then
+  echo "git-guard-prepare: empty commit message" >&2
+  exit 1
+fi
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+if [ -z "$repo_root" ]; then
+  echo "git-guard-prepare: not inside a git repository" >&2
+  exit 1
+fi
+repo_name=$(basename "$repo_root")
+
+branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null \
+  || git rev-parse --short HEAD 2>/dev/null \
+  || echo detached)
+
+# Sanitize branch for use in a filename: any non-alphanumeric (besides `_`) →
+# `-`, collapse runs, trim ends. Catches /, :, .., ~, spaces, etc.
+branch_safe=$(printf '%s' "$branch" \
+  | sed -e 's|[^A-Za-z0-9_-]|-|g' -e 's|-\{2,\}|-|g' -e 's|^-||' -e 's|-$||')
+[ -z "$branch_safe" ] && branch_safe=detached
+
+tmpdir="${TMPDIR:-/tmp}"
+tmpdir="${tmpdir%/}"
+
+base="${repo_name}-${branch_safe}-commit"
+path="${tmpdir}/${base}.txt"
+
+# If a previous prep file exists and HEAD hasn't moved since it was written
+# (i.e. the user hasn't committed yet), pick the next free suffix instead of
+# overwriting. Otherwise, take the base path — the prior file is "consumed".
+head_sha=$(git rev-parse HEAD 2>/dev/null || echo "")
+sentinel="${tmpdir}/.${base}.head"
+
+if [ -f "$path" ] && [ -f "$sentinel" ] && [ -n "$head_sha" ]; then
+  prior_head=$(cat "$sentinel" 2>/dev/null || echo "")
+  if [ "$prior_head" = "$head_sha" ]; then
+    n=2
+    while [ -f "${tmpdir}/${base}-${n}.txt" ]; do
+      n=$((n + 1))
+    done
+    path="${tmpdir}/${base}-${n}.txt"
+  fi
+fi
+
+# Write the message (atomic via temp + rename to avoid torn reads if the user
+# is `cat`ing the file in another pane).
+tmpfile="${path}.tmp.$$"
+printf '%s\n' "$message" > "$tmpfile"
+mv -f "$tmpfile" "$path"
+
+# Record the HEAD this prep was made against, so subsequent preps can detect
+# whether the prior file was consumed.
+[ -n "$head_sha" ] && printf '%s\n' "$head_sha" > "$sentinel"
+
+# Emit a single-line, copy-paste-safe command. Single-quote the path; if the
+# path itself contains a single quote (rare), escape it the POSIX way.
+escaped=${path//\'/\'\\\'\'}
+printf "git commit -F '%s'\n" "$escaped"

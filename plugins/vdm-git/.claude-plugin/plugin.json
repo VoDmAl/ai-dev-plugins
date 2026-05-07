@@ -1,7 +1,7 @@
 {
   "name": "vdm-git",
-  "version": "2.2.0",
-  "description": "Git safety plugin: blocks commit/push until user confirms, enforces commit message format, pre-commit review.",
+  "version": "2.3.0",
+  "description": "Git safety plugin: blocks commit/push until user confirms, ships `git-guard-prepare` helper for file-based commit hand-off, enforces commit message format, pre-commit review.",
   "author": {
     "name": "Dmitry Vorobyev",
     "url": "https://vorobyev.org"
