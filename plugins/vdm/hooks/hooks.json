@@ -1,5 +1,5 @@
 {
-  "description": "VDM core hooks - documentation sync, knowledge capture, and changelog reminders",
+  "description": "VDM core hooks - documentation sync, knowledge capture, changelog reminders, and orphan-guard for docs/llm/",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -17,6 +17,18 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/changelog-reminder.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/orphan-guard-hook.sh",
             "timeout": 5
           }
         ]

@@ -8,6 +8,26 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ---
 
+## 2026-05-05
+
+### ✨ FEATURE: orphan-guard PostToolUse hook + LLM-doc orphan audit (vdm v2.3.0)
+Adds `plugins/vdm/scripts/check-llm-orphans.sh` — a deterministic shell audit for `docs/llm/*.md` files that lack a discovery hook (CLAUDE.md back-ref, source-code `@see` comment, `docs/features/` ref, or sibling `docs/llm/` ref; `PROJECT_CHANGELOG.md` mentions are explicitly discounted). Wired in two places: `/vdm:docs-sync` Phase 1.5 calls it as a periodic sweep, and `plugins/vdm/scripts/orphan-guard-hook.sh` (`PostToolUse` on Write/Edit/MultiEdit, registered in `plugins/vdm/hooks/hooks.json`) calls it on the just-written file path so creation-time orphans surface as exit-2 feedback the assistant must address before the turn ends. Replaces prior soft guidance in SKILL.md that had already failed once — see the meta-pattern doc below for the rationale.
+**Ref**: plugins/vdm/scripts/check-llm-orphans.sh, plugins/vdm/scripts/orphan-guard-hook.sh, plugins/vdm/hooks/hooks.json, plugins/vdm/skills/docs-sync/SKILL.md, plugins/vdm/skills/learn/SKILL.md, docs/llm/soft-guidance-vs-deterministic-gates.md
+
+### 🔧 TOOLING: version-bump + skill-paths pre-commit gates
+Two new gates added to `.githooks/pre-commit`:
+
+`scripts/check-version-bump.sh` — two independent checks: (a) any commit staging files under `plugins/X/**` requires a corresponding bump in `plugins/X/.claude-plugin/plugin.json` (versions read from `git show :path` vs `git show HEAD:path`); (b) unconditional `plugin.json` ↔ `.claude-plugin/marketplace.json` parity per plugin — the catalog must always advertise what `plugin.json` actually ships. Triggered after an incident where skill SKILL.md edits shipped without a version bump, then a follow-up where bumping `plugin.json` alone left `marketplace.json` stale.
+
+`scripts/check-skill-paths.sh` — lints `plugins/*/skills/**/SKILL.md` and `plugins/*/templates/*.md` for dev-tree path leaks (`plugins/(vdm|vdm-git)/(scripts|lib|hooks|templates|skills)/...`). At user time those paths don't resolve — the plugin lives at `${CLAUDE_PLUGIN_ROOT}`. Triggered after the same scope-confusion that produced the marketplace incident — same class of error, expressed as a path issue. Runs unconditionally on every commit.
+
+RCA for both gates captured in `docs/llm/soft-guidance-vs-deterministic-gates.md`.
+**Ref**: scripts/check-version-bump.sh, scripts/check-skill-paths.sh, .githooks/pre-commit, .claude-plugin/marketplace.json, CLAUDE.md (Critical Rules)
+
+### 📝 DOCS: soft-guidance-vs-deterministic-gates pattern + Critical Rules + scope clarification
+Captures the recurring lesson behind the lib-sync, version-bump, and orphan-guard gates: when an invariant matters, soft guidance is necessary but not sufficient — it must be paired with a deterministic gate that doesn't route through LLM judgment. `docs/llm/soft-guidance-vs-deterministic-gates.md` documents the decision rule, the three precedents in this repo, anti-patterns (including "soft rule + smaller blind spot than the gate" — exactly what the marketplace-parity round-2 caught), and an implementation template. CLAUDE.md gains a Scope section explicitly stating that this CLAUDE.md applies only when developing the plugins (the plugins themselves do not ship CLAUDE.md to user projects — only SKILL.md and registered hooks govern there) plus a "Critical Rules" section listing the three structural invariants (version-bump+marketplace parity, discovery hook, lib-sync) with pointers to the gates. User-time SKILL.md / template references switched to `${CLAUDE_PLUGIN_ROOT}` form; dev-tree relative paths removed where they would not resolve at user time.
+**Ref**: docs/llm/soft-guidance-vs-deterministic-gates.md, CLAUDE.md, README.md (Development section), plugins/vdm/skills/docs-sync/SKILL.md, plugins/vdm/skills/learn/SKILL.md, plugins/vdm/templates/llm-template.md
+
 ## 2026-05-01
 
 ### 📝 DOCS: agent-agnostic skill text standard

@@ -5,6 +5,28 @@
   Technical documentation for LLM/developer reference.
   Focus on HOW things work, not WHAT users can do.
   Remove this comment block after filling in.
+
+  ─────────────────────────────────────────────────────────────────
+  ⚠️  DISCOVERY HOOK CHECKLIST — required before this file is "done"
+  ─────────────────────────────────────────────────────────────────
+  Only CLAUDE.md is auto-loaded into every LLM session. Without a
+  back-reference, this file is orphan: it sits on disk but future
+  sessions can't reach it until someone happens to grep for the topic.
+
+  Before declaring this doc complete, verify AT LEAST ONE exists:
+    [ ] CLAUDE.md mentions this file (preferred for cross-cutting
+        rules / anti-patterns the assistant must always know)
+    [ ] A source-code comment points here, e.g.
+          # See docs/llm/{this-file}.md    (shell / python)
+          // @see docs/llm/{this-file}.md  (js / ts / go / php / …)
+    [ ] A sibling docs/features/ or docs/llm/ doc links here
+        (acceptable as a secondary hook, not the only one)
+
+  Enforcement: the orphan-guard PostToolUse hook (Claude Code) runs the
+  audit on this file immediately after Write/Edit and blocks with exit 2
+  if no hook is present. /vdm:docs-sync Phase 1.5 runs the same audit as
+  a periodic sweep. Both delegate to the audit script shipped with the
+  vdm plugin.
 -->
 
 ## Purpose
