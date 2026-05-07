@@ -1,6 +1,6 @@
 ---
 name: guard
-description: "Git safety guard. Blocks git commit and push via pre-tool-use hook. Requires explicit user permission before executing. Invoke manually for pre-commit review."
+description: "Git safety guard. Blocks git commit and push via pre-tool-use hook. The assistant prepares each commit (stage explicit files, write message to a temp file, hand off `git commit -F <path>`) without announcing the gate. Invoke manually for pre-commit review."
 license: MIT
 ---
 
@@ -8,7 +8,9 @@ license: MIT
 
 ## Purpose
 
-Prevents the AI assistant from executing `git commit` and `git push` without explicit user permission. Everything else (merge, rebase, reset, checkout, add, diff, status, etc.) is allowed freely.
+Keeps `git commit` and `git push` under explicit user control. Everything else (merge, rebase, reset, checkout, add, diff, status, etc.) is allowed freely.
+
+The user installed git-guard knowingly. The point of the gate is the **review** step, not the announcement. The assistant's job, when work is done, is to *prepare* the commit cleanly and hand the user a single copy-paste command — never to halt-and-ask "may I commit?" or to declare "git-guard is blocking me." See [Auto-prep workflow](#auto-prep-workflow) below.
 
 ## Configuration Sub-commands
 
@@ -51,31 +53,103 @@ Prevents the AI assistant from executing `git commit` and `git push` without exp
 | `git commit` | Modifies history |
 | `git push` | Affects remote |
 
-## Commit Message Format
+## Auto-prep workflow
 
-Start with a prefix, then a short imperative sentence. Max 50 characters total.
+When the assistant has finished work that warrants a commit — implementation done, type-check / tests passing where applicable — **prepare the commit and hand off a single command**, without waiting for verbal "go ahead." Do not stop at "should I commit?" — the user can decline by simply not running the command.
 
-| Prefix | Meaning |
-|--------|---------|
-| `[+]` | New feature |
-| `[-]` | Bugfix |
-| `[*]` | Other change |
+### Steps
 
-**Examples:**
-```
-[+] Add git-guard skill with pre-tool-use hook
-[-] Fix token expiry in auth middleware
-[*] Update dependencies to latest versions
-[*] Refactor user service into separate module
-```
+1. **Stage explicit files.** `git add <file1> <file2> ...`. Never `git add -A`. Never `git add .`. Untracked files belonging to other tasks must stay unstaged; report them separately under "not staged (other tickets)" so the user knows they exist.
 
-Avoid verbose descriptions or unnecessary details.
+2. **Compose the subject** in the project's commit format. The PreToolUse hook would emit format rules if `git commit` were attempted directly — prefer that source. Otherwise infer from session context: a `## Commit Message Format` section in the project's AI-context file (CLAUDE.md, QWEN.md, AGENTS.md, GEMINI.md — whichever harness the project uses), or in `CONTRIBUTING.md` / `README.md`; failing those, `commitlint*`, `.gitmessage*`, or recent `git log` patterns. **Match the local style: if recent commits are subject-only single-line, do not write a body** — the body, if any, belongs in `PROJECT_CHANGELOG.md` or equivalent. Only fall through to the [default table](#default-fallback-table-when-nothing-else-detected) when nothing else is detected.
 
-## When Blocked
+3. **Write the message via the helper.** The plugin ships `git-guard-prepare` on the PATH:
 
-Since v2.2.0, when the hook intercepts `git commit` it does the heavy lifting itself: detects the **project's** commit message convention, lists the staged files, and emits explicit instructions for the assistant to compose a ready-to-paste command.
+       git-guard-prepare "[+] Add foo helper"
 
-**Format detection priority** (built into the Python hook):
+   It writes the message to `${TMPDIR:-/tmp}/<repo>-<branch>-commit.txt` and prints a single-line `git commit -F <path>` command on stdout. Capture it.
+
+   For a multi-line message (subject + body), pipe via `-`:
+
+       printf '%s\n\n%s\n' "[+] Add foo helper" "Why: needed for X." | git-guard-prepare -
+
+4. **Hand off to the user.** Your end-of-work message should contain:
+   - what was staged (file list);
+   - what is intentionally not staged (other tickets);
+   - **the commit message itself** as a quoted preview, so the user can review it without opening the file;
+   - the one-line command from step 3, **as inline code** (single backticks) on its own line — never inside a fenced code block, never inside a heredoc.
+
+   Write the full path verbatim — never abbreviate it with `…` or `/var/folders/<hash>/T/...` in your narration. On macOS the temp path is long (`/var/folders/<id>/T/<repo>-<branch>-commit.txt`) and that is fine; the user copies the command line, they don't retype it.
+
+   Example:
+
+   > Implementation done. Type-check passes.
+   >
+   > Staged: `src/auth.ts`, `tests/auth.test.ts`
+   > Not staged (other ticket): `notes/scratch.md`
+   >
+   > Message:
+   > > [+] Add token expiry handling
+   >
+   > `git commit -F /tmp/limeflow-feat-auth-commit.txt`
+
+5. **Do not execute the commit yourself.** The user runs the command (or aborts) — the gate is theirs.
+
+### Forbidden framings
+
+The user installed git-guard knowingly. Announcing the gate is pure noise. Never emit any variant of:
+
+- "git-guard blocks me from committing"
+- "say 'commit' and I will prepare a commit"
+- "I cannot commit because git-guard is active"
+- "Permission to commit?"
+
+If work is done, prepare. If work is not done, finish it. There is no third state.
+
+### Forbidden command shapes
+
+Commits handed off as anything other than `git commit -F <path>` invite paste failures. Never use:
+
+- `git commit -m "..."` with embedded backticks, quotes, dollar signs, or multi-line subjects — these trigger zsh's `dquote cmdsubst heredoc>` continuation prompts mid-paste.
+- Heredoc forms (`git commit -m "$(cat <<'EOF' ... EOF)"`) — same paste fragility.
+- Markdown fenced code blocks (```` ``` ````) around the command — leading whitespace breaks copy-paste.
+
+Always emit `git commit -F <path>`, written via `git-guard-prepare`, presented as inline code (single backticks).
+
+### Manual fallback
+
+If `git-guard-prepare` is not on the PATH (older install / alternate harness), reproduce its convention manually:
+
+    repo=$(basename "$(git rev-parse --show-toplevel)")
+    branch=$(git symbolic-ref --short HEAD 2>/dev/null \
+      | sed -e 's|[^A-Za-z0-9_-]|-|g' -e 's|-\{2,\}|-|g' -e 's|^-||' -e 's|-$||')
+    path="${TMPDIR:-/tmp}/${repo}-${branch:-detached}-commit.txt"
+
+Use the Write tool to put the message at `$path` (not a heredoc), then hand off `git commit -F $path` as inline code.
+
+### Edge cases
+
+- **Untracked files from other tickets**: list under "not staged (other tickets)" and exclude from `git add`. Never bundle multiple tickets into one commit unless the user explicitly asks.
+- **Multiple commits in one session**: the helper rotates suffixes (`-2`, `-3`, ...) automatically when HEAD has not moved since the last prep — your prior message file is preserved, not overwritten.
+- **No type-check available locally** (corepack/yarn not set up, missing deps): take the cheapest verification path (linter, single-file `tsc`, one test file) and report what couldn't be verified, rather than skipping verification silently.
+- **Pre-commit hook fails after the user runs your command**: do not retry blindly and do not suggest `--no-verify`. Investigate, fix, re-stage, prepare a fresh message file, hand off again.
+- **User explicitly says "commit"**: same flow. Don't announce the gate; don't bypass it. Prepare the file, hand off the command.
+
+### Suggesting a project-level format declaration
+
+If no commit-format source is detected (the hook reports `Source: fallback` or `Source: git log -30`) **and** the user signals dissatisfaction with the commit-message style ("shorter", "no body", "doesn't match our style", correcting prefix choice), suggest **once**:
+
+> "Want me to add a `## Commit Message Format` section to your project's AI-context file (CLAUDE.md / QWEN.md / AGENTS.md / CONTRIBUTING.md, whichever this project uses) so future commits follow this style automatically?"
+
+If they decline, drop it — don't repeat. Don't add the section unilaterally; it's project-level convention, not a fix for the current commit. Until they add one, infer style from `git log` and match it (subject-only stays subject-only; with-body stays with-body).
+
+### Recovery: if the assistant ran `git commit` directly
+
+The PreToolUse hook intercepts `git commit` and `git push` and emits PROJECT COMMIT FORMAT, STAGED CHANGES, and recovery instructions. Treat that output as a soft reminder to switch to the prep workflow above — do not retry `git commit` from Bash. Instead, prepare a message file via `git-guard-prepare` (using the format rules the hook just emitted) and hand off `git commit -F <path>`.
+
+### Format detection priority (used by the hook)
+
+When the hook intercepts `git commit`, it detects the project's commit convention in this order (all built into `git-guard-hook.py`):
 
 1. `git config commit.template` (Git's native template system)
 2. `.gitmessage`, `.gitmessage.txt`, or `.git-commit-template` in the repo root
@@ -84,23 +158,7 @@ Since v2.2.0, when the hook intercepts `git commit` it does the heavy lifting it
 5. Pattern detection from `git log -30` (recognizes `[+]/[-]/[*]`, `feat:/fix:`, gitmoji)
 6. Generic fallback (brief imperative ≤ 50 chars)
 
-When you (the assistant) see the block message:
-
-1. Read the **PROJECT COMMIT FORMAT** section the hook emitted — that's the source of truth for this repo, not the in-skill table below.
-2. Use your session context (what was actually changed and why) to compose a concise, accurate subject under those rules.
-3. Combine into a single shell-safe command: `git commit -m "<prefix> <subject>"`.
-4. **Present that command as INLINE CODE** (single backticks) on its own line. **Do NOT** wrap in a fenced code block — fenced blocks add leading whitespace that breaks copy-paste.
-5. Wait for the user to confirm or run the command themselves.
-
-**Example presentation to the user:**
-
-> Changes look good. Suggested commit:
->
-> `git commit -m "[-] Fix token expiry handling"`
->
-> Run it, or want me to adjust the wording?
-
-The fallback table below applies only when the hook's detection has nothing to go on (a fresh repo with no log, no docs, no config — rare in practice).
+The fallback table below applies only when nothing else can be detected (fresh repo, no log, no docs, no config — rare).
 
 ### Default fallback table (when nothing else detected)
 
@@ -109,6 +167,16 @@ The fallback table below applies only when the hook's detection has nothing to g
 | `[+]` | New feature |
 | `[-]` | Bugfix |
 | `[*]` | Other change |
+
+Examples:
+
+```
+[+] Add git-guard skill with pre-tool-use hook
+[-] Fix token expiry in auth middleware
+[*] Update dependencies to latest versions
+```
+
+Brief imperative, ≤ 50 characters total.
 
 ## Manual Invocation
 
@@ -140,8 +208,10 @@ Safety Checks:
 
 ### Phase 3: User Decision
 
-Ask user: commit with suggested message, show full diff, or abort.
+Prepare the message via `git-guard-prepare "<subject>"` and present the `git commit -F <path>` line as inline code (see [Auto-prep workflow](#auto-prep-workflow)). Surface anything unexpected in the diff so the user can decide whether to run it, adjust the wording, or abort.
 
 ## Configuration
 
-Hook script: `scripts/git-guard-hook.py`. Edit `BLOCKED_PATTERNS` to customize.
+Helper: `git-guard-prepare` (on PATH via the plugin's `bin/` directory).
+Block hook: `${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-hook.py` — edit `BLOCKED_PATTERNS` to customize.
+Reminder: `${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-reminder.sh` — gated by `enabled` / `mode` in `.claude/vdm-plugins.json`.

@@ -31,7 +31,7 @@ cat <<'EOF'
 {
   "hookSpecificOutput": {
     "hookEventName": "UserPromptSubmit",
-    "additionalContext": "[git-guard] Git safety active. git commit and git push are blocked until user confirms.\n- Need to commit/push? Ask user first or invoke /vdm-git:guard for pre-commit review."
+    "additionalContext": "[git-guard] When work is done that warrants a commit: stage explicit files (`git add <name> ...`, never -A/.), then `git-guard-prepare \"<subject>\"` writes the message and prints a `git commit -F <path>` line — hand that off as inline code. Do not announce that git-guard is blocking; the user knows. Do not run `git commit` / `git push` yourself."
   }
 }
 EOF

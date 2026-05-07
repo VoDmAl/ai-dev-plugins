@@ -10,3 +10,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Python (scripts/test-git-guard-hook.py imports git-guard-hook.py as a module)
+__pycache__/
+*.pyc

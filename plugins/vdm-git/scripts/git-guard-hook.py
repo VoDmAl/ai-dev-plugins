@@ -17,10 +17,84 @@ import subprocess
 import sys
 
 
-BLOCKED_PATTERNS = [
-    (r"git\s+commit", "git commit", "modifies history"),
-    (r"git\s+push", "git push", "affects remote"),
+BLOCKED_OPERATIONS = [
+    ("commit", "git commit", "modifies history"),
+    ("push",   "git push",   "affects remote"),
 ]
+
+
+# Heredoc opener: <<EOF, <<-EOF, <<'EOF', <<"EOF" (with optional spaces).
+_HEREDOC_RE = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?")
+# Line-comment: `#` to end of line, when at start-of-string or after whitespace.
+_COMMENT_RE = re.compile(r"(?:^|(?<=\s))#[^\n]*")
+# Single-quoted strings: no escapes inside.
+_SQ_RE = re.compile(r"'[^']*'")
+# Double-quoted strings: backslash escapes recognised.
+_DQ_RE = re.compile(r'"(?:\\.|[^"\\])*"')
+
+
+def _strip_inert_text(command):
+    """Remove regions where `git <op>` would not actually run as a command:
+    heredoc bodies, line comments, and quoted strings. Approximate (not a
+    full shell parser) but enough to drop the common false-positives:
+
+      grep "git commit" file       # quoted argument
+      cat <<EOF ... git commit ... # heredoc body
+      # git commit triggers here   # line comment
+
+    Order matters: heredocs first (their markers can be quoted), then
+    comments, then quotes.
+    """
+    s = command
+
+    # Heredoc bodies. Repeatedly find <<MARKER ... ^MARKER$ blocks and excise.
+    while True:
+        m = _HEREDOC_RE.search(s)
+        if not m:
+            break
+        marker = m.group(1)
+        body_start = m.end()
+        end = re.search(
+            rf"^\s*{re.escape(marker)}\s*$",
+            s[body_start:],
+            re.MULTILINE,
+        )
+        if not end:
+            # Malformed / unterminated — drop from `<<` to end of string so
+            # we don't leave heredoc body matching as live code.
+            s = s[:m.start()]
+            break
+        s = s[:m.start()] + s[body_start + end.end():]
+
+    s = _COMMENT_RE.sub("", s)
+    s = _SQ_RE.sub("", s)
+    s = _DQ_RE.sub("", s)
+    return s
+
+
+# Command boundary: start-of-string, whitespace, or shell separator/grouping.
+# Backtick covers ``…`` command substitution; `(` covers `$(…)` and subshells.
+_BOUNDARY_CLASS = r"\s;&|()`"
+
+
+def _command_invokes(command, op_subcommand):
+    """True iff `command` would actually invoke `git <op_subcommand>`.
+
+    Catches direct invocations and chained / substituted forms:
+        git commit -m foo
+        cd /repo && git commit
+        if git commit; then …
+        $(git commit)
+
+    Ignores false-positives where `git commit` appears as data:
+        grep "git commit" file
+        echo 'git commit'
+        cat <<EOF ... git commit ... EOF
+        # git commit
+    """
+    cleaned = _strip_inert_text(command)
+    pattern = rf"(?:^|[{_BOUNDARY_CLASS}])git\s+{re.escape(op_subcommand)}\b"
+    return bool(re.search(pattern, cleaned))
 
 
 def run_git(args, cwd=None):
@@ -155,8 +229,20 @@ def detect_format(repo_root):
                 "source": name,
             }
 
-    # 4. Commit section in known docs
-    for doc in ("CLAUDE.md", "CONTRIBUTING.md", "docs/CONTRIBUTING.md", "README.md"):
+    # 4. Commit section in known docs. AI-harness context files first
+    # (CLAUDE.md / QWEN.md / AGENTS.md / GEMINI.md), then generic dev docs.
+    # Different harnesses load different files — scan them all so a project
+    # only needs one declaration regardless of which harness the user runs.
+    candidate_docs = (
+        "CLAUDE.md",
+        "QWEN.md",
+        "AGENTS.md",
+        "GEMINI.md",
+        "CONTRIBUTING.md",
+        "docs/CONTRIBUTING.md",
+        "README.md",
+    )
+    for doc in candidate_docs:
         path = os.path.join(repo_root, doc)
         if not os.path.isfile(path):
             continue
@@ -166,6 +252,11 @@ def detect_format(repo_root):
 
     # 5. Pattern detection from recent log
     log = run_git(["log", "--oneline", "-30", "--no-merges"], cwd=repo_root)
+    suggestion = (
+        "\n\nNo `## Commit Message Format` section in any AI-context file "
+        "(CLAUDE.md / QWEN.md / AGENTS.md / CONTRIBUTING.md). If commit-style "
+        "mistakes recur, suggest the user add one — that's the durable fix."
+    )
     if log:
         prefixes = detect_prefixes(log)
         examples = "\n".join(f"  {line}" for line in log.split("\n")[:5])
@@ -173,13 +264,18 @@ def detect_format(repo_root):
             return {
                 "rules": (
                     f"Detected from `git log` — common prefixes: "
-                    f"{', '.join(prefixes)}\n\nRecent examples:\n{examples}"
+                    f"{', '.join(prefixes)}\n\nRecent examples:\n{examples}\n\n"
+                    "Match the local style: if recent commits are subject-only "
+                    "single-line, do NOT write a body."
+                    + suggestion
                 ),
                 "source": "git log -30 (pattern detection)",
             }
         return {
             "rules": (
-                "No prefix convention detected. Recent examples:\n" + examples
+                "No prefix convention detected. Recent examples:\n"
+                + examples
+                + suggestion
             ),
             "source": "git log -30",
         }
@@ -189,32 +285,45 @@ def detect_format(repo_root):
         "rules": (
             "No project commit convention detected. "
             "Use a brief imperative subject (≤ 50 chars)."
+            + suggestion
         ),
         "source": "fallback",
     }
 
 
-def get_staged_files(repo_root):
-    """Return list of (status_code, path) for staged files; falls back to porcelain."""
+def get_changed_files(repo_root):
+    """Return ({"staged": [(status, path), ...], "unstaged": [...]}) split.
+
+    `staged` is what `diff --cached` reports — what `git commit` would actually
+    record. `unstaged` is everything else in the working tree (modified-but-not-
+    staged, untracked) so the assistant can see what *could* be staged.
+    """
+    staged = []
     out = run_git(["diff", "--cached", "--name-status"], cwd=repo_root)
     if out:
-        result = []
         for line in out.split("\n"):
             if "\t" in line:
                 status, path = line.split("\t", 1)
                 # Renames look like: `R100\told\tnew` — keep the destination.
                 if "\t" in path:
                     path = path.split("\t", 1)[1]
-                result.append((status, path))
-        return result
+                staged.append((status, path))
 
-    # Nothing staged → look at porcelain so the assistant still sees what's modified.
+    unstaged = []
     out = run_git(["status", "--porcelain"], cwd=repo_root)
-    return [
-        (line[:2].strip() or "?", line[3:].lstrip())
-        for line in out.split("\n")
-        if line
-    ]
+    for line in out.split("\n"):
+        if not line:
+            continue
+        # Porcelain XY: X = index, Y = worktree. `??` = untracked.
+        # Anything with X != ' ' is already counted in `staged` above.
+        x = line[0]
+        y = line[1] if len(line) > 1 else " "
+        path = line[3:].lstrip()
+        if x == "?" and y == "?":
+            unstaged.append(("??", path))
+        elif x == " " and y != " ":
+            unstaged.append((y, path))
+    return {"staged": staged, "unstaged": unstaged}
 
 
 def build_block_message(op_name, reason, command):
@@ -228,14 +337,26 @@ def build_block_message(op_name, reason, command):
         "",
         f"Command: {command}",
         "",
-        "This operation requires explicit user permission.",
-        "Ask the user to confirm, then retry.",
-        "",
     ]
+    if is_commit:
+        lines.extend([
+            "Switch to the prep-and-hand-off workflow below — do not retry the",
+            "command and do not announce that git-guard is blocking. The user",
+            "knows; saying it is noise.",
+            "",
+        ])
+    else:
+        lines.extend([
+            "Hand the user the exact command to run themselves — do not retry",
+            "from Bash and do not announce that git-guard is blocking.",
+            "",
+        ])
 
     if is_commit and repo_root:
         fmt = detect_format(repo_root)
-        files = get_staged_files(repo_root)
+        changes = get_changed_files(repo_root)
+        staged = changes["staged"]
+        unstaged = changes["unstaged"]
 
         lines.append("─" * 60)
         lines.append("PROJECT COMMIT FORMAT (detected)")
@@ -245,43 +366,89 @@ def build_block_message(op_name, reason, command):
             lines.append(f"  {raw}" if raw else "")
         lines.append("")
 
-        if files:
-            shown = files[:20]
-            lines.append(f"STAGED CHANGES ({len(files)} file(s)):")
+        if staged:
+            shown = staged[:20]
+            lines.append(f"STAGED ({len(staged)} file(s)) — these will be committed:")
             for status, path in shown:
                 lines.append(f"  {status:<3} {path}")
-            if len(files) > len(shown):
-                lines.append(f"  … and {len(files) - len(shown)} more")
+            if len(staged) > len(shown):
+                lines.append(f"  … and {len(staged) - len(shown)} more")
             lines.append("")
         else:
-            lines.append("STAGED CHANGES: none — `git add` first?")
+            lines.append(
+                "STAGED: none — run `git add <file1> <file2>` (explicit list,"
+            )
+            lines.append("        never `-A` / `.`) before preparing.")
+            lines.append("")
+
+        if unstaged:
+            shown = unstaged[:10]
+            lines.append(
+                f"UNSTAGED in working tree ({len(unstaged)} file(s)) — pick the"
+            )
+            lines.append("ones relevant to this task; leave others alone:")
+            for status, path in shown:
+                lines.append(f"  {status:<3} {path}")
+            if len(unstaged) > len(shown):
+                lines.append(f"  … and {len(unstaged) - len(shown)} more")
             lines.append("")
 
         lines.append("INSTRUCTIONS FOR THE ASSISTANT")
         lines.append(
-            "  1. Use your current session context (what was actually changed and"
+            "  1. Stage explicit files only:  git add <file1> <file2> ..."
         )
         lines.append(
-            "     why) to compose a concise, accurate commit subject that follows"
+            "     Untracked files from other tasks must stay unstaged; report"
         )
-        lines.append("     the format rules above.")
+        lines.append('     them under "not staged (other tickets)".')
+        lines.append("")
         lines.append(
-            "  2. If the format uses prefixes (e.g. [+]/[-]/[*], feat:/fix:),"
+            "  2. Compose a subject that follows the PROJECT COMMIT FORMAT above."
         )
-        lines.append("     pick the right one based on the staged changes.")
-        lines.append("  3. Combine into a single shell-safe command, e.g.:")
-        lines.append('       git commit -m "<prefix> <subject>"')
+        lines.append("")
         lines.append(
-            "  4. Present that command to the user as INLINE CODE (single"
+            "  3. Write the message via the helper (on PATH from the plugin's"
+        )
+        lines.append("     bin/ directory):")
+        lines.append("")
+        lines.append('       git-guard-prepare "<subject>"')
+        lines.append("")
+        lines.append(
+            "     It writes ${TMPDIR:-/tmp}/<repo>-<branch>-commit.txt and prints"
+        )
+        lines.append("     a single-line `git commit -F <path>` command.")
+        lines.append("")
+        lines.append(
+            "     Multi-line subject + body? Pipe via `-`:"
         )
         lines.append(
-            "     backticks), on its own line. Do NOT wrap in a fenced (```)"
+            "       printf '%s\\n\\n%s\\n' \"<subject>\" \"<body>\" | "
+            "git-guard-prepare -"
+        )
+        lines.append("")
+        lines.append(
+            "  4. Hand off to the user. Your message should contain:"
+        )
+        lines.append("       - what was staged;")
+        lines.append("       - what is intentionally not staged (other tickets);")
+        lines.append(
+            "       - the `git commit -F <path>` line as INLINE CODE (single"
         )
         lines.append(
-            "     code block — fenced blocks add leading whitespace that"
+            "         backticks), on its own line — never inside a fenced (```)"
         )
-        lines.append("     breaks copy-paste.")
-        lines.append("  5. Wait for the user to confirm or run the command.")
+        lines.append("         block, never as a heredoc, never with -m.")
+        lines.append("")
+        lines.append(
+            "  5. Do not execute `git commit` yourself. The user runs it."
+        )
+        lines.append("")
+        lines.append(
+            "  Forbidden framings: \"git-guard blocks me\", \"say 'commit' and"
+        )
+        lines.append(
+            "  I will…\", \"permission to commit?\". Just prepare and hand off."
+        )
         lines.append("─" * 60)
         lines.append("")
 
@@ -306,8 +473,8 @@ def main():
 
     command = tool_input.get("command", "")
 
-    for pattern, op_name, reason in BLOCKED_PATTERNS:
-        if re.search(pattern, command, re.IGNORECASE):
+    for op_subcommand, op_name, reason in BLOCKED_OPERATIONS:
+        if _command_invokes(command, op_subcommand):
             print(build_block_message(op_name, reason, command), file=sys.stderr)
             sys.exit(2)
 

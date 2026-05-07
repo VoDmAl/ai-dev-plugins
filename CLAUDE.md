@@ -37,6 +37,29 @@ When writing prompts, hook output, or instructions inside `plugins/**/skills/**/
 
 **Why:** plugins ship through multiple marketplaces; agent-agnostic text means a single source of truth and no per-harness forks. Caught during the v2.2.0 work — fix touched 5 files (guard SKILL.md, learn SKILL.md, learn-reminder.sh, hook output) where "Claude" had crept in.
 
+## Commit Message Format
+
+Subject-only, single line. **No body** — the detail belongs in `PROJECT_CHANGELOG.md` (one entry per change), not duplicated in the commit. The git-guard hook detects this section automatically when intercepting `git commit` and emits these rules to the assistant.
+
+Prefix + short imperative. Aim ≤ 80 chars (mild ceiling — recent commits run 50–80).
+
+| Prefix | Meaning |
+|--------|---------|
+| `[+]` | New feature |
+| `[-]` | Bugfix |
+| `[*]` | Improvement / refactor / docs |
+| `[!]` | Structural / multi-faceted (feature + tooling + docs together) |
+
+Recent examples — match this terseness:
+
+```
+[!] Add orphan-guard hook, discovery-hook enforcement, and new pre-commit gates
+[+] git-guard: project-aware commit suggestions (v2.2.0)
+[!] Add dev-time lib-sync enforcement via pre-commit hook and SessionStart warning
+[*] Update README to clarify Qwen Code limitations and plugin behavior
+[+] Add qwen-extension.json and document limitations of Qwen Code
+```
+
 ## Dev setup (one-time per clone)
 
 Activate `.githooks/` so the lib-sync pre-commit check runs locally:
