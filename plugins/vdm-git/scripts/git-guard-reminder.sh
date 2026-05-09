@@ -31,7 +31,7 @@ cat <<'EOF'
 {
   "hookSpecificOutput": {
     "hookEventName": "UserPromptSubmit",
-    "additionalContext": "[git-guard] When work is done that warrants a commit: stage explicit files (`git add <name> ...`, never -A/.), then `git-guard-prepare \"<subject>\"` writes the message and prints a `git commit -F <path>` line — hand that off as inline code. Do not announce that git-guard is blocking; the user knows. Do not run `git commit` / `git push` yourself."
+    "additionalContext": "[git-guard] When work warrants a commit, you (the assistant) run `git add <files>` and `git-guard-prepare \"<subject>\"` yourself via Bash — both live on your PATH only (plugin `bin/` mounted by the harness), not the user's shell. `git-guard-prepare` prints a single `git commit -F <path>` line; that one line is what you hand off to the user as inline code. Never list `git-guard-prepare` as a step for the user — their shell will say `command not found`. For multiple commits in one task, repeat the cycle sequentially (stage → helper → hand off → wait), one commit per turn — do not bundle the steps into a shell recipe. Do not announce that git-guard is blocking; the user knows. Do not run `git commit` / `git push` yourself."
   }
 }
 EOF
