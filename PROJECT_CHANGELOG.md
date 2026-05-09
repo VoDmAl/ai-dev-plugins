@@ -8,6 +8,14 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ---
 
+## 2026-05-09
+
+### 🔧 TOOLING: tighten git-guard reminder + skill against "user-recipe" failure mode (vdm-git v2.3.1)
+Field report: in roughly 1 in 12 sessions the assistant rendered `git add … / git-guard-prepare "…" / # commit` as a numbered shell recipe for the user to run, rather than executing the helper itself in Bash and handing off only the resulting `git commit -F <path>` line. The user's shell then failed with `zsh: command not found: git-guard-prepare` — the helper lives on the assistant's PATH (plugin `bin/` mounted by the harness), not the user's shell. Triggered most often when several commits are queued in one task, where the assistant slips into "give the user an ordered checklist" mode. Three targeted fixes, no behavior change to the helper or the PreToolUse hook: (1) the UserPromptSubmit reminder is rewritten from passive ("`git-guard-prepare` writes the message…") to active ("**you (the assistant) run** `git add` and `git-guard-prepare` yourself via Bash — both live on your PATH only, not the user's shell") and explicitly forbids listing the helper as a user step, with a dedicated batch-commit clause ("repeat the cycle sequentially, one commit per turn"); (2) `Forbidden command shapes` in SKILL.md gains an item naming the failure ("user gets `command not found`") so the antipattern is callable by name, not just implied; (3) `Edge cases` in SKILL.md gains a `Batch commits` entry mirroring the reminder's batch clause. The reminder is the highest-leverage surface because it fires every prompt and is guaranteed to be loaded; SKILL.md catches the cases where the assistant is already inside the skill.
+**Ref**: plugins/vdm-git/scripts/git-guard-reminder.sh, plugins/vdm-git/skills/guard/SKILL.md (Forbidden command shapes, Edge cases → Batch commits)
+
+---
+
 ## 2026-05-07
 
 ### ✨ FEATURE: auto-prep commit workflow + `git-guard-prepare` helper (vdm-git v2.3.0)

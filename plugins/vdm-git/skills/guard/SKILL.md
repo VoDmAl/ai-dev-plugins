@@ -113,6 +113,7 @@ Commits handed off as anything other than `git commit -F <path>` invite paste fa
 - `git commit -m "..."` with embedded backticks, quotes, dollar signs, or multi-line subjects — these trigger zsh's `dquote cmdsubst heredoc>` continuation prompts mid-paste.
 - Heredoc forms (`git commit -m "$(cat <<'EOF' ... EOF)"`) — same paste fragility.
 - Markdown fenced code blocks (```` ``` ````) around the command — leading whitespace breaks copy-paste.
+- Listing `git-guard-prepare` (or `git add`) in a copy-paste recipe for the user. The helper lives on the **assistant's** PATH (plugin `bin/` mounted by the harness); it is **not** on the user's shell PATH. If you put it in a numbered list of "run these in order", the user gets `zsh: command not found: git-guard-prepare`. Run `git add` and `git-guard-prepare` yourself in Bash, capture the `git commit -F <path>` line from stdout, and hand off only that line.
 
 Always emit `git commit -F <path>`, written via `git-guard-prepare`, presented as inline code (single backticks).
 
@@ -131,6 +132,7 @@ Use the Write tool to put the message at `$path` (not a heredoc), then hand off 
 
 - **Untracked files from other tickets**: list under "not staged (other tickets)" and exclude from `git add`. Never bundle multiple tickets into one commit unless the user explicitly asks.
 - **Multiple commits in one session**: the helper rotates suffixes (`-2`, `-3`, ...) automatically when HEAD has not moved since the last prep — your prior message file is preserved, not overwritten.
+- **Batch commits (multiple separate commits queued from one task)**: prepare each commit *sequentially in your own turn* — `git add <files>` → `git-guard-prepare "<subject>"` → present message preview + `git commit -F <path>` line → wait for the user. Do **not** bundle the sequence into a numbered shell script for the user (`git add ...` / `git-guard-prepare ...` / `# commit` lines stacked together) — `git-guard-prepare` is an assistant-PATH helper, the user's shell does not see it. Only the per-commit `git commit -F <path>` line crosses to the user's shell.
 - **No type-check available locally** (corepack/yarn not set up, missing deps): take the cheapest verification path (linter, single-file `tsc`, one test file) and report what couldn't be verified, rather than skipping verification silently.
 - **Pre-commit hook fails after the user runs your command**: do not retry blindly and do not suggest `--no-verify`. Investigate, fix, re-stage, prepare a fresh message file, hand off again.
 - **User explicitly says "commit"**: same flow. Don't announce the gate; don't bypass it. Prepare the file, hand off the command.
