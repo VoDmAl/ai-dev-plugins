@@ -5,11 +5,21 @@
 #   mode=conditional|quiet → fires only when tree has changes (commit could be near)
 #   mode=proactive      → fires every prompt (default — safety reminder)
 # Default (no config): enabled=true, mode=proactive.
+#
+# Always exits silently outside a git work tree — non-git folders cannot
+# produce commits, so the reminder would only push the assistant toward
+# defensive probing.
 
 # shellcheck disable=SC1091
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/config-read.sh"
 
 vdm_is_enabled "git-guard" || exit 0
+
+# No git work tree → no commits possible → reminder is pure noise.
+# Without this guard, proactive mode pushes the assistant toward defensive
+# `[ -d .git ]` probing in every non-git working directory.
+git rev-parse --is-inside-work-tree &>/dev/null || exit 0
+
 mode=$(vdm_get_mode "git-guard" "proactive")
 
 case "$mode" in
@@ -17,10 +27,8 @@ case "$mode" in
     exit 0
     ;;
   conditional|quiet)
-    if git rev-parse --is-inside-work-tree &>/dev/null; then
-      if [ -z "$(git status --porcelain 2>/dev/null)" ]; then
-        exit 0
-      fi
+    if [ -z "$(git status --porcelain 2>/dev/null)" ]; then
+      exit 0
     fi
     ;;
   proactive|*)
