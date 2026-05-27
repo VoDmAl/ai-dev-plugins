@@ -64,6 +64,26 @@ This skill activates when:
 
 When invoked via `/vdm:docs-sync`, perform the full discovery pipeline:
 
+### Phase 0: Open crystals sweep
+
+Before discovery, check for active crystal workitems in the repo. They
+surface unresolved obligations the user may want to address during this
+docs-sync pass — separately from the documentation discovery itself.
+
+```bash
+Bash(command="bash ${CLAUDE_PLUGIN_ROOT}/scripts/list-open-crystals.sh", ...)
+```
+
+Exit 0 always. Empty stdout → no active crystals, skip this section. Non-
+empty stdout → prepend to the Phase 3 report:
+
+```
+→ Open crystals: <slug-1> (N open), <slug-2> (M open)
+```
+
+Visibility-only. Does not block, gate, or modify the docs-sync flow — the
+crystal-cut gate is a separate skill, this is just a heads-up.
+
 ### Phase 1: Discovery
 
 **Step 1 — Change detection:**

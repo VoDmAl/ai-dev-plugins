@@ -212,8 +212,57 @@ Safety Checks:
 
 Prepare the message via `git-guard-prepare "<subject>"` and present the `git commit -F <path>` line as inline code (see [Auto-prep workflow](#auto-prep-workflow)). Surface anything unexpected in the diff so the user can decide whether to run it, adjust the wording, or abort.
 
+## Crystal pre-commit backup
+
+Companion to the `crystal-*` suite in the sibling `vdm` plugin. The
+primary `crystal-completion-guard` is a PreToolUse hook — it catches the
+assistant flipping a workitem to `status: done` with unchecked items
+remaining. The backup catches the same drift from the **other** side: a
+user editing the workitem directly in their IDE and committing it,
+bypassing the assistant entirely.
+
+Script: `${CLAUDE_PLUGIN_ROOT}/scripts/crystal-precommit-check.sh`. Reads
+`git diff --cached --name-only`, checks each staged workitem
+(folder-style `docs/tasks/<slug>/workitem.md` or flat `docs/tasks/<slug>.md`,
+with the root configurable via `.claude/vdm-plugins.json:crystal.path`).
+Exits 1 with a diagnostic per offending file when `status: done` ships with
+unchecked items.
+
+### Activating in a downstream project
+
+Add to your repo's `.githooks/pre-commit` (and activate the hooksPath once
+with `git config core.hooksPath .githooks`):
+
+```bash
+# Crystal completion-discipline backup gate (from vdm-git plugin).
+# Resolve the installed path once and pin it via env var. To find it:
+#   $ find ~/.claude ~/.qwen -name 'crystal-precommit-check.sh' 2>/dev/null
+# Then set CRYSTAL_PRECOMMIT_CHECK to that absolute path (in your shell
+# profile, in the hook itself, or in your CI environment).
+[ -n "${CRYSTAL_PRECOMMIT_CHECK:-}" ] && [ -x "$CRYSTAL_PRECOMMIT_CHECK" ] \
+  && { "$CRYSTAL_PRECOMMIT_CHECK" || exit 1; }
+```
+
+The install path varies by harness; pinning it via env var avoids
+hardcoding harness-specific globs into your repo. The script fails open on
+any error so this hook entry is safe even before the `vdm` plugin starts
+shipping crystal workitems.
+
+### Why three layers (DL #7)
+
+| Layer       | Where it fires                 | What it catches                          |
+|-------------|--------------------------------|------------------------------------------|
+| PreToolUse  | Assistant Write/Edit/MultiEdit | Assistant typo / context-pressure drift  |
+| Stop hook   | End of assistant turn          | Reminder to address open items           |
+| pre-commit  | User's `git commit`            | Direct IDE edits bypassing the assistant |
+
+No layer is sufficient alone. The pre-commit gate is the "last line of
+defense" — by the time it fires, the assistant didn't catch the drift,
+which is exactly when you want a deterministic check.
+
 ## Configuration
 
 Helper: `git-guard-prepare` (on PATH via the plugin's `bin/` directory).
 Block hook: `${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-hook.py` — edit `BLOCKED_PATTERNS` to customize.
 Reminder: `${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-reminder.sh` — gated by `enabled` / `mode` in `.claude/vdm-plugins.json`.
+Crystal backup: `${CLAUDE_PLUGIN_ROOT}/scripts/crystal-precommit-check.sh` — see [Crystal pre-commit backup](#crystal-pre-commit-backup) above.
