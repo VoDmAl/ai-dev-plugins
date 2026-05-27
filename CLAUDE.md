@@ -27,6 +27,8 @@ Each rule is paired with a deterministic gate — see `docs/llm/soft-guidance-vs
 
 4. **No dev-tree paths in user-time files.** Inside `plugins/*/skills/**/SKILL.md` and `plugins/*/templates/*.md`, references to scripts/lib/hooks/templates must use `${CLAUDE_PLUGIN_ROOT}/...`, not `plugins/X/...` — the latter only resolves inside this dev clone, not in a user project. Enforced by `scripts/check-skill-paths.sh` via `.githooks/pre-commit` (runs on every commit).
 
+5. **Workitem completion discipline (crystal gate).** Any file under `docs/tasks/<slug>/workitem.md` (or flat `docs/tasks/<slug>.md`) with frontmatter `status: in-progress` must have zero `- [ ]` checkboxes before transitioning to `status: done`. This generalizes "completion discipline" — every unchecked checkbox is an open obligation, not only items inside `## Sidetracks`. Five resolution paths (resolve / migrate / cancel / defer / promote-to-stem) per Decision Log #9 in `docs/tasks/crystal-design/workitem.md`. Enforced in three layers (Decision Log #7): (a) PreToolUse hook `crystal-completion-guard` in the `vdm` plugin (primary, fires on Write/Edit/MultiEdit of any workitem); (b) Stop hook `crystal-stop-reminder` (visibility); (c) `.githooks/pre-commit` Gate 4 — `scripts/check-crystal-completion.sh` — for IDE-direct edits that bypass the assistant. Same backup ships in `vdm-git` for downstream projects.
+
 ## Authoring standard: agent-agnostic skill text
 
 When writing prompts, hook output, or instructions inside `plugins/**/skills/**/SKILL.md` and `plugins/**/scripts/**`:

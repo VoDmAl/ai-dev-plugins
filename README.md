@@ -29,6 +29,10 @@ Until specialization is needed, everything lives here.
 | docs-sync | `/vdm:docs-sync` | Smart documentation discovery & sync (adapts to any project structure) |
 | learn | `/vdm:learn` | Intelligent knowledge integration with scenario detection |
 | changelog | `/vdm:changelog` | Project change tracking in `PROJECT_CHANGELOG.md` |
+| crystal-grow | `/vdm:crystal-grow` | Start (or promote) a workitem under `docs/tasks/<slug>/workitem.md` |
+| crystal-bud | `/vdm:crystal-bud` | Capture a sidetrack into the active (or routed dormant) workitem |
+| crystal-cut | `/vdm:crystal-cut` | Close a workitem — sweeps unchecked items, blocks done-transition if any remain |
+| crystal-cave | `/vdm:crystal-cave` | View all crystals + sidetracks + decision-log summaries (read-only) |
 
 ### `vdm-git` — Git Safety (optional)
 
@@ -69,6 +73,16 @@ Brief description (1-2 sentences max).
 ```
 
 **Entry types**: ✨ FEATURE | 🐛 BUG | 🔧 TOOLING | 🏗️ ARCH | 📝 DOCS | ⚡ PERF | 🔒 SEC
+
+### crystal-* suite
+Adds workitem discipline to long-running sessions. A *crystal* is an in-repo workitem at `docs/tasks/<slug>/workitem.md` (path configurable) carrying frontmatter (`status: in-progress | done | dormant`), main content, a `## Sidetracks` section for побеги, and an optional `## Decision Log` for brainstorm/PRD sessions. The completion gate is the core invariant: the workitem cannot transition to `status: done` while any `- [ ]` checkbox remains anywhere in the file.
+
+**Three-layer gate** (defense in depth):
+- **Primary** — `PreToolUse` hook `crystal-completion-guard` intercepts Write/Edit/MultiEdit on workitems and blocks done-transitions with the five resolution paths (resolve / migrate / cancel / defer / promote-to-stem).
+- **Visibility** — `Stop` hook `crystal-stop-reminder` surfaces active workitems with open items at end-of-turn.
+- **Backup (git only)** — pre-commit check in the `vdm-git` plugin (and an in-repo equivalent for this dev clone) catches IDE-direct edits that bypass the assistant.
+
+A `SessionStart` hook (`crystal-hydrate`) lists active workitems so the assistant Reads them before continuing. The design document for the suite is itself the first crystal in this repo — `docs/tasks/crystal-design/workitem.md` — serving as a worked example of the format.
 
 ### guard (vdm-git plugin)
 Prevents Claude from running `git commit` and `git push` without explicit user permission. All other git operations (merge, rebase, status, diff, etc.) are allowed freely.
@@ -401,13 +415,15 @@ If you forget, a SessionStart hook in `.claude/settings.json` prints a one-line 
 | lib-sync | `scripts/check-lib-sync.sh` | any file under `plugins/{vdm,vdm-git}/lib/**` is staged |
 | version-bump | `scripts/check-version-bump.sh` | any file under `plugins/X/**` is staged (bump check) **and** unconditionally (marketplace ↔ plugin.json parity) |
 | skill-paths | `scripts/check-skill-paths.sh` | unconditionally — user-time files must not reference `plugins/X/<subdir>/` (use `${CLAUDE_PLUGIN_ROOT}/...` instead) |
+| crystal | `scripts/check-crystal-completion.sh` | any `docs/tasks/**/workitem.md` (or flat `docs/tasks/*.md`) is staged with frontmatter `status: done` and unchecked `- [ ]` items remain |
 
 All three can be run manually:
 
 ```bash
-bash scripts/check-lib-sync.sh         # 0 = clean, 1 = drift report
-bash scripts/check-version-bump.sh     # 0 = bumped + in parity, 1 = drift
-bash scripts/check-skill-paths.sh      # 0 = clean, 1 = dev-path leak found
+bash scripts/check-lib-sync.sh             # 0 = clean, 1 = drift report
+bash scripts/check-version-bump.sh         # 0 = bumped + in parity, 1 = drift
+bash scripts/check-skill-paths.sh          # 0 = clean, 1 = dev-path leak found
+bash scripts/check-crystal-completion.sh   # 0 = clean, 1 = workitem done with open items
 ```
 
 **lib-sync.** The two plugins ship duplicated copies of `lib/config-path.sh` and `lib/config-read.sh` (each plugin must be self-contained for independent installation). The check normalizes the cross-reference comments that name the opposite plugin (`plugins/vdm/lib` ↔ `plugins/vdm-git/lib`); everything else must match byte-for-byte. A GitHub Actions workflow running the same check on PRs is planned but not yet wired up (the file `.github/workflows/lib-sync.yml` was blocked by a local security hook during a prior commit).
@@ -421,9 +437,21 @@ Always pair the bump with a `PROJECT_CHANGELOG.md` entry.
 
 **skill-paths.** Lints `plugins/*/skills/**/SKILL.md` and `plugins/*/templates/*.md` for direct references to `plugins/(vdm|vdm-git)/(scripts|lib|hooks|templates|skills)/...`. Those paths only resolve inside this dev clone — at user time the plugin lives under `${CLAUDE_PLUGIN_ROOT}` (resolved by Claude Code). Use `${CLAUDE_PLUGIN_ROOT}/<subdir>/...` everywhere in user-time files. Bare plugin names (e.g. "the vdm plugin") are not flagged — only concrete subpaths.
 
-### Runtime hook (ships with the plugin)
+**crystal.** Backup to the `crystal-completion-guard` runtime hook (which catches the assistant flipping `status: done` mid-edit). The pre-commit variant catches IDE-direct edits that bypass the assistant — by the time it fires, the runtime hook already missed it, which is exactly when a deterministic check earns its keep. Reads the STAGED version of each workitem (`git show :path`) so the gate sees what's about to commit, not whatever sits on disk. Hardcoded to `docs/tasks/` (this repo doesn't override the default crystal root). The downstream-shipped equivalent — `vdm-git/scripts/crystal-precommit-check.sh` — reads `.claude/vdm-plugins.json:crystal.path` and is universally configurable.
 
-`plugins/vdm/scripts/orphan-guard-hook.sh` is wired in `plugins/vdm/hooks/hooks.json` as a `PostToolUse` hook on `Write|Edit|MultiEdit`. It fires after the assistant writes to any `docs/llm/*.md` and runs the orphan audit on that single file. Without a discovery hook (CLAUDE.md ref / source-code @see / `docs/features/` ref / sibling `docs/llm/` ref) it exits 2 with a remediation message — surfacing as actionable feedback the assistant must address before the turn ends.
+### Runtime hooks (ship with the plugin)
+
+`plugins/vdm/hooks/hooks.json` wires five hook scripts. The orphan-guard one fires after writes to `docs/llm/*.md`; the four crystal ones implement the workitem discipline gate described above:
+
+| Hook event | Script | What it does |
+|------------|--------|--------------|
+| SessionStart | `crystal-hydrate.sh` | Lists active in-progress workitems so the assistant Reads them before continuing |
+| UserPromptSubmit | `docs-sync-reminder.sh`, `learn-reminder.sh`, `changelog-reminder.sh` | Per-prompt nudges (see Configuration section above) |
+| PreToolUse (Write/Edit/MultiEdit) | `crystal-completion-guard.sh` | Blocks status:in-progress → status:done while `- [ ]` items remain |
+| PostToolUse (Write/Edit/MultiEdit) | `orphan-guard-hook.sh` | Catches new `docs/llm/*.md` without a discovery hook |
+| Stop | `crystal-stop-reminder.sh` | End-of-turn visibility for active workitems with open items |
+
+Orphan-guard detail: without a discovery hook (CLAUDE.md ref / source-code @see / `docs/features/` ref / sibling `docs/llm/` ref) it exits 2 with a remediation message — surfacing as actionable feedback the assistant must address before the turn ends.
 
 The audit script can also be invoked manually against any project that has `docs/llm/`:
 
