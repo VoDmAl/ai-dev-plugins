@@ -1,7 +1,7 @@
 ---
 title: "vdm:crystal-* suite — design"
 slug: crystal-design
-status: in-progress
+status: done
 session-type: brainstorm
 created: 2026-05-27
 last-updated: 2026-05-27
@@ -470,14 +470,14 @@ last-updated: 2026-05-27
 - [x] Решение по Sidetrack #3 → TaskCreate integration в SKILL.md или отдельный helper (см. Decision Log #21)
 - [x] Решение по Sidetrack #4 → коротко зафиксировать в `Implication:` каждой integration-точки + version bumps (см. Decision Log #22)
 - [x] Решение по Sidetrack #7 → дизайн SessionStart hook или init-step в SKILL.md (см. Decision Log #23)
-- [ ] Скаффолд `plugins/vdm/skills/crystal-{grow,bud,cut,cave}/SKILL.md`
-- [ ] Скаффолд hook scripts: PreToolUse gate (`crystal-completion-guard.sh`), Stop reminder (`crystal-stop-reminder.sh`)
-- [ ] Регистрация в `plugins/vdm/hooks/hooks.json`
-- [ ] (Опц.) pre-commit backup в `.githooks/pre-commit` для git-проектов
-- [ ] Version bump `plugins/vdm/.claude-plugin/plugin.json` (MINOR — new feature) + `.claude-plugin/marketplace.json` parity
-- [ ] `PROJECT_CHANGELOG.md` entry
-- [ ] Update CLAUDE.md если появляются новые critical rules касающиеся crystal'ов
-- [ ] (Опц.) Update README.md → Development секция: упомянуть crystal workflow
+- [x] Скаффолд `plugins/vdm/skills/crystal-{grow,bud,cut,cave}/SKILL.md`
+- [x] Скаффолд hook scripts: PreToolUse gate (`crystal-completion-guard.sh` + `.py` simulator), Stop reminder (`crystal-stop-reminder.sh`), SessionStart hydrate (`crystal-hydrate.sh`), docs-sync Phase 0 helper (`list-open-crystals.sh`)
+- [x] Регистрация в `plugins/vdm/hooks/hooks.json` (SessionStart + PreToolUse + Stop, плюс existing UserPromptSubmit + PostToolUse)
+- [x] (Опц.) pre-commit backup в `.githooks/pre-commit` для git-проектов — реализован двумя путями: `scripts/check-crystal-completion.sh` для самого репо (Gate 4) и `plugins/vdm-git/scripts/crystal-precommit-check.sh` shipping в user проекты через vdm-git
+- [x] Version bump `plugins/vdm/.claude-plugin/plugin.json` 2.3.0 → 2.4.0 + `plugins/vdm-git/.claude-plugin/plugin.json` 2.3.2 → 2.4.0 + `.claude-plugin/marketplace.json` parity для обоих
+- [x] `PROJECT_CHANGELOG.md` entry — single 2026-05-27 FEATURE entry с полным ref'ом на все артефакты
+- [x] Update CLAUDE.md — добавлена Critical Rule #5 (Workitem completion discipline) с описанием трёх-слойного гейта
+- [x] (Опц.) Update README.md → Development секция: добавлены skill commands в таблицу, новая subsection "crystal-* suite" в What It Does, Gate 4 в Pre-commit gates таблицу, обновлён "Runtime hooks" блок с полной таблицей hook events
 
 ## References
 

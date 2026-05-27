@@ -13,6 +13,9 @@
 #   3. skill-paths    — plugins/*/skills/**/SKILL.md and plugins/*/templates/*.md
 #                       must use ${CLAUDE_PLUGIN_ROOT}, not dev-tree paths
 #                       (caught by scripts/check-skill-paths.sh)
+#   4. crystal        — workitems under docs/tasks/ with frontmatter status:done
+#                       must have zero `- [ ]` checkboxes (crystal-cut DL #4)
+#                       (caught by scripts/check-crystal-completion.sh)
 
 set -eu
 
@@ -36,3 +39,9 @@ fi
 # Gate 3 — skill-paths: invariant must hold on every commit, regardless of
 # what's staged. Fast (single grep per file).
 scripts/check-skill-paths.sh
+
+# Gate 4 — crystal: defense-in-depth backup to the crystal-completion-guard
+# PreToolUse hook. Catches IDE-direct edits that flip status:done without
+# clearing `- [ ]` items. Only fires when something is staged under
+# docs/tasks/ — otherwise no-op.
+scripts/check-crystal-completion.sh
