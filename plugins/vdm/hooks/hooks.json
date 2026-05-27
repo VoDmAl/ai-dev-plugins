@@ -1,6 +1,17 @@
 {
-  "description": "VDM core hooks - documentation sync, knowledge capture, changelog reminders, and orphan-guard for docs/llm/",
+  "description": "VDM core hooks - documentation sync, knowledge capture, changelog reminders, orphan-guard for docs/llm/, and crystal-* workitem discipline (hydrate / completion-guard / stop-reminder).",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/crystal-hydrate.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [
@@ -22,6 +33,18 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/crystal-completion-guard.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit",
@@ -29,6 +52,17 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/orphan-guard-hook.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/crystal-stop-reminder.sh",
             "timeout": 5
           }
         ]
