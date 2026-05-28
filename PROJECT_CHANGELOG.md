@@ -8,6 +8,14 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ---
 
+## 2026-05-28
+
+### 📝 DOCS: crystal-* SKILL.md refinements from first real-world migration test (vdm v2.4.1)
+Field run: an agent onboarded a repo of 6–7 legacy flat task docs into the crystal structure and reported five clarity gaps — all documentation, no concept change (the conventions it improvised under pressure already matched the latent design). Fixes: (1) **Migrating legacy docs** — new section in `crystal-grow/SKILL.md` documenting the manual onboarding workflow that DL #24 (collision refuse) and Sidetrack #9 (v2 auto-convert) left unspecified: three paths (move-to-references / inline-rewrite / delete), with the explicit note that `crystal-grow` is *not* the migration tool. The move-to-references path mirrors how the design crystal itself holds `references/original-spec.md`. (2) **created/last-updated under migration** — same section: dates reflect the doc's real git history (`git log --diff-filter=A` for created, last-commit for last-updated), not the import moment, so the cave's recency view stays honest. (3) **done-on-create gate** — `crystal-cut/SKILL.md` Gate-behavior bullet now states the PreToolUse guard evaluates *post-edit* content, so a brand-new file written straight at `status: done` must contain zero `- [ ]` (verified against `crystal-completion-guard.py` line 38 — the `Write` branch returns full content); relevant when importing an already-complete legacy doc. (4) **migrate-trailing-obligation-to-new-sibling** — `crystal-cut/SKILL.md` Example 4 plus a `migrated → <slug>` table clarification: the target may be a *new* sibling grown on the spot, not only an existing crystal. Covers the "feature-complete but for one loose end" case the six lifecycle states appeared not to cover (they do — it's `migrated`), with the caveat that a one-line follow-up rarely earns its own crystal (prefer `deferred`/`cancelled`). (5) **cave date-display rule** — `crystal-cave/SKILL.md` overview rows now uniformly show `updated` (recency = resume signal) across active/dormant/done; `created` only in detail mode. Fixed the inconsistent examples (template showed `created` for the active row, Example 1 showed `updated`).
+**Ref**: plugins/vdm/skills/crystal-grow/SKILL.md (Migrating legacy docs), plugins/vdm/skills/crystal-cut/SKILL.md (Gate behavior, five-paths table, Example 4), plugins/vdm/skills/crystal-cave/SKILL.md (Which date to show)
+
+---
+
 ## 2026-05-27
 
 ### ✨ FEATURE: crystal-* workitem suite + completion-discipline gate (vdm v2.4.0, vdm-git v2.4.0)
