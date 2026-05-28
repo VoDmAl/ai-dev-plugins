@@ -24,7 +24,11 @@ performs the flip once the user has addressed each.
 Three layers enforce the same invariant (Decision Log #7):
 
 1. **Primary** — PreToolUse hook on Write/Edit/MultiEdit for workitem
-   files. Works in any project regardless of git.
+   files. Works in any project regardless of git. It evaluates the
+   *post-edit* content, so it also fires on the **creating** Write: a brand-new
+   file written straight at `status: done` must contain zero `- [ ]`, or the
+   gate blocks it. (Relevant when importing an already-complete legacy doc —
+   see `crystal-grow` → Migrating legacy docs.)
 2. **Stop reminder** — `${CLAUDE_PLUGIN_ROOT}/scripts/crystal-stop-reminder.sh`
    surfaces open items at end-of-turn so the assistant doesn't drift.
 3. **Backup (git only)** — pre-commit hook ships with `vdm-git` for
@@ -43,7 +47,7 @@ Each unchecked item must be addressed by one of:
 | Path                              | When to use                                            |
 |-----------------------------------|--------------------------------------------------------|
 | `[x]` resolved                    | Done within this workitem — flip the checkbox          |
-| `migrated → <slug>`               | Belongs elsewhere — move card, cross-link both sides   |
+| `migrated → <slug>`               | Belongs elsewhere — move card to an existing crystal **or a new sibling you grow on the spot**, cross-link both sides |
 | `cancelled (reason: ...)`         | Explicitly dropped — record rationale                  |
 | `deferred (deadline: YYYY-MM-DD)` | Postponed to a date — surfaces again on/after deadline |
 | `promoted-to-stem (→ <sibling>)`  | Побег outgrew stem — split into sibling crystal        |
@@ -159,6 +163,36 @@ User flipped `status: done` manually in IDE without using `crystal-cut`.
 The PreToolUse hook intercepts and emits the blocked-diagnostic. The
 assistant explains the five paths and runs the sweep above to bring the
 user back on rails.
+
+### Example 4: Done with one loose end — split it into a new sibling
+
+The work is feature-complete except a single trailing obligation that has no
+existing home — e.g. `zero-inbox` shipped, but a commented-out cron line
+needs a real scheduling pass later. The sweep finds one `- [ ]`. There is no
+"done but for one thing" state — and there shouldn't be; the obligation has
+to land somewhere. Decide among three paths:
+
+- date-bound ("revisit after the next release") → `deferred (deadline: ...)`
+- genuinely dropped → `cancelled (reason: ...)`
+- a real follow-up with no home → **`migrated → <new-sibling>`**
+
+The third is the case worth spelling out, because the target doesn't exist
+yet:
+
+1. `crystal-grow cron-scheduling-pass` — create the sibling first (it starts
+   `status: in-progress`; this is fine, the singleton you're closing is about
+   to go `done`).
+2. Move the obligation into the new crystal's `## Next actions` (or a
+   sidetrack card), and cross-link: the source card's `**Status:**` becomes
+   `migrated → cron-scheduling-pass`, the new crystal notes `migrated from:
+   zero-inbox`.
+3. Flip the source `- [ ]` → `[x]` (the obligation is addressed — it now
+   lives elsewhere).
+4. Re-sweep: zero unchecked → flip `status: done`. Cut succeeds.
+
+Don't grow a whole sibling for something that's really a `deferred` or
+`cancelled` — a one-line follow-up rarely earns its own crystal. Reach for
+migrate-to-new only when the loose end is itself a unit of work.
 
 ## Quality gates
 

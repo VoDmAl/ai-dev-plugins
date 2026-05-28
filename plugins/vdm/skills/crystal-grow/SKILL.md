@@ -98,6 +98,35 @@ Before creating, check both layouts:
 
 3. Neither → proceed with creation.
 
+## Migrating legacy docs (onboarding)
+
+Installing the suite into a repo that already has a pile of old PRDs / task
+notes is the most common first-run scenario. **`crystal-grow` is not the
+migration tool** — it refuses on collision by design (DL #24). Migration is a
+manual, judgment-driven move you do once per legacy file, not a command.
+
+Pick one of three paths per file:
+
+| Path             | When                                                          | How |
+|------------------|---------------------------------------------------------------|-----|
+| **move-to-references** | The doc is finished/historical but its content is worth keeping verbatim (specs, hand-offs, prior reasoning). | `git mv <root>/<slug>.md <root>/<slug>/references/<original>.md`, then hand-write a fresh `workitem.md` on top that summarizes and `[[links]]` the reference. Mirrors how this suite's own design crystal keeps `references/original-spec.md`. |
+| **inline-rewrite** | The doc *is* the workitem, just in a pre-crystal format. | Create `<root>/<slug>/`, write `workitem.md` adapting the old content into the schema (frontmatter + `## Next actions` + `## Sidetracks`). Carry every open `- [ ]` across unchanged. `git rm` the flat original once content is transferred. |
+| **delete**         | Stale / obsolete / superseded. | Just remove it. Not every old doc earns a migration. |
+
+Two rules that bite during migration:
+
+- **Dates reflect real history, not the import moment** (the agent's P4). Set
+  `created:` to the doc's first commit date and `last-updated:` to its last
+  real touch — e.g. `git log --diff-filter=A --format=%as -- <file>` for
+  created, `git log -1 --format=%as -- <file>` for last-updated. The cave's
+  recency view is only honest if it shows when work actually happened, not
+  when you ran the migration.
+- **Importing an already-complete doc means writing it at `status: done` —
+  which must contain zero `- [ ]`.** The completion-guard fires on the
+  *creating* Write too (see `crystal-cut` → Gate behavior). Convert any
+  leftover unchecked boxes to `[x]` or one of the five resolution states
+  *before* the Write, or the gate blocks the import.
+
 ## Behavioral protocol
 
 When `/vdm:crystal-grow [slug]` is invoked (or auto-promotion is accepted):

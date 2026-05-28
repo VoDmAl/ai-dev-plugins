@@ -35,17 +35,24 @@ forces a half-second pause that helps recall versus the autopilot
 🔮 Crystals in this repo (root: docs/tasks/):
 
   Active (1):
-    auth-refactor          3 open · 2 sidetracks · brainstorm · created 2026-05-12
+    auth-refactor          3 open · 2 sidetracks · brainstorm · updated 2026-05-12
     └─ docs/tasks/auth-refactor/workitem.md
 
   Dormant (2):
-    billing-rewrite        1 open · 4 sidetracks · prd-work · last-updated 2026-04-30
+    billing-rewrite        1 open · 4 sidetracks · prd-work · updated 2026-04-30
     └─ docs/tasks/billing-rewrite/workitem.md
-    observability-pass     0 open · 0 sidetracks · research · last-updated 2026-05-22
+    observability-pass     0 open · 0 sidetracks · research · updated 2026-05-22
     └─ docs/tasks/observability-pass/workitem.md
 
   Done (5): crystal-design, stripe-webhook-rewrite, ...
 ```
+
+**Which date to show (rule, not judgment):** overview rows uniformly show
+`updated` (the `last-updated:` frontmatter value) across active / dormant /
+done — recency is the "what do I resume?" signal, so it's the same column for
+every row. `created:` is shown only in **detail mode**, which prints both
+(`Created: … Updated: …`). This removes the per-row guesswork the field run
+flagged.
 
 Counts come from the same helpers the hooks use
 (`${CLAUDE_PLUGIN_ROOT}/lib/crystal-path.sh` — `count_unchecked`,
