@@ -75,14 +75,16 @@ Brief description (1-2 sentences max).
 **Entry types**: ✨ FEATURE | 🐛 BUG | 🔧 TOOLING | 🏗️ ARCH | 📝 DOCS | ⚡ PERF | 🔒 SEC
 
 ### crystal-* suite
-Adds workitem discipline to long-running sessions. A *crystal* is an in-repo workitem at `docs/tasks/<slug>/workitem.md` (path configurable) carrying frontmatter (`status: in-progress | done | dormant`), main content, a `## Sidetracks` section for побеги, and an optional `## Decision Log` for brainstorm/PRD sessions. The completion gate is the core invariant: the workitem cannot transition to `status: done` while any `- [ ]` checkbox remains anywhere in the file.
+Adds workitem discipline to long-running sessions. A *crystal* is an in-repo workitem at `<root>/<slug>/workitem.md` (canonical folder-stem layout) carrying frontmatter (4-tier `status:` taxonomy — Pre-work / Active / Paused / Terminal), main content, a `## Sidetracks` section for побеги, and an optional `## Decision Log` for brainstorm/PRD sessions. The completion gate is the core invariant: the workitem cannot transition to `status: done` while any `- [ ]` checkbox remains anywhere in the file.
+
+**Multi-root (v2.5.0).** Roots auto-discover from the project tree — any `tasks/` directory under project root counts, skipping hidden segments (`.git/`, `.stversions/`, etc.) and `node_modules/`/`vendor/`. Classic single-root repos see `docs/tasks/` discovered automatically; monorepo/vault layouts get `packages/*/tasks/` or `projects/*/tasks/` for free. Override via `crystal.paths` (array of globs) or pin via `crystal.path` (legacy single root). Singleton invariant derives from the number of resolved roots: 1 root → repo-wide singleton (DL #11), ≥2 roots → per-root singleton.
 
 **Three-layer gate** (defense in depth):
-- **Primary** — `PreToolUse` hook `crystal-completion-guard` intercepts Write/Edit/MultiEdit on workitems and blocks done-transitions with the five resolution paths (resolve / migrate / cancel / defer / promote-to-stem).
+- **Primary** — `PreToolUse` hook `crystal-completion-guard` intercepts Write/Edit/MultiEdit on workitems and blocks done-transitions with the five resolution paths (resolve / migrate / cancel / defer / promote-to-stem). Also enforces `superseded-by:` frontmatter for `status: superseded` transitions.
 - **Visibility** — `Stop` hook `crystal-stop-reminder` surfaces active workitems with open items at end-of-turn.
 - **Backup (git only)** — pre-commit check in the `vdm-git` plugin (and an in-repo equivalent for this dev clone) catches IDE-direct edits that bypass the assistant.
 
-A `SessionStart` hook (`crystal-hydrate`) lists active workitems so the assistant Reads them before continuing. The design document for the suite is itself the first crystal in this repo — `docs/tasks/crystal-design/workitem.md` — serving as a worked example of the format.
+A `SessionStart` hook (`crystal-hydrate`) lists active workitems so the assistant Reads them before continuing. Non-canonical statuses (anything outside the 4-tier taxonomy after `status-aliases` resolution) surface as audit warnings in `list-open-crystals`, `crystal-hydrate`, and `crystal-cave` for triage. The design document for the suite is itself the first crystal in this repo — `docs/tasks/crystal-design/workitem.md` — serving as a worked example of the format.
 
 ### guard (vdm-git plugin)
 Prevents Claude from running `git commit` and `git push` without explicit user permission. All other git operations (merge, rebase, status, diff, etc.) are allowed freely.

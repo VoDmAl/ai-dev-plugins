@@ -7,6 +7,11 @@
 # is here to defend against context pressure: if assistant forgets about an
 # active workitem, this surfaces it once per turn.
 #
+# Output formats follow crystal-multi-root DL #13:
+#   single-root: flat list with Read hints
+#   multi-root:  group-by-root summary (slug only, fewer chars per row)
+# Audit line appended when non-canonical drift detected.
+#
 # Budget: 5s. Must be silent (zero output) when there's nothing to report.
 
 set -u
@@ -24,36 +29,74 @@ fi
 # some shells.
 cat >/dev/null 2>&1 || true
 
-active=$(find_workitems | filter_status "in-progress")
-[ -z "$active" ] && exit 0
+all_items=$(find_workitems)
+active=""
+if [ -n "$all_items" ]; then
+  active=$(printf '%s\n' "$all_items" | filter_status "in-progress")
+fi
+non_canon_count=0
+if [ -n "$all_items" ]; then
+  non_canon_count=$(printf '%s\n' "$all_items" | audit_non_canonical | grep -c '.' 2>/dev/null || true)
+  non_canon_count=${non_canon_count:-0}
+fi
 
-# Build a one-line-per-crystal summary. Only crystals with `- [ ]` items get
-# surfaced — fully-checked-but-still-in-progress workitems are a normal
-# intermediate state (e.g. user paused before flipping status:done).
+# Filter active to only items with unchecked > 0 — fully-checked-but-still-
+# in-progress workitems are a normal intermediate state (e.g. user paused
+# before flipping status:done).
+active_with_open=""
+if [ -n "$active" ]; then
+  active_with_open=$(while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    n=$(count_unchecked "$f")
+    [ "${n:-0}" -gt 0 ] && printf '%s\n' "$f"
+  done <<<"$active")
+fi
+
+[ -z "$active_with_open" ] && [ "$non_canon_count" -eq 0 ] && exit 0
+
+roots_count=$(resolve_crystal_roots | grep -c '.' 2>/dev/null || echo 0)
+
 lines=""
-while IFS= read -r f; do
-  [ -n "$f" ] || continue
-  n=$(count_unchecked "$f")
-  [ "${n:-0}" -gt 0 ] || continue
-  slug=$(extract_slug "$f")
-  root=$(resolve_crystal_root)
-  rel="${f#"$root"/}"
-  case "$rel" in
-    */workitem.md) ref="docs/tasks/$rel" ;;
-    *)             ref="docs/tasks/$rel" ;;
-  esac
-  # Use the configured crystal root prefix, not a hardcoded "docs/tasks/".
-  cfg_rel=$(vdm_config_read "crystal" "path" "docs/tasks")
-  ref="${cfg_rel%/}/$rel"
-  lines="${lines}  - ${slug}: ${n} unchecked  (${ref})\n"
-done <<<"$active"
+if [ -n "$active_with_open" ]; then
+  if [ "${roots_count:-1}" -le 1 ]; then
+    cfg_rel=$(vdm_config_read "crystal" "path" "docs/tasks")
+    cfg_rel="${cfg_rel%/}"
+    root=$(resolve_crystal_root)
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      n=$(count_unchecked "$f")
+      slug=$(extract_slug "$f")
+      rel="${f#"$root"/}"
+      ref="${cfg_rel}/${rel}"
+      lines="${lines}  - ${slug}: ${n} unchecked  (${ref})\\n"
+    done <<<"$active_with_open"
+  else
+    summary=$(printf '%s\n' "$active_with_open" | format_active_summary)
+    lines=$(printf '%s\n' "$summary" | awk '{ printf "%s\\n", $0 }')
+  fi
+fi
 
-[ -z "$lines" ] && exit 0
+# Header
+if [ -n "$lines" ]; then
+  header="[crystal] Active workitems with open items — finish or migrate before declaring done:"
+else
+  header="[crystal] No active workitems, but drift detected:"
+fi
 
-# Emit a JSON hook-specific output the same way other vdm hooks do
-# (UserPromptSubmit / SessionStart accept this shape; for Stop the harness
-# treats it as advisory context attached to the turn).
-context="[crystal] Active workitems with open items — finish or migrate before declaring done:\n${lines}\n→ /vdm:crystal-cave for full view; /vdm:crystal-cut <slug> to close."
+# Audit line
+audit_line=""
+if [ "$non_canon_count" -gt 0 ]; then
+  audit_line="\\n⚠ Non-canonical statuses: ${non_canon_count} workitems. /vdm:crystal-cave to triage."
+fi
+
+# Footer
+footer=""
+if [ -n "$lines" ]; then
+  footer="\\n→ /vdm:crystal-cave for full view; /vdm:crystal-cut <slug> to close."
+fi
+
+context="${header}\\n${lines}${footer}${audit_line}"
+context=$(printf '%s' "$context" | sed 's/\\n\\n*$//')
 
 printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "Stop",\n    "additionalContext": "%s"\n  }\n}\n' "$context"
 exit 0

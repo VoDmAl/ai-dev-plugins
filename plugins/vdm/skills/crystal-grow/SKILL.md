@@ -1,6 +1,6 @@
 ---
 name: crystal-grow
-description: "Start (or promote) a crystal — an in-repo workitem under docs/tasks/<slug>/workitem.md that anchors long-running sessions and prevents loss of sidetracks, decisions, and deferred promises. Invoke when a session is widening into research, brainstorm, PRD work, or any flow likely to spawn 3+ branches."
+description: "Start (or promote) a crystal — an in-repo workitem under <root>/<slug>/workitem.md that anchors long-running sessions and prevents loss of sidetracks, decisions, and deferred promises. Roots auto-discovered (any `tasks/` dir, hidden segments excluded) or explicitly listed in config. Invoke when a session is widening into research, brainstorm, PRD work, or any flow likely to spawn 3+ branches."
 license: MIT
 ---
 
@@ -66,18 +66,44 @@ When the threshold trips, propose explicitly:
 > crystal: title=`<draft>`, slug=`<kebab>`. Содержимое shadow-сайдтреков
 > сразу попадёт в Sidetracks. Создавать?
 
-## Storage layout (DL #2, #18, #20)
+## Storage layout (DL #2, #18, #20, #12 in crystal-multi-root)
 
-- **Root** resolves through `vdm_config_read "crystal" "path"` (in
-  `${CLAUDE_PLUGIN_ROOT}/lib/crystal-path.sh`). Default: `docs/tasks`.
-- **Folder-style** (canonical for multi-file workitems):
+- **Roots** resolve through `resolve_crystal_roots()` in
+  `${CLAUDE_PLUGIN_ROOT}/lib/crystal-path.sh`, in priority order:
+  1. `crystal.paths` (array of globs) — explicit override.
+  2. `crystal.path` (string, legacy single root) — back-compat.
+  3. **Auto-scan** — any `tasks/` directory under project root, excluding
+     hidden segments (`.git/`, `.stversions/`, `.obsidian/`, etc.) and
+     common dependency dirs (`node_modules/`, `vendor/`). This is the
+     default and works for classic single-root setups (finds `docs/tasks/`)
+     AND monorepo / vault layouts (finds `packages/*/tasks/`, etc.).
+- **Folder-style** (canonical, DL #12 in crystal-multi-root):
   `<root>/<slug>/workitem.md` plus optional `<root>/<slug>/references/`,
-  `<root>/<slug>/attachments/`, etc.
-- **Flat-style** (single-file): `<root>/<slug>.md` — supported for legacy
-  and trivial workitems; the gate still applies.
+  `<root>/<slug>/attachments/`, etc. **This is the only layout we
+  recommend for new workitems.**
+- **Flat-style** (legacy): `<root>/<slug>.md` — recognized for back-compat
+  with pre-suite single-file notes; the gate still applies. Don't create
+  new flat workitems — promote to folder-style during onboarding.
+- **Leaf is `tasks/`** (DL #1 in crystal-multi-root) — not configurable.
+  Projects using `tickets/`, `issues/`, `workitems/` are out of scope.
+
+### Multi-root slug naming (DL #6 in crystal-multi-root)
+
+When multiple roots resolve, slugs are qualified with the path segment
+immediately above `tasks/` to prevent collisions across roots:
+
+| Single-root           | Multi-root                          |
+|-----------------------|-------------------------------------|
+| `auth-refactor`       | `packages-auth/auth-refactor`       |
+| `billing-rewrite`     | `apps-billing/billing-rewrite`      |
+
+The qualifier comes from `basename(dirname(<root>))`. In commands that
+accept a slug (`crystal-cut <slug>`, `crystal-cave <slug>`), pass the
+qualified form when multi-root is active.
 
 On first `crystal-grow` in a project without the root, create it silently
-(`mkdir -p` — no confirmation prompt, per DL #20).
+(`mkdir -p` — no confirmation prompt, per DL #20). When `paths` is set
+explicitly, create only roots that match the glob.
 
 ## Slug collision policy (DL #24)
 
@@ -139,7 +165,23 @@ the assistant's best judgment from the first few messages; default to
 
 ### Step 2: Resolve root and check collisions
 
-Run the resolver, then run the collision check above. Abort with the
+Run `resolve_crystal_roots`. The behavior depends on how many roots resolve:
+
+**One root** (single-root mode, classic): use that root, run the collision
+check below, proceed.
+
+**Multiple roots** (multi-root mode, monorepo/vault): select target by CWD
+confidence, fall back to HITL when ambiguous (DL #7 in crystal-multi-root):
+
+| CWD signal                                                  | Confidence | Action |
+|-------------------------------------------------------------|------------|--------|
+| `pwd` is under exactly one resolved root                    | high       | grow into that root silently |
+| `pwd` is the parent of exactly one `<x>/tasks/`             | high       | grow into `<x>/tasks/` silently |
+| `pwd` is project root with ≥2 roots resolved                | low        | HITL — ask which root: «Куда заводим? <r1>/<r2>/<r3>?» |
+| `pwd` is outside all resolved roots                         | low        | HITL — same question, with resolved roots listed |
+| `slug` argument already contains `<root-qualifier>/` prefix | high       | use that root, slug = portion after `/` |
+
+Then run the collision check below in the selected root. Abort with the
 appropriate message on conflict.
 
 ### Step 3: Create the workitem
@@ -200,17 +242,76 @@ compaction summary, re-Read its workitem.md before continuing.
 
 `/vdm:crystal-grow [subcommand]` recognizes these as the first word of
 arguments. When no subcommand matches, behave as the regular grow skill
-described above.
+described above. Full surface in v1 (DL #11 in crystal-multi-root).
 
-| Subcommand               | Effect on `.claude/vdm-plugins.json` → `crystal` |
-|--------------------------|----------------------------------------------------|
-| `off` / `disable`        | Set `enabled = false` (hooks stay silent)          |
-| `on` / `enable`          | Set `enabled = true`                               |
-| `path <value>`           | Set `path = "<value>"` (relative to project root)  |
-| `config` / `status`      | Read and display the current section               |
-| `reset`                  | Remove the `crystal` key (revert to defaults)      |
+### Enable / disable / reset
 
-**Defaults when the section is missing:** `enabled: true`, `path: "docs/tasks"`.
+| Subcommand            | Effect on `.claude/vdm-plugins.json` → `crystal` |
+|-----------------------|--------------------------------------------------|
+| `off` / `disable`     | Set `enabled = false` (hooks stay silent)        |
+| `on` / `enable`       | Set `enabled = true`                             |
+| `reset`               | Remove the `crystal` key (revert to defaults)    |
+| `config` / `status`   | Diagnostic: resolved roots + derived singleton + per-tier counts + non-canonical drift |
+
+### Root paths (multi-root, DL #11)
+
+| Subcommand                    | Effect                                              |
+|-------------------------------|-----------------------------------------------------|
+| `paths add <glob>`            | Append glob to `paths`; idempotent; warns if glob matches 0 dirs but still writes |
+| `paths remove <glob>`         | Remove glob; warns if not found; empties → key deleted (falls back to `path` or auto-scan) |
+| `paths list`                  | Pretty-print current `paths` + resolved roots; empty → "auto-scan active" |
+| `paths set <g1> <g2> ...`     | Replace entire array (space-separated, supports quoted multi-word globs) |
+| `paths clear`                 | Remove the `paths` key                              |
+| `path <value>`                | Legacy single-root; **refuses** if `paths` is set (force `paths clear` first or edit JSON manually) |
+| `path clear`                  | Remove the `path` key (migration helper)            |
+
+### Status aliases (project-specific vocabulary mapped to canonical, DL #10)
+
+| Subcommand                    | Effect                                              |
+|-------------------------------|-----------------------------------------------------|
+| `status-alias add <from>=<to>`| Map `<from>` → `<to>`; validates `<to>` against canonical taxonomy, errors on unknown |
+| `status-alias remove <from>`  | Unmap; warns if not found                           |
+| `status-alias list`           | Pretty-print current aliases; empty → "no aliases configured" |
+| `status-alias clear`          | Remove the `status-aliases` key                     |
+
+### Singleton invariant override
+
+| Subcommand               | Effect                                                      |
+|--------------------------|-------------------------------------------------------------|
+| `singleton global`       | Exactly 1 active workitem repo-wide                         |
+| `singleton per-root`     | Exactly 1 active per resolved root                          |
+| `singleton off`          | No invariant; explicit user override                        |
+| `singleton auto`         | Remove key → derive from #roots (1 → global, ≥2 → per-root) |
+
+### Mixed-config policy
+
+Setting `path` while `paths` is already set is refused with an explicit
+error rather than written-and-warned (footgun avoidance). Same in reverse:
+`paths` overrides `path` and emits a warning at SessionStart hook time.
+To migrate from singular to plural: `path clear` then `paths add <glob>`.
+
+### Defaults
+
+When the `crystal` section is absent entirely: `enabled: true`. Everything
+else flows from defaults:
+- Roots: auto-scan from project root.
+- Singleton: derived from #roots (global if 1, per-root if ≥2).
+- Status-aliases: none.
+
+This means a fresh install with no config works correctly for both classic
+single-root (`docs/tasks/`) and monorepo/vault (`packages/*/tasks/`)
+layouts with zero ceremony.
+
+### Implementation rules (patching)
+
+1. Read the file (if missing, start with `{}`).
+2. Modify only the `crystal` key — preserve `learn`, `docs-sync`,
+   `changelog`, `git-guard` verbatim.
+3. For `reset`, delete the `crystal` key (do not leave `"crystal": {}`).
+4. Use the Edit/Write tool — **do not** invoke `jq`; users may not have it.
+5. Final file must be valid JSON, 2-space indent, trailing newline.
+6. Validate `status-alias add`'s `<to>` value against the canonical
+   taxonomy (`crystal_canonical_statuses` in `lib/crystal-path.sh`).
 
 The same `crystal` config section is shared by all four crystal-* skills
 and by the hook scripts (completion-guard, stop-reminder, hydrate). One
@@ -222,15 +323,6 @@ section, one source of truth.
 2. If `<project_root>/.claude/` exists → `<project_root>/.claude/vdm-plugins.json`
 3. Else if `<project_root>/.qwen/` exists → `<project_root>/.qwen/vdm-plugins.json`
 4. Else create `<project_root>/.claude/` and write there.
-
-### Patching rules
-
-1. Read the file (if missing, start with `{}`).
-2. Modify only the `crystal` key — preserve `learn`, `docs-sync`, `changelog`,
-   `git-guard` verbatim.
-3. For `reset`, delete the `crystal` key (do not leave `"crystal": {}`).
-4. Use the Edit/Write tool — **do not** invoke `jq`; users may not have it.
-5. Final file must be valid JSON, 2-space indent, trailing newline.
 
 ## Examples
 

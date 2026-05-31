@@ -3,19 +3,36 @@
 crystal-completion-guard.py — simulator used by crystal-completion-guard.sh.
 
 Reads the Claude Code PreToolUse JSON payload on stdin, decides whether the
-edit would transition a crystal workitem to `status: done` while unchecked
-`- [ ]` items remain, and — if so — prints the diagnostic to stderr and exits
-with code 2 (which the bash wrapper re-emits to the hook harness).
+edit would transition a crystal workitem to a *terminal* status with unmet
+preconditions, and — if so — prints the diagnostic to stderr and exits with
+code 2 (which the bash wrapper re-emits to the hook harness).
 
-All other paths exit 0 (no-op). Fail-open at every boundary.
+Two gates fire here (both terminal-tier per DL #10):
+
+1. ``done`` transition — blocked while any unchecked ``- [ ]`` items remain.
+   Implements Decision Log #4 in crystal-design (completion discipline
+   generalized to any unchecked checkbox in the workitem).
+
+2. ``superseded`` transition — blocked unless ``superseded-by: <slug>`` is
+   present in the frontmatter (DL #10 in crystal-multi-root). Forces the
+   author to name the replacement workitem instead of letting the trail die.
+
+``cancelled`` and other terminal statuses bypass the gate (the author has
+explicitly dropped the work — unchecked items are no longer obligations).
+All non-terminal statuses also bypass.
 
 Environment:
-  CRYSTAL_ROOT  Absolute path to the resolved crystal storage root. Required.
+  CRYSTAL_ROOTS              Colon-separated absolute crystal roots. Required.
+                             (Falls back to CRYSTAL_ROOT for legacy compat.)
+  CRYSTAL_GATE_DONE          Comma-separated status values that trigger the
+                             done gate (canonical "done" + any status-aliases
+                             mapping to "done"). Default: "done".
+  CRYSTAL_GATE_SUPERSEDED    Same, for the superseded gate. Default: "superseded".
 
 Hook contract:
-  Implements Decision Log #4 (`- [ ]` blocks done-transition) and #7
-  (PreToolUse as the primary gate). The five resolution paths in the
-  diagnostic come from Decision Log #9.
+  Fail-open at every boundary. Better to miss one edit than block on a
+  hook bug. Exit 0 silently when payload is malformed, file isn't a workitem,
+  config missing, etc.
 """
 
 from __future__ import annotations
@@ -64,15 +81,46 @@ def _build_post_edit_content(tool_name: str, tool_input: dict, abs_path: str) ->
     return None
 
 
-def _frontmatter_status(content: str) -> str | None:
+def _frontmatter_field(content: str, field: str) -> str | None:
     fm = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
     if not fm:
         return None
     body = fm.group(1)
-    m = re.search(r"^status:\s*([^\s#]+)", body, re.MULTILINE)
+    pattern = r"^" + re.escape(field) + r":\s*([^\s#]+)"
+    m = re.search(pattern, body, re.MULTILINE)
     if not m:
         return None
     return m.group(1).strip().strip('"').strip("'")
+
+
+def _is_workitem_path(abs_path: str, roots: list[str]) -> tuple[bool, bool, str]:
+    """Return (is_workitem, is_folder_style, slug).
+
+    Workitem files: <root>/<slug>/workitem.md (folder, canonical) or
+    <root>/<slug>.md (flat, legacy). Anything else returns (False, False, "").
+    """
+    base = os.path.basename(abs_path)
+    for root in roots:
+        if not root:
+            continue
+        abs_root = os.path.abspath(root)
+        try:
+            rel = os.path.relpath(abs_path, abs_root)
+        except ValueError:
+            continue
+        if rel.startswith(".."):
+            continue
+        parts = rel.split(os.sep)
+        if len(parts) >= 2 and base == "workitem.md":
+            return True, True, parts[0]
+        if len(parts) == 1 and base.endswith(".md"):
+            return True, False, os.path.splitext(base)[0]
+    return False, False, ""
+
+
+def _split_csv(value: str, default: str) -> set[str]:
+    raw = value if value else default
+    return {item.strip() for item in raw.split(",") if item.strip()}
 
 
 def main() -> int:
@@ -89,57 +137,68 @@ def main() -> int:
     if not file_path:
         return 0
 
-    crystal_root = os.environ.get("CRYSTAL_ROOT", "")
-    if not crystal_root:
+    roots_env = os.environ.get("CRYSTAL_ROOTS") or os.environ.get("CRYSTAL_ROOT", "")
+    if not roots_env:
+        return 0
+    roots = [r for r in roots_env.split(":") if r]
+    if not roots:
         return 0
 
     abs_path = os.path.abspath(file_path)
-    abs_root = os.path.abspath(crystal_root)
-    try:
-        rel = os.path.relpath(abs_path, abs_root)
-    except ValueError:
-        return 0
-    if rel.startswith(".."):
-        return 0
-
-    base = os.path.basename(abs_path)
-    parts = rel.split(os.sep)
-    is_folder_workitem = len(parts) >= 2 and base == "workitem.md"
-    is_flat_workitem = len(parts) == 1 and base.endswith(".md")
-    if not (is_folder_workitem or is_flat_workitem):
+    is_workitem, is_folder, slug = _is_workitem_path(abs_path, roots)
+    if not is_workitem:
         return 0
 
     content = _build_post_edit_content(tool_name, tool_input, abs_path)
     if content is None:
         return 0
 
-    status = _frontmatter_status(content)
-    if status != "done":
+    status = _frontmatter_field(content, "status")
+    if not status:
         return 0
 
-    unchecked = re.findall(r"(?m)^[ \t]*-[ \t]*\[ \](.*)$", content)
-    if not unchecked:
-        return 0
+    done_set = _split_csv(os.environ.get("CRYSTAL_GATE_DONE", ""), "done")
+    superseded_set = _split_csv(os.environ.get("CRYSTAL_GATE_SUPERSEDED", ""), "superseded")
 
-    sample = "\n".join("    " + line.strip() for line in unchecked[:5])
-    extra = "" if len(unchecked) <= 5 else f"\n    ... and {len(unchecked) - 5} more"
-    slug = parts[0] if is_folder_workitem else os.path.splitext(base)[0]
+    if status in done_set:
+        unchecked = re.findall(r"(?m)^[ \t]*-[ \t]*\[ \](.*)$", content)
+        if not unchecked:
+            return 0
+        sample = "\n".join("    " + line.strip() for line in unchecked[:5])
+        extra = "" if len(unchecked) <= 5 else f"\n    ... and {len(unchecked) - 5} more"
+        sys.stderr.write(
+            f"[crystal-cut] blocked: cannot transition `{slug}` to status:done "
+            f"while {len(unchecked)} unchecked item(s) remain.\n\n"
+            f"  Workitem: {abs_path}\n\n"
+            f"  Unchecked:\n{sample}{extra}\n\n"
+            f"  Resolve each unchecked item by one of the five paths "
+            f"(see Decision Log #9 in crystal-design):\n"
+            f"    [x] resolved       — fixed in this workitem; check the box\n"
+            f"    migrated -> <slug> — moved to another workitem; cross-link both sides\n"
+            f"    cancelled (...)    — explicitly dropped with rationale (HITL)\n"
+            f"    deferred (date)    — postponed with a target date\n"
+            f"    promoted-to-stem   — promoted into a sibling workitem\n\n"
+            f"  Once every `- [ ]` is addressed, re-run the edit that flips status:done.\n"
+        )
+        return 2
 
-    sys.stderr.write(
-        f"[crystal-cut] blocked: cannot transition `{slug}` to status:done "
-        f"while {len(unchecked)} unchecked item(s) remain.\n\n"
-        f"  Workitem: {abs_path}\n\n"
-        f"  Unchecked:\n{sample}{extra}\n\n"
-        f"  Resolve each unchecked item by one of the five paths "
-        f"(see Decision Log #9):\n"
-        f"    [x] resolved       — fixed in this workitem; check the box\n"
-        f"    migrated -> <slug> — moved to another workitem; cross-link both sides\n"
-        f"    cancelled (...)    — explicitly dropped with rationale (HITL)\n"
-        f"    deferred (date)    — postponed with a target date\n"
-        f"    promoted-to-stem   — promoted into a sibling workitem\n\n"
-        f"  Once every `- [ ]` is addressed, re-run the edit that flips status:done.\n"
-    )
-    return 2
+    if status in superseded_set:
+        superseded_by = _frontmatter_field(content, "superseded-by")
+        if superseded_by:
+            return 0
+        sys.stderr.write(
+            f"[crystal-cut] blocked: cannot transition `{slug}` to "
+            f"status:superseded without a `superseded-by:` frontmatter field "
+            f"naming the replacement workitem.\n\n"
+            f"  Workitem: {abs_path}\n\n"
+            f"  Add to frontmatter:\n"
+            f"    superseded-by: <slug-of-replacement>\n\n"
+            f"  Both this workitem and the replacement should cross-link to "
+            f"the other (DL #10 in crystal-multi-root).\n"
+        )
+        return 2
+
+    return 0
 
 
 if __name__ == "__main__":

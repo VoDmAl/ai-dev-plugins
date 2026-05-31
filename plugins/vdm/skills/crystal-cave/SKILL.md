@@ -13,11 +13,14 @@ argument:
 
 | Invocation                       | Mode                                      |
 |----------------------------------|-------------------------------------------|
-| `/vdm:crystal-cave`              | Overview — all crystals, summary form     |
-| `/vdm:crystal-cave <slug>`       | Detail — full workitem state with sidetrack and DL summaries |
+| `/vdm:crystal-cave`              | Overview — Active / Paused / Backlog tiers (Terminal hidden) |
+| `/vdm:crystal-cave --all`        | Overview + Terminal tier (done / cancelled / superseded)     |
+| `/vdm:crystal-cave <slug>`       | Detail — full workitem state with sidetrack and DL summaries. In multi-root mode pass qualified slug (`<root>/<slug>`) |
 | `/vdm:crystal-cave --sidetracks` | Filter — all open sidetracks across all crystals |
 
-No file edits. Pure presentation.
+No file edits. Pure presentation, except for the `alias permanently` action
+in the Non-canonical triage section which patches `.claude/vdm-plugins.json`
+(same surface as `/vdm:crystal-grow status-alias add`).
 
 ## Why "cave" not "list"
 
@@ -29,8 +32,11 @@ forces a half-second pause that helps recall versus the autopilot
 
 ## Overview mode
 
-`/vdm:crystal-cave` with no arguments. Output structure:
+`/vdm:crystal-cave` with no arguments. Output is organized by the canonical
+4-tier taxonomy (DL #10 in crystal-multi-root). Each tier prints when
+non-empty; `Terminal` is hidden by default (use `--all` to include).
 
+Single-root example:
 ```
 🔮 Crystals in this repo (root: docs/tasks/):
 
@@ -38,33 +44,101 @@ forces a half-second pause that helps recall versus the autopilot
     auth-refactor          3 open · 2 sidetracks · brainstorm · updated 2026-05-12
     └─ docs/tasks/auth-refactor/workitem.md
 
-  Dormant (2):
-    billing-rewrite        1 open · 4 sidetracks · prd-work · updated 2026-04-30
+  Paused (2):
+    billing-rewrite        1 open · 4 sidetracks · prd-work · dormant · updated 2026-04-30
     └─ docs/tasks/billing-rewrite/workitem.md
-    observability-pass     0 open · 0 sidetracks · research · updated 2026-05-22
+    observability-pass     0 open · 0 sidetracks · research · blocked · updated 2026-05-22
     └─ docs/tasks/observability-pass/workitem.md
 
-  Done (5): crystal-design, stripe-webhook-rewrite, ...
+  Backlog (3): pre-work — surfaced but no singleton constraint
+    api-versioning-spike   0 open · 0 sidetracks · research · idea     · updated 2026-05-10
+    └─ docs/tasks/api-versioning-spike/workitem.md
+    ...
+
+  Done (5): crystal-design, stripe-webhook-rewrite, ...  (use --all for details)
 ```
 
+Multi-root example (group by parent of `tasks/`):
+```
+🔮 Crystals across 9 roots (auto-scan):
+
+  Active (4):
+    amazon-orders/PRD                          0 open · prd-work · updated 2026-05-22
+    └─ projects/amazon-orders/tasks/PRD.md
+    entity-intake/task-igrushki-batch-...      3 open · short-bug · updated 2026-05-07
+    └─ projects/entity-intake/tasks/task-igrushki-batch-2026-05-07.md
+    manual-pipeline/PRD                        0 open · prd-work · updated 2026-05-18
+    └─ projects/manual-pipeline/tasks/PRD.md
+    receipt-pipeline/task-finansy-migration    2 open · short-bug · updated 2026-05-25
+    └─ projects/receipt-pipeline/tasks/task-finansy-migration.md
+
+  Backlog (5): ...
+  Paused (1): ...
+  Done: 12 across 6 roots (use --all for details)
+
+  ⚠ Non-canonical statuses: 14 workitems. See "Non-canonical" section below.
+```
+
+**Tier rules:**
+
+| Tier      | Statuses                  | In Overview | Singleton                |
+|-----------|---------------------------|-------------|--------------------------|
+| Active    | `in-progress`             | Always      | Enforced (per derive_singleton_mode) |
+| Paused    | `blocked`, `dormant`      | Always      | No                       |
+| Backlog   | `idea`, `draft`, `ready`  | Always (Pre-work) | No                 |
+| Terminal  | `done`, `cancelled`, `superseded` | Only with `--all` | No         |
+| Non-canonical | anything else         | Always (separate section) | Audit triage required |
+
 **Which date to show (rule, not judgment):** overview rows uniformly show
-`updated` (the `last-updated:` frontmatter value) across active / dormant /
-done — recency is the "what do I resume?" signal, so it's the same column for
-every row. `created:` is shown only in **detail mode**, which prints both
-(`Created: … Updated: …`). This removes the per-row guesswork the field run
-flagged.
+`updated` (the `last-updated:` frontmatter value) across all tiers —
+recency is the "what do I resume?" signal. `created:` is shown only in
+**detail mode**, which prints both (`Created: … Updated: …`).
 
 Counts come from the same helpers the hooks use
 (`${CLAUDE_PLUGIN_ROOT}/lib/crystal-path.sh` — `count_unchecked`,
-`extract_frontmatter_field`).
+`extract_frontmatter_field`, `derive_status_tier`, `_apply_status_alias`).
 
-A multi-active state (singleton violation, Decision Log #11) shows as:
+### Singleton violations
+
+A multi-active state surfaces as a header line scoped by singleton mode
+(`derive_singleton_mode`):
 
 ```
-  ⚠ Singleton violation: 2 active crystals (should be 1)
+  ⚠ Singleton (global) violation: 2 active crystals (should be 1)
     auth-refactor
     billing-rewrite
 ```
+
+In per-root mode (multi-root setups), the violation is reported per
+affected root:
+
+```
+  ⚠ Singleton (per-root) violation: root `auth` has 2 active workitems
+    auth/refactor-jwt
+    auth/session-cleanup
+```
+
+### Non-canonical section
+
+Any workitem whose `status:` falls outside the canonical taxonomy (after
+status-alias resolution) gets a dedicated triage section with proposed
+remap targets:
+
+```
+⚠ Non-canonical (requires resolution):
+
+  projects/x/tasks/foo.md: status="WIP"
+    → [in-progress] [ready] [blocked] [skip] [alias permanently: WIP=in-progress]
+
+  projects/y/tasks/bar.md: status="archived"
+    → [done] [cancelled] [superseded] [skip] [alias permanently: archived=done]
+```
+
+The user chooses one path per file. `alias permanently` writes
+`status-aliases.<from> = <to>` to `.claude/vdm-plugins.json` and the
+workitem stays untouched (the alias resolves at read time across all
+crystal-* skills and hooks). `skip` defers — the file stays non-canonical
+until next audit. The skill itself never silently rewrites status.
 
 ## Detail mode
 
