@@ -431,6 +431,49 @@ Migration **не автоматизируется** — judgment-driven move per
 
 **Status:** resolved — см. DL #13. Group-by-root в multi-root, flat в single-root. Auto-derive из числа resolved roots (тот же сигнал, что singleton). Alphabetical sorting внутри группы и для самих групп — стабильный output между запусками.
 
+### #7. Crystal-grow promotion lag — counter-only triggering misses first-sight signals
+
+**Возникло в:** Closure-review feedback (the session that shipped multi-root)
+**Описание:** В той же сессии, что выкатила multi-root, ассистент остался
+в shadow mode 3 turn'а при том что все сигналы указывали на immediate
+promotion: explicit «давай проведём миграцию», explicit «сначала нужен
+план», план шире 5 шагов + 2 HITL вопроса в первом substantive ответе.
+DL #19 counter-based threshold не сработал, потому что ни один *counter*
+(tool calls, sidetracks, минуты) не дотикался. План драфтился в chat
+вместо `workitem.md`, что под компактизацией превратилось бы в сводку
+с потерей decisions и побегов.
+
+**Status:** resolved — добавлена новая секция «Forced-promotion signals
+(override the counter)» в `plugins/vdm/skills/crystal-grow/SKILL.md`
+между «Auto-promotion threshold» и «Storage layout». Четыре триггера:
+(1) bilingual trigger-phrase whitelist (RU+EN) — immediate
+`prd-prep`/`prd-work` classification; (2) Step-0 reflex «если отвечу
+сейчас — ответ в workitem или в chat?» перед substantive plan-shaped
+answer; (3) plan-shape anti-pattern ≥5 steps / ≥3 decisions / ≥2 HITLs
+→ draft уже workitem; (4) context-pressure escape valve ~50% window без
+workitem'а → auto-propose grow. DL #19 явно остаётся для organic-creep,
+новые сигналы — для first-sight. Bumped vdm v2.5.1 (PATCH — additive
+guidance, no breaking change).
+
+### #8. crystal-stop-reminder.sh emitted PreToolUse-only `hookSpecificOutput`
+
+**Возникло в:** Closure-review feedback (Stop hook payload rejected by harness)
+**Описание:** `crystal-stop-reminder.sh` эмитил
+`{"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": "..."}}`.
+Эта схема валидна только для PreToolUse / UserPromptSubmit / PostToolUse /
+PostToolBatch. Для Stop hook валидны top-level поля: `systemMessage`,
+`stopReason`, `decision`, `continue`. Harness validator отвергал payload —
+silent end-of-turn reminder про active workitem'ы и non-canonical drift
+никогда не доходил до ассистента. Артефакт от пред-multi-root эпохи; не
+было поймано Phase B (валидация формата сосредоточилась на content,
+не на JSON envelope).
+
+**Status:** resolved — fix в `plugins/vdm/scripts/crystal-stop-reminder.sh`:
+wrapper заменён на `{"systemMessage": "<context>"}` (multi-line `\n`-encoded
+text сохраняется как escape-sequences, JSON parser в harness'е раскрывает
+обратно в newlines). Тот же `$context` construction (header + lines +
+footer + audit_line) — изменён только JSON envelope. Bumped vdm v2.5.1.
+
 ## Next actions
 
 Блокирующий tail — все unchecked items здесь блокируют `crystal-cut`.
