@@ -66,6 +66,79 @@ When the threshold trips, propose explicitly:
 > crystal: title=`<draft>`, slug=`<kebab>`. Содержимое shadow-сайдтреков
 > сразу попадёт в Sidetracks. Создавать?
 
+## Forced-promotion signals (override the counter)
+
+DL #19 above handles *organic scope-creep* — start small, grow past a gate.
+The signals below handle the opposite case: sessions *born* as planning
+work, where the counter lags and the plan ends up in chat instead of
+`workitem.md`. Any one triggers immediate promotion regardless of counter
+state. When two or more co-occur, propose grow *before* the substantive
+answer, not after.
+
+### (1) Trigger-phrase whitelist — immediate `prd-prep` / `prd-work`
+
+If the user's message contains any of these, classify accordingly and
+propose grow:
+
+- **RU:** «нужен план», «дай план», «давай менять структуру», «миграция X»,
+  «оценить объём», «проведём X», «оцени изменения», «сначала план»,
+  «сделаем PRD», «распиши что будем менять», «разложи по этапам».
+- **EN:** «I need a plan», «let me see the plan», «migrate X», «restructure»,
+  «estimate scope», «walk me through the changes», «break this down»,
+  «PRD this», «scope this out», «start with a plan».
+
+The list isn't exhaustive — any phrasing demanding a plan/PRD/scope/migration
+artifact *before* the work qualifies. False-positive promotion is cheaper
+than false-negative loss.
+
+### (2) Step-0 reflex — before the substantive answer
+
+Before drafting a plan-shaped response, ask: «Если я отвечу сейчас — ответ
+попадёт в `workitem.md` или останется в chat?» If "stays in chat" *and* the
+response is plan-shaped, stop and propose grow first. Then write the
+substantive answer *into* the new workitem, not the chat.
+
+Temporal order matters. The DL #19 flow says "when the threshold trips,
+propose explicitly" but doesn't specify *before vs. after* the first
+substantive answer. The first answer *is* the plan; if it lands in chat,
+the plan is born homeless and the next compaction takes it.
+
+### (3) Plan-shape anti-pattern — ≥5 / ≥3 / ≥2
+
+If a chat draft contains **any** of:
+
+- ≥5 steps (numbered/bulleted procedure)
+- ≥3 architectural decisions (this-vs-that with rationale)
+- ≥2 HITL questions for the user
+
+— that draft is already a workitem. Stop, propose grow, continue *in-file*.
+The next compaction collapses 5 steps to one synopsis sentence, decisions
+to "discussed alternatives", HITLs to "some open items remained". The cost
+of *not* relocating is the cost of the next compaction.
+
+### (4) Context-pressure escape valve
+
+If the visible conversation crosses ~50% of the context window with no
+workitem for the current line of work, auto-propose grow. Frame as
+defensive, not procedural:
+
+> Контекст наполнился ~50% без workitem'а. Следующая компактизация съест
+> decisions и побеги — останется только сводка. Предлагаю завести crystal
+> сейчас. Slug?
+
+### Why "forced" matters
+
+DL #19 is *organic-creep detection*: fires when a session that started
+small grew past a counter. The four signals above are *first-sight
+detection*: fire when the session was *born* as planning. Both modes are
+real and need separate hooks. Field report (the session that shipped
+multi-root): all four signals were overdetermined from message #1 —
+explicit «давай проведём миграцию», explicit «сначала нужен план», 5+
+steps in the first substantive response, 2+ HITLs in that same response.
+Yet counter-based logic kept the workitem in shadow for three turns
+because no *counter* threshold had ticked. The plan was drafted in chat
+when it should have been in `workitem.md` from the start.
+
 ## Storage layout (DL #2, #18, #20, #12 in crystal-multi-root)
 
 - **Roots** resolve through `resolve_crystal_roots()` in

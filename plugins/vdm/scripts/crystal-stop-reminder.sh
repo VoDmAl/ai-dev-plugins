@@ -98,5 +98,8 @@ fi
 context="${header}\\n${lines}${footer}${audit_line}"
 context=$(printf '%s' "$context" | sed 's/\\n\\n*$//')
 
-printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "Stop",\n    "additionalContext": "%s"\n  }\n}\n' "$context"
+# Stop hook protocol: top-level fields only. `hookSpecificOutput` is valid for
+# PreToolUse / UserPromptSubmit / PostToolUse / PostToolBatch — not Stop. Use
+# `systemMessage` to inject visible context into the next turn.
+printf '{\n  "systemMessage": "%s"\n}\n' "$context"
 exit 0
