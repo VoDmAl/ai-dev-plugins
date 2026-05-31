@@ -106,10 +106,22 @@ When `/vdm:crystal-bud [text]` is invoked (or proactively triggered):
 
 ### Step 1: Locate target crystal
 
-Resolve the crystal root via `${CLAUDE_PLUGIN_ROOT}/lib/crystal-path.sh`,
-find workitems with `status: in-progress` (singleton invariant — usually
-one). If `--to <slug>` was supplied, target that workitem directly. If no
-active crystal exists, propose `crystal-grow` first.
+Resolve the crystal roots via `${CLAUDE_PLUGIN_ROOT}/lib/crystal-path.sh`
+(`resolve_crystal_roots` — may yield one or many in multi-root setups),
+find workitems with `status: in-progress`. Singleton mode comes from
+`derive_singleton_mode`:
+
+- `global` (single-root or explicit): expect one active workitem; if
+  several exist (violation), warn and pick by recency.
+- `per-root` (multi-root): each root has its own active. Pick by CWD —
+  if pwd is under one of the resolved roots, target that root's active.
+  Outside all roots → ask which.
+- `off`: no invariant; pick by recency unless `--to` overrides.
+
+If `--to <slug>` was supplied, target that workitem directly. In
+multi-root mode the slug should be qualified (`<root-qualifier>/<slug>`,
+DL #6); if unqualified and unambiguous, use it. If no active crystal
+exists in the chosen root, propose `crystal-grow` first.
 
 ### Step 2: Determine next sidetrack number
 
@@ -123,14 +135,29 @@ Write the sidetrack card to the end of `## Sidetracks` using the format
 above. Set `**Status:** open`. Add `**Routed to:**` only when routing into
 a dormant crystal (i.e. not the singleton active).
 
-### Step 4: Place the inline marker (when applicable)
+### Step 4: Place the inline marker (MANDATORY — DL #14 in crystal-multi-root)
 
-If the побег surfaced inside the workitem's body text — typically inside
-a Decision Log entry or a Next-actions discussion — insert
-`- [ ] см. Sidetrack #N` at the spot of origin. Skip this step when the
-побег came from outside the workitem (e.g. from a code observation
-mid-implementation); in that case just `Возникло в: implicit (round N)`
-in the card.
+**Every sidetrack with `Status: open` MUST have a corresponding inline
+`- [ ]` marker somewhere in the workitem body.** Without it the
+`crystal-cut` gate cannot see the obligation — the gate counts `- [ ]`
+checkboxes, not `Status:` text. A sidetrack with `Status: open` and no
+marker is invisible to discipline and will pass cut silently.
+
+Placement rules:
+
+| Origin of the побег                              | Where the marker goes                                    |
+|--------------------------------------------------|----------------------------------------------------------|
+| Inside the workitem's body (DL entry, Next-actions discussion, paragraph) | At the spot of origin: `- [ ] см. Sidetrack #N` |
+| Outside the workitem (code observation, implicit from conversation) | Append to a `## Pending sidetracks` block inside `## Next actions` (or create the block if absent): `- [ ] см. Sidetrack #N — <one-line hint>` |
+
+Resolving a sidetrack later means flipping its inline marker `[ ]` → `[x]`
+**and** updating the sidetrack card's `**Status:**` line; the two must
+stay in sync.
+
+The future enforcement script (deterministic audit that scans `Status: open`
+cards against existing markers) is tracked as a separate workitem — until
+it ships, this convention is enforced by SKILL.md text + Quality gates
+review below.
 
 ### Step 5: TaskCreate (DL #21)
 
@@ -175,7 +202,7 @@ Assistant routes there with confidence note:
 ## Quality gates
 
 - [ ] Card has all four required lines (heading, Возникло в:, Описание:, Status:)
-- [ ] Inline `- [ ] см. Sidetrack #N` placed when the побег surfaced in the body
+- [ ] **Inline `- [ ] см. Sidetrack #N` placed somewhere in the workitem body (MANDATORY for every `Status: open` card; DL #14 in crystal-multi-root)** — either at the spot of origin (when the побег surfaced in body text) or in a `## Pending sidetracks` block under `## Next actions` (when implicit/external)
 - [ ] Routing decision explicit in `**Routed to:**` whenever non-default
 - [ ] TaskCreate fired for the new sidetrack
 - [ ] `last-updated:` frontmatter date bumped to today

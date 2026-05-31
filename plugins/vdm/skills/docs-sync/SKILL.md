@@ -74,11 +74,25 @@ docs-sync pass — separately from the documentation discovery itself.
 Bash(command="bash ${CLAUDE_PLUGIN_ROOT}/scripts/list-open-crystals.sh", ...)
 ```
 
-Exit 0 always. Empty stdout → no active crystals, skip this section. Non-
-empty stdout → prepend to the Phase 3 report:
+Exit 0 always. Empty stdout → no active crystals and no drift, skip this
+section. Non-empty stdout → prepend to the Phase 3 report verbatim — the
+script formats the output (DL #13 in crystal-multi-root):
 
+**Single-root** (1 resolved root):
 ```
 → Open crystals: <slug-1> (N open), <slug-2> (M open)
+```
+
+**Multi-root** (≥2 resolved roots — monorepo / vault):
+```
+→ Open crystals:
+  - <root-1>: <slug-a> (N), <slug-b> (M)
+  - <root-2>: <slug-c> (K)
+```
+
+**Audit line** (appended when any workitem has non-canonical `status:`):
+```
+⚠ Non-canonical statuses: N workitems. /vdm:crystal-cave to triage.
 ```
 
 Visibility-only. Does not block, gate, or modify the docs-sync flow — the

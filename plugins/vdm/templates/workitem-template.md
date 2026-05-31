@@ -1,10 +1,16 @@
 ---
 title: "{{TITLE}}"
 slug: {{SLUG}}
+# status: canonical taxonomy (DL #10 in crystal-multi-root)
+#   Pre-work — idea, draft, ready (in cave Backlog; no singleton)
+#   Active   — in-progress         (in sweeps; singleton enforced)
+#   Paused   — blocked, dormant    (in cave Paused; not in sweeps)
+#   Terminal — done, cancelled, superseded (hidden; `done`/`superseded` gated)
 status: in-progress
 session-type: {{SESSION_TYPE}}
 created: {{TODAY}}
 last-updated: {{TODAY}}
+# superseded-by: <slug>   # required when transitioning to status: superseded
 ---
 
 # {{TITLE}}

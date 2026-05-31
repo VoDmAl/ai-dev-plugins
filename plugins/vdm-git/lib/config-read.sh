@@ -35,6 +35,28 @@ vdm_config_read() {
   fi
 }
 
+vdm_config_read_array() {
+  # vdm_config_read_array <section> <key>
+  # Reads an array value from <section>.<key>; outputs items one per line.
+  # Empty output = key absent, not an array, or empty array. Fails open
+  # (empty output) when jq or the config file is unavailable — callers must
+  # treat empty output as "not configured", not "configured-and-empty".
+  local section="$1" key="$2"
+
+  command -v jq >/dev/null 2>&1 || return 0
+
+  local cfg
+  cfg=$(resolve_config_path)
+  [ -f "$cfg" ] || return 0
+
+  jq -r --arg s "$section" --arg k "$key" '
+    if has($s) and ((.[$s] | type) == "object") and (.[$s] | has($k)) and ((.[$s][$k] | type) == "array")
+    then .[$s][$k][]
+    else empty
+    end
+  ' "$cfg" 2>/dev/null
+}
+
 vdm_is_enabled() {
   local section="$1"
   [ "$(vdm_config_read "$section" "enabled" "true")" = "true" ]

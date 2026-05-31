@@ -40,6 +40,21 @@ in this skill. If the gate seems wrong for a specific case, the right move
 is to use one of the five paths (most likely `cancelled (reason: ...)`),
 not to bypass.
 
+### Terminal-tier gates (DL #10 in crystal-multi-root)
+
+The `done` transition triggers the unchecked-items gate above. Two other
+terminal statuses behave differently:
+
+| Terminal status | Gate                                                                  |
+|-----------------|-----------------------------------------------------------------------|
+| `done`          | Unchecked-items gate (see above). Five resolution paths apply.        |
+| `superseded`    | Requires `superseded-by: <slug>` in frontmatter — names the replacement. Gate blocks transition without it. The replacement workitem should cross-link back (`migrated from: <this-slug>` in body or `superseded: <this-slug>` in frontmatter). |
+| `cancelled`     | No gate — author explicitly drops the work; unchecked items are no longer obligations. Record rationale inline (typically in a closing `## Cancelled` paragraph). |
+
+The `superseded-by` requirement is enforced by the same PreToolUse hook
+(`crystal-completion-guard.sh` → `crystal-completion-guard.py`) — see DL #10
+for the gate design.
+
 ## Five resolution paths (DL #9)
 
 Each unchecked item must be addressed by one of:
@@ -64,10 +79,21 @@ When `/vdm:crystal-cut [slug]` is invoked:
 
 ### Step 1: Locate the target
 
-If `slug` is supplied, target `<root>/<slug>/workitem.md` or
-`<root>/<slug>.md`. If omitted, target the singleton active workitem (the
-one with `status: in-progress`). Multiple actives → singleton violation,
-warn before continuing.
+If `slug` is supplied:
+- **Single-root mode:** target `<root>/<slug>/workitem.md` (canonical) or
+  `<root>/<slug>.md` (legacy flat).
+- **Multi-root mode:** slug is expected as `<root-qualifier>/<slug>` (per
+  DL #6 in crystal-multi-root, e.g. `auth/refactor-jwt`). If only the
+  short form is supplied and it's unambiguous (matches in exactly one
+  root), use it; if it matches in ≥2 roots, ask which root.
+
+If omitted, target the singleton active workitem (the one with
+`status: in-progress`). Multiple actives → consult
+`derive_singleton_mode`:
+- `global` violation → warn and ask which one.
+- `per-root` mode → one active is allowed per root; if pwd is under a
+  resolved root, target that root's active; otherwise ask.
+- `off` mode → ask explicitly which slug.
 
 ### Step 2: Sweep unchecked items
 
