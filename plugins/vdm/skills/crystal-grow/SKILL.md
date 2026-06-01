@@ -212,6 +212,25 @@ Pick one of three paths per file:
 | **inline-rewrite** | The doc *is* the workitem, just in a pre-crystal format. | Create `<root>/<slug>/`, write `workitem.md` adapting the old content into the schema (frontmatter + `## Next actions` + `## Sidetracks`). Carry every open `- [ ]` across unchanged. `git rm` the flat original once content is transferred. |
 | **delete**         | Stale / obsolete / superseded. | Just remove it. Not every old doc earns a migration. |
 
+Two pitfalls when choosing the path:
+
+- **Don't carry doc-type filenames into slugs.** If the legacy filename is a
+  doc-type tag (`PRD.md`, `TODO.md`, `SPEC.md`, `NOTES.md`), it carries no
+  content signal — rename to a descriptive content slug based on what the
+  work *does*, per the project's domain. Example: `manual-pipeline/PRD.md` →
+  `pdf-archive-pipeline/workitem.md`, not `PRD/workitem.md`. Slug stays
+  kebab-case lowercase regardless (so `PRD` would double-violate: caps *and*
+  meaningless).
+- **Brainstorm transcripts → `references/`, not sibling workitems.**
+  Brainstorm transcripts, design-discussion transcripts, and historical
+  decision-log artifacts often *look* like workitems by structure (they may
+  even contain a `## Decision Log`) but they're frozen content with no
+  future obligations. Workitem = unit with future actions. Reference =
+  frozen content, no own future. Default to **move-to-references** under
+  the parent workitem (`<parent>/references/<name>.md`), not
+  **inline-rewrite** as a sibling — unless the doc genuinely defines
+  ongoing work.
+
 Two rules that bite during migration:
 
 - **Dates reflect real history, not the import moment** (the agent's P4). Set
@@ -266,6 +285,7 @@ substitute placeholders, write to `<root>/<slug>/workitem.md`. Frontmatter:
 ---
 title: "<human title>"
 slug: <kebab>
+description: "<one-liner for cave/base overview>"  # optional
 status: in-progress
 session-type: <type>
 created: <YYYY-MM-DD>
@@ -281,6 +301,15 @@ include the `## Decision Log` section by default (Decision Log #13).
 Any sidetracks the assistant has been carrying in shadow mode go into
 `## Sidetracks` as numbered `### #N. ...` entries with `Status: open` and
 their `Возникло в:` provenance (Decision Log #5).
+
+If promoting from shadow, the optional `description:` field is derived
+from the shadow's tracked session intent (the one-line characterization
+the assistant used to classify session-type). For explicit grow with a
+slug argument, derive from the immediate invocation context or leave
+commented in the template — the field is optional, blank is fine, but
+filling it materially improves the cave/base overview signal-to-noise
+when the workitem accumulates siblings. Keep it ≤80 chars, describe
+what the work *does*, not what it *is* (verb-leaning, not noun-leaning).
 
 ### Step 5: Populate Tasks (TaskCreate)
 

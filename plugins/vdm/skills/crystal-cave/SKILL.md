@@ -94,6 +94,18 @@ Multi-root example (group by parent of `tasks/`):
 recency is the "what do I resume?" signal. `created:` is shown only in
 **detail mode**, which prints both (`Created: … Updated: …`).
 
+**Description rendering (optional field):** when a workitem's frontmatter
+carries the optional `description:` one-liner (added in vdm v2.5.2), the
+overview row appends it after the slug as `— "<description>"` so the row
+carries a content signal alongside the slug. Detail mode prints it as a
+sub-line under the header. When `description:` is absent or empty, the row
+stays unchanged — no placeholder, no quotes. Example:
+
+```
+  Active (1):
+    auth-refactor — "JWT refresh-token rotation"   3 open · 2 sidetracks · brainstorm · updated 2026-05-12
+```
+
 Counts come from the same helpers the hooks use
 (`${CLAUDE_PLUGIN_ROOT}/lib/crystal-path.sh` — `count_unchecked`,
 `extract_frontmatter_field`, `derive_status_tier`, `_apply_status_alias`).
