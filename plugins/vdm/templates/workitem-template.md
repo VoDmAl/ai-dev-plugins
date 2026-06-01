@@ -1,6 +1,7 @@
 ---
 title: "{{TITLE}}"
 slug: {{SLUG}}
+# description: <one-liner for cave/base overview>   # optional, surfaces in crystal-cave overview rows
 # status: canonical taxonomy (DL #10 in crystal-multi-root)
 #   Pre-work — idea, draft, ready (in cave Backlog; no singleton)
 #   Active   — in-progress         (in sweeps; singleton enforced)
