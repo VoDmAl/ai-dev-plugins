@@ -32,62 +32,79 @@ forces a half-second pause that helps recall versus the autopilot
 
 ## Overview mode
 
-`/vdm:crystal-cave` with no arguments. Output is organized by the canonical
-4-tier taxonomy (DL #10 in crystal-multi-root). Each tier prints when
-non-empty; `Terminal` is hidden by default (use `--all` to include).
+`/vdm:crystal-cave` (optionally with `--all`) is rendered by a dedicated
+script — `${CLAUDE_PLUGIN_ROOT}/scripts/crystal-cave.sh`. The assistant
+invokes it once and prints its stdout verbatim. Do **not** improvise an
+ad-hoc `for f in **/workitem.md; do ...` loop — the script knows about
+the resolver, hidden-segment exclusion, alias resolution, tier ordering,
+and column alignment in a way the assistant should not re-derive on the
+fly.
+
+Layout is **by-root grouping** with status icons, no per-row path lines:
 
 Single-root example:
 ```
-🔮 Crystals in this repo (root: docs/tasks/):
+🔮 Crystals in docs/tasks · 1 active · 0 paused · 2 backlog · 5 done
+   /vdm:crystal-cave --all   /vdm:crystal-cave <slug>
 
-  Active (1):
-    auth-refactor          3 open · 2 sidetracks · brainstorm · updated 2026-05-12
-    └─ docs/tasks/auth-refactor/workitem.md
+  ● auth-refactor       prd-work    2026-05-12
+  ○ migrate-redis       task        2026-05-10
+  ◦ legacy-cleanup                  2026-04-30
 
-  Paused (2):
-    billing-rewrite        1 open · 4 sidetracks · prd-work · dormant · updated 2026-04-30
-    └─ docs/tasks/billing-rewrite/workitem.md
-    observability-pass     0 open · 0 sidetracks · research · blocked · updated 2026-05-22
-    └─ docs/tasks/observability-pass/workitem.md
+Done: 5 crystals (use /vdm:crystal-cave --all for details)
 
-  Backlog (3): pre-work — surfaced but no singleton constraint
-    api-versioning-spike   0 open · 0 sidetracks · research · idea     · updated 2026-05-10
-    └─ docs/tasks/api-versioning-spike/workitem.md
-    ...
-
-  Done (5): crystal-design, stripe-webhook-rewrite, ...  (use --all for details)
+Legend: ● active · ⏸ paused · ○ ready · ◦ idea
 ```
 
-Multi-root example (group by parent of `tasks/`):
+Multi-root example (each root that has visible workitems gets a group
+header; alphabetical between groups, alphabetical between rows):
 ```
-🔮 Crystals across 9 roots (auto-scan):
+🔮 9 roots · 2 active · 6 paused · 18 backlog · 8 done
+   /vdm:crystal-cave --all   /vdm:crystal-cave <slug>
 
-  Active (4):
-    amazon-orders/PRD                          0 open · prd-work · updated 2026-05-22
-    └─ projects/amazon-orders/tasks/PRD.md
-    entity-intake/task-igrushki-batch-...      3 open · short-bug · updated 2026-05-07
-    └─ projects/entity-intake/tasks/task-igrushki-batch-2026-05-07.md
-    manual-pipeline/PRD                        0 open · prd-work · updated 2026-05-18
-    └─ projects/manual-pipeline/tasks/PRD.md
-    receipt-pipeline/task-finansy-migration    2 open · short-bug · updated 2026-05-25
-    └─ projects/receipt-pipeline/tasks/task-finansy-migration.md
+amazon-orders (1 paused · 1 ready)
+  ⏸ orders-pipeline   prd-work      2026-05-31
+  ○ relink-pass-v2    maintenance   2026-05-25
 
-  Backlog (5): ...
-  Paused (1): ...
-  Done: 12 across 6 roots (use --all for details)
+receipt-pipeline (1 active · 2 ready)
+  ● finansy-migration         prd-work      2026-05-31
+  ○ relink-receipt-cards      maintenance   2026-05-30
+  ○ rerun-existing-archives   maintenance   2026-05-30
 
-  ⚠ Non-canonical statuses: 14 workitems. See "Non-canonical" section below.
+statement-pipeline (1 active · 2 paused · 3 ready · 1 idea)
+  ● phase-2-gap-fill               prd-work    2026-05-31
+  ⏸ tax-form-migration-extension   prd-work    2026-06-01
+  ⏸ multi-account-refactor         prd-work    2026-05-31
+  ○ citi-structured-parsing        short-bug   2026-05-27
+  ◦ peo-vs-employer-modeling                   2026-05-26
+
+Done: 8 crystals (use /vdm:crystal-cave --all for details)
+
+⚠ Non-canonical statuses: 14 workitems. The assistant will offer remap targets.
+
+Legend: ● active · ⏸ paused · ○ ready · ◦ idea
 ```
 
-**Tier rules:**
+Each row carries: icon (status-tier) · short slug · type · `last-updated`.
+The qualified slug (`<root>/<short-slug>`) is implicit — the group header
+supplies the prefix, the indented icon row supplies the suffix. Paths are
+not printed; users open files through their editor's go-to-file by slug.
 
-| Tier      | Statuses                  | In Overview | Singleton                |
-|-----------|---------------------------|-------------|--------------------------|
-| Active    | `in-progress`             | Always      | Enforced (per derive_singleton_mode) |
-| Paused    | `blocked`, `dormant`      | Always      | No                       |
-| Backlog   | `idea`, `draft`, `ready`  | Always (Pre-work) | No                 |
-| Terminal  | `done`, `cancelled`, `superseded` | Only with `--all` | No         |
-| Non-canonical | anything else         | Always (separate section) | Audit triage required |
+**Within-group ordering:** active first, then paused (most-recent first),
+then ready/draft, then idea — date desc inside each tier so the line you
+care about is near the top of each group. Group-level ordering is
+alphabetical so the same root appears in the same place between runs.
+
+**Icons & tier mapping:**
+
+| Icon | Tier     | Statuses                          | In Overview        | Singleton |
+|------|----------|-----------------------------------|--------------------|-----------|
+| ●    | Active   | `in-progress`                     | Always             | Enforced (per derive_singleton_mode) |
+| ⏸    | Paused   | `blocked`, `dormant`              | Always             | No        |
+| ○    | Pre-work | `ready`, `draft`                  | Always             | No        |
+| ◦    | Pre-work | `idea`                            | Always             | No        |
+| ✓    | Terminal | `done`, `cancelled`, `superseded` | Only with `--all`  | No        |
+| !    | Non-canonical | anything else                | Separate section   | Audit required |
 
 **Which date to show (rule, not judgment):** overview rows uniformly show
 `updated` (the `last-updated:` frontmatter value) across all tiers —
@@ -96,18 +113,16 @@ recency is the "what do I resume?" signal. `created:` is shown only in
 
 **Description rendering (optional field):** when a workitem's frontmatter
 carries the optional `description:` one-liner (added in vdm v2.5.2), the
-overview row appends it after the slug as `— "<description>"` so the row
-carries a content signal alongside the slug. Detail mode prints it as a
-sub-line under the header. When `description:` is absent or empty, the row
-stays unchanged — no placeholder, no quotes. Example:
+script appends it after the row as `  — "<description>"`. When absent or
+empty, the row stays unchanged — no placeholder, no quotes.
 
-```
-  Active (1):
-    auth-refactor — "JWT refresh-token rotation"   3 open · 2 sidetracks · brainstorm · updated 2026-05-12
-```
+**Type column hidden for idea rows:** `idea` rows skip the `type` column
+(the status implies the type) so the date stays aligned across the group.
+If every row in a group is `idea`, the script collapses the column away
+entirely.
 
-Counts come from the same helpers the hooks use
-(`${CLAUDE_PLUGIN_ROOT}/lib/crystal-path.sh` — `count_unchecked`,
+All counts and tier classifications come from the same helpers the hooks
+use (`${CLAUDE_PLUGIN_ROOT}/lib/crystal-path.sh` — `count_unchecked`,
 `extract_frontmatter_field`, `derive_status_tier`, `_apply_status_alias`).
 
 ### Singleton violations
@@ -205,23 +220,37 @@ When `/vdm:crystal-cave [args]` is invoked:
 
 ### Step 1: Determine mode
 
-- No args → Overview
-- `--sidetracks` flag → Sidetracks-only
-- Single positional arg matching an existing slug → Detail mode for that slug
+- No args (or `--all`) → Overview (script-rendered)
+- `--sidetracks` flag → Sidetracks-only (assistant-rendered, see below)
+- Single positional arg matching an existing slug → Detail mode (assistant-rendered)
 - Single positional arg with no match → "no such crystal" + nearest-match hint
 
-### Step 2: Read state
+### Step 2: Overview → invoke the script, print verbatim
 
-Resolve the root, run `find_workitems`, classify each by
-`extract_frontmatter_field <file> status` into active / dormant / done /
-other. Read enough of each to count unchecked items and parse
-`## Sidetracks` headings.
+For Overview mode (with or without `--all`), run
+`${CLAUDE_PLUGIN_ROOT}/scripts/crystal-cave.sh [--all]` and print its
+stdout verbatim. The script handles resolver, tier classification,
+icons, alignment, group ordering, singleton warnings, and the
+non-canonical drift footer.
 
-### Step 3: Render
+**Do not** re-implement this in the chat with `for f in ...; do echo`
+loops, `find ... -name workitem.md`, or per-file `head` of frontmatter.
+Those bypass the resolver's exclusion rules and produce non-deterministic
+output between sessions.
 
-Pick the template above matching the mode. Use real file paths the user
-can open. Use today's date arithmetic for "N days ago" only if helpful;
-otherwise show raw `last-updated:` values.
+After printing, if the script's output included a non-canonical drift
+warning (line beginning with `⚠ Non-canonical statuses:`), the assistant
+follows up with the Non-canonical triage section below — surfacing each
+non-canonical file with remap options, one decision per file. This is
+the only part of Overview mode that needs assistant interaction beyond
+verbatim print.
+
+### Step 3: Detail / Sidetracks → assistant-rendered
+
+`detail` mode (slug argument) and `--sidetracks` mode stay assistant-
+rendered for now. Use the lib helpers (`extract_frontmatter_field`,
+`count_unchecked`) on the resolved workitem path. The templates above
+specify the layout. Future iteration may push these into the script too.
 
 ### Step 4: No edits
 
@@ -236,15 +265,14 @@ directly.
 ```
 User: /vdm:crystal-cave
 
-🔮 Crystals in this repo (root: docs/tasks/):
+🔮 Crystals in docs/tasks · 1 active · 0 paused · 0 backlog · 3 done
+   /vdm:crystal-cave --all   /vdm:crystal-cave <slug>
 
-  Active (1):
-    auth-refactor    3 open · 2 sidetracks · brainstorm · updated 2026-05-19
+  ● auth-refactor   brainstorm   2026-05-19
 
-  Dormant (1):
-    billing-rewrite  1 open · 4 sidetracks · prd-work · updated 2026-04-30
+Done: 3 crystals (use /vdm:crystal-cave --all for details)
 
-  Done (3): ...
+Legend: ● active · ⏸ paused · ○ ready · ◦ idea
 ```
 
 User reads the line, decides to keep working on `auth-refactor`, opens the
