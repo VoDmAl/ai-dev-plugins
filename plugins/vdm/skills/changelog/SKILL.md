@@ -90,6 +90,7 @@ Decision and rationale.
 | 📝 | DOCS | Documentation restructuring |
 | ⚡ | PERF | Performance improvements |
 | 🔒 | SEC | Security fixes or enhancements |
+| 🔀 | MOVE | Rename or relocation of a significant identifier (file path, slug, SKILL, script, plugin) — emits a `<old> → <new>` breadcrumb (see § Path immutability + move breadcrumbs) |
 
 ## Behavioral Protocol
 
@@ -129,6 +130,27 @@ Add entry at TOP of file (newest first), under today's date header.
 | Refactoring (behavior unchanged) | ⚠️ Maybe | Only if significant |
 | Typo fixes | ❌ NO | Too minor |
 | Config tweaks | ❌ NO | Unless affects workflow |
+
+## Path immutability + move breadcrumbs
+
+PROJECT_CHANGELOG entries are **historical record — immutable**. Never rewrite old rows even after a referenced item moves: a file path, a workitem slug, a SKILL.md, a script, a plugin slug. Provenance matters more than cosmetic consistency, and `git log` is too expensive for casual navigation.
+
+**Breadcrumb pattern** — when a NEW entry documents a move/rename of a significant identifier, include **both forms** inline in the bullet: `<old> → <new>`. This creates a grep-discoverable chain: a searcher greps the changelog for the old identifier and finds (a) historical pre-move mentions in old entries plus (b) the explicit move-record in the post-move entry. Chain is recoverable without `git log`.
+
+**Multiple moves over time** = multiple breadcrumbs, each `<previous> → <current>`. OK by design — searcher reads chronologically and reconstructs the full chain.
+
+**Scope** — significant items only: workitems, SKILL.md files, scripts, framework docs, plugin slugs. Trivial moves (one-off attachments, temp files, scratch notes) skip the breadcrumb.
+
+### Worked example
+
+```markdown
+### 🔀 MOVE: PRD → folder-style workitem
+Migrated flat task file to crystal-suite canonical layout:
+`projects/manual-pipeline/tasks/PRD.md` → `projects/manual-pipeline/tasks/pdf-archive-pipeline/workitem.md`.
+Ref: [[crystal-suite-migration/workitem]] § Per-root migrations.
+```
+
+The rule above mirrors the vault-side convention at `CLAUDE.md` § Project Changelog § Path immutability + move breadcrumbs (codified 2026-06-01) — both the breadcrumb form and the "significant item" scope are kept identical so the convention transfers across vaults and repos.
 
 ## Project Initialization
 
