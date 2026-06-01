@@ -160,6 +160,29 @@ when it should have been in `workitem.md` from the start.
 - **Leaf is `tasks/`** (DL #1 in crystal-multi-root) — not configurable.
   Projects using `tickets/`, `issues/`, `workitems/` are out of scope.
 
+### Cross-referencing workitems (wikilink form)
+
+After folder-migration all workitems share basename `workitem.md`. Bare
+`[[<slug>]]` wikilinks don't resolve under Obsidian's shortest-path matcher
+(multiple `workitem.md` candidates → resolver gives up). Use disambig form:
+
+```
+[[<slug>/workitem|<slug>]]
+```
+
+Applies to:
+- body wikilinks within other workitems / references / vault notes
+- frontmatter `relates-to:` arrays
+- `reference-for:` pointers in `<slug>/references/<name>.md` files
+
+Examples:
+- `[[orders-pipeline/workitem|orders-pipeline]]`
+- `[[pdf-archive-pipeline/workitem|pdf-archive-pipeline]]`
+- `[[recipe-tag-taxonomy/workitem|recipe-tag-taxonomy]]`
+
+In multi-root mode the qualified form (see *Multi-root slug naming* below)
+composes naturally: `[[packages-auth/auth-refactor/workitem|auth-refactor]]`.
+
 ### Multi-root slug naming (DL #6 in crystal-multi-root)
 
 When multiple roots resolve, slugs are qualified with the path segment
