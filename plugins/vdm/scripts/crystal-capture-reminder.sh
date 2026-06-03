@@ -31,6 +31,8 @@ set -u
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/config-read.sh" 2>/dev/null || exit 0
 # shellcheck disable=SC1091
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/crystal-path.sh" 2>/dev/null || exit 0
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/reminder-throttle.sh" 2>/dev/null || true
 
 if command -v vdm_is_enabled >/dev/null 2>&1; then
   vdm_is_enabled "crystal" || exit 0
@@ -100,40 +102,16 @@ fi
 
 [ "$fire" = "yes" ] || exit 0
 
-# Throttle check. Per-session state file; only enforced in smart mode.
+# Throttle check. Per-session state via shared lib/reminder-throttle.sh.
 # proactive intentionally bypasses throttle — if the user opted into noise
 # they get noise.
-if [ "$mode" = "smart" ]; then
-  session_id="default"
-  if command -v jq >/dev/null 2>&1 && [ -n "$payload" ]; then
-    extracted=$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null)
-    [ -n "$extracted" ] && session_id="$extracted"
+if [ "$mode" = "smart" ] && command -v _vdm_reminder_throttle_check >/dev/null 2>&1; then
+  sid=$(printf '%s' "$payload" | _vdm_reminder_session_id 2>/dev/null || printf 'default')
+  throttle=$(vdm_config_read "crystal" "capture-throttle" "600")
+  if _vdm_reminder_throttle_check "crystal-capture" "$throttle" "$sid"; then
+    exit 0
   fi
-  throttle_seconds=$(vdm_config_read "crystal" "capture-throttle" "600")
-  case "$throttle_seconds" in
-    ''|*[!0-9]*) throttle_seconds=600 ;;
-  esac
-
-  state_dir="${TMPDIR:-/tmp}/vdm-crystal-capture"
-  mkdir -p "$state_dir" 2>/dev/null || true
-  state_file="$state_dir/$session_id"
-
-  if [ -f "$state_file" ]; then
-    last=0
-    if stat -f %m "$state_file" >/dev/null 2>&1; then
-      last=$(stat -f %m "$state_file" 2>/dev/null || echo 0)
-    else
-      last=$(stat -c %Y "$state_file" 2>/dev/null || echo 0)
-    fi
-    now=$(date +%s)
-    delta=$((now - last))
-    if [ "$delta" -lt "$throttle_seconds" ]; then
-      exit 0
-    fi
-  fi
-
-  # Touch state to start the throttle window from this emit.
-  touch "$state_file" 2>/dev/null || true
+  _vdm_reminder_throttle_touch "crystal-capture" "$sid"
 fi
 
 # Render the reminder. Brief — every char costs context. List active slugs
