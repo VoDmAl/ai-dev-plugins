@@ -1,18 +1,32 @@
 #!/bin/bash
 # docs-sync smart discovery hook.
 # Behavior governed by .claude/vdm-plugins.json:
-#   enabled=false       → never fires
-#   mode=silent         → never fires
-#   mode=conditional|quiet → fires only when working tree has changes (default)
-#   mode=proactive      → fires every prompt, even on a clean tree (skinny payload)
+#   enabled=false           → never fires
+#   mode=silent             → never fires
+#   mode=conditional|quiet  → fires only when working tree has changes (no throttle)
+#   mode=smart              → fires when tree dirty AND throttle window elapsed (default)
+#   mode=proactive          → fires every prompt, even on a clean tree (skinny payload, no throttle)
 # Budget: must complete within 5s timeout.
+#
+# Throttle window: docs-sync.throttle (seconds), default 600 (10 min). Per-session
+# state under ${TMPDIR:-/tmp}/vdm-reminder-throttle/docs-sync-<session_id>.
+#
+# The discovery phase (find + grep across project .md files) is heavy enough
+# that throttling matters: pre-v2.8.0 default `conditional` re-ran it on every
+# prompt while the tree was dirty.
 
 # shellcheck disable=SC1091
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/config-read.sh"
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/reminder-throttle.sh" 2>/dev/null || true
 
 vdm_is_enabled "docs-sync" || exit 0
-mode=$(vdm_get_mode "docs-sync" "conditional")
+mode=$(vdm_get_mode "docs-sync" "smart")
 [ "$mode" = "silent" ] && exit 0
+
+# Capture payload up-front so the stdin buffer is drained before we shell out
+# to git/find/grep below. session_id extraction needs the payload too.
+payload=$(cat 2>/dev/null || true)
 
 # --- Discovery Phase ---
 
@@ -24,10 +38,22 @@ if git rev-parse --is-inside-work-tree &>/dev/null; then
   changed_files=$(git status --porcelain 2>/dev/null | sed -E 's/^.{2} //;s/^.* -> //')
 fi
 
-# Conditional firing: nothing to report when the tree is clean.
+# Smart/conditional firing: nothing to report when the tree is clean.
 # Proactive mode falls through and emits a skinny payload (project docs map only).
 if [ -z "$changed_files" ] && [ "$mode" != "proactive" ]; then
   exit 0
+fi
+
+# Throttle gate (smart only) — short-circuits before the heavy discovery step.
+if [ "$mode" = "smart" ]; then
+  sid=$(printf '%s' "$payload" | _vdm_reminder_session_id 2>/dev/null || printf 'default')
+  throttle=$(vdm_config_read "docs-sync" "throttle" "600")
+  if command -v _vdm_reminder_throttle_check >/dev/null 2>&1; then
+    if _vdm_reminder_throttle_check "docs-sync" "$throttle" "$sid"; then
+      exit 0
+    fi
+    _vdm_reminder_throttle_touch "docs-sync" "$sid"
+  fi
 fi
 
 # 2. Find all .md files in project (exclude node_modules, vendor, .git)
