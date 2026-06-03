@@ -87,9 +87,9 @@ if [ -n "$active" ]; then
   if [ -n "$violation" ]; then
     header="[crystal] ${violation}"
   elif [ "${active_count:-0}" -eq 1 ]; then
-    header="[crystal] Active workitem. Read the workitem file before continuing if relevant to this session:"
+    header="[crystal] Active workitem. Read it before continuing — workitem.md = source of truth (every decision → \`## Decision Log\`, every observation → \`/vdm:crystal-bud\`; chat decays under compaction):"
   else
-    header="[crystal] ${active_count} active workitems (mode: ${singleton_mode}). Read the relevant one(s) before continuing:"
+    header="[crystal] ${active_count} active workitems (mode: ${singleton_mode}). Read the relevant one(s) — workitem.md = source of truth (every decision → \`## Decision Log\`, every observation → \`/vdm:crystal-bud\`; chat decays under compaction):"
   fi
 fi
 
