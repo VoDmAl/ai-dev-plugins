@@ -139,6 +139,99 @@ Yet counter-based logic kept the workitem in shadow for three turns
 because no *counter* threshold had ticked. The plan was drafted in chat
 when it should have been in `workitem.md` from the start.
 
+## Working inside an active crystal (in-flight discipline)
+
+`crystal-grow` is the *creation* skill, but the file it produces only earns
+its keep if the assistant *uses* it during work. Field experience shows the
+common failure mode: a session works on an active crystal for hours, makes
+several architectural decisions, finds several побеги — and never opens
+`workitem.md`. At the next context compaction the decisions collapse to
+"discussed alternatives", the побеги collapse to "noted some follow-ups",
+and the work that justified having a crystal at all dies in chat.
+
+The four crystal-* skills are not just commands — they're a discipline. The
+discipline runs *continuously* while a crystal is active, not only at
+grow/cut moments. Two complementary hooks remind the assistant:
+
+- `crystal-hydrate.sh` at **SessionStart** — surfaces the active workitem(s)
+  with the source-of-truth reminder.
+- `crystal-capture-reminder.sh` at **UserPromptSubmit** — fires when source
+  edits accumulate without workitem.md being touched (smart mode default;
+  per-session throttle).
+- `crystal-stop-reminder.sh` at **Stop** — emits the work-without-capture
+  nudge at end-of-turn when source files are newer than workitem.md.
+
+Below is the explicit checklist the hooks are pointing at. Read it once
+when working inside an active crystal — the discipline is small and
+mechanical, but it has to *happen* every turn.
+
+### What goes into `## Decision Log` (DL entry)
+
+Anything chosen-over-alternative-with-rationale. Specifically:
+
+| Trigger                                                | Why a DL entry matters                                            |
+|--------------------------------------------------------|-------------------------------------------------------------------|
+| Chose X over Y after weighing alternatives             | Future reader sees *why* X, not just that X happened             |
+| Raised/lowered a threshold or tolerance                | Future reader otherwise sees a magic number with no context       |
+| Deviated from an earlier plan in this same workitem    | Without it, the Next-actions list silently lies                   |
+| User confirmed a non-obvious choice (validated, not corrected) | The validation is signal — preserves judgment, not just code |
+| Single-instance exception to a documented rule         | Without it, the exception looks like inconsistency                |
+| Dropped/cut work that was earlier listed as in scope   | Scope shrinkage needs to be explicit, not a silent disappearance  |
+
+Format (mirrors existing entries in `docs/tasks/crystal-design/workitem.md`):
+
+```markdown
+### #N / YYYY-MM-DD / <short title>
+
+**Source:** user | assistant | both
+**Context:** <one paragraph — what was on the table>
+**Why:** <one paragraph — the reasoning that selected this option>
+**Consequence:** <what changes downstream because of this choice>
+```
+
+Do not write DL entries for: routine implementation steps, obvious choices,
+mechanical refactors. The bar is "future reader, six months from now,
+opening this file cold, would need this to understand the work."
+
+### What goes into `## Sidetracks` (побег)
+
+Anything that surfaces during work and isn't the current main goal. See
+`/vdm:crystal-bud` for the card format. Concrete triggers:
+
+| Trigger                                                | Capture as побег because                                          |
+|--------------------------------------------------------|-------------------------------------------------------------------|
+| Adjacent code observation (TODO, smell, stale comment) | Loss would forfeit a found-while-here fix                         |
+| Ecosystem block (lib X requires Y v8, breaks A)        | Future migration attempts will hit the same wall                  |
+| "We should also..." / "later we'll need..."            | The "later" never comes back unless captured                      |
+| Implicit dependency noticed mid-work                   | Documents the actual coupling, not the assumed one                |
+| Failed attempt with useful diagnosis                   | Saves the next attempter from re-deriving why X didn't work       |
+| Bug in tooling/dep with a workaround applied here      | Workaround needs context for future "is this still needed" review |
+
+If unsure — capture. Bud is cheap; a missed бег is the whole reason this
+suite exists.
+
+### Per-turn cadence
+
+The mechanical question to ask yourself at the end of each significant
+work segment (not every turn — but anytime a real chunk landed):
+
+> Что из того, что мы сейчас сделали или обсудили, нужно перенести в
+> workitem.md? Decisions → DL. Observations → побеги. Closed Next-actions
+> → flip `- [ ]` → `[x]`.
+
+The capture-reminder hook will ask you this when source files are newer
+than workitem.md. Treat its appearance as a contract reminder, not noise.
+
+### Configuration
+
+The hooks honor `crystal.capture-mode` in `.claude/vdm-plugins.json`:
+
+| Mode        | Behavior                                                              |
+|-------------|-----------------------------------------------------------------------|
+| `smart`     | Default. Fires only when source edits accumulate without workitem touch, throttled per session (default 600s, override via `crystal.capture-throttle`). |
+| `proactive` | Fires every UserPromptSubmit while an active workitem exists. Use during onboarding or when discipline isn't yet internalised. |
+| `silent`    | Never fires. Use only after the discipline is fully internalised — the cost of a missed капчер is the cost of the suite. |
+
 ## Storage layout (DL #2, #18, #20, #12 in crystal-multi-root)
 
 - **Roots** resolve through `resolve_crystal_roots()` in

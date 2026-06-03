@@ -1,6 +1,6 @@
 ---
 name: crystal-bud
-description: "Append a sidetrack (побег) to an active or routed-dormant crystal. Use proactively whenever a session surfaces an observation, deferred follow-up, or implicit dependency that isn't the current main goal — capturing now prevents loss under context pressure. Continuous capture is the assistant's job; the user reviews periodically."
+description: "Append a sidetrack (побег) to an active or routed-dormant crystal. Use proactively whenever a session surfaces an observation, deferred follow-up, or implicit dependency that isn't the current main goal — capturing now prevents loss under context pressure. Triggers include: adjacent code observation (stale TODO, smell, comment drift), ecosystem block (dep X requires Y v8 incompatible with Z), 'we should also…' or 'later we'll need…' statements, implicit dep noticed while reading code, failed attempt with useful diagnosis, tooling bug worked around, raised/lowered threshold, dropped earlier-in-scope work. Continuous capture is the assistant's job; the user reviews periodically. Default = capture; false positives cost one line, missed побег costs the whole reason the crystal-* suite exists."
 license: MIT
 ---
 

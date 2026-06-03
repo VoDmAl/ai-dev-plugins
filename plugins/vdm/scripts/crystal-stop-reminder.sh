@@ -56,6 +56,42 @@ fi
 
 roots_count=$(resolve_crystal_roots | grep -c '.' 2>/dev/null || echo 0)
 
+# Detect "work-without-capture" at end of turn — for any active workitem
+# with open items, check if any source file under project root is newer than
+# the workitem.md. If yes, the assistant edited code without mirroring the
+# work into workitem capture; emit an extra soft hint. Same heuristic as
+# crystal-capture-reminder but at end-of-turn boundary instead of next-prompt
+# boundary. Cheap: bounded find, fails open on error.
+work_without_capture=""
+if [ -n "$active_with_open" ]; then
+  # Single-quote each glob — without that, the eval below would expand globs
+  # before `find` sees them and the exclusion no-ops silently.
+  excludes=""
+  while IFS= read -r r; do
+    [ -n "$r" ] || continue
+    rel="${r#"$PWD"/}"
+    case "$rel" in
+      /*) excludes="$excludes -not -path '$rel/*'" ;;
+      *)  excludes="$excludes -not -path './$rel/*'" ;;
+    esac
+  done < <(resolve_crystal_roots 2>/dev/null)
+  excludes="$excludes -not -path './.git/*' -not -path './node_modules/*' -not -path './vendor/*' -not -path './.claude/*' -not -path './.serena/*' -not -path './.obsidian/*'"
+
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    [ -f "$f" ] || continue
+    newer=$(eval "find . -newer \"$f\" -type f $excludes 2>/dev/null" | head -1)
+    if [ -n "$newer" ]; then
+      slug=$(extract_slug "$f")
+      if [ -z "$work_without_capture" ]; then
+        work_without_capture="$slug"
+      else
+        work_without_capture="${work_without_capture}, ${slug}"
+      fi
+    fi
+  done <<<"$active_with_open"
+fi
+
 lines=""
 if [ -n "$active_with_open" ]; then
   if [ "${roots_count:-1}" -le 1 ]; then
@@ -95,7 +131,15 @@ if [ -n "$lines" ]; then
   footer="\\n→ /vdm:crystal-cave for full view; /vdm:crystal-cut <slug> to close."
 fi
 
-context="${header}\\n${lines}${footer}${audit_line}"
+# Work-without-capture nudge — appended only when source edits this segment
+# never made it into workitem.md. Phrased as a question, not a directive,
+# because the assistant may legitimately have nothing worth recording.
+capture_nudge=""
+if [ -n "$work_without_capture" ]; then
+  capture_nudge="\\n📌 ${work_without_capture}: source edited but workitem.md untouched — decisions taken or observations worth recording? (\`## Decision Log\` / \`/vdm:crystal-bud\`)"
+fi
+
+context="${header}\\n${lines}${footer}${capture_nudge}${audit_line}"
 context=$(printf '%s' "$context" | sed 's/\\n\\n*$//')
 
 # Stop hook protocol: top-level fields only. `hookSpecificOutput` is valid for
