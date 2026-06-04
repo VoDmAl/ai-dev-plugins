@@ -1,7 +1,7 @@
 ---
 title: "Crystal multi-root: auto-scan of tasks/ directories"
 slug: crystal-multi-root
-status: in-progress
+status: done
 session-type: prd-prep
 created: 2026-05-31
 last-updated: 2026-06-03
@@ -394,8 +394,13 @@ type-prefix именами и mixed frontmatter (`status: idea`, `type: idea`,
 Migration **не автоматизируется** — judgment-driven move per file, как
 в crystal-grow «Migrating legacy docs». Playbook = чеклист + примеры.
 
-**Status:** open — резолвится отдельно (после v1 multi-root shipped и
-протестирован на не-vault репах).
+**Status:** migrated → `[[crystal-migrate/workitem|crystal-migrate]]` (Sidetrack #1
+там содержит те же 5 design-вопросов, переосмысленных как general migration
+questions, не one-vault-specific). Условие «v1 multi-root shipped и
+протестирован на не-vault репах» выполнено: shipped v2.5.0+ multi-root,
+cc-vdm-plugins сам non-vault репа, resolver работает. Promotion-to-sibling
+рамок multi-root перерос — миграция как ремесло живёт отдельно и
+накапливает уроки между проектами.
 
 ### #6. Enforcement script для mandatory inline-маркеров (DL #14)
 
@@ -587,7 +592,7 @@ the crystal-cut gate cannot see the obligation (it counts checkboxes, not
 status text). Resolving a sidetrack means flipping the marker AND updating
 the sidetrack card's `**Status:**` line.
 
-- [ ] см. Sidetrack #5 — migration playbook для vault (отдельный workitem после shipping v1)
+- [x] см. Sidetrack #5 — migrated → `[[crystal-migrate/workitem|crystal-migrate]]` (reframed as skill, not one-vault playbook)
 - [x] см. Sidetrack #6 — enforcement-script для mandatory inline-markers (shipped in vdm v2.9.0)
 
 ### Phase I — Taxonomy & audit (DL #10)
