@@ -348,6 +348,71 @@ count_unchecked() {
   printf '%s\n' "$n"
 }
 
+audit_sidetracks_without_markers() {
+  # Returns "#N. <title>" lines for every sidetrack card with `**Status:** open`
+  # that lacks a matching inline `- [ ] ... Sidetrack #N` marker in the workitem
+  # body (DL #14 in crystal-multi-root). Empty output = no orphans.
+  #
+  # Sidetrack cards: `### #N. <title>` followed at some point by
+  # `**Status:** open[ ...]`. Decision-Log entries use `### #N / date / title`
+  # (slash separator, no period) and never carry `**Status:**` — so they don't
+  # collide with this parser.
+  #
+  # Marker recognition: matches `- [ ] ... Sidetrack #N` anywhere in body
+  # (typically inside `## Pending sidetracks` block, but free placement is OK).
+  # Word-boundary on N uses `[^0-9]|$` instead of `\b` for grep -E portability.
+  local file="$1"
+  [ -f "$file" ] || return 0
+
+  local current_n=""
+  local current_title=""
+  local missing=""
+  local line rest n_part status_text trimmed
+  while IFS= read -r line; do
+    case "$line" in
+      "### #"*)
+        # Strip the literal "### #" prefix — quote needed so bash doesn't read
+        # the `#`s as parameter-expansion operators.
+        rest="${line#"### #"}"
+        # Sidetrack heading shape is "<digits>. <title>" — DL entries use
+        # "<digits> / date / title" instead, so the literal period after N
+        # disambiguates.
+        case "$rest" in
+          *.*) : ;;
+          *)   current_n=""; current_title=""; continue ;;
+        esac
+        n_part="${rest%%.*}"
+        case "$n_part" in
+          ''|*[!0-9]*) current_n=""; current_title=""; continue ;;
+          *) current_n="$n_part" ;;
+        esac
+        # Title is everything after the first period; trim leading whitespace.
+        trimmed="${rest#*.}"
+        trimmed="${trimmed#"${trimmed%%[![:space:]]*}"}"
+        current_title="$trimmed"
+        ;;
+      "**Status:**"*)
+        if [ -n "$current_n" ]; then
+          status_text="${line#"**Status:**"}"
+          status_text="${status_text#"${status_text%%[![:space:]]*}"}"
+          case "$status_text" in
+            open*)
+              if ! grep -qE "^[[:space:]]*-[[:space:]]*\[[[:space:]]\].*Sidetrack #${current_n}([^0-9]|$)" "$file" 2>/dev/null; then
+                missing="${missing}#${current_n}. ${current_title}
+"
+              fi
+              ;;
+          esac
+          current_n=""
+          current_title=""
+        fi
+        ;;
+    esac
+  done < "$file"
+
+  printf '%s' "$missing"
+}
+
 extract_slug() {
   # extract_slug <workitem-path>
   # In single-root mode: slug is relative to root (e.g. "auth-refactor").

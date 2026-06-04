@@ -154,10 +154,12 @@ Resolving a sidetrack later means flipping its inline marker `[ ]` → `[x]`
 **and** updating the sidetrack card's `**Status:**` line; the two must
 stay in sync.
 
-The future enforcement script (deterministic audit that scans `Status: open`
-cards against existing markers) is tracked as a separate workitem — until
-it ships, this convention is enforced by SKILL.md text + Quality gates
-review below.
+**Deterministic enforcement (shipped):** the orphan-sidetracks gate in
+`crystal-completion-guard.py` blocks the `done` transition whenever any
+`Status: open` card lacks its inline marker. Implementation in
+`lib/crystal-path.sh` as `audit_sidetracks_without_markers <workitem-path>`
+(bash) and mirrored in the python guard. See `crystal-cut/SKILL.md` →
+"Orphan-sidetracks gate" for the gate diagnostic and fix path.
 
 ### Step 5: TaskCreate (DL #21)
 
