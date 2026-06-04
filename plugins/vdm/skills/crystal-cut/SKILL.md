@@ -47,13 +47,42 @@ terminal statuses behave differently:
 
 | Terminal status | Gate                                                                  |
 |-----------------|-----------------------------------------------------------------------|
-| `done`          | Unchecked-items gate (see above). Five resolution paths apply.        |
+| `done`          | Unchecked-items gate (see above) **+** orphan-sidetracks gate (see below). Five resolution paths apply. |
 | `superseded`    | Requires `superseded-by: <slug>` in frontmatter — names the replacement. Gate blocks transition without it. The replacement workitem should cross-link back (`migrated from: <this-slug>` in body or `superseded: <this-slug>` in frontmatter). |
 | `cancelled`     | No gate — author explicitly drops the work; unchecked items are no longer obligations. Record rationale inline (typically in a closing `## Cancelled` paragraph). |
 
 The `superseded-by` requirement is enforced by the same PreToolUse hook
 (`crystal-completion-guard.sh` → `crystal-completion-guard.py`) — see DL #10
 for the gate design.
+
+### Orphan-sidetracks gate (DL #14 in crystal-multi-root)
+
+A sidetrack card can have `**Status:** open` without a corresponding inline
+`- [ ] см. Sidetrack #N` marker in the workitem body. Without the marker,
+the obligation is invisible to the checkbox-counting `unchecked-items`
+gate — `crystal-cut` would silently pass over it. DL #14 declares the
+inline-marker requirement; this gate enforces it deterministically.
+
+Logic: scan every sidetrack card heading `### #N. <title>` followed at some
+point by `**Status:** open[ ...]`. For each, look for a matching marker
+line `- [ ] ... Sidetrack #N` anywhere in the body. Cards lacking a marker
+are reported as orphans and block the done-transition with the combined
+diagnostic (orphans listed alongside unchecked items if both exist).
+
+Decision-Log entries use a different heading shape (`### #N / date / title`,
+slash separator, no period after N) and never carry `**Status:**`, so the
+parser does not collide with them.
+
+Fix path for orphans: add the marker line (typically inside a
+`## Pending sidetracks` block under `## Next actions`, or at the spot of
+origin if the побег surfaced in body text), then resolve it via one of the
+five paths above. The marker turns the invisible obligation into a visible
+checkbox the other gate already understands.
+
+Implementation:
+- bash `audit_sidetracks_without_markers <workitem-path>` in `lib/crystal-path.sh`
+- python `_audit_sidetracks_without_markers(content)` in `crystal-completion-guard.py`
+  Both must stay in sync — they implement the same parser.
 
 ## Five resolution paths (DL #9)
 

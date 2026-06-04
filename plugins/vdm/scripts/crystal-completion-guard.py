@@ -123,6 +123,44 @@ def _split_csv(value: str, default: str) -> set[str]:
     return {item.strip() for item in raw.split(",") if item.strip()}
 
 
+def _audit_sidetracks_without_markers(content: str) -> list[str]:
+    """Open sidetrack cards (Status: open) that lack an inline `- [ ] Sidetrack #N`
+    marker in the workitem body. Returns "#N. <title>" entries.
+
+    Card heading shape: `### #N. <title>` — the literal period after N
+    distinguishes from Decision-Log entries (`### #N / date / title`).
+    Decision-Log entries also never carry `**Status:**`, so they're double-safe.
+    Mirrors the bash `audit_sidetracks_without_markers` in lib/crystal-path.sh —
+    both implementations must stay in sync.
+    """
+    card_re = re.compile(r"^### #(\d+)\.\s*(.*)$")
+    status_re = re.compile(r"^\*\*Status:\*\*\s*(.+)$")
+    open_cards: list[tuple[str, str]] = []
+    current_n: str | None = None
+    current_title: str | None = None
+    for line in content.splitlines():
+        m = card_re.match(line)
+        if m:
+            current_n = m.group(1)
+            current_title = m.group(2).strip()
+            continue
+        m = status_re.match(line)
+        if m and current_n is not None:
+            if m.group(1).strip().lower().startswith("open"):
+                open_cards.append((current_n, current_title or ""))
+            current_n = None
+            current_title = None
+    missing: list[str] = []
+    for n, title in open_cards:
+        marker_re = re.compile(
+            rf"^[ \t]*-[ \t]*\[ \].*Sidetrack #{n}(?:[^0-9]|$)",
+            re.MULTILINE,
+        )
+        if not marker_re.search(content):
+            missing.append(f"#{n}. {title}")
+    return missing
+
+
 def main() -> int:
     payload = _load_payload()
     if not payload:
@@ -162,24 +200,41 @@ def main() -> int:
 
     if status in done_set:
         unchecked = re.findall(r"(?m)^[ \t]*-[ \t]*\[ \](.*)$", content)
-        if not unchecked:
+        orphans = _audit_sidetracks_without_markers(content)
+        if not unchecked and not orphans:
             return 0
-        sample = "\n".join("    " + line.strip() for line in unchecked[:5])
-        extra = "" if len(unchecked) <= 5 else f"\n    ... and {len(unchecked) - 5} more"
-        sys.stderr.write(
-            f"[crystal-cut] blocked: cannot transition `{slug}` to status:done "
-            f"while {len(unchecked)} unchecked item(s) remain.\n\n"
-            f"  Workitem: {abs_path}\n\n"
-            f"  Unchecked:\n{sample}{extra}\n\n"
-            f"  Resolve each unchecked item by one of the five paths "
-            f"(see Decision Log #9 in crystal-design):\n"
-            f"    [x] resolved       — fixed in this workitem; check the box\n"
-            f"    migrated -> <slug> — moved to another workitem; cross-link both sides\n"
-            f"    cancelled (...)    — explicitly dropped with rationale (HITL)\n"
-            f"    deferred (date)    — postponed with a target date\n"
-            f"    promoted-to-stem   — promoted into a sibling workitem\n\n"
-            f"  Once every `- [ ]` is addressed, re-run the edit that flips status:done.\n"
+        parts: list[str] = [
+            f"[crystal-cut] blocked: cannot transition `{slug}` to status:done.\n",
+            f"  Workitem: {abs_path}\n",
+        ]
+        if unchecked:
+            sample = "\n".join("    " + line.strip() for line in unchecked[:5])
+            extra = "" if len(unchecked) <= 5 else f"\n    ... and {len(unchecked) - 5} more"
+            parts.append(
+                f"\n  Unchecked items ({len(unchecked)}):\n{sample}{extra}\n"
+            )
+        if orphans:
+            sample = "\n".join("    " + entry for entry in orphans[:5])
+            extra = "" if len(orphans) <= 5 else f"\n    ... and {len(orphans) - 5} more"
+            parts.append(
+                f"\n  Orphan open sidetracks ({len(orphans)}) — `Status: open` "
+                f"without an inline `- [ ] ... Sidetrack #N` marker (DL #14 in "
+                f"crystal-multi-root). Without the marker the obligation is "
+                f"invisible to the unchecked-items gate:\n{sample}{extra}\n"
+                f"\n  Fix: add a `- [ ] см. Sidetrack #N — <hint>` line in a "
+                f"`## Pending sidetracks` block (under `## Next actions`) or at "
+                f"the spot of origin, then resolve it like any other obligation.\n"
+            )
+        parts.append(
+            "\n  Resolve via one of the five paths (Decision Log #9 in crystal-design):\n"
+            "    [x] resolved       — fixed in this workitem; check the box\n"
+            "    migrated -> <slug> — moved to another workitem; cross-link both sides\n"
+            "    cancelled (...)    — explicitly dropped with rationale (HITL)\n"
+            "    deferred (date)    — postponed with a target date\n"
+            "    promoted-to-stem   — promoted into a sibling workitem\n"
+            "\n  Once every obligation is addressed, re-run the edit that flips status:done.\n"
         )
+        sys.stderr.write("".join(parts))
         return 2
 
     if status in superseded_set:

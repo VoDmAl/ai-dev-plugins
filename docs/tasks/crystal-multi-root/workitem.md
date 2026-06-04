@@ -4,7 +4,7 @@ slug: crystal-multi-root
 status: in-progress
 session-type: prd-prep
 created: 2026-05-31
-last-updated: 2026-05-31
+last-updated: 2026-06-03
 ---
 
 # Crystal multi-root: auto-scan of tasks/ directories
@@ -417,8 +417,13 @@ Migration **не автоматизируется** — judgment-driven move per
 - Параллель `audit_non_canonical` в lib/crystal-path.sh:
   `audit_sidetracks_without_markers()`.
 
-**Status:** open — отложено до отдельного workitem'а (вероятно
-`crystal-discipline-strict` или включить в migration playbook crystal).
+**Status:** resolved — shipped in vdm v2.9.0. `audit_sidetracks_without_markers()`
+в `lib/crystal-path.sh` (+ mirror) + python-параллель в
+`crystal-completion-guard.py`. Gate extension: при done-transition блокируется
+не только non-zero unchecked, но и любая `Status: open` карточка без inline
+маркера (combined diagnostic). Updates: `crystal-cut/SKILL.md` →
+"Orphan-sidetracks gate" subsection; `crystal-bud/SKILL.md` → "future
+enforcement script" заменён на "shipped".
 
 ### #4. docs-sync Phase 0 в multi-root становится шумнее
 
@@ -583,7 +588,7 @@ status text). Resolving a sidetrack means flipping the marker AND updating
 the sidetrack card's `**Status:**` line.
 
 - [ ] см. Sidetrack #5 — migration playbook для vault (отдельный workitem после shipping v1)
-- [ ] см. Sidetrack #6 — enforcement-script для mandatory inline-markers
+- [x] см. Sidetrack #6 — enforcement-script для mandatory inline-markers (shipped in vdm v2.9.0)
 
 ### Phase I — Taxonomy & audit (DL #10)
 
