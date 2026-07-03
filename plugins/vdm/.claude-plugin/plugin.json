@@ -1,7 +1,7 @@
 {
   "name": "vdm",
-  "version": "2.9.0",
-  "description": "SDLC workflow plugins: docs-sync (documentation synchronization), learn (knowledge capture), changelog (project change tracking), crystal-* (workitem discipline gate — grow/bud/cut/cave).",
+  "version": "2.10.0",
+  "description": "SDLC workflow plugins: docs-sync (documentation synchronization), learn (knowledge capture), changelog (project change tracking), crystal-* (workitem discipline gate — grow/bud/cut/cave), intercom (central cross-agent/cross-session message store).",
   "author": {
     "name": "Dmitry Vorobyev",
     "url": "https://vorobyev.org"
@@ -19,6 +19,8 @@
     "knowledge",
     "crystal",
     "workitem",
-    "discipline"
+    "discipline",
+    "intercom",
+    "handoff"
   ]
 }
