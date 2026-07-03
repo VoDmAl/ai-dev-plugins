@@ -65,7 +65,9 @@ The current project's canonical identity resolves as (DL #4, #7):
 
 Print it with `/vdm:intercom identity`. Directory basename and `owner/repo`
 are kept as registry **aliases**, so a sender addressing any of a project's
-names resolves to the same inbox.
+names resolves to the same inbox. If two different repos ever resolve to the
+same identity (same remote last-segment, different owner/host), `register`
+warns on the collision — set a distinct `intercom.identity` in one of them.
 
 ## Subcommands
 
