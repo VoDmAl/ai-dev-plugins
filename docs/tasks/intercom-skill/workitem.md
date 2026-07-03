@@ -142,6 +142,13 @@ is committed: the store is outside all repos. Realtime push deferred (Sidetrack 
 **Why:** forcing `status: done` would require cancelling or hiding real open obligations; the completion discipline (and the orphan-sidetracks gate) correctly resist that. v1 ships as a complete, verified feature while the crystal stays `in-progress` with the four побеги as visible pending work.
 **Consequence:** a `## Pending sidetracks` block carries inline `- [ ] см. Sidetrack #N` markers (DL #14 compliance). Closure path — keep open / promote-to-stem / defer — left to the user. `crystal-migrate` stays dormant until intercom closes or the user resumes it.
 
+### #10 / 2026-07-03 / Receiver reminder OFF by default; auto-watching rejected (#1 cancelled)
+
+**Source:** user
+**Context:** the v1 reminder defaulted to on (fire when the inbox is non-empty). The user rejected the auto-watch model outright: a message arriving mid-session is almost always meant for a *new* session, and a "you have mail" nudge interrupts active work. Checking should be explicit (`/vdm:intercom check`) or user-directed.
+**Why:** deliberately overrides the project's `enabled: true` default convention — the concrete reason is UX (mid-session interruption), which the convention permits as an exception. `intercom-reminder.sh` now reads `enabled` with default `false`; opt in via `/vdm:intercom on`.
+**Consequence:** Sidetrack #1 (realtime inotify) is **cancelled**, not deferred — it is the extreme of the rejected watching model. The reminder code stays (opt-in), so no capability is lost. Recorded here so a future session doesn't "fix" the default back to `true`.
+
 ## Sidetracks
 
 ### #1. Realtime inotify notification
@@ -151,7 +158,8 @@ is committed: the store is outside all repos. Realtime push deferred (Sidetrack 
 **Описание:** instead of per-prompt polling, actively surface a new inbox message
 mid-session via a filesystem watch. Future enhancement on top of the v1 poll.
 
-**Status:** open
+**Status:** cancelled (2026-07-03, DL #10) — auto-watching rejected by the user;
+inotify is its extreme form. Not deferred. Explicit `check` is the model.
 
 ### #2. Migrate & retire the legacy t23b `_outbox/` prototype
 
@@ -161,7 +169,15 @@ mid-session via a filesystem watch. Future enhancement on top of the v1 poll.
 `.gitignore` rule. Once intercom ships: migrate them into the store and retire
 the `_outbox` convention + note.
 
-**Status:** open
+**Status:** resolved (2026-07-03) — nothing to do. The convention was already
+retired by the user in t23b-content `03624f8` (tracked removals: `MEMORY.md`,
+memory note, `.gitignore` rule; the git-ignored `_outbox/` dir was deleted
+off-disk, never tracked → not git-recoverable, none needed). Both briefs
+completed their lifecycle under the old convention: `handoff-skill.md` →
+fulfilled (intercom shipped); the Sulu brief → received by the www.t23b.org
+agent, migrated into `docs/tasks/sulu-media-metadata-rendering/` (brief
+preserved verbatim in `references/original-handoff-brief.md`), implemented
+(`de55b032`, `44a86876`), user-confirmed done. Nothing to migrate into the store.
 
 ### #3. Cross-harness store visibility (Claude Code vs Qwen)
 
@@ -170,7 +186,10 @@ the `_outbox` convention + note.
 (`~/.qwen/`). Consider a harness-neutral default (`~/.vdm/intercom`) or a shared
 pointer so agents under different harnesses share one mailbox.
 
-**Status:** open
+**Status:** resolved (2026-07-03) — non-issue by construction. The default store
+is a fixed absolute path (`$HOME/.claude/vdm/intercom`), NOT harness-derived, so
+any harness running the scripts resolves the same mailbox → already shared. Only
+env/global-config *overrides* are Claude-scoped. Documented in SKILL § Store location.
 
 ### #4. Slug collision across different remote owners
 
@@ -212,9 +231,9 @@ v1 — реализовано и проверено (17/17 core smoke; reminder 
 Блокирующий tail — открытые побеги: будущие улучшения, не блокеры v1. Каждый несёт
 inline-маркер (DL #14), чтобы обязательство было видно completion-гейту.
 
-- [ ] см. Sidetrack #1 — realtime inotify-нотификация (poll → watch)
-- [ ] см. Sidetrack #2 — миграция + ретайр legacy t23b `_outbox/` (2 реальных брифа)
-- [ ] см. Sidetrack #3 — cross-harness store (Claude Code `~/.claude` vs Qwen `~/.qwen`)
+- [x] см. Sidetrack #1 — realtime inotify — cancelled (DL #10: авто-слежка отвергнута, явный check — модель)
+- [x] см. Sidetrack #2 — миграция + ретайр legacy t23b `_outbox/` — resolved: конвенция ретайрнута юзером (03624f8), оба брифа исполнены, ничего не потеряно
+- [x] см. Sidetrack #3 — cross-harness store — resolved: фикс. абс. путь, общий для любого harness (SKILL § Store location)
 - [ ] см. Sidetrack #4 — slug-коллизия при одинаковом remote-slug у разных owner
 
 ## References

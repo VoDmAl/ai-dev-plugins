@@ -1,12 +1,18 @@
 #!/bin/bash
 # intercom reminder — receiver-side "you have pending messages" nudge.
-# Behavior governed by .claude/vdm-plugins.json → intercom:
-#   enabled=false           → never fires
+#
+# OFF BY DEFAULT (DL #10). Auto-watching for incoming mail is the wrong model:
+# a message arriving mid-session is almost always meant for a NEW session, and a
+# "you have mail" nudge interrupts active work. Checking is an explicit action
+# (`/vdm:intercom check`); opt into the reminder with `/vdm:intercom on`.
+#
+# Behavior once enabled, governed by .claude/vdm-plugins.json → intercom:
+#   enabled=false (default) → never fires
 #   mode=silent             → never fires
 #   mode=conditional|quiet  → fires whenever the inbox is non-empty (no throttle)
-#   mode=smart              → fires when inbox non-empty AND throttle window elapsed (default)
+#   mode=smart              → fires when inbox non-empty AND throttle window elapsed
 #   mode=proactive          → fires every prompt while inbox non-empty (no throttle)
-# Default (no config): enabled=true, mode=smart.
+# Default (no config): enabled=false; when enabled, mode=smart.
 #
 # The store is a machine-level mailbox OUTSIDE all repos; "inbox" = this repo's
 # canonical-identity dir under the store (DL #1, #4). The reminder is inherently
@@ -23,7 +29,9 @@
 # shellcheck disable=SC1091
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/intercom-common.sh" 2>/dev/null || true
 
-vdm_is_enabled "intercom" || exit 0
+# Default-OFF (opt-in): read enabled with default "false", not vdm_is_enabled
+# (which defaults true). See header — auto-watching is off by design.
+[ "$(vdm_config_read intercom enabled false)" = "true" ] || exit 0
 mode=$(vdm_get_mode "intercom" "smart")
 [ "$mode" = "silent" ] && exit 0
 

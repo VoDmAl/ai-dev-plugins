@@ -1,6 +1,6 @@
 ---
 name: intercom
-description: "Central cross-agent/cross-session message store. Leave a task brief or note for another repo's agent — or for a future clean session of your own — with /vdm:intercom send; list and consume your inbox with check/pickup. The store lives OUTSIDE all repos (no per-repo .gitignore), routed by git-remote-derived identity. Auto-surface via a receiver-side reminder when messages are waiting."
+description: "Central cross-agent/cross-session message store. Leave a task brief or note for another repo's agent — or for a future clean session of your own — with /vdm:intercom send; list and consume your inbox with check/pickup. The store lives OUTSIDE all repos (no per-repo .gitignore), routed by git-remote-derived identity. Checking your inbox is an explicit action (/vdm:intercom check); an optional receiver-side reminder exists but is OFF by default."
 license: MIT
 ---
 
@@ -48,6 +48,11 @@ The store root resolves in this order (`scripts/intercom-common.sh`):
 
 The configured value is the **full store path** (a leading `~` is expanded).
 Show the resolved root with `/vdm:intercom root show`.
+
+The default is a **fixed absolute path**, not harness-derived — any harness that
+runs these scripts (Claude Code, Qwen Code, …) resolves the same store, so the
+mailbox is shared across harnesses out of the box. (An env / global-config
+*override* lives under `~/.claude/` and is therefore Claude-scoped.)
 
 ## Identity resolution
 
@@ -129,10 +134,10 @@ above, behave as the regular skill described here.
 | `config` / `status` | Read and display the current `intercom` section |
 | `reset` | Remove the `intercom` key (revert to defaults) |
 
-**Defaults when the section is missing:** `enabled: true`, `mode: "smart"`.
-Throttle window: `intercom.throttle` seconds (default `600`). The reminder is
-inherently low-noise — it stays silent whenever the inbox is empty, regardless
-of mode.
+**Defaults when the section is missing:** `enabled: false` (opt-in), `mode: "smart"`.
+The reminder is **off by default** by design (see § Automatic activation) — turn
+it on with `/vdm:intercom on`. Once on: throttle window `intercom.throttle`
+seconds (default `600`), and it stays silent whenever the inbox is empty.
 
 Store-location management (writes the **global** `~/.claude/vdm-plugins.json`,
 not the per-project file):
@@ -172,10 +177,15 @@ per-project detection above.
 
 ## Automatic activation
 
-**Via hook:** a `UserPromptSubmit` hook (`scripts/intercom-reminder.sh`) reports
-pending messages addressed to the current project. It reuses the shared
-`config-read` + `reminder-throttle` helpers, honors the config above, and fires
-only when the inbox is non-empty.
+**Off by default.** Checking the inbox is an **explicit action**
+(`/vdm:intercom check`) or something you ask for directly. A message that lands
+mid-session is almost always meant for a *new* session, so an automatic
+"you have mail" nudge would interrupt active work rather than help it.
+
+An opt-in `UserPromptSubmit` reminder (`scripts/intercom-reminder.sh`) is
+available for those who want it — enable with `/vdm:intercom on`. When enabled it
+reuses the shared `config-read` + `reminder-throttle` helpers and fires only when
+the current project's inbox is non-empty.
 
 ## Examples
 
