@@ -2,7 +2,7 @@
 title: "Intercom — central cross-agent/cross-session message store as /vdm:intercom"
 slug: intercom-skill
 description: "Ship /vdm:intercom: central mailbox outside repos, remote-slug identity, self-registering registry, receiver-side reminder"
-status: in-progress
+status: done
 session-type: prd-work
 created: 2026-07-03
 last-updated: 2026-07-03
@@ -149,6 +149,13 @@ is committed: the store is outside all repos. Realtime push deferred (Sidetrack 
 **Why:** deliberately overrides the project's `enabled: true` default convention — the concrete reason is UX (mid-session interruption), which the convention permits as an exception. `intercom-reminder.sh` now reads `enabled` with default `false`; opt in via `/vdm:intercom on`.
 **Consequence:** Sidetrack #1 (realtime inotify) is **cancelled**, not deferred — it is the extreme of the rejected watching model. The reminder code stays (opt-in), so no capability is lost. Recorded here so a future session doesn't "fix" the default back to `true`.
 
+### #11 / 2026-07-03 / Inbox-collision warning ships (Sidetrack #4 resolved)
+
+**Source:** user («давай хвост подтянем»)
+**Context:** #4 was the last open побег. Canonical identity = repo-slug, so two repos with the same remote last-segment (different owner/host) would share one inbox.
+**Why:** the registry already records each identity's remote, so a genuine collision is cheaply detectable. Chose the cheap warning over a full owner-qualified canonical (YAGNI for a single machine). `intercom_register` warns (stderr, non-fatal) when the identity is already registered to a different remote, advising a distinct `intercom.identity`.
+**Consequence:** #4 resolved; all побеги closed (#1 cancelled, #2/#3/#4 resolved) and all Next actions done → crystal cut to `status: done`.
+
 ## Sidetracks
 
 ### #1. Realtime inotify notification
@@ -198,7 +205,9 @@ env/global-config *overrides* are Claude-scoped. Documented in SKILL § Store lo
 owners/hosts) collide on the same inbox dir. Registry aliases mitigate; consider
 an opt-in owner-qualified canonical for the ambiguous case.
 
-**Status:** open
+**Status:** resolved (2026-07-03, DL #11) — cheap collision warning added to
+`intercom_register` (warns when identity maps to a different remote). Full
+owner-qualified canonical deferred as YAGNI for a single machine.
 
 ## Next actions
 
@@ -234,7 +243,7 @@ inline-маркер (DL #14), чтобы обязательство было в�
 - [x] см. Sidetrack #1 — realtime inotify — cancelled (DL #10: авто-слежка отвергнута, явный check — модель)
 - [x] см. Sidetrack #2 — миграция + ретайр legacy executor `_outbox/` — resolved: конвенция ретайрнута юзером (03624f8), оба брифа исполнены, ничего не потеряно
 - [x] см. Sidetrack #3 — cross-harness store — resolved: фикс. абс. путь, общий для любого harness (SKILL § Store location)
-- [ ] см. Sidetrack #4 — slug-коллизия при одинаковом remote-slug у разных owner
+- [x] см. Sidetrack #4 — slug-коллизия — resolved: collision-warning в register (DL #11)
 
 ## References
 

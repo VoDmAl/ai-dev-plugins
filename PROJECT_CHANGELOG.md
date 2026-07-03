@@ -10,6 +10,10 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ## 2026-07-03
 
+### 🔧 TOOLING: intercom — inbox-collision warning closes Sidetrack #4 (vdm v2.10.2)
+`intercom_register` now warns (stderr, non-fatal) when the current repo's canonical identity is already registered to a *different* git remote — i.e. two repos whose remote last-segment slug is identical would share one inbox. Advises setting a distinct `intercom.identity` to separate them. Resolves the last open sidetrack (#4); the intercom crystal is now closed (`status: done`). Registry-based, needs `jq`, fails open. Smoke-tested: warns on a genuine collision, no false positive once the remote matches.
+**Ref**: docs/tasks/intercom-skill/workitem.md (DL #11; Sidetrack #4 resolved; status → done), plugins/vdm/scripts/intercom-common.sh (intercom_register), plugins/vdm/skills/intercom/SKILL.md (Identity resolution note), plugins/vdm/.claude-plugin/plugin.json, .claude-plugin/marketplace.json
+
 ### 🔧 TOOLING: intercom — receiver reminder off by default; #1 (inotify) cancelled (vdm v2.10.1)
 Reversed the reminder's default per user UX direction: an automatic "you have mail" nudge mid-session is the wrong model — an incoming message is almost always meant for a *new* session, and checking is an explicit action (`/vdm:intercom check`). `intercom-reminder.sh` now reads `enabled` with default **false** (opt in via `/vdm:intercom on`) — a deliberate, documented exception to the `enabled: true` default convention, recorded as Decision Log #10. Sidetrack #1 (realtime inotify watching) **cancelled** (same rejected-watching rationale — it was the extreme of it). Sidetrack #3 (cross-harness store) resolved as a non-issue: the default store is a fixed absolute path shared by any harness that runs the scripts (SKILL note added). Sidetrack #4 (cross-owner slug collision) left open/deferred.
 **Ref**: docs/tasks/intercom-skill/workitem.md (DL #10; Sidetracks #1 cancelled, #3 resolved), plugins/vdm/scripts/intercom-reminder.sh, plugins/vdm/skills/intercom/SKILL.md, plugins/vdm/.claude-plugin/plugin.json, .claude-plugin/marketplace.json

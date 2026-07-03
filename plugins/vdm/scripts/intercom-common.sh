@@ -177,6 +177,21 @@ intercom_register() {
   mkdir -p "$regdir" 2>/dev/null || return 0
   regfile="$regdir/$id.json"
   url="$(intercom_remote_url)"
+
+  # Collision detection (Sidetrack #4): the same canonical identity already
+  # registered to a DIFFERENT remote means two repos would share one inbox.
+  # Warn (stderr, non-fatal) so the user can set a distinct intercom.identity.
+  if [ -f "$regfile" ] && [ -n "$url" ]; then
+    local prev_remote
+    prev_remote="$(jq -r '.remote // empty' "$regfile" 2>/dev/null)"
+    if [ -n "$prev_remote" ] && [ "$prev_remote" != "$url" ]; then
+      printf 'intercom: ⚠️  identity "%s" already maps to a different remote — inbox collision:\n' "$id" >&2
+      printf '            registered: %s\n            this repo:  %s\n' "$prev_remote" "$url" >&2
+      printf '            Both share inbox `%s`. Set a distinct `intercom.identity`\n' "$id" >&2
+      printf '            (.claude/vdm-plugins.json) in one repo to separate them.\n' >&2
+    fi
+  fi
+
   top="$(git rev-parse --show-toplevel 2>/dev/null)"
   [ -n "$top" ] || top="$PWD"
   basename_alias="$(basename "$top" | tr '[:upper:]' '[:lower:]')"
