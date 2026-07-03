@@ -33,6 +33,7 @@ Until specialization is needed, everything lives here.
 | crystal-bud | `/vdm:crystal-bud` | Capture a sidetrack into the active (or routed dormant) workitem |
 | crystal-cut | `/vdm:crystal-cut` | Close a workitem — sweeps unchecked items, blocks done-transition if any remain |
 | crystal-cave | `/vdm:crystal-cave` | View all crystals + sidetracks + decision-log summaries (read-only) |
+| intercom | `/vdm:intercom` | Central cross-agent/cross-session message store (send / check / pickup) outside all repos |
 
 ### `vdm-git` — Git Safety (optional)
 
@@ -85,6 +86,9 @@ Adds workitem discipline to long-running sessions. A *crystal* is an in-repo wor
 - **Backup (git only)** — pre-commit check in the `vdm-git` plugin (and an in-repo equivalent for this dev clone) catches IDE-direct edits that bypass the assistant.
 
 A `SessionStart` hook (`crystal-hydrate`) lists active workitems so the assistant Reads them before continuing. Non-canonical statuses (anything outside the 4-tier taxonomy after `status-aliases` resolution) surface as audit warnings in `list-open-crystals`, `crystal-hydrate`, and `crystal-cave` for triage. The design document for the suite is itself the first crystal in this repo — `docs/tasks/crystal-design/workitem.md` — serving as a worked example of the format.
+
+### intercom
+Central **cross-agent / cross-session message store**. Leave a task brief or note for another repo's agent — or for a future clean session of your own (the common "note to future me" case) — with `/vdm:intercom send <target> <slug>`; list and consume your inbox with `check` / `pickup`. Messages live in a **single machine-level store outside all repos** (`$VDM_INTERCOM_ROOT` → `~/.claude/vdm-plugins.json` `intercom.root` → default `~/.claude/vdm/intercom`), so no repo's history or `.gitignore` is touched. Routing is by **canonical identity from the git remote slug**, not the directory basename — a self-registering registry keeps dir-name / `owner/repo` aliases so any of a project's names resolve to the same inbox. Every message carries an explicit `from`/`to` envelope; `pickup --grow` promotes a brief into a workitem via `crystal-grow`. A receiver-side `UserPromptSubmit` reminder surfaces waiting messages (silent when the inbox is empty). Supersedes the older per-repo `_outbox/` handoff pattern.
 
 ### guard (vdm-git plugin)
 Prevents Claude from running `git commit` and `git push` without explicit user permission. All other git operations (merge, rebase, status, diff, etc.) are allowed freely.

@@ -10,8 +10,8 @@
   "plugins": [
     {
       "name": "vdm",
-      "description": "SDLC workflow plugins: docs-sync (documentation synchronization), learn (knowledge capture), changelog (project change tracking), crystal-* (multi-root workitem discipline gate — grow/bud/cut/cave with auto-scan + 4-tier status taxonomy + in-flight capture-reminder + orphan-sidetracks gate).",
-      "version": "2.9.0",
+      "description": "SDLC workflow plugins: docs-sync (documentation synchronization), learn (knowledge capture), changelog (project change tracking), crystal-* (multi-root workitem discipline gate — grow/bud/cut/cave with auto-scan + 4-tier status taxonomy + in-flight capture-reminder + orphan-sidetracks gate), intercom (central cross-agent/cross-session message store outside all repos, git-remote-identity routing + self-registering registry).",
+      "version": "2.10.0",
       "author": {
         "name": "Dmitry Vorobyev"
       },

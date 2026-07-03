@@ -2,10 +2,10 @@
 title: "Crystal-migrate: batch legacy-doc migration skill + cross-project lessons"
 slug: crystal-migrate
 description: "Design + ship /vdm:crystal-migrate; accumulate lessons across project migrations"
-status: in-progress
+status: dormant
 session-type: prd-prep
 created: 2026-06-03
-last-updated: 2026-06-03
+last-updated: 2026-07-03
 ---
 
 # Crystal-migrate — batch legacy migration skill + cross-project lessons
