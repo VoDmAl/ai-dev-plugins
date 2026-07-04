@@ -50,6 +50,10 @@ script, judgment in the skill.
   TSV row of *signals* per legacy `.md` file — dates, frontmatter status + tier,
   unchecked count, heading count, a filename-shape hint, and a heuristic
   `bucket_guess`. It never invents a slug and never makes the final call.
+- **Reference scanner** (`${CLAUDE_PLUGIN_ROOT}/scripts/crystal-refscan.sh`) —
+  `detect` reports which link styles the project uses; `find <old-id>` surfaces a
+  rename's blast radius, bucketed by style. Feeds Step 3.6 (link-integrity). It
+  reports; it never rewrites.
 - **You (the assistant)** read those signals *plus the file content*, refine the
   bucket per DL #3/#4, and propose slugs. The **human** confirms in one review
   pass. Scanner proposes, you refine, human disposes.
@@ -153,16 +157,45 @@ cleanly migrated vs. requires-human-decision. Each requires-decision item become
 a `- [ ]` in the `migration` crystal so its completion gate blocks closing until
 resolved.
 
-### Step 3.6 — Link-integrity scope (Sidetrack #2)
+### Step 3.6 — Link-integrity (DL #11)
 
-Migration is not a pure file-move: moving/renaming a workitem can strand
-references to it elsewhere — code, docs, cross-vault wikilinks, frontmatter
-`relates-to:` / `reference-for:`. The blast radius is **project-specific** and
-can dwarf the md-files themselves. In the plan, add a link-integrity line per
-renamed slug: grep the project for the old path/slug and list inbound
-references the human must rewrite. Deep automated rewrite is deferred (v1 surfaces
-the scope; it does not silently rewrite code). Record what was found as a triage
-`- [ ]` so it isn't lost.
+Migration is not a pure file-move: renaming a slug strands inbound references.
+There is no universal rewrite framework — each project links its own way — so the
+skill splits the problem by what it *can* know, and does **not** ship a blind
+rewriter.
+
+**Detect first (once).** Run
+`${CLAUDE_PLUGIN_ROOT}/scripts/crystal-refscan.sh detect` to see which link
+styles the project uses (frontmatter-graph / wikilink / mdlink) and which
+dominates prose. Record the result as a **link-integrity policy** decision in the
+`migration` crystal's Decision Log — this is how the skill respects conventions
+it didn't know a priori (the answer to "we don't know how this project links").
+
+**Per rename, scan the blast radius.** For each renamed identifier (old slug AND
+old path) run:
+
+    ${CLAUDE_PLUGIN_ROOT}/scripts/crystal-refscan.sh find <old-id>
+
+It buckets every hit by syntax: `frontmatter` (graph keys) · `wikilink` ·
+`mdlink` · `plain`. Then apply the two tiers — **tiering is location-primary, not
+bucket-label-primary**:
+
+- **Tier 1 — auto (intra-crystal graph).** Any hit in a file **under a crystal
+  root** belongs to the graph the skill itself defines (`reference-for:`,
+  `relates-to:`, `superseded-by:`, `migrated-from:`, and `[[slug/workitem|slug]]`
+  wikilinks). Auto-rewrite these to the new slug in the same batch (Step 5.6),
+  showing the diff before apply — safe because the skill owns the convention. (A
+  `relates-to:` block-array item reads as a `wikilink` bucket, not `frontmatter`;
+  location, not bucket label, is what makes it Tier 1.)
+- **Tier 2 — surface + policy (extra-crystal).** Hits **outside** all crystal
+  roots — code, README prose, vault notes, trackers. Using the detected dominant
+  style, **propose** an auto-rewrite only where the style is unambiguous AND the
+  user confirms; otherwise record each as a triage `- [ ]` in the `migration`
+  crystal for the human to rewrite. The skill never silently rewrites code.
+
+External trackers (Jira/GitHub IDs, ticket refs) are reported when they surface
+as `plain` hits but declared **out of scope** for rewrite — they live in systems
+the skill can't touch.
 
 ### Step 4 — One HITL review pass (DL #8)
 
@@ -195,6 +228,12 @@ them):
    `[[<slug>]]` fails Obsidian's shortest-path resolver once every workitem shares
    the basename `workitem.md`).
 5. **Out-of-scope** → do nothing but list it in the report.
+6. **Rewrite intra-crystal graph refs (Tier 1, DL #11).** After all moves — so
+   every new slug exists — apply the auto-rewrite from Step 3.6 to every
+   under-root hit `crystal-refscan.sh find` reported, updating `reference-for:` /
+   `relates-to:` / `superseded-by:` / `[[slug/workitem|slug]]` to the new slug.
+   Extra-crystal (Tier 2) rewrites happen only where the user confirmed; the rest
+   are triage `- [ ]` in the migration crystal.
 
 ### Step 6 — Create the `migration` crystal
 
