@@ -164,6 +164,36 @@ plan-этапе, до move** — стемпятся в frontmatter, поэтом
 на них не влияет. `git mv` — best-effort future-continuity; при тяжёлом
 frontmatter-edit git может увидеть delete+add (косметика blame, не корректность).
 
+### #9. Scan input — explicit dir(s) → resolve_crystal_roots → ask (Phase B)
+
+**Дата:** 2026-07-03
+**Источник:** assistant (implementation-level, closed by architecture)
+**Контекст:** DL #8 сказал «auto-scan `tasks/`-root(ов)», но Назначение требует
+сканировать и legacy вне `tasks/` (root-level `PRD.md`, `prompts/`,
+mixed-frontmatter). Виргин-проект вообще может не иметь `tasks/`-дерева.
+**Решение:** `crystal-migrate-scan.sh` резолвит цель тремя ветками: (1) явные
+`<dir>`-аргументы; (2) иначе `resolve_crystal_roots`; (3) иначе (нет root) —
+пустой вывод, skill спрашивает у человека, где живут legacy-доки, и пере-сканит с
+явным путём. Scanner остаётся механическим; «где» — judgment, отдан skill/HITL.
+**Следствие:** scanner переиспользуем на произвольных деревьях (docs/, vault-папка),
+не залочен на `tasks/`.
+
+### #10. Даты — единый helper `crystal-dates.sh`, git→fs fallback (resolves Sidetrack #3)
+
+**Дата:** 2026-07-03
+**Источник:** assistant
+**Контекст:** DL #6 переиспользует grow-правило дат, но grow «Two rules that bite»
+кодифицировал **только git** (`git log`). Sidetrack #3: non-git проектам нужен
+fallback; проверить grow — не покрывает → back-port.
+**Решение:** дата-деривация вынесена в один shared скрипт
+`scripts/crystal-dates.sh` (git first-commit/last-touch → `stat` birthtime/mtime
+для non-git). Живёт в `scripts/`, **не в `lib/`** — mirrored-lib не нужен (guard в
+vdm-git даты не использует), значит нет vdm-git-бампа. `crystal-migrate-scan.sh`
+его source'ит; grow «Two rules that bite» теперь зовёт его же → паритет migrate↔grow.
+**Следствие:** Sidetrack #3 закрыт конструкцией — обе точки входа (batch-scan и
+single-import) деривят даты одинаково, git или нет. Проверено тестом (non-git
+ветка: birthtime/mtime непусты).
+
 ## Sidetracks
 
 ### #1. Открытые design-вопросы (унаследованы из crystal-multi-root Sidetrack #5)
@@ -215,7 +245,9 @@ fallback: `created` ← birthtime (`stat`), `last-updated` ← mtime. crystal-mi
 обязан иметь этот fallback. Проверить, покрывает ли его grow; если нет — back-port,
 чтобы grow-import в non-git тоже работал.
 
-**Status:** open
+**Status:** resolved → DL #10. Вынесено в shared `scripts/crystal-dates.sh`
+(git first-commit/last-touch → `stat` birthtime/mtime). migrate-scan его source'ит;
+grow «Two rules that bite» теперь зовёт его же (паритет). Проверено тестом.
 
 ## Next actions
 
@@ -230,11 +262,14 @@ fallback: `created` ← birthtime (`stat`), `last-updated` ← mtime. crystal-mi
 
 ### Phase B — Implement
 
-- [ ] Скаффолд `plugins/vdm/skills/crystal-migrate/SKILL.md` (или субблок
-      crystal-grow, в зависимости от Phase A scope-decision)
-- [ ] Реализовать orchestration logic
-- [ ] Тесты на synthetic legacy structures (несколько вариантов: vault-like,
-      monorepo-like, mixed)
+- [x] Скаффолд `plugins/vdm/skills/crystal-migrate/SKILL.md` — standalone (DL #1),
+      self-contained (DL #7)
+- [x] Реализовать orchestration logic — `scripts/crystal-migrate-scan.sh`
+      (механический scan → TSV сигналы) + `scripts/crystal-dates.sh` (shared
+      git→fs дата-helper, DL #10) + `templates/migration-crystal-template.md`
+- [x] Тесты на synthetic legacy structures — `tests/crystal-migrate-scan.test.sh`
+      23/23: git-tree (flat-prefix vault-like), non-git fallback, multi-target
+      (monorepo-like/mixed)
 
 ### Phase C — Field-test
 
@@ -244,7 +279,8 @@ fallback: `created` ← birthtime (`stat`), `last-updated` ← mtime. crystal-mi
 ### Pending sidetracks
 
 - [ ] см. Sidetrack #2 — link-integrity при миграции шире md-файлов
-- [ ] см. Sidetrack #3 — non-git date fallback (migrate ↔ grow паритет)
+      (surfaced в SKILL Step 3.6 как HITL-шаг; deep auto-rewrite → Phase C field-test)
+- [x] см. Sidetrack #3 — non-git date fallback (migrate ↔ grow паритет) → DL #10
 
 ## References
 

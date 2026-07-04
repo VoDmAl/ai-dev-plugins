@@ -351,10 +351,20 @@ Two rules that bite during migration:
 
 - **Dates reflect real history, not the import moment** (the agent's P4). Set
   `created:` to the doc's first commit date and `last-updated:` to its last
-  real touch — e.g. `git log --diff-filter=A --format=%as -- <file>` for
-  created, `git log -1 --format=%as -- <file>` for last-updated. The cave's
-  recency view is only honest if it shows when work actually happened, not
-  when you ran the migration.
+  real touch. Don't hand-run the git plumbing — call the shared helper, which
+  derives both in one shot and **falls back to filesystem birthtime/mtime in
+  non-git projects** (crystal-migrate Sidetrack #3 — projects without git must
+  still get honest dates):
+
+  ```
+  ${CLAUDE_PLUGIN_ROOT}/scripts/crystal-dates.sh <file>   # → "<created>\t<last-updated>"
+  ```
+
+  (Under the hood: `git log --diff-filter=A --format=%as -- <file>` for created,
+  `git log -1 --format=%as -- <file>` for last-updated, then `stat` birthtime/mtime
+  when git can't answer.) The cave's recency view is only honest if it shows when
+  work actually happened, not when you ran the migration. `/vdm:crystal-migrate`
+  is the batch counterpart for a whole tree of legacy docs at once.
 - **Importing an already-complete doc means writing it at `status: done` —
   which must contain zero `- [ ]`.** The completion-guard fires on the
   *creating* Write too (see `crystal-cut` → Gate behavior). Convert any
