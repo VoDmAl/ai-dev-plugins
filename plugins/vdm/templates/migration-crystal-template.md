@@ -55,7 +55,22 @@ the human in one review pass:
 - [ ] Non-canonical statuses to remap: <list>
 - [ ] Stale in-progress / abandoned work to reclassify: <list>
 - [ ] Orphan references (no owner workitem): <list>
-- [ ] Link-integrity: references to migrated files that need rewriting (design-home Sidetrack #2)
+- [ ] Link-integrity Tier 2 (extra-crystal refs to rewrite): <list from `crystal-refscan.sh find`>
+      <!-- Tier 1 (intra-crystal graph) is auto-rewritten during apply; only
+           extra-crystal hits (code, prose, vault notes) land here. See the
+           link-integrity policy DL entry below (design-home DL #11). -->
+
+<!-- Record the project's link-integrity policy once, from `crystal-refscan.sh detect`:
+  ### #2 / {{TODAY}} / Link-integrity policy
+  **Detected styles:** <frontmatter-graph N · wikilink M · mdlink K; dominant prose = X>
+  **Tier 1 (auto):** intra-crystal graph — reference-for/relates-to/superseded-by/wikilinks under a root.
+  **Tier 2 (policy):** <what we auto-rewrite where style is unambiguous vs. leave as triage vs. out-of-scope (trackers)>.
+-->
+
+## Cancelled
+
+<!-- Record any Next-actions / sidetracks dropped at cut here with rationale. -->
+
 
 ## Next actions
 

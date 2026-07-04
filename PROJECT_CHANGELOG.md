@@ -8,6 +8,12 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ---
 
+## 2026-07-04
+
+### ✨ FEATURE: crystal-migrate — link-integrity (two-tier) + crystal closed (vdm v2.12.0)
+Resolved Sidetrack #2 (link-integrity) via a brainstorm → two-tier design (DL #11), then cut the crystal-migrate crystal (`status: done`). The split is by what the skill *can* know: **Tier 1** (intra-crystal graph — `reference-for:`/`relates-to:`/`superseded-by:`/`migrated-from:`/`[[slug/workitem|slug]]`) is auto-rewritten on rename, **location-primary** (a hit in any file under a crystal root is Tier 1 regardless of syntactic bucket — a `relates-to:` block-array item reads as `wikilink` but is still Tier 1 by location); **Tier 2** (extra-crystal — code, prose, vault notes, trackers) is surfaced by a new `crystal-refscan.sh` helper (`detect` reports the project's link styles; `find <old-id>` returns the rename blast radius bucketed by style) → auto-rewrite only where the style is unambiguous and confirmed, else a per-project link-integrity policy DL + triage `- [ ]` in the migration crystal. The skill is explicitly **not** a rewriter — it surfaces and delegates what it didn't define; external trackers (Jira/GitHub) are reported but out of scope. Phase C (field-test) was descoped from build scope (DL #12 — it's operational usage, not a build obligation; each real migration self-documents in its own migration crystal), so the crystal closes honestly as "designed + shipped + tested". Verified: `crystal-refscan.test.sh` 12/12 + `crystal-migrate-scan.test.sh` 23/23. No `lib/` touch → no vdm-git bump.
+**Ref**: docs/tasks/crystal-migrate/workitem.md (status→done; DL #11 link-integrity, DL #12 Phase-C descope; Sidetrack #2 resolved), plugins/vdm/scripts/crystal-refscan.sh, plugins/vdm/skills/crystal-migrate/SKILL.md (Step 3.6/5.6 + refscan), plugins/vdm/templates/migration-crystal-template.md, tests/crystal-refscan.test.sh, plugins/vdm/.claude-plugin/plugin.json, .claude-plugin/marketplace.json
+
 ## 2026-07-03
 
 ### ✨ FEATURE: crystal-migrate — batch legacy-doc migration skill (vdm v2.11.0)
