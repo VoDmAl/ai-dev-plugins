@@ -187,15 +187,35 @@ until next audit. The skill itself never silently rewrites status.
      #3. Migrate to PKCE — deferred (deadline: 2026-07-01)
      #4. Move to JWE — cancelled (out of scope for this workitem)
 
-   Decision Log (6 entries):
+   Decision Log (6 entries · ⚠ 1 unverified):
      #1 / 2026-05-12 / Use refresh-token rotation
-     #2 / 2026-05-13 / In-memory session store, not Redis
-     #3 / 2026-05-14 / ...
+     #2 / 2026-05-13 / In-memory session store, not Redis      ⚠ inferred
+     #3 / 2026-05-14 / Session TTL is 30min                    ~ superseded by #5
+     ...
 ```
 
 When the workitem has no `## Decision Log` section (typical for non-
 brainstorm types), omit that block entirely rather than show an empty
 section.
+
+### Surfacing unverified decisions
+
+The cave is the read side of the `Basis:` field (see `crystal-grow` → *`Basis:`
+— what the decision stands on*). Two annotations, both derived from the entry's
+own fields — no extra state:
+
+| Entry carries | Render | Why it belongs in a survey view |
+|---------------|--------|----------------------------------|
+| `Basis: inferred` or `assumed` | `⚠ inferred` / `⚠ assumed` | A standing decision nobody ever observed. Surfacing it at survey time is the cheapest moment to catch it — before it is load-bearing for something irreversible. |
+| `Superseded-by: #N` | `~ superseded by #N` | Overturned entries stay in the log (append-only) but must not read as current. |
+
+Count the unverified ones in the header (`6 entries · ⚠ 1 unverified`) and omit
+that clause when there are none. Entries with `Basis: observed` or
+`user-stated` render plain — the annotation is for what needs attention, not a
+badge on everything.
+
+If the workitem has a `## Текущая модель` section, show it **above** the
+Decision Log — it is the current truth; the log is how it was arrived at.
 
 ## Sidetracks-only mode
 

@@ -184,14 +184,116 @@ Format (mirrors existing entries in `docs/tasks/crystal-design/workitem.md`):
 ### #N / YYYY-MM-DD / <short title>
 
 **Source:** user | assistant | both
+**Basis:** observed | user-stated | inferred | assumed
+**Basis-detail:** <what was actually seen — or what this was derived from;
+                  if inferred/assumed, what was NOT checked>
 **Context:** <one paragraph — what was on the table>
 **Why:** <one paragraph — the reasoning that selected this option>
-**Consequence:** <what changes downstream because of this choice>
+**Implication:** <what changes downstream because of this choice>
+**Cross:** см. Sidetrack #N (optional)
+**Supersedes:** #N, #M (only when this entry overturns earlier ones)
+**Superseded-by:** #N (added to an entry when a later one overturns it)
 ```
 
 Do not write DL entries for: routine implementation steps, obvious choices,
 mechanical refactors. The bar is "future reader, six months from now,
 opening this file cold, would need this to understand the work."
+
+### `Basis:` — what the decision *stands on* (not who made it)
+
+`Source` records **who** decided. `Basis` records **what the decision rests
+on** — and it is the field that makes an epistemic hole visible at the moment
+of writing rather than after it has cost something.
+
+| Value | Meaning | Trust |
+|-------|---------|-------|
+| `observed` | Seen with your own eyes in the **target system** — the report, the log, the dump, the actual response, the rendered page. | Load-bearing |
+| `user-stated` | The user said so. Not independently verified. | Usually fine — but it is *their* claim, not your observation |
+| `inferred` | Derived from an **adjacent** source: a config file, the code, the documentation, a schema. | **Suspect** |
+| `assumed` | A default expectation. Nobody said it and nothing showed it. | **Suspect** |
+
+The distinction that matters is `observed` vs. `inferred`, and it is subtle
+precisely because `inferred` *feels* like knowledge. **A config describes what
+a system was told to do. It does not tell you what the system actually does,
+what else writes to the same place, or what was already there.** Reading a
+config and concluding what exists in the live system is inference, not
+observation — even when the config is authoritative, even when you are right.
+The same trap holds for code (what it does when it runs ≠ what it looks like),
+schemas (declared shape ≠ stored data), and docs (intent ≠ reality).
+
+Rules:
+
+1. **`Basis` is mandatory.** An entry without it is not a Decision Log entry.
+2. **`inferred` and `assumed` must say what was NOT checked** in `Basis-detail`.
+   "Derived from the config; not verified against the live system" is a complete
+   and honest answer. The unverified part is the *point* of the field — hiding
+   it defeats the purpose.
+3. **Do not upgrade `inferred` to `observed` because it feels solid.** Confidence
+   is not observation. If you did not look at the target system, the value is
+   `inferred`, however obvious the conclusion.
+4. **When an `inferred` entry is later verified**, do not silently edit it.
+   Write a new entry (`Basis: observed`) that supersedes it — the history of
+   having been unsure is itself signal.
+
+#### Where `Basis` bites — and where it doesn't
+
+`Basis` is not a quality score, and `observed` is not the goal. The field
+constrains **claims about how some existing system actually behaves** — the
+kind of claim that can be false without anyone noticing. It is nearly inert on
+**preference decisions** (*what shall we build, what shall we call it, which
+trade-off do we accept*), because there is nothing to observe: the basis of a
+design choice genuinely **is** somebody's judgment.
+
+A design or brainstorm crystal whose entries are honestly all `user-stated` is
+not a crystal that failed the discipline — that is simply what the log of a
+design conversation looks like. Do not manufacture `observed` where there was
+nothing to look at; a fabricated `observed` is strictly worse than an honest
+`user-stated`, because it spends the credibility the field exists to carry.
+
+The field earns its keep the moment an entry asserts something *factual about a
+live system* — what exists, what is already wired to what, what will happen if
+this changes. That is the claim that gets acted on, and the claim that is
+cheapest to be quietly wrong about.
+
+For `user-stated`, a **verbatim quote is the ideal `Basis-detail`** (several
+entries in `docs/tasks/crystal-design/workitem.md` already do this with an
+ad-hoc `**Quote:**` line). It preserves what was actually said, rather than your
+paraphrase of it — and your paraphrase is where their claim quietly becomes
+your inference.
+
+### Superseding a decision
+
+The Decision Log is **append-only**. When a later decision overturns an earlier
+one, do not delete or rewrite the earlier entry — it is the record of what was
+believed and why. Instead:
+
+1. Add the new entry with `**Supersedes:** #N` naming every entry it overturns.
+2. Add `**Superseded-by:** #<new>` to each overturned entry — one line, in place.
+   This is the *only* edit permitted to a past entry.
+3. **Update `## Текущая модель`.** This is not optional. A supersede that leaves
+   the live section stale has done half the job: the log now records the
+   correction, but the file still *reads* as the old truth to anyone who does
+   not replay the whole history.
+
+An entry with no `Superseded-by:` is in force. Absence means active — which is
+why existing entries written before this field existed remain valid as-is; no
+backfill is needed.
+
+> **Do not rename this to `**Status:**`.** It reads like the obvious name, and
+> it is taken: sidetrack cards use `**Status:** open|deferred|…`, and the
+> open-sidetrack parser (`audit_sidetracks_without_markers` in
+> `${CLAUDE_PLUGIN_ROOT}/lib/crystal-path.sh`) discriminates DL entries from
+> sidetrack cards on the documented invariant that **DL entries never carry
+> `**Status:**`**. Reusing the token would also give one file two different
+> `Status` taxonomies, which no reader should have to disambiguate by enclosing
+> section.
+
+Why the append-only log needs a live section: a crystal that runs for weeks
+accumulates entries where #11 kills #6, #9 and #10. A reader opening the file
+cold hits the **overturned** decisions first, in chronological order, and only
+finds the corrections if they read to the end. `## Текущая модель` is the
+answer to "if I read one section, which one tells me where things actually
+stand?"
 
 ### What goes into `## Sidetracks` (побег)
 
@@ -232,6 +334,99 @@ The hooks honor `crystal.capture-mode` in `.claude/vdm-plugins.json`:
 | `proactive` | Fires every UserPromptSubmit while an active workitem exists. Use during onboarding or when discipline isn't yet internalised. |
 | `silent`    | Never fires. Use only after the discipline is fully internalised — the cost of a missed капчер is the cost of the suite. |
 
+## Pre-action gate — before anything irreversible
+
+> **Кристалл защищает не только своё закрытие, но и прод.** Нельзя совершать
+> необратимое действие, опираясь на решение, которое никто не наблюдал.
+
+Everything else in this suite guards the *workitem*: the completion-guard hook
+refuses `status: done` while `- [ ]` items remain. Nothing guards what happens
+*outside* the workitem. That asymmetry is the expensive one — the crystal will
+faithfully record a decision, carry it across three compactions, and hand it to
+you intact, without ever asking whether the decision was ever true.
+
+This gate is the missing step. It is a **protocol, not a hook** — see *Why this
+isn't a hook* below.
+
+### When it applies
+
+Before any **irreversible external action**. The test is not the tool you use,
+it is the effect:
+
+> Could I undo this in the next minute, by myself, with nobody else affected?
+
+If **no**, the gate applies. Typical categories — not an exhaustive list, and
+the list is not the point, the test is:
+
+- **publish / deploy** — pushing config or code to a live environment
+- **delete / overwrite** — data, history, backups, branches (`push --force`)
+- **send** — mail, messages, webhooks, notifications to real recipients
+- **migrate** — schema changes, data transformations, backfills
+- **external side effects** — any API call that charges, provisions, orders,
+  grants access, or mutates third-party state
+- anything touching **money, people, or someone else's system**
+
+### The checklist
+
+1. **Re-read `workitem.md`.** The file, not your memory of it. After a
+   compaction your memory of it is a summary, and a summary is exactly where
+   the `Basis` field goes missing.
+2. **Name the Decision Log entries this action rests on.** Explicitly, by
+   number. If you cannot name any — the action rests on nothing that was ever
+   written down. Stop and write the entry first; the act of writing it is what
+   surfaces the gap.
+3. **Read the `Basis` of each one.** If **any** is `inferred` or `assumed` —
+   **stop.** Do not proceed on an unobserved model.
+
+### What "verify" means
+
+Look at the **target system**. Not the config that configures it. Not the code
+that writes to it. Not the documentation that describes it. Not a second
+inference from a third artifact.
+
+If a decision is `inferred` from a configuration file, the verification is to
+observe the live behaviour or the actual stored state — because the thing
+inference cannot tell you is **what else is going on that the config never
+mentions**. A config says what one component was told to do. It is silent about
+every other component writing to the same place, and about what was already
+there before any of this existed. That silence is not evidence of absence, and
+it is the exact shape of the hole this gate exists to catch.
+
+Verification typically costs seconds. The action you are about to take does not
+cost seconds to undo — that is the whole reason it is on this list. The
+asymmetry is not close, and it is worth being boring about.
+
+### When verification is impossible
+
+Escalate to the user, and **name the hole explicitly** — do not soften it into
+a generic "shall I proceed?", which invites a reflexive yes:
+
+> Это действие опирается на DL #7 (`Basis: inferred` — выведено из
+> `<источник>`, в `<целевой системе>` не проверялось). Действие необратимо:
+> `<что именно произойдёт>`. Проверить не могу, потому что `<причина>`.
+> Проверяем иначе, или принимаем риск явно?
+
+If the user accepts the risk, that acceptance is itself a Decision Log entry
+(`Source: user`, `Basis: user-stated`) — written **before** the action, not after.
+
+### Why this isn't a hook
+
+The rest of this suite prefers deterministic gates over soft guidance — the
+completion-guard is a hook precisely because "does this file contain `- [ ]`"
+is mechanically decidable. This gate is soft on purpose, and the reason is
+worth stating so nobody "fixes" it later without knowing:
+
+**"Irreversible external action" is not decidable from a tool call.** A shell
+command gives no reliable signal — `curl -X POST` is a health check as often as
+it is a payment. Worse, the truly expensive actions frequently do not pass
+through an interceptable tool at all: they happen in an external UI, through a
+third-party integration, or in the user's own hands after you hand them a
+recommendation. A gate that fires on the wrong things and stays silent on the
+right ones is worse than none: it trains everyone to click through it.
+
+So the enforcement here is the assistant reading this and *doing it*. That is a
+weaker guarantee than a hook, and it is stated plainly rather than dressed up.
+
 ## Storage layout (DL #2, #18, #20, #12 in crystal-multi-root)
 
 - **Roots** resolve through `resolve_crystal_roots()` in
@@ -252,6 +447,25 @@ The hooks honor `crystal.capture-mode` in `.claude/vdm-plugins.json`:
   new flat workitems — promote to folder-style during onboarding.
 - **Leaf is `tasks/`** (DL #1 in crystal-multi-root) — not configurable.
   Projects using `tickets/`, `issues/`, `workitems/` are out of scope.
+
+### `references/` — the provenance rule («чат не хранилище»)
+
+**An artifact a Decision Log entry rests on lands in `references/` *before*
+that entry is written — not afterwards, and not "if it turns out to matter."**
+
+Screenshots, exported configs, ticket text, API response dumps, log excerpts,
+query results: if a conclusion stands on it, it is saved at the moment it is
+received. `<root>/<slug>/references/<name>.<ext>`, and the DL entry's
+`Basis-detail` points at it.
+
+Chat scrollback is **not** storage. It is truncated by compaction, and pasted
+images are typically the first thing to go — so the artifact that a decision
+depends on evaporates while the decision itself survives, leaving an entry that
+claims `Basis: observed` with nothing left to show for it. An observation whose
+evidence is gone has quietly decayed into an assertion, and nobody gets told.
+
+This is what makes `Basis: observed` verifiable by someone other than the person
+who wrote it. Without the artifact, `observed` is just a stronger-sounding word.
 
 ### Cross-referencing workitems (wikilink form)
 
