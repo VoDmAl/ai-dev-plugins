@@ -43,6 +43,8 @@ the human in one review pass:
 ### #1 / {{TODAY}} / Migration scope + slug decisions
 
 **Source:** both
+**Basis:** observed
+**Basis-detail:** the scan output — every file was read and classified, not sampled
 **Context:** what the scan found; which slugs were chosen and why
 **Why:** slug is a deliberate rename, not derived from old filenames (design-home DL #2)
 **Implication:** `migrated-from` carries provenance for backward traceability
