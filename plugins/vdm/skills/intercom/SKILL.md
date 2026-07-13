@@ -19,7 +19,7 @@ remote), so routing survives the "one project, many names" problem. Nothing is
 committed and no `.gitignore` is touched — the store is not inside any repo.
 
 This supersedes the older per-repo `_outbox/` + `.gitignore` handoff pattern
-(see `docs/tasks/intercom-skill/workitem.md` → Decision Log #1).
+(rationale upstream: `cc-vdm-plugins → docs/tasks/intercom-skill/workitem.md` → Decision Log #1).
 
 ## The convention (self-contained spec)
 
