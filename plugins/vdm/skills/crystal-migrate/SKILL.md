@@ -34,8 +34,8 @@ migration is *restructure + audit/triage*, not `mv`):
   `## Next actions`; migration decisions land in its local `## Decision Log`.
   When the boxes are checked, `crystal-cut migration` closes it as the historic
   artifact of first set-up.
-- **Design-home crystal (upstream).** In `cc-vdm-plugins`,
-  `docs/tasks/crystal-migrate/workitem.md` accumulates cross-project lessons —
+- **Design-home crystal (upstream).** `cc-vdm-plugins → docs/tasks/crystal-migrate/workitem.md`
+  accumulates cross-project lessons (that repo, not yours) —
   each real migration feeds DL entries and побеги back into this skill. This
   SKILL.md is the executable procedure; the design rationale lives there (DL #7,
   self-contained SKILL.md — `docs/llm/` is not shipped to user projects, so the

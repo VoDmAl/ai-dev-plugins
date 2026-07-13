@@ -267,7 +267,9 @@ the plugin.
 
 ## Reflexive case
 
-`docs/tasks/crystal-design/workitem.md` was closed via this exact protocol
-when the crystal-* suite reached v1. The act of closing it validated the
-gate, the sweep, and the hint emission end-to-end. Read its final state
+The suite's own design crystal — upstream at
+`cc-vdm-plugins → docs/tasks/crystal-design/workitem.md`, not in your project —
+was closed via this exact protocol when the crystal-* suite reached v1. The act
+of closing it validated the gate, the sweep, and the hint emission end-to-end.
+Read its final state
 for a worked example of a clean cut.

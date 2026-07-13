@@ -178,7 +178,8 @@ Anything chosen-over-alternative-with-rationale. Specifically:
 | Single-instance exception to a documented rule         | Without it, the exception looks like inconsistency                |
 | Dropped/cut work that was earlier listed as in scope   | Scope shrinkage needs to be explicit, not a silent disappearance  |
 
-Format (mirrors existing entries in `docs/tasks/crystal-design/workitem.md`):
+Format (mirrors live entries in the upstream design crystal —
+`cc-vdm-plugins → docs/tasks/crystal-design/workitem.md`; that repo, not yours):
 
 ```markdown
 ### #N / YYYY-MM-DD / <short title>
@@ -255,9 +256,10 @@ live system* — what exists, what is already wired to what, what will happen if
 this changes. That is the claim that gets acted on, and the claim that is
 cheapest to be quietly wrong about.
 
-For `user-stated`, a **verbatim quote is the ideal `Basis-detail`** (several
-entries in `docs/tasks/crystal-design/workitem.md` already do this with an
-ad-hoc `**Quote:**` line). It preserves what was actually said, rather than your
+For `user-stated`, a **verbatim quote is the ideal `Basis-detail`** — several
+entries upstream (`cc-vdm-plugins → docs/tasks/crystal-design/workitem.md`)
+already do this with an ad-hoc `**Quote:**` line. It preserves what was
+actually said, rather than your
 paraphrase of it — and your paraphrase is where their claim quietly becomes
 your inference.
 
@@ -833,8 +835,10 @@ A successful grow ends in this state:
 
 ## Reflexive case
 
-The first crystal in this repo is `docs/tasks/crystal-design/workitem.md`
-itself — the design document for this very suite was promoted to a full
-crystal mid-brainstorm (Decision Log #17). Read it for a worked example of
-the format and conventions; the structure described in this skill is the
-structure that file follows.
+This suite's own design document was promoted to a full crystal mid-brainstorm
+(Decision Log #17) and is the first crystal that ever existed. It lives
+**upstream, not in your project** —
+`cc-vdm-plugins → docs/tasks/crystal-design/workitem.md` — because the plugin
+ships only `plugins/vdm/`; its `docs/` tree is not part of the package. Read it
+there for a worked example of the format and conventions; the structure
+described in this skill is the structure that file follows.
