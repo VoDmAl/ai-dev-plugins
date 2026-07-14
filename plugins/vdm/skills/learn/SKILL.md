@@ -407,7 +407,7 @@ Based on analysis results, determine storage locations:
 
 A `docs/llm/{topic}.md` without a back-reference is orphan: it lives on disk but is invisible at runtime, because only `CLAUDE.md` is auto-loaded into every LLM session. Existence on disk ≠ availability in context.
 
-**Enforcement is automated.** A `PostToolUse` hook (`${CLAUDE_PLUGIN_ROOT}/scripts/orphan-guard-hook.sh`) runs `check-llm-orphans.sh --file {path}` after every `Write`/`Edit`/`MultiEdit` to `docs/llm/*.md`. If the file has no hook, the harness blocks with exit 2 and surfaces the remediation on stderr — so the assistant cannot silently leave an orphan behind in Claude Code. In harnesses without `PostToolUse` support, this section is the manual fallback contract.
+**Enforcement is automated.** A `PostToolUse` hook (`${CLAUDE_PLUGIN_ROOT}/scripts/orphan-guard-hook.sh`) runs `check-doc-orphans.sh --file {path}` after every `Write`/`Edit`/`MultiEdit` to a markdown file; the audit itself decides what is in scope — `docs/llm/*.md` **and** synthesis documents (any `.md` declaring `covers:`, the `/vdm:docs-distill` tier). If the file has no hook, the harness blocks with exit 2 and surfaces the remediation on stderr — so the assistant cannot silently leave an orphan behind in Claude Code. In harnesses without `PostToolUse` support, this section is the manual fallback contract.
 
 **Treat the discovery hook as a hard step of Phase 4, not a recommendation.** Phase 4 is not complete without it.
 

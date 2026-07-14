@@ -499,8 +499,8 @@ Orphan-guard detail: without a discovery hook (CLAUDE.md ref / source-code @see 
 The audit script can also be invoked manually against any project that has `docs/llm/`:
 
 ```bash
-bash plugins/vdm/scripts/check-llm-orphans.sh                 # audit all
-bash plugins/vdm/scripts/check-llm-orphans.sh --file PATH     # one file
+bash plugins/vdm/scripts/check-doc-orphans.sh                 # audit all
+bash plugins/vdm/scripts/check-doc-orphans.sh --file PATH     # one file
 ```
 
 The same script is what `/vdm:docs-sync` Phase 1.5 calls — single source of truth.

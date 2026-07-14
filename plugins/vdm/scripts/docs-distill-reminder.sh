@@ -48,7 +48,7 @@ mode=$(vdm_config_read "distill" "mode" "smart")
 [ "$mode" = "silent" ] && exit 0
 
 # The scan is the single source of truth for what counts as drift — the hook
-# must not re-derive the algorithm (same discipline as check-llm-orphans.sh).
+# must not re-derive the algorithm (same discipline as check-doc-orphans.sh).
 drift=$(bash "$HERE/distill-scan.sh" --drift 2>/dev/null)
 [ -z "$drift" ] && exit 0
 

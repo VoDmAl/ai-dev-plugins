@@ -76,7 +76,7 @@ its smallest blind spot.
 **Soft form that failed.** Implicit understanding that `plugins/*/skills/**/SKILL.md`
 and templates ship to user projects, so paths inside them must resolve at
 user time. Not encoded as a rule. Same agent that produced the
-marketplace-parity miss above also wrote `plugins/vdm/scripts/check-llm-orphans.sh`
+marketplace-parity miss above also wrote `plugins/vdm/scripts/check-doc-orphans.sh`
 into `docs-sync/SKILL.md` and `learn/SKILL.md` as if it were a path users
 would have. At user time those paths don't resolve at all — the plugin lives
 under `${CLAUDE_PLUGIN_ROOT}`, wherever Claude Code installed it.
@@ -101,7 +101,7 @@ talked itself into the omission ("the abstract rule in CLAUDE.md already
 covers it").
 
 **Deterministic form that holds.**
-- `plugins/vdm/scripts/check-llm-orphans.sh` — pure-shell audit. Looks for
+- `plugins/vdm/scripts/check-doc-orphans.sh` — pure-shell audit. Looks for
   four hook categories (CLAUDE.md, source-code comment, `docs/features/` ref,
   sibling `docs/llm/` ref) and discounts `PROJECT_CHANGELOG.md` matches.
 - `plugins/vdm/scripts/orphan-guard-hook.sh` — `PostToolUse` hook fired after
@@ -110,6 +110,42 @@ covers it").
   orphan and finish the turn quietly.
 - `/vdm:docs-sync` Phase 1.5 calls the same audit as a periodic sweep for
   files that already exist.
+
+### The orphan gate that never ran (2026-07-14)
+
+The sharpest lesson in this file, because it is not about soft-vs-hard at all —
+it is about a gate that **looked** deterministic and enforced nothing.
+
+`check-doc-orphans.sh` (then `check-llm-orphans.sh`) searched for source-code
+references like this:
+
+```bash
+grep -rlF -- "$needle" "${include_args[@]}" --exclude-dir=docs \
+     --exclude=PROJECT_CHANGELOG.md . 
+```
+
+`--` ends option parsing. Every `--include` / `--exclude-dir` / `--exclude`
+after it was passed to grep as a **file operand**, not a filter. The call
+silently degraded to `grep -rlF "$needle" .` — the entire tree, `docs/` and
+`PROJECT_CHANGELOG.md` included. So the audit accepted a **changelog mention**
+as a discovery hook: precisely the one thing its own documentation says must
+never count. It had been shipped that way and passed every run, because every
+`docs/llm/` file in the repo happened to have a legitimate hook as well. **The
+gate was green because it was blind, not because the tree was clean.**
+
+Fix: flags first, pattern via `-e`, path after `--`:
+
+```bash
+grep -rlF "${include_args[@]}" --exclude-dir=docs \
+     --exclude=PROJECT_CHANGELOG.md -e "$needle" -- .
+```
+
+**The generalizable rule: a gate is not shipped until you have watched it FAIL.**
+Green on a clean tree proves nothing — a gate that always exits 0 is also green.
+Every gate needs a *red test*: break the invariant on purpose, confirm the gate
+catches it, restore. Without that, "we added a gate" is an assertion of
+compliance, not evidence of it — the same epistemic error the `Basis:` taxonomy
+exists to prevent one layer up.
 
 ## Anti-patterns to avoid
 
@@ -150,6 +186,11 @@ working **on** the plugins themselves.
 Every gate's failure path must explain what to do — name the file, name the
 fix, give the exact command if possible.
 
+**Shipping a gate you never watched fail.** See the orphan-gate precedent above.
+A gate verified only on a clean tree is indistinguishable from `exit 0`. Break
+the invariant deliberately, watch it go red, restore. Add the red test to the
+implementation template below — it is step 2.5, not an optional nicety.
+
 ## Implementation template
 
 When promoting a soft rule to a gate:
@@ -159,16 +200,21 @@ When promoting a soft rule to a gate:
    codes: 0 clean, 1 violated (with remediation on stderr), 2 usage error.
    Avoid `jq`/`python3` for parsing if grep+sed will do — matches existing
    convention, keeps the script portable.
-2. **Wire it into the right gate type:**
+2. **Write the red test before you trust it.** Break the invariant on purpose
+   (remove the back-reference, desync the version, stage the forbidden path),
+   run the gate, confirm it exits non-zero *and* names the right file. Then
+   restore and confirm green. A gate observed only in the green state has not
+   been observed at all — see "The orphan gate that never ran" above.
+3. **Wire it into the right gate type:**
    - **Repo-level dev gate** → extend `.githooks/pre-commit` to call the
      script when relevant files are staged.
    - **User-level harness gate** → declare a `PostToolUse`/`PreToolUse`/
      `UserPromptSubmit` entry in `plugins/X/hooks/hooks.json` that runs a thin
      hook delegate (`*-guard-hook.sh`) which forwards into the audit script.
-3. **Document the rule in CLAUDE.md.** The gate enforces; CLAUDE.md explains.
+4. **Document the rule in CLAUDE.md.** The gate enforces; CLAUDE.md explains.
    They complement, not substitute. Without the gate the rule drifts; without
    the documentation the gate failure is mysterious.
-4. **Add a `PROJECT_CHANGELOG.md` entry** when shipping. The repo records its
+5. **Add a `PROJECT_CHANGELOG.md` entry** when shipping. The repo records its
    own evolution; "we promoted this rule to a gate after incident X" is the
    exact thing future-you will need.
 
@@ -176,7 +222,7 @@ When promoting a soft rule to a gate:
 
 - `scripts/check-lib-sync.sh` — first gate in this repo.
 - `scripts/check-version-bump.sh` — manifest version gate.
-- `plugins/vdm/scripts/check-llm-orphans.sh` — orphan audit, single source of
+- `plugins/vdm/scripts/check-doc-orphans.sh` — orphan audit, single source of
   truth shared by `/vdm:docs-sync` Phase 1.5 and the `PostToolUse` hook.
 - `plugins/vdm/scripts/orphan-guard-hook.sh` — `PostToolUse` delegate.
 - `.githooks/pre-commit` — dev-time gate router.
