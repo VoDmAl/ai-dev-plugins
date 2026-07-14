@@ -76,7 +76,7 @@ If you see `[vdm-dev] Dev hooks not active in this clone…`, run the command ab
 
 ## Where things live
 
-- `plugins/vdm/` — core plugin (docs-sync, learn, changelog skills)
+- `plugins/vdm/` — core plugin (docs-sync, docs-distill, learn, changelog, crystal-*, intercom skills)
 - `plugins/vdm-git/` — optional git safety plugin (guard skill)
 - `plugins/{vdm,vdm-git}/lib/` — **mirrored** config helpers (drift-checked by `scripts/check-lib-sync.sh`)
 - `scripts/check-lib-sync.sh` — manual run of the drift check

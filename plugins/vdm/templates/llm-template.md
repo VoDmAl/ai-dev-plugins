@@ -27,6 +27,19 @@
   if no hook is present. /vdm:docs-sync Phase 1.5 runs the same audit as
   a periodic sweep. Both delegate to the audit script shipped with the
   vdm plugin.
+
+  ─────────────────────────────────────────────────────────────────
+  LAWS OF EVERY LONG-LIVED DOCUMENT IN THIS SUITE
+  ─────────────────────────────────────────────────────────────────
+  1. Current state FIRST; history separate and optional. A doc that
+     opens with "it used to be…" makes every reader replay the whole
+     chronology to reach the truth.
+  2. ABSOLUTE DATES ONLY. "Recently", "2 years ago", "last sprint" lie
+     silently a year on — nobody re-reads a doc to re-anchor them.
+  3. Identifiers live in exactly ONE place; everything else references
+     it. A copied ID rots silently, precisely because it is "already
+     written down".
+  4. Call things by name, not by a volatile number.
 -->
 
 ## Purpose

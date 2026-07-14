@@ -4,6 +4,21 @@
   Template for docs/features/{feature}.md
   Copy this file and replace placeholders with actual content.
   Remove this comment block after filling in.
+
+  ─────────────────────────────────────────────────────────────────
+  LAWS OF EVERY LONG-LIVED DOCUMENT IN THIS SUITE
+  ─────────────────────────────────────────────────────────────────
+  1. Current state FIRST; history separate and optional (here: the
+     Changelog section at the BOTTOM, never woven into Overview/Usage).
+  2. ABSOLUTE DATES ONLY — YYYY-MM-DD. "Recently" / "last release" lie
+     silently a year on, because nobody re-reads a doc to re-anchor them.
+  3. Identifiers live in exactly ONE place; everything else references it.
+  4. Call things by name, not by a volatile number.
+
+  A feature doc is a FRAGMENT. It says nothing about how the whole fits
+  together — that is the synthesis layer's job (/vdm:docs-distill). If a
+  synthesis document lists this file in its `covers:`, writing here makes
+  that synthesis stale by construction: hand off.
 -->
 
 ## Overview

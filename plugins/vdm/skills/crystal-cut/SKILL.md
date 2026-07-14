@@ -124,6 +124,43 @@ If omitted, target the singleton active workitem (the one with
   resolved root, target that root's active; otherwise ask.
 - `off` mode → ask explicitly which slug.
 
+### Step 1.5: Harvest check — the `docs-distill` handoff
+
+**Must run before the sweep, not after.** `docs-distill` *writes new `- [ ]`
+obligations* into the workitem; sweeping first would clear a list that is about
+to grow.
+
+A crystal in the work phase produced artifacts that went outward. Its findings
+about **the subject** — not about the conversation — are the whole reason it
+existed, and they die with it unless they are harvested. The forcing function
+here is normally a human who happens to notice; that is exactly what this step
+replaces.
+
+Applies when the crystal shows evidence of the work phase:
+
+- `session-type: prd-work` (or any non-capture type), **or**
+- the workitem's `## Текущая модель` / `## Decision Log` holds claims about how
+  the subject now works — as opposed to which option the conversation picked.
+
+A pure capture-phase crystal (`session-type: prd-prep`, may well stay dormant
+forever) owes no harvest — the obligation is born with the *work*, not with the
+crystal. Skip this step for those.
+
+Nudge, do not gate:
+
+```
+🧪 Crystal `<slug>` is in the work phase — was the harvest given?
+
+Findings about the subject outlive this crystal; findings about the
+conversation do not. Run /vdm:docs-distill to pull the survivors out and give
+each an address, or say "nothing to harvest" and proceed.
+```
+
+If the user runs it, `docs-distill` appends `- [ ] <finding> → <address>` items
+to `## Next actions`. From there **the existing gate does the enforcing** — the
+crystal cannot be cut while an unchecked box remains. Soft until named; binding
+the moment it is named. That is the whole mechanism; no new gate is added here.
+
 ### Step 2: Sweep unchecked items
 
 Read the workitem. Collect every `- [ ]` line with its line number and the
@@ -251,6 +288,7 @@ migrate-to-new only when the loose end is itself a unit of work.
 
 ## Quality gates
 
+- [ ] Harvest check offered for a work-phase crystal (Step 1.5), **before** the sweep
 - [ ] All `- [ ]` checkboxes addressed (gate would block otherwise)
 - [ ] Sidetrack `**Status:**` lines match their checkbox resolutions
 - [ ] `migrated` items have cross-links in both source and target

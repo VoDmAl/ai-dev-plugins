@@ -34,7 +34,15 @@ a Jira ticket, a code symptom) so future-you can reconstruct intent.
 
      Without this block a cold reader (or the assistant after a compaction)
      meets the overturned decisions first, in chronological order, and has to
-     reconstruct the current truth by replaying the whole log. -->
+     reconstruct the current truth by replaying the whole log.
+
+     This is one instance of a law that holds for EVERY long-lived document in
+     the suite — feature docs, LLM docs, synthesis docs alike:
+       1. Current state FIRST; history separate and optional.
+       2. ABSOLUTE DATES ONLY — "recently" / "2 years ago" lie silently a year
+          on, because nobody re-reads a document to re-anchor them.
+       3. Identifiers live in exactly ONE place; everything else references it.
+       4. Call things by name, not by a volatile number. -->
 
 - What we know, and how we know it. Keep it short; this is the answer to
   "if I read one section, which one tells me where things actually stand?"
