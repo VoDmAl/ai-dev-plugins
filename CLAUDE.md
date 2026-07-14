@@ -10,6 +10,22 @@ Practical consequence:
 - Rules below describe how to work safely **inside this repo**.
 - The plugins' contracts with downstream user projects live in `plugins/*/skills/**/SKILL.md` and the registered hook scripts. If a behavior needs to apply at user-time, it must be declared there, not added here.
 
+## Read first: how the suite is put together
+
+`docs/model/suite.md` — **the synthesis layer for this repo.** Answers what the suite *is as a
+system*: why every mechanism (crystal, docs-distill, the pre-commit gates) turned out to have the
+same shape — soft until named / binding once named, every signal a comparison of two artifacts on
+disk, no state anywhere. Read it **before adding a new mechanism**: the usual outcome is that you
+don't need a new gate at all, only a new way to *name* the obligation in a form an existing gate
+already understands.
+
+Kept honest by the drift signal — `bash plugins/vdm/scripts/distill-scan.sh --drift`. It is rebuilt,
+not appended to.
+
+Its neighbour `docs/llm/soft-guidance-vs-deterministic-gates.md` answers a different question — *when*
+a soft rule has earned promotion to a gate. That one is about the decision; `suite.md` is about the
+structure.
+
 ## Critical Rules (this repo only)
 
 Each rule is paired with a deterministic gate — see `docs/llm/soft-guidance-vs-deterministic-gates.md` for why we layer rules and gates rather than relying on either alone.
