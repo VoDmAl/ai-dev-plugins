@@ -248,6 +248,41 @@ Proposed documentation changes:
 Proceed with documentation update?
 ```
 
+## Handoff to `/vdm:docs-distill` — the synthesis layer
+
+This skill owns the **fragment** layer: it makes sure each change is written
+down *somewhere*. It does not — and cannot — answer whether what got written
+down is **systematized**. Ten feature docs can each arrive at the correct
+address and still support no conclusion about commonality. That question belongs
+to `/vdm:docs-distill`, which owns the synthesis layer.
+
+The two skills do not compete for a moment. This one fires per change, before
+completion. `docs-distill` fires on **drift** — a state that persists from the
+edit that caused it until the rebuild that clears it — and before a work-phase
+crystal is cut. Different triggers; both must happen.
+
+**Hand off in this direction** whenever you write or update a feature doc that a
+synthesis document declares in its `covers:` — that synthesis is now stale by
+construction:
+
+```bash
+Bash(command="bash ${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh --drift", ...)
+```
+
+Non-empty output ⇒ append to the Phase 3 report:
+
+```
+🧪 Synthesis drifted (the summary view is older than what it covers):
+  - docs/model/architecture.md ← docs/features/webhooks.md
+    → /vdm:docs-distill — synthesis is REBUILT, not appended to
+```
+
+**The reverse direction exists too, and it matters more:** while rebuilding a
+synthesis, `docs-distill` hits a capability that nothing documents — you cannot
+synthesize over emptiness — and hands off *back here* to write the missing
+fragment first. Synthesis is what exposes the missing fragments; expect to be
+called that way.
+
 ## Documentation Structure
 
 ### Recommended structure (propose if absent):
@@ -313,6 +348,7 @@ When creating task lists for feature work, always include documentation:
 - [ ] Relevant documentation reflects current product state
 - [ ] Bidirectional links verified (code @see → docs, docs → code)
 - [ ] No new `docs/llm/` orphans — every file in `docs/llm/` has a discovery hook (CLAUDE.md ref, source-code comment, feature-doc link, or sibling LLM ref); `PROJECT_CHANGELOG.md` mentions don't count
+- [ ] No synthesis left drifting — if a synthesis document declares a doc you touched in its `covers:`, hand off to `/vdm:docs-distill` (it is rebuilt, not appended to)
 
 ## Priority Levels
 
