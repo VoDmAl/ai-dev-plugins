@@ -188,8 +188,29 @@ fix, give the exact command if possible.
 
 **Shipping a gate you never watched fail.** See the orphan-gate precedent above.
 A gate verified only on a clean tree is indistinguishable from `exit 0`. Break
-the invariant deliberately, watch it go red, restore. Add the red test to the
-implementation template below — it is step 2.5, not an optional nicety.
+the invariant deliberately, watch it go red, restore. That is step 2 of the
+implementation template below, not an optional nicety.
+
+**Writing a red test that can be satisfied by the repo itself.** The harness
+(`tests/gates.test.sh`) was blind three times before it worked, each time a
+level up, and each time it failed *green* — the safe-looking direction, which is
+the dangerous one, because the test goes quiet exactly when it should shout:
+
+1. It cloned `HEAD`. But `.githooks/pre-commit` runs the gate scripts **from the
+   working tree**, so a HEAD-based harness cannot see the regression you just
+   wrote and have not committed. Materialize the working tree instead.
+2. The harness is a `.sh` file that names its own fixtures — so, copied into the
+   tree under test, it was itself a *source-code discovery hook* for every
+   fixture it created, whitewashing its own red tests. The observer must not sit
+   inside the observed tree.
+3. The paragraph written to document (2) named the fixture path in prose — inside
+   `docs/model/suite.md`, which is a **synthesis document**, i.e. hook category 5.
+   The red tests went green again, defeated by the text explaining why they had
+   gone green the time before.
+
+The real rule is (3)'s: it was never about `tests/`. **Any file in the repo can
+accidentally satisfy the invariant a test is trying to violate.** Mint fixture
+names at runtime — what does not exist statically cannot be named by any text.
 
 ## Implementation template
 

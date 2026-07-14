@@ -467,6 +467,7 @@ bash scripts/check-lib-sync.sh             # 0 = clean, 1 = drift report
 bash scripts/check-version-bump.sh         # 0 = bumped + in parity, 1 = drift
 bash scripts/check-skill-paths.sh          # 0 = clean, 1 = dev-path leak found
 bash scripts/check-crystal-completion.sh   # 0 = clean, 1 = workitem done with open items
+bash tests/gates.test.sh                   # red-tests all of the above (~15s)
 ```
 
 **lib-sync.** The two plugins ship duplicated copies of `lib/config-path.sh` and `lib/config-read.sh` (each plugin must be self-contained for independent installation). The check normalizes the cross-reference comments that name the opposite plugin (`plugins/vdm/lib` ↔ `plugins/vdm-git/lib`); everything else must match byte-for-byte. A GitHub Actions workflow running the same check on PRs is planned but not yet wired up (the file `.github/workflows/lib-sync.yml` was blocked by a local security hook during a prior commit).
@@ -479,6 +480,12 @@ bash scripts/check-crystal-completion.sh   # 0 = clean, 1 = workitem done with o
 Always pair the bump with a `PROJECT_CHANGELOG.md` entry.
 
 **skill-paths.** Lints `plugins/*/skills/**/SKILL.md` and `plugins/*/templates/*.md` for direct references to `plugins/(vdm|vdm-git)/(scripts|lib|hooks|templates|skills)/...`. Those paths only resolve inside this dev clone — at user time the plugin lives under `${CLAUDE_PLUGIN_ROOT}` (resolved by Claude Code). Use `${CLAUDE_PLUGIN_ROOT}/<subdir>/...` everywhere in user-time files. Bare plugin names (e.g. "the vdm plugin") are not flagged — only concrete subpaths.
+
+**gate red-tests.** `tests/gates.test.sh` is the fifth pre-commit gate, and it is a *meta*-gate: it breaks every invariant above **on purpose** and asserts the gate goes red and names the offending file — plus false-positive tests (a gate that over-fires gets switched off by its users, which is the same as not existing). It fires only when a gate script or the harness itself is staged, because it costs ~15s: **you cannot change a gate without re-proving it still goes red.**
+
+Why it exists: the orphan audit shipped **blind**. `grep -rlF -- "$needle" --include=… .` puts `--` before the flags, which ends option parsing — so every `--include`/`--exclude` was handed to grep as a *filename*, not a filter. It accepted a `PROJECT_CHANGELOG.md` mention as a discovery hook (the one thing its own docs forbid) and passed every run for months, because every audited file happened to have a legitimate hook too. **It was green because it was blind, not because the tree was clean.** A gate does not exist until you have watched it fail — `exit 0` is also green. See `docs/llm/soft-guidance-vs-deterministic-gates.md` → "The orphan gate that never ran".
+
+The harness materializes the **working tree** (not `git clone` of HEAD — pre-commit runs the scripts on disk, so a HEAD-based harness is blind to the regression you just wrote) and drops `tests/` from the copy (the harness names its own fixtures in plain text, and `.sh` counts as a source-code hook — left in place it would hook every fixture it creates and whitewash its own red tests). The observer must not sit inside the observed tree.
 
 **crystal.** Backup to the `crystal-completion-guard` runtime hook (which catches the assistant flipping `status: done` mid-edit). The pre-commit variant catches IDE-direct edits that bypass the assistant — by the time it fires, the runtime hook already missed it, which is exactly when a deterministic check earns its keep. Reads the STAGED version of each workitem (`git show :path`) so the gate sees what's about to commit, not whatever sits on disk. Hardcoded to `docs/tasks/` (this repo doesn't override the default crystal root). The downstream-shipped equivalent — `vdm-git/scripts/crystal-precommit-check.sh` — reads `.claude/vdm-plugins.json:crystal.path` and is universally configurable.
 
