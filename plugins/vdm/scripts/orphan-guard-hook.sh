@@ -1,13 +1,22 @@
 #!/bin/bash
 # orphan-guard-hook.sh — PostToolUse hook for Write/Edit/MultiEdit operations.
 #
-# Fires after the assistant writes to docs/llm/*.md. If the just-written file
-# has no discovery hook (CLAUDE.md back-ref, source-code comment, sibling doc,
-# or feature-doc reference), surfaces a blocking error so the assistant has to
-# add a hook before declaring the turn complete.
+# Fires after the assistant writes a long-lived doc: a docs/llm/*.md file, or a
+# SYNTHESIS document (any .md declaring `covers:` — the docs-distill tier). If
+# the just-written file has no discovery hook (CLAUDE.md back-ref, source-code
+# comment, sibling doc, feature-doc reference, or a synthesis doc pointing at
+# it), surfaces a blocking error so the assistant has to add one before
+# declaring the turn complete.
+#
+# Synthesis documents are in scope for a reason that is easy to miss: they are
+# NOT rescued by the drift signal. A synthesis whose inputs happen not to change
+# never drifts, so it never gets named by the reminder — an unreferenced one
+# would be current, unreachable, and silent forever.
 #
 # Source of truth for the orphan-audit contract is plugins/vdm/scripts/
-# check-llm-orphans.sh — this hook just routes a single file path into it.
+# check-doc-orphans.sh — this hook just routes a single file path into it. The
+# path filter here is deliberately loose (any .md): the audit script decides
+# what is in scope, because it is the one that knows what a synthesis doc is.
 #
 # Hook protocol (Claude Code):
 #   stdin   JSON {"tool_name": "...", "tool_input": {...}, "cwd": "..."}
@@ -70,10 +79,13 @@ esac
 file_path=$(read_field "tool_input.file_path")
 [ -z "$file_path" ] && exit 0
 
-# Match docs/llm/*.md only. The path may be absolute (typical for Write) or
-# relative; check-llm-orphans.sh handles both.
+# Any markdown file. We do NOT filter to docs/llm/ here: a synthesis document
+# lives wherever the project put it, so the path tells us nothing. The audit
+# script owns the scope decision (docs/llm/*.md OR declares `covers:`) and
+# exits 0 silently for everything else. The path may be absolute (typical for
+# Write) or relative; the audit script handles both.
 case "$file_path" in
-  *docs/llm/*.md) ;;
+  *.md) ;;
   *) exit 0 ;;
 esac
 
@@ -118,7 +130,7 @@ case "$file_path" in
     ;;
 esac
 
-audit_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-llm-orphans.sh"
+audit_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-doc-orphans.sh"
 [ -x "$audit_script" ] || exit 0
 
 # Run the audit on this single file. Capture stderr for the feedback message.
@@ -133,10 +145,12 @@ if [ "$audit_exit" -eq 1 ]; then
   printf '%s\n' "$audit_stderr" >&2
   cat >&2 <<EOF
 
-[orphan-guard] /vdm:learn Phase 4 requires a discovery hook for every NEW
-docs/llm/*.md. Without one, the file is invisible to future LLM sessions.
-Add the hook (CLAUDE.md back-ref OR source-code @see comment) BEFORE this
-turn ends.
+[orphan-guard] Every long-lived doc needs a discovery hook — a docs/llm/*.md
+file (/vdm:learn Phase 4) or a synthesis document (/vdm:docs-distill). Without
+one it is invisible to future sessions. A synthesis doc is NOT saved by the
+drift signal: one whose inputs never change never drifts, so it never surfaces.
+Add the hook (CLAUDE.md back-ref OR source-code @see comment) BEFORE this turn
+ends.
 EOF
   exit 2
 fi

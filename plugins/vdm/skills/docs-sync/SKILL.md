@@ -123,24 +123,31 @@ crystal-cut gate is a separate skill, this is just a heads-up.
 - Check found docs for links to other docs → follow one level deep
 - If doc A references doc B, and A is affected, B may need review too
 
-### Phase 1.5: docs/llm/ Orphan Audit
+### Phase 1.5: Orphan Audit (docs/llm/ + synthesis documents)
 
-Independent of which files changed: audit `docs/llm/` for **discovery-hook drift**. Skip this phase if `docs/llm/` does not exist or is empty.
+Independent of which files changed: audit the long-lived docs for **discovery-hook drift**. Two families, one rule:
 
-**Why this matters.** Only `CLAUDE.md` is auto-loaded into every LLM session. Every other doc has to be grep'd into context from some entry point. A `docs/llm/{name}.md` with **no back-reference anywhere** is functionally invisible at runtime — it lives on disk but future sessions can't reach it. Treat the discovery hook as a mandatory artifact of every `docs/llm/` file, not an optional nicety.
+1. every `docs/llm/*.md`;
+2. every **synthesis document** — any `.md` declaring `covers:` in frontmatter (the `/vdm:docs-distill` tier), wherever the project put it.
+
+Skip if neither exists.
+
+**Why this matters.** Only `CLAUDE.md` is auto-loaded into every session. Every other doc has to be grep'd into context from some entry point. A doc with **no back-reference anywhere** is functionally invisible at runtime — it lives on disk and cannot be reached, i.e. it is *current and unreachable*, which is worse than being stale. Treat the discovery hook as a mandatory artifact of every such file, not an optional nicety.
+
+Synthesis docs belong here for a reason that is easy to miss: **the drift signal does not save them.** A synthesis whose covered inputs happen not to change never drifts, so it is never named by the reminder — an unreferenced one would stay silent forever.
 
 **Source of truth — the audit is a script, not a checklist.** The skill must shell out to it rather than re-derive the algorithm:
 
 ```bash
-Bash(command="bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-llm-orphans.sh", ...)
+Bash(command="bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-doc-orphans.sh", ...)
 ```
 
 Exit codes:
-- `0` — clean, no orphans (or no `docs/llm/` to audit)
+- `0` — clean, no orphans (or nothing to audit)
 - `1` — at least one orphan; stderr lists each file with remediation options
 - `2` — usage error
 
-The script categorizes hooks into: `CLAUDE.md` ref, source-code ref (broad set of source extensions), `docs/features/` ref, sibling `docs/llm/` ref. It explicitly **discounts** `PROJECT_CHANGELOG.md` matches — changelog entries describe history, not a discovery path.
+The script categorizes hooks into: `CLAUDE.md` ref, source-code ref (broad set of source extensions), `docs/features/` ref, sibling `docs/llm/` ref, and **a reference from a synthesis document** (arriving at the whole is exactly how a reader finds the parts). It explicitly **discounts** `PROJECT_CHANGELOG.md` matches — changelog entries describe history, not a discovery path.
 
 **Wiring into Phase 3 output.** When the script reports orphans (exit 1), surface them as a dedicated section in the deep-discovery report:
 
