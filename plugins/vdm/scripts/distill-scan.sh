@@ -301,7 +301,11 @@ if [ "$MODE" = "list" ]; then
     printf '%s\n' "$doc"
     [ -n "$q" ]   && printf '  question: %s\n' "$q"
     [ -n "$obs" ] && printf '  observed: %s\n' "$obs"
-    printf '  covers:   %s\n' "$(_fm_list "$doc" covers | paste -sd', ' - 2>/dev/null)"
+    # Joined with awk, not `paste -sd', '`: BSD/macOS paste treats the -d value
+    # as a CYCLING LIST of single chars, so ", " alternates comma and space
+    # between items instead of using both. GNU paste does the same. Silently
+    # produces `a,b c,d` — wrong, and only visible if you read the output.
+    printf '  covers:   %s\n' "$(_fm_list "$doc" covers | awk '{printf "%s%s", sep, $0; sep=", "} END{ if (NR) print "" }')"
   done <<<"$synth_docs"
   exit 0
 fi

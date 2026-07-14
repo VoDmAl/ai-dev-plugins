@@ -121,6 +121,21 @@ describe the current whole. Ask, out loud, the question the tier exists for:
 
 An edit that only bolts the new input onto the end has failed the phase.
 
+**When drift fired but nothing substantive changed.** This happens and it is not
+a malfunction: the signal is mtime-based, so a typo fix or a comment in a
+covered file trips it. The honest response has three steps, and the shortcut is
+forbidden:
+
+1. **Read the newer input.** You do not know it changed nothing until you look.
+2. Confirm the model is unaffected — say so out loud, naming what you checked.
+3. **Re-stamp `observed:` with today's date.** That is a real edit recording a
+   real re-verification, and it clears the drift as a side effect.
+
+Never `touch` the file, and never edit it cosmetically to silence the signal.
+Both fake step 1 and leave `observed:` asserting a verification that did not
+happen — turning the only date the reader can trust into a lie. A signal you are
+allowed to dismiss without looking is not a signal.
+
 ### Phase 3 — Harvest the crystal (pull, never push)
 
 When an active crystal exists, **pull** from it. The crystal gets no new
