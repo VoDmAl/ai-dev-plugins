@@ -27,12 +27,14 @@ Until specialization is needed, everything lives here.
 | Skill | Command | Description |
 |-------|---------|-------------|
 | docs-sync | `/vdm:docs-sync` | Smart documentation discovery & sync (adapts to any project structure) |
+| docs-distill | `/vdm:docs-distill` | The **synthesis layer** — the summary view that must be *rebuilt*, not appended to |
 | learn | `/vdm:learn` | Intelligent knowledge integration with scenario detection |
 | changelog | `/vdm:changelog` | Project change tracking in `PROJECT_CHANGELOG.md` |
 | crystal-grow | `/vdm:crystal-grow` | Start (or promote) a workitem under `docs/tasks/<slug>/workitem.md` |
 | crystal-bud | `/vdm:crystal-bud` | Capture a sidetrack into the active (or routed dormant) workitem |
 | crystal-cut | `/vdm:crystal-cut` | Close a workitem — sweeps unchecked items, blocks done-transition if any remain |
 | crystal-cave | `/vdm:crystal-cave` | View all crystals + sidetracks + decision-log summaries (read-only) |
+| crystal-migrate | `/vdm:crystal-migrate` | Batch-migrate a repo's legacy task docs into the crystal folder-stem layout |
 | intercom | `/vdm:intercom` | Central cross-agent/cross-session message store (send / check / pickup) outside all repos |
 
 ### `vdm-git` — Git Safety (optional)
@@ -49,6 +51,35 @@ Ensures project documentation always reflects current product state. Adapts to a
 **Hook (automatic)**: On every prompt, performs lightweight discovery — detects changed files, maps all `.md` docs, extracts `@see` references, finds potentially affected docs via keyword matching.
 
 **Skill (manual `/vdm:docs-sync`)**: Deep analysis with relevance scoring, cross-reference chains, and concrete "file X, section Y needs change Z" recommendations.
+
+### docs-distill
+
+**Fragments accumulate on their own. Synthesis does not.**
+
+A decision log fills up by itself; `docs/features/` fills up by itself. But the *summary* view — how is this put together right now, are the approaches even consistent, what breaks if I touch it — is never rebuilt, **because nobody asks**. Ten feature docs, each correctly delivered to its own address, still support no conclusion about how the system coheres. `docs-sync` owns the fragment layer; `docs-distill` owns the layer above it.
+
+**Append is not synthesis.** A synthesis document is rewritten to describe the current whole, or it is not synthesis.
+
+**The project decides what synthesis *is*** — an event map, an architecture doc, a domain model. The suite dictates only the *relation*: that synthesis exists, declares what it covers and which question it answers, and hasn't fallen behind its inputs. Declared in frontmatter:
+
+```yaml
+---
+type: model                                   # human label, no mechanical role
+question: "what a reader opens this file to get answered"
+covers:                                       # REQUIRED — discovery key + drift input
+  - docs/features/*.md
+  - src/analytics/
+observed: 2026-07-14                          # absolute date of last verification
+---
+```
+
+`covers:` is the contract precisely because it is what drift is *computed from* — a document without it cannot be drift-checked, so it cannot participate. The tier lives wherever the project puts it; no path is imposed.
+
+**Hook (automatic)**: fires when a synthesis document is older than an input it declares it covers. Drift is a *state*, not a moment — it persists from the edit that caused it until the rebuild that clears it. **Silent in a project that declared no synthesis**: the suite never nags a project into an artifact it didn't ask for.
+
+**Skill (manual `/vdm:docs-distill`)**: rebuilds drifted synthesis; harvests an active crystal by *pulling* the claims that outlive the task out of `## Текущая модель` + Decision Log and writing back only obligations (`- [ ] <finding> → <address>`) — which the existing crystal completion-guard then enforces, with no new gate. If the project has no tier at all, it proposes one.
+
+**Two handoffs with `docs-sync`.** Forward: a feature doc was written that some synthesis covers ⇒ that synthesis is now stale by construction. Backward — and this is the direction that matters: while rebuilding, you hit a capability nothing documents. You cannot synthesize over emptiness. **Synthesis is what exposes the missing fragments.**
 
 ### learn
 Systematically captures and preserves project knowledge. Auto-detects scenario type (problem/discovery/standard) and routes through appropriate analysis:
@@ -133,12 +164,15 @@ qwen extensions install VoDmAl/ai-dev-plugins
 
 **`vdm` plugin:**
 
-| Aspect | docs-sync | learn | changelog |
-|--------|-----------|-------|-----------|
-| Focus | All project `.md` docs | `docs/llm/` + Serena Memory | `PROJECT_CHANGELOG.md` |
-| Audience | Users, stakeholders | LLMs, developers | Project history |
-| Trigger | Code changes | Knowledge capture | Significant changes |
-| Content | Product capabilities | Technical patterns | Change summaries + refs |
+| Aspect | docs-sync | docs-distill | learn | changelog |
+|--------|-----------|--------------|-------|-----------|
+| Layer | **Fragments** (accumulate) | **Synthesis** (must be rebuilt) | Technical knowledge | History |
+| Focus | All project `.md` docs | Docs declaring `covers:` | `docs/llm/` + Serena Memory | `PROJECT_CHANGELOG.md` |
+| Audience | Users, stakeholders | Anyone asking "how does this cohere?" | LLMs, developers | Project history |
+| Trigger | Code changes, before completion | **Drift** (synthesis older than its inputs); crystal harvest on cut | Knowledge capture | Significant changes |
+| Content | Product capabilities | The current whole — rewritten, never appended to | Technical patterns | Change summaries + refs |
+
+`docs-sync` and `docs-distill` never contend for the same moment: one fires per change before completion, the other on a *state* that persists until it's cleared.
 
 **`vdm-git` plugin:**
 
@@ -152,7 +186,8 @@ qwen extensions install VoDmAl/ai-dev-plugins
 **Typical workflow:**
 ```bash
 # After implementing a feature
-/vdm:docs-sync              # Update user-facing docs in docs/features/
+/vdm:docs-sync              # Update user-facing docs in docs/features/  (fragment)
+/vdm:docs-distill           # Rebuild the summary view the feature just aged  (synthesis)
 /vdm:learn "Pattern I used" # Capture technical knowledge in docs/llm/
 /vdm:changelog              # Add compact entry to PROJECT_CHANGELOG.md
 ```
@@ -261,6 +296,7 @@ The plugin includes templates for consistent documentation:
 
 - `templates/feature-template.md` — For `docs/features/` files
 - `templates/llm-template.md` — For `docs/llm/` files
+- `templates/synthesis-template.md` — For a synthesis document (the `docs-distill` tier)
 - `templates/changelog-template.md` — For initializing `PROJECT_CHANGELOG.md`
 
 ## Behavior Summary
@@ -320,6 +356,7 @@ Sections may be partial — missing keys fall back to defaults. Missing sections
 | `learn` | `proactive` | Knowledge-capture moments are easy to miss |
 | `changelog` | `conditional` | Nothing to changelog when tree is clean |
 | `docs-sync` | `conditional` | No diff → no docs to flag |
+| `distill` | `smart` | Fires only on real drift (a synthesis older than an input it covers), throttled to 30 min. Silent in a project with no synthesis tier — see [docs-distill](#docs-distill) |
 | `git-guard` | `proactive` | Safety reminder, should always be visible |
 
 ### Important note about `git-guard`
@@ -447,12 +484,12 @@ Always pair the bump with a `PROJECT_CHANGELOG.md` entry.
 
 ### Runtime hooks (ship with the plugin)
 
-`plugins/vdm/hooks/hooks.json` wires five hook scripts. The orphan-guard one fires after writes to `docs/llm/*.md`; the four crystal ones implement the workitem discipline gate described above:
+`plugins/vdm/hooks/hooks.json` wires the reminder hooks, the orphan-guard (fires after writes to `docs/llm/*.md`), and the crystal ones that implement the workitem discipline gate described above:
 
 | Hook event | Script | What it does |
 |------------|--------|--------------|
 | SessionStart | `crystal-hydrate.sh` | Lists active in-progress workitems so the assistant Reads them before continuing |
-| UserPromptSubmit | `docs-sync-reminder.sh`, `learn-reminder.sh`, `changelog-reminder.sh` | Per-prompt nudges (see Configuration section above) |
+| UserPromptSubmit | `docs-sync-reminder.sh`, `docs-distill-reminder.sh`, `learn-reminder.sh`, `changelog-reminder.sh`, `crystal-capture-reminder.sh`, `intercom-reminder.sh` | Per-prompt nudges (see Configuration section above). `docs-distill-reminder` is the synthesis drift signal — it delegates the actual scan to `distill-scan.sh` |
 | PreToolUse (Write/Edit/MultiEdit) | `crystal-completion-guard.sh` | Blocks status:in-progress → status:done while `- [ ]` items remain |
 | PostToolUse (Write/Edit/MultiEdit) | `orphan-guard-hook.sh` | Catches new `docs/llm/*.md` without a discovery hook |
 | Stop | `crystal-stop-reminder.sh` | End-of-turn visibility for active workitems with open items |
