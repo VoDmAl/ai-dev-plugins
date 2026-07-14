@@ -131,10 +131,17 @@ forbidden:
 3. **Re-stamp `observed:` with today's date.** That is a real edit recording a
    real re-verification, and it clears the drift as a side effect.
 
-Never `touch` the file, and never edit it cosmetically to silence the signal.
-Both fake step 1 and leave `observed:` asserting a verification that did not
-happen — turning the only date the reader can trust into a lie. A signal you are
-allowed to dismiss without looking is not a signal.
+**The same-day case.** If `observed:` already says today, step 3 is a no-op: the
+file does not change, so the signal does not clear. This is the *only* situation
+in which `touch` is legitimate — as the closing act of a re-verification that
+actually happened, never as a substitute for one. Say in your reply what you read
+and what you concluded; that statement is the artifact the reader can check, and
+it is what separates this from the forbidden case.
+
+Otherwise: **never** `touch` the file, and never edit it cosmetically to silence
+the signal. Both skip step 1 and leave `observed:` asserting a verification that
+did not happen — turning the only date the reader can trust into a lie. A signal
+you are allowed to dismiss without looking is not a signal.
 
 ### Phase 3 — Harvest the crystal (pull, never push)
 
