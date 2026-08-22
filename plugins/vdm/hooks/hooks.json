@@ -1,5 +1,5 @@
 {
-  "description": "VDM core hooks - documentation sync, synthesis-layer drift signal (docs-distill), knowledge capture, changelog reminders, intercom inbox reminder, orphan-guard for docs/llm/, and crystal-* workitem discipline (hydrate / capture-reminder / completion-guard / stop-reminder).",
+  "description": "VDM core hooks - documentation sync, synthesis-layer drift signal (docs-distill), knowledge capture, changelog reminders, intercom inbox reminder, orphan-guard for docs/llm/, and crystal-* workitem discipline (hydrate / capture-reminder / completion-guard / stop-reminder / canon lint).",
   "hooks": {
     "SessionStart": [
       {
@@ -67,6 +67,11 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/orphan-guard-hook.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh --hook",
             "timeout": 5
           }
         ]

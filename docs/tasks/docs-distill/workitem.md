@@ -2,10 +2,10 @@
 title: "docs-distill: слой синтеза — систематизировано ли то, что выходит наружу"
 slug: docs-distill
 description: "Учит суиту пересобирать сводное знание, а не копить разрозненные фрагменты"
-status: in-progress
+status: dormant
 session-type: prd-work
 created: 2026-07-14
-last-updated: 2026-07-14
+last-updated: 2026-08-22
 relates-to:
   - "[[crystal-evidence-discipline/workitem|crystal-evidence-discipline]]"
 ---
@@ -729,6 +729,17 @@ Discovery-hook — ссылка из `CLAUDE.md`. Тест пройден: ск�
 - [ ] см. Sidetrack #6 — дыра в правиле провенанса (чинить в crystal-evidence-discipline)
 - [x] см. Sidetrack #7 — у самой суиты нет слоя синтеза → resolved, `docs/model/suite.md`
 - [x] см. Sidetrack #8 — документ синтеза может осиротеть → resolved, DL #16
+
+## Почему кристалл припаркован, а не закрыт
+
+**2026-08-22.** Три открытых побега (#4 post-action verification, #5 лестница детекторов распада,
+#6 дыра в правиле провенанса) — исследовательские, не блокирующие. Ни один не мешает суите работать;
+каждый требует отдельной сессии. Кристалл переведён в `dormant` (paused-тир, singleton не занят),
+чтобы освободить активный слот под [[crystal-canon-enforcement/workitem|crystal-canon-enforcement]] —
+полевой отчёт из `obsidianvault` вскрыл дефект, который стоит дороже оставшегося хвоста.
+
+Возврат — когда любой из трёх побегов станет актуальным сам по себе, либо в рамках
+`crystal-canon-enforcement`, если он в них упрётся.
 
 ## References
 

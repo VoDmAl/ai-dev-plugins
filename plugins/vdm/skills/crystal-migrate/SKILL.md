@@ -223,6 +223,20 @@ them):
    doc is already complete, write it at `status: done` with **zero** `- [ ]` —
    the completion-guard fires on the creating Write too, so convert leftover
    unchecked boxes first.
+
+   **Stamp `crystal-schema: legacy` unless you actually rewrote the body into
+   canonical shape.** A migration moves and re-frontmatters a file; it does not
+   turn pre-crystal prose into a canonical workitem. Without the marker the
+   imported file is indistinguishable from a canonical one — and that is not a
+   cosmetic problem: an assistant deriving the workitem shape from a neighbour
+   picks the nearest file, which in a freshly-migrated tree is almost always an
+   import. The marker makes the population machine-separable and tells
+   `crystal-lint` to emit a single "not canon, don't copy this" line instead of
+   a violation list it would repeat forever.
+
+   Drop the marker only when a file has been genuinely brought to canon —
+   verify with `${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh <file>` and remove
+   `crystal-schema:` once it is silent.
 4. **References** → `<owner>/references/<name>.md` with a `reference-for:
    [[<owner>/workitem|<owner>]]` back-link (disambig wikilink form — bare
    `[[<slug>]]` fails Obsidian's shortest-path resolver once every workitem shares

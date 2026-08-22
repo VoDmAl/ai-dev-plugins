@@ -126,6 +126,37 @@ defensive, not procedural:
 > decisions и побеги — останется только сводка. Предлагаю завести crystal
 > сейчас. Slug?
 
+### (5) Path reflex — the trigger on the ACTION, not on the session
+
+Signals (1)–(4) all describe a *shape of session*. They miss the opposite case
+entirely: a session that is not planning anything, in which you nonetheless
+decide to park a leftover and write a file. That is a grow, and none of the
+counters know it.
+
+So make the trigger the write itself:
+
+> **You are about to write a file at a path matching `<root>/<slug>/workitem.md`
+> → that is a grow. Run this procedure, even if the session is maintenance and
+> no counter has ticked.**
+
+Path, not intent. "I'm just parking this" is exactly the state in which the
+procedure gets skipped, because the file feels like a by-product rather than a
+deliverable. It isn't: the moment it lands under a crystal root it is a workitem
+that other sessions will read, `crystal-cave` will list, and `crystal-cut` will
+gate.
+
+Field report (`obsidianvault`, 2026-08-22): during a maintenance session an
+agent parked a backlog item, wrote `tasks/orphan-attachments/workitem.md`
+without invoking this skill or reading the template, and reconstructed the shape
+from a neighbouring file. The result had none of the required sections and a
+Decision Log written as prose. Signals (1)–(4) were all silent, correctly — the
+session genuinely was not planning work. Only the path was evidence, and nothing
+was watching it.
+
+A `PostToolUse` hook (`crystal-lint.sh --hook`) now catches this deterministically
+after the fact. Treat that as the backstop, not the mechanism: getting it right
+on the first write costs nothing, while being corrected costs a rewrite.
+
 ### Why "forced" matters
 
 DL #19 is *organic-creep detection*: fires when a session that started
@@ -635,8 +666,82 @@ last-updated: <YYYY-MM-DD>
 ---
 ```
 
-When `session-type` is `brainstorm` or `prd-prep`, the template should
-include the `## Decision Log` section by default (Decision Log #13).
+#### The canonical skeleton — reproduced here so one read is enough
+
+The template remains authoritative. This copy exists because reading this skill
+and *still* not knowing the shape of the file is a documented failure mode: an
+agent that has to open a second file often doesn't, and then reconstructs the
+shape from whatever is lying next to it. The two are kept from drifting by a
+test (`tests/crystal-lint.test.sh` → "SKILL.md ↔ template agreement") that
+derives the canon from the template and asserts every item appears here.
+
+Print the live canon any time:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh --print-canon
+```
+
+Required H2 sections, in order:
+
+```markdown
+## Назначение        — goal, constraint, success criterion; incoming context
+## Текущая модель    — what we believe RIGHT NOW; the only section rewritten in place
+## Decision Log      — append-only; keep for brainstorm | prd-prep (DL #13), else may be dropped
+## Sidetracks        — numbered `### #N. <title>` cards, `**Status:** open`
+## Next actions      — the blocking tail; unchecked `- [ ]` here block crystal-cut
+## References        — `references/` provenance + external links
+```
+
+Every Decision Log entry, verbatim shape:
+
+```markdown
+### #N / YYYY-MM-DD / <short title>
+
+**Source:** user | assistant | both
+**Basis:** observed | user-stated | inferred | assumed
+**Basis-detail:** what was actually seen, or what this was derived from. If
+`inferred` / `assumed` — say explicitly what was NOT checked.
+**Context:** what was the question or option set
+**Why:** rationale — including what was rejected and why
+**Implication:** how this shapes the work going forward
+```
+
+`**Cross:**`, `**Supersedes:**` and `**Superseded-by:**` are optional.
+
+`Basis:` is the field that earns the format. Prose never asks "and how do you
+know?", so a conclusion resting on something you never checked reads exactly
+like one you verified. Field report: an agent concluded "the filenames are
+lying" — and only `Basis-detail` forced the admission that the files themselves
+were never opened, just their names and hashes compared. Drop the format and
+that is the first thing lost.
+
+**Canon is a floor, not a ceiling.** Those sections and keys are the minimum. A
+host repository may require additional frontmatter keys (`type:`, `relates-to:`,
+…) and a workitem may add any extra section it needs — neither is a violation,
+and `crystal-lint` reports only what is *missing*. A project convention and this
+template are therefore never in competition; satisfy both.
+
+#### Never infer the shape from a neighbouring file
+
+Do not derive frontmatter or section structure by looking at another workitem in
+the same directory, however canonical it appears. Nearest-neighbour is a cheap
+and usually correct heuristic; here it is systematically wrong, and nothing in
+the neighbour announces it. Two populations look identical to it:
+
+- files imported by `/vdm:crystal-migrate` from a pre-crystal era (they carry
+  `crystal-schema: legacy` when the import stamped them, and nothing at all when
+  it didn't);
+- files written under an *older* canon — the canon evolves, and a workitem from
+  six months ago is not wrong, merely earlier.
+
+The only sources of truth are this skill and the template. If you already read a
+neighbour, that does not make it evidence.
+
+Validate before handing off — the same check the `PostToolUse` hook runs:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh <root>/<slug>/workitem.md
+```
 
 ### Step 4: Seed from shadow
 
@@ -813,7 +918,10 @@ Future `crystal-grow / -bud / -cut / -cave` and all hook scripts resolve to
 
 ## Quality gates
 
-A successful grow ends in this state:
+A grow has **two modes**, and they end in different states. Picking the wrong
+one is not cosmetic: it either wastes the singleton slot or hides real work.
+
+**Mode A — grow for an active session.** Work starts now.
 
 - [ ] `<root>/<slug>/workitem.md` exists with valid frontmatter
 - [ ] `status: in-progress`
@@ -821,6 +929,27 @@ A successful grow ends in this state:
       explicitly switched to `dormant` first (DL #11)
 - [ ] TaskCreate has populated Tasks UI from the workitem's unchecked items
 - [ ] User received the one-line confirmation with the path
+
+**Mode B — grow as parking.** A backlog item gets a home; nobody is working on
+it, and nobody will today.
+
+- [ ] `<root>/<slug>/workitem.md` exists with valid frontmatter
+- [ ] `status:` is from the **pre-work tier** — `idea` | `draft` | `ready`
+- [ ] Singleton **untouched**: an active workitem elsewhere keeps its slot, and
+      this one does not claim it
+- [ ] No TaskCreate — there is nothing in flight to visualize
+- [ ] User received the one-line confirmation with the path
+
+The distinction is the taxonomy doing its job, not an exception to it: the
+singleton invariant was placed on the *active* tier precisely so that pre-work
+items can accumulate without competing (DL #10 in `crystal-multi-root`). Parking
+in `ready` is the taxonomy used as designed.
+
+Both modes owe the canonical shape. Mode B is where it is most often skipped —
+parking feels like a note — and a parked workitem is exactly the one that will
+be read cold, months later, by someone who was not there.
+
+- [ ] `crystal-lint.sh <root>/<slug>/workitem.md` is silent, in either mode
 
 ## Integration with other skills
 
