@@ -14,6 +14,14 @@ last-updated: {{TODAY}}
 # superseded-by: <slug>   # required when transitioning to status: superseded
 ---
 
+<!-- CANON IS A FLOOR, NOT A CEILING (crystal-grow DL #4).
+     The sections and frontmatter keys below are the MINIMUM. A host repository
+     may require additional frontmatter keys (`type:`, `relates-to:`, …) and a
+     workitem may add any extra section it needs — neither is a violation, and
+     `crystal-lint` never reports them. Only MISSING required items are flagged.
+     So a project convention and this template can both be satisfied at once;
+     they are not in competition. -->
+
 # {{TITLE}}
 
 > Brief opening paragraph: what this workitem is for, why it exists, who/what
@@ -51,7 +59,7 @@ a Jira ticket, a code symptom) so future-you can reconstruct intent.
      below. For everything else, delete it; you can add it later if reasoning
      becomes load-bearing. -->
 
-## Decision Log
+## Decision Log <!-- crystal-lint: optional -->
 
 ### #1 / {{TODAY}} / {{FIRST_DECISION_TITLE}}
 
@@ -63,8 +71,8 @@ a Jira ticket, a code symptom) so future-you can reconstruct intent.
 **Why:** rationale — including what was rejected and why
 **Implication:** how this shapes the work going forward
 **Cross:** см. Sidetrack #N (optional)
-**Supersedes:** #N, #M (only on an entry that overturns earlier ones)
-**Superseded-by:** #N (only on an entry that has been overturned)
+**Supersedes:** #N, #M (optional — only on an entry that overturns earlier ones)
+**Superseded-by:** #N (optional — only on an entry that has been overturned)
 
 ## Sidetracks
 

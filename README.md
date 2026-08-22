@@ -116,6 +116,13 @@ Adds workitem discipline to long-running sessions. A *crystal* is an in-repo wor
 - **Visibility** — `Stop` hook `crystal-stop-reminder` surfaces active workitems with open items at end-of-turn.
 - **Backup (git only)** — pre-commit check in the `vdm-git` plugin (and an in-repo equivalent for this dev clone) catches IDE-direct edits that bypass the assistant.
 
+**Canon lint (v2.16.0).** A `PostToolUse` hook validates the *shape* of any workitem written under a crystal root — the gap the completion gate never covered, since that one only fires at the done-transition. The required sections, frontmatter keys, Decision-Log entry format and `Basis:` enum are **derived from `templates/workitem-template.md` at every run**, not hardcoded, so the template cannot disagree with the linter and a translated template keeps working. Scope: non-terminal workitems only — a `done` workitem is a historical record, and retro-fitting it to a newer canon would falsify it. Canon is a **floor**: only *missing* items are reported, so a host repo may add its own frontmatter keys and sections freely. Files imported by `crystal-migrate` carry `crystal-schema: legacy` and get a single "not canon, don't copy this" line instead of a violation list — the mitigation for an assistant inferring a workitem's shape from whichever file happens to sit next to it.
+
+```bash
+bash plugins/vdm/scripts/crystal-lint.sh --all           # audit every non-terminal workitem
+bash plugins/vdm/scripts/crystal-lint.sh --print-canon   # print the derived canon
+```
+
 A `SessionStart` hook (`crystal-hydrate`) lists active workitems so the assistant Reads them before continuing. Non-canonical statuses (anything outside the 4-tier taxonomy after `status-aliases` resolution) surface as audit warnings in `list-open-crystals`, `crystal-hydrate`, and `crystal-cave` for triage. The design document for the suite is itself the first crystal in this repo — `docs/tasks/crystal-design/workitem.md` — serving as a worked example of the format.
 
 ### intercom
@@ -499,6 +506,7 @@ The harness materializes the **working tree** (not `git clone` of HEAD — pre-c
 | UserPromptSubmit | `docs-sync-reminder.sh`, `docs-distill-reminder.sh`, `learn-reminder.sh`, `changelog-reminder.sh`, `crystal-capture-reminder.sh`, `intercom-reminder.sh` | Per-prompt nudges (see Configuration section above). `docs-distill-reminder` is the synthesis drift signal — it delegates the actual scan to `distill-scan.sh` |
 | PreToolUse (Write/Edit/MultiEdit) | `crystal-completion-guard.sh` | Blocks status:in-progress → status:done while `- [ ]` items remain |
 | PostToolUse (Write/Edit/MultiEdit) | `orphan-guard-hook.sh` | Catches new `docs/llm/*.md` without a discovery hook |
+| PostToolUse (Write/Edit/MultiEdit) | `crystal-lint.sh --hook` | Catches a workitem written in a non-canonical shape (v2.16.0) |
 | Stop | `crystal-stop-reminder.sh` | End-of-turn visibility for active workitems with open items |
 
 Orphan-guard detail: without a discovery hook (CLAUDE.md ref / source-code @see / `docs/features/` ref / sibling `docs/llm/` ref) it exits 2 with a remediation message — surfacing as actionable feedback the assistant must address before the turn ends.
