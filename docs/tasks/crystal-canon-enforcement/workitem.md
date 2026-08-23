@@ -2,10 +2,10 @@
 title: "crystal-canon-enforcement: канон воркайтема, проверяемый машиной"
 slug: crystal-canon-enforcement
 description: "Делает форму воркайтема проверяемой на записи, а не выводимой по соседям"
-status: in-progress
+status: done
 session-type: prd-work
 created: 2026-08-22
-last-updated: 2026-08-22
+last-updated: 2026-08-23
 relates-to:
   - "[[docs-distill/workitem|docs-distill]]"
   - "[[crystal-design/workitem|crystal-design]]"
@@ -367,6 +367,11 @@ staged-vs-disk и три false-positive. Место гейта решено DL #
 - [x] `distill-scan.sh`: усечение списка входов теперь проговаривается + `--drift-all` (DL #7)
 - [x] Красные тесты сканера `tests/distill-scan.test.sh` (проверены против HEAD-версии)
 - [x] `docs-distill/SKILL.md` + `CLAUDE.md` → указывают на `--drift-all` при пересборке
+
+**Урожай (docs-distill, Step 1.5 перед свёрткой):**
+
+- [x] DL #8 — протокол реакции на сигнал симметричен по направлению ошибки →
+      `plugins/vdm/skills/docs-distill/SKILL.md` § Phase 2 (записано 2026-08-23)
 
 **Хвост:**
 
