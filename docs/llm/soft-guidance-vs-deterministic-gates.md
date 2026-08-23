@@ -182,6 +182,21 @@ the assistant when the skill is invoked) or in hook output (surfaced when
 hooks fire). Reserve this `CLAUDE.md` for invariants that only matter while
 working **on** the plugins themselves.
 
+**Copying a gate whose rule is a file.** Existing guidance says to place a gate
+where its constraint applies (dev-time vs user-time). There is a second axis,
+and it decides whether the gate may be *duplicated* at all:
+
+| The gate's rule is… | Duplication | Why |
+|---|---|---|
+| **code** — one check, restatable in a sentence | fine — copy it where needed | `crystal-precommit-check.sh` restates the completion rule for downstream projects |
+| **data** — a file the gate reads | **never** — ship the gate where the data lives | copying the canon gate would mean copying `workitem-template.md`, i.e. a second copy of the canon |
+
+The tell: if writing the second copy requires carrying a *file* along with it,
+stop — you are about to create the divergence the single source of truth was
+built to prevent. Put the gate next to its data and give other callers an entry
+point into it (`crystal-lint.sh --staged`, `check-doc-orphans.sh --file`) rather
+than a copy of it.
+
 **Gating without a remediation message.** Exit 1 with no stderr is hostile.
 Every gate's failure path must explain what to do — name the file, name the
 fix, give the exact command if possible.
@@ -190,6 +205,38 @@ fix, give the exact command if possible.
 A gate verified only on a clean tree is indistinguishable from `exit 0`. Break
 the invariant deliberately, watch it go red, restore. That is step 2 of the
 implementation template below, not an optional nicety.
+
+**Treating a detector's non-zero exit as a failure.** This one kills a gate that
+is *working perfectly*, from the outside, and it looks like defensive coding:
+
+```bash
+RESULT=$(bash check-thing.sh --summary 2>/dev/null) || RESULT=""   # ← WRONG
+RESULT=$(bash check-thing.sh --summary 2>/dev/null || true)        # ← right
+```
+
+An audit exits 1 to mean **"I found something"** — for a caller that wants the
+findings, that is the success case, not an error. The first form discards the
+output precisely when there is output to discard, and on a clean tree the two
+forms behave identically, so nothing you run locally will tell them apart.
+Shipped in `crystal-cave` on 2026-08-23 and caught only by a fixture repo with
+real violations in it.
+
+Rule: **from a detector, a non-zero exit is data, not a fault.** If you are
+writing `|| FALLBACK` around one, check which of the two meanings you just
+silently chose.
+
+**Testing an audit against a clean tree.** Step 2 below says "break the invariant
+on purpose", and for a *gate* that is enough — you watch it block. For a
+**reporting** surface (a column, a footer count, an overview line) there is a
+second trap: on a clean tree, "working" and "silently broken" render **the same
+way** — an empty column either way. Green proves the script does not crash and
+nothing else.
+
+An audit is tested against a tree **that has something to audit**. Build the
+fixture with the violation already in it: one good specimen, one violating, one
+exempt. Assert that the good one stays unmarked, the violating one is named, and
+the exempt one is silent — the last is what proves the exemption is a *scope
+rule* rather than blindness.
 
 **Writing a red test that can be satisfied by the repo itself.** The harness
 (`tests/gates.test.sh`) was blind three times before it worked, each time a
@@ -226,6 +273,14 @@ When promoting a soft rule to a gate:
    run the gate, confirm it exits non-zero *and* names the right file. Then
    restore and confirm green. A gate observed only in the green state has not
    been observed at all — see "The orphan gate that never ran" above.
+
+   If what you built **reports** rather than blocks, the fixture must contain
+   the violation from the start: a clean tree renders "working" and "silently
+   broken" identically. Include an exempt specimen too, and assert it stays
+   silent *while a non-exempt one goes red* — otherwise the exemption cannot be
+   told apart from blindness. And when the caller consumes another script's
+   output, check you have not written `$(...) || FALLBACK` around an exit code
+   that means "found".
 3. **Wire it into the right gate type:**
    - **Repo-level dev gate** → extend `.githooks/pre-commit` to call the
      script when relevant files are staged.
