@@ -152,6 +152,20 @@ the signal. Both skip step 1 and leave `observed:` asserting a verification that
 did not happen — turning the only date the reader can trust into a lie. A signal
 you are allowed to dismiss without looking is not a signal.
 
+**The three steps are symmetric in the direction of error, and that is why they
+earn their cost.** They read as a remedy for false *positives* — drift fired,
+nothing really changed — because that is the case that prompted them. But step 1
+does not say "confirm nothing changed"; it says **compare the signal's claim
+against the subject**, and a comparison catches the signal claiming too little
+just as readily as too much. Field evidence, 2026-08-22: following step 1
+honestly is what exposed the scan silently capping its own input list at three
+while six had drifted. The protocol found a false *silence* — the direction it
+was never written for.
+
+Practical consequence: do not shortcut step 1 when you already believe the
+signal. "It fired and I know why" is exactly the state in which an
+under-reporting signal passes unexamined.
+
 ### Phase 3 — Harvest the crystal (pull, never push)
 
 When an active crystal exists, **pull** from it. The crystal gets no new
