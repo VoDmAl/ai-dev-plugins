@@ -23,6 +23,8 @@
 #
 #   Done: N crystals (use --all)
 #   ⚠ Non-canonical statuses: N workitems.    [only if drift detected]
+#   ⚠ Off-canon shape: N workitems.           [only if any]
+#   ℹ Legacy schema: N workitems.             [only if any]
 #   Legend: ● active · ⏸ paused · ○ ready · ◦ idea
 #
 # Single-root mode collapses group headers (only one trivial group).
@@ -68,10 +70,43 @@ SINGLETON_MODE=$(derive_singleton_mode)
 #   $8  updated       raw last-updated for display
 #   $9  description   optional one-liner for cave/base overview
 #   $10 icon          ●/⏸/○/◦/✓/!
+#   $11 canon         ""|off-canon|legacy — STRUCTURAL canon, from crystal-lint
+#
+# Structural canon is a SEPARATE axis from the status taxonomy, and the two are
+# reported separately on purpose: a workitem can carry a perfectly canonical
+# `status:` and a broken shape, or the reverse. Merging them into one warning
+# would make each unactionable — the reader could not tell which thing to fix.
+#
+# The verdict is not re-derived here. crystal-lint owns what "off canon" means
+# and is asked for it (`--summary`), the same way check-doc-orphans owns the
+# orphan contract for everyone who needs it.
 # ----------------------------------------------------------------------------
 
+# Ask the linter once for every workitem; look the verdict up per row below.
+# Failure here is never fatal: an overview that refuses to render because a
+# validator misbehaved is worse than one missing a column.
+#
+# `|| true` is load-bearing, not defensive noise. crystal-lint exits 1 when it
+# FINDS violations — that is its success case here, not an error — so a bare
+# `$(...) || LINT_SUMMARY=""` discards the output precisely when it has
+# something to report. That bug was written here first and caught only by
+# running the audit against a tree with real violations in it; on a clean tree
+# it is invisible, because both branches produce the same empty column.
+LINT_SUMMARY=$(bash "$SCRIPT_DIR/crystal-lint.sh" --all --summary 2>/dev/null || true)
+
+canon_flag_for() {
+  # canon_flag_for <abs-path> — prints "off-canon" | "legacy" | "" (empty).
+  [ -z "$LINT_SUMMARY" ] && return 0
+  printf '%s\n' "$LINT_SUMMARY" | awk -F'\t' -v f="$1" '
+    $1 == f {
+      if ($2 == "violations") print "off-canon"
+      else if ($2 == "legacy") print "legacy"
+      exit
+    }'
+}
+
 build_meta() {
-  local all_items f raw resolved tier slug type updated description group short to icon
+  local all_items f raw resolved tier slug type updated description group short to icon canon
   all_items=$(find_workitems)
   [ -z "$all_items" ] && return 0
   while IFS= read -r f; do
@@ -100,9 +135,10 @@ build_meta() {
       terminal) to=4; icon='✓' ;;
       *)        to=5; icon='!' ;;
     esac
-    printf '%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    canon=$(canon_flag_for "$f")
+    printf '%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       "$group" "$to" "${updated:-0000-00-00}" "$short" "$tier" "$resolved" \
-      "${type:-}" "${updated:-}" "${description:-}" "$icon"
+      "${type:-}" "${updated:-}" "${description:-}" "$icon" "${canon:-}"
   done <<<"$all_items"
 }
 
@@ -121,6 +157,12 @@ N_PAUSED=$(count_tier paused);        N_PAUSED=${N_PAUSED:-0}
 N_BACKLOG=$(count_tier pre-work);     N_BACKLOG=${N_BACKLOG:-0}
 N_TERMINAL=$(count_tier terminal);    N_TERMINAL=${N_TERMINAL:-0}
 N_NONCANON=$(count_tier non-canonical); N_NONCANON=${N_NONCANON:-0}
+
+count_canon() {
+  printf '%s\n' "$META" | awk -F'\t' -v c="$1" '$11==c' | grep -c '.' 2>/dev/null || true
+}
+N_OFFCANON=$(count_canon off-canon); N_OFFCANON=${N_OFFCANON:-0}
+N_LEGACY=$(count_canon legacy);      N_LEGACY=${N_LEGACY:-0}
 
 # ----------------------------------------------------------------------------
 # Header
@@ -255,10 +297,13 @@ END {
     type    = F[7]
     updated = F[8]
     desc    = F[9]
+    canon   = F[11]
     # Idea rows hide the type column (status implies type)
     if (status == "idea") type = ""
     type_padded = pad(type, typew)
     desc_suffix = (desc != "") ? "  — \"" desc "\"" : ""
+    if (canon == "off-canon")   desc_suffix = desc_suffix "  ⚠ off-canon"
+    else if (canon == "legacy") desc_suffix = desc_suffix "  ℹ legacy"
     if (typew == 0)
       printf "  %s %s   %s%s\n", icon, pad(short, maxw), updated, desc_suffix
     else
@@ -277,6 +322,16 @@ fi
 
 if [ "$N_NONCANON" -gt 0 ]; then
   printf '\n⚠ Non-canonical statuses: %d workitems. The assistant will offer remap targets.\n' "$N_NONCANON"
+fi
+
+# Structural canon — a separate axis from status, so a separate line.
+if [ "$N_OFFCANON" -gt 0 ]; then
+  printf '\n⚠ Off-canon shape: %d workitems. Details: crystal-lint.sh --all\n' "$N_OFFCANON"
+fi
+
+if [ "$N_LEGACY" -gt 0 ]; then
+  printf '\nℹ Legacy schema (crystal-migrate imports): %d workitems — shape not asserted.\n' "$N_LEGACY"
+  printf '  Do not infer a workitem'"'"'s shape from these.\n'
 fi
 
 printf '\nLegend: ● active · ⏸ paused · ○ ready · ◦ idea'

@@ -265,6 +265,35 @@ non-canonical file with remap options, one decision per file. This is
 the only part of Overview mode that needs assistant interaction beyond
 verbatim print.
 
+### Two audits, two axes — never merge them
+
+The overview carries **two independent** audit signals, and they answer
+different questions about different things:
+
+| Line | Axis | What is wrong | Who decides the verdict |
+|------|------|---------------|-------------------------|
+| `⚠ Non-canonical statuses: N` | **status taxonomy** | the `status:` value is outside the 4 tiers | `lib/crystal-path.sh` → `derive_status_tier()` |
+| `⚠ Off-canon shape: N` | **structure** | required sections / frontmatter keys / DL fields missing | `crystal-lint.sh --summary` |
+| `ℹ Legacy schema: N` | structure (informational) | imported by `crystal-migrate`, shape never asserted | `crystal-schema: legacy` in frontmatter |
+
+A workitem can have a flawless `status:` and a broken shape, or the
+reverse — so a single merged warning would leave the reader unable to
+tell which thing to fix. Rows carry the same distinction inline
+(`⚠ off-canon`, `ℹ legacy`).
+
+`ℹ Legacy schema` is **not** a defect report and needs no triage. It marks
+files that `crystal-migrate` moved without rewriting their bodies into
+canonical form. Its purpose is to keep them from being copied: an
+assistant that infers a workitem's shape from a neighbour will otherwise
+pick one of these, since in a freshly-migrated tree they are the majority.
+Resolve one only when the user asks for it — bring the file to canon, then
+drop the `crystal-schema:` key.
+
+For `⚠ Off-canon shape`, run
+`${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh --all` to see what each file
+is missing. Never guess the list: canon is derived from the template and is
+the linter's to report.
+
 ### Step 3: Detail / Sidetracks → assistant-rendered
 
 `detail` mode (slug argument) and `--sidetracks` mode stay assistant-

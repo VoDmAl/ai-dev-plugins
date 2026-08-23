@@ -24,6 +24,7 @@
 #   crystal-lint.sh --all                  lint every non-terminal workitem
 #   crystal-lint.sh --staged               lint the STAGED version of staged workitems
 #   crystal-lint.sh --print-canon          print the derived canon
+#   [--summary]                            machine-readable: path<TAB>label<TAB>n
 #   crystal-lint.sh --hook                 read a hook JSON payload on stdin
 #   [--quiet]                              suppress per-file OK lines
 #   [--project-root <path>]                root for resolving relative paths
@@ -63,6 +64,7 @@ LINTER="$SELF_DIR/crystal-lint.py"
 
 mode="files"
 quiet=""
+summary=""
 project_root=""
 files=()
 
@@ -73,6 +75,7 @@ while [ $# -gt 0 ]; do
     --print-canon)  mode="canon" ;;
     --hook)         mode="hook" ;;
     --quiet)        quiet="--quiet" ;;
+    --summary)      summary="--summary" ;;
     --project-root) shift; project_root="${1:-}" ;;
     --)             ;;
     -*)             ;;
@@ -111,7 +114,7 @@ run_linter() {
   CRYSTAL_TERMINAL="$terminal_csv" \
   CRYSTAL_CANONICAL="$canonical_csv" \
   CRYSTAL_ALIASES="$aliases_csv" \
-    python3 "$LINTER" ${quiet:+$quiet} "$@"
+    python3 "$LINTER" ${quiet:+$quiet} ${summary:+$summary} "$@"
 }
 
 # --- --hook: PostToolUse payload on stdin ------------------------------------

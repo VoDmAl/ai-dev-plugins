@@ -298,6 +298,12 @@ def main(argv):
             aliases[k.strip()] = v.strip()
 
     quiet = "--quiet" in argv
+    # --summary: one TSV row per file — `path <TAB> label <TAB> problem-count`.
+    # Exists so other tools (crystal-cave) can ASK the linter instead of
+    # re-deriving what "off canon" means. Same rule that makes check-doc-orphans
+    # the single owner of the orphan contract: the algorithm lives in one place
+    # and callers shell out to it.
+    summary = "--summary" in argv
     files = [a for a in argv if not a.startswith("--")]
     if not files:
         return 0
@@ -310,6 +316,13 @@ def main(argv):
         except OSError:
             continue
         label, problems = lint(path, text, canon, terminal, canonical, aliases)
+        if summary:
+            if label == "checked":
+                label = "violations" if problems else "ok"
+            print("%s\t%s\t%d" % (path, label, len(problems)))
+            if problems:
+                failed += 1
+            continue
         if label == "legacy":
             if not quiet:
                 print(
