@@ -19,7 +19,8 @@ disk, no state anywhere. Read it **before adding a new mechanism**: the usual ou
 don't need a new gate at all, only a new way to *name* the obligation in a form an existing gate
 already understands.
 
-Kept honest by the drift signal — `bash plugins/vdm/scripts/distill-scan.sh --drift`. It is rebuilt,
+Kept honest by the drift signal — `bash plugins/vdm/scripts/distill-scan.sh --drift` (use
+`--drift-all` when actually rebuilding: the plain form caps the input list and says so). It is rebuilt,
 not appended to.
 
 Its neighbour `docs/llm/soft-guidance-vs-deterministic-gates.md` answers a different question — *when*

@@ -27,9 +27,12 @@
 #   ---
 #
 # Usage:
-#   distill-scan.sh            # same as --drift
-#   distill-scan.sh --drift    # only documents whose inputs are newer than they are
-#   distill-scan.sh --list     # every synthesis document found, with question/observed
+#   distill-scan.sh              # same as --drift
+#   distill-scan.sh --drift      # documents whose inputs are newer than they are;
+#                                #   names the first few inputs and STATES how many
+#                                #   more it did not name
+#   distill-scan.sh --drift-all  # same, naming every input (use when rebuilding)
+#   distill-scan.sh --list       # every synthesis document found, with question/observed
 #
 # Exit codes:
 #   0 — success (empty stdout = nothing to report). Hooks depend on this.
@@ -44,11 +47,16 @@ set -u
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/config-read.sh" 2>/dev/null || exit 0
 
 MODE="drift"
+# How many inputs the drift report NAMES per document. Anything beyond this is
+# still counted and still announced — see the truncation line at the bottom.
+# The cap exists to keep hook output short, not to decide what matters.
+DRIFT_SHOW=3
 case "${1:-}" in
-  ""|--drift) MODE="drift" ;;
-  --list)     MODE="list" ;;
-  -h|--help)  printf 'usage: %s [--drift|--list]\n' "$(basename "$0")"; exit 0 ;;
-  *)          printf 'usage: %s [--drift|--list]\n' "$(basename "$0")" >&2; exit 2 ;;
+  ""|--drift)  MODE="drift" ;;
+  --drift-all) MODE="drift"; DRIFT_SHOW=1000000 ;;
+  --list)      MODE="list" ;;
+  -h|--help)   printf 'usage: %s [--drift|--drift-all|--list]\n' "$(basename "$0")"; exit 0 ;;
+  *)           printf 'usage: %s [--drift|--drift-all|--list]\n' "$(basename "$0")" >&2; exit 2 ;;
 esac
 
 project_root=$(git rev-parse --show-toplevel 2>/dev/null) || project_root=$(pwd)
@@ -248,21 +256,31 @@ find_synthesis_docs() {
 # ---------------------------------------------------------------------------
 
 newer_inputs() {
-  # newer_inputs <synthesis-file> [max]
-  # Prints covered files whose mtime is newer than the synthesis. Stops at `max`
+  # newer_inputs <synthesis-file>
+  # Prints EVERY covered file whose mtime is newer than the synthesis, one per
+  # line. Display capping belongs to the caller, deliberately: this function
+  # used to stop at `max` (default 3) and the caller printed what it got, with
+  # nothing said about the rest. That is a silent truncation, and it lies in the
+  # safe direction — the reader sees three names and reasonably concludes those
+  # are the changes. Caught 2026-08-22 while rebuilding suite.md: the cap was
+  # filled by the first two covers entries, so `plugins/vdm/scripts/` — which
+  # had just gained an entire new subsystem — was never even walked. The
+  # synthesis would have been rebuilt around three files and missed the point.
+  # Cost is unchanged in practice: `find` already walks each covered directory
+  # in full, so the early break saved only the traversal of later covers
+  # entries, and a covers list is hand-written and short by nature.
+  # Old signature note: the second positional arg (max) is gone. Callers cap.
   # (default 3) — the caller wants evidence, not an inventory.
-  local synth="$1" max="${2:-3}"
+  local synth="$1"
   local emitted=0 glob e hit
 
   while IFS= read -r glob; do
     [ -n "$glob" ] || continue
-    [ "$emitted" -ge "$max" ] && break
     glob="${glob%/}"
 
     # Expand in a subshell so globstar/nullglob don't leak into the caller.
     while IFS= read -r e; do
       [ -n "$e" ] || continue
-      [ "$emitted" -ge "$max" ] && break
       # The synthesis document must never count as its own input — a doc listed
       # under a glob it also matches (e.g. `docs/*.md` covering a sibling) would
       # otherwise report itself as perpetually stale.
@@ -273,7 +291,6 @@ newer_inputs() {
           [ "$hit" = "$synth" ] && continue
           printf '%s\n' "$hit"
           emitted=$((emitted + 1))
-          [ "$emitted" -ge "$max" ] && break
         done < <(find "$e" -type f -newer "$synth" \
                    -not -path '*/.git/*' -not -path '*/node_modules/*' \
                    -not -path '*/vendor/*' 2>/dev/null | sort)
@@ -313,12 +330,22 @@ fi
 # --drift
 while IFS= read -r doc; do
   [ -n "$doc" ] || continue
-  newer=$(newer_inputs "$doc" 3)
+  newer=$(newer_inputs "$doc")
   [ -z "$newer" ] && continue
   printf '%s\n' "$doc"
+  total=$(printf '%s\n' "$newer" | grep -c '.')
+  shown=0
   while IFS= read -r n; do
-    [ -n "$n" ] && printf '  ← %s\n' "$n"
+    [ -n "$n" ] || continue
+    [ "$shown" -ge "$DRIFT_SHOW" ] && break
+    printf '  ← %s\n' "$n"
+    shown=$((shown + 1))
   done <<<"$newer"
+  # Never truncate silently: a bounded list that does not say it is bounded
+  # reads as "these are the changes", and the rebuild then covers only those.
+  if [ "$total" -gt "$shown" ]; then
+    printf '  ← … и ещё %s (список усечён; полный: --drift-all)\n' "$((total - shown))"
+  fi
 done <<<"$synth_docs"
 
 exit 0

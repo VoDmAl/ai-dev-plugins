@@ -73,6 +73,7 @@ If the question cannot be stated, there is no synthesis — there is a pile.
 ```bash
 Bash(command="bash ${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh --list", ...)   # every synthesis doc
 Bash(command="bash ${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh --drift", ...)  # only the stale ones
+Bash(command="bash ${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh --drift-all", ...)  # …naming EVERY input
 ```
 
 Exit 0 always; empty stdout means nothing to report.
@@ -111,6 +112,14 @@ question. Do **not** create the tier silently — propose it:
 ### Phase 2 — Rebuild (not append)
 
 For each drifted document, the scan already named the inputs that outran it.
+
+**Use `--drift-all` here, not `--drift`.** The plain form names only the first
+few inputs and ends with `… и ещё N` — short enough for a hook nudge, and
+useless for a rebuild: whatever it did not name is exactly what you would miss.
+This is not hypothetical. On 2026-08-22 the cap silently swallowed the covers
+entry holding an entire new subsystem, and the rebuild would have been assembled
+around three files while the actual change sat in the unnamed half. If a
+truncation line appears, re-run with `--drift-all` before reading anything.
 
 Read the newer inputs. Then **rewrite** the "how it works now" section to
 describe the current whole. Ask, out loud, the question the tier exists for:
