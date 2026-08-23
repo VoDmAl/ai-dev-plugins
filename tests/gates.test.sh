@@ -104,6 +104,8 @@ for g in check-lib-sync check-version-bump check-skill-paths check-crystal-compl
 done
 out=$(bash plugins/vdm/scripts/check-doc-orphans.sh 2>&1); rc=$?
 expect_exit "check-doc-orphans green on clean tree" 0 "$rc"
+out=$(bash plugins/vdm/scripts/crystal-lint.sh --staged 2>&1); rc=$?
+expect_exit "crystal-canon green on clean tree" 0 "$rc"
 
 restore() { git -C "$CLONE" reset --quiet HEAD -- . 2>/dev/null; git -C "$CLONE" checkout --quiet -- . 2>/dev/null; git -C "$CLONE" clean --quiet -fd 2>/dev/null; }
 
@@ -288,6 +290,132 @@ EOF
 git add docs/tasks/zz-gate-test/workitem.md
 out=$(bash scripts/check-crystal-completion.sh 2>&1); rc=$?
 expect_exit "GREEN: unchecked in status:in-progress is not a violation" 0 "$rc"
+restore
+
+# ---------------------------------------------------------------------------
+echo ""
+echo "== crystal-canon (crystal-lint.sh --staged) =="
+# The second enforcement surface for the workitem canon: the PostToolUse hook
+# sees only writes made THROUGH the assistant, so an IDE-direct edit reaches the
+# commit untouched, and a harness without PostToolUse never runs the hook at all.
+#
+# Fixture name is minted at RUNTIME. A statically-named fixture is a path that
+# some file in the repo can mention — which is how the orphan red tests went
+# green three times, the third time defeated by the very paragraph explaining
+# the second. What does not exist in static text cannot be named by it.
+canon_slug="zz-canon-$$-$(od -An -N2 -tu2 </dev/urandom | tr -d ' ')"
+mkdir -p "docs/tasks/$canon_slug"
+
+canon_write() {
+  # canon_write <status> <body...>
+  local st="$1"; shift
+  {
+    printf -- '---\n'
+    printf 'title: "canon fixture"\nslug: %s\nstatus: %s\n' "$canon_slug" "$st"
+    printf 'session-type: other\ncreated: 2026-08-22\nlast-updated: 2026-08-22\n'
+    printf -- '---\n\n# canon fixture\n'
+    printf '%s\n' "$@"
+  } > "docs/tasks/$canon_slug/workitem.md"
+}
+
+CANON_OK='## Назначение
+x
+
+## Текущая модель
+x
+
+## Sidetracks
+x
+
+## Next actions
+- [ ] x
+
+## References
+x'
+
+# RED: the shape a neighbour-copying agent produces — invented sections.
+canon_write ready '## START HERE
+x
+
+## Порядок разбора
+1. x'
+git add "docs/tasks/$canon_slug/workitem.md"
+out=$(bash plugins/vdm/scripts/crystal-lint.sh --staged 2>&1); rc=$?
+expect_exit "RED: non-canonical workitem staged ⇒ exit 1" 1 "$rc"
+expect_says "RED: names the offending file" "$out" "$canon_slug"
+expect_says "RED: names a missing section" "$out" "## Назначение"
+restore
+
+# RED: Decision Log present but written as prose — the epistemic loss the whole
+# format exists to prevent.
+mkdir -p "docs/tasks/$canon_slug"
+canon_write in-progress "$CANON_OK" '
+## Decision Log
+
+**#1 (2026-08-22)** — prose instead of an entry.'
+git add "docs/tasks/$canon_slug/workitem.md"
+out=$(bash plugins/vdm/scripts/crystal-lint.sh --staged 2>&1); rc=$?
+expect_exit "RED: prose Decision Log ⇒ exit 1" 1 "$rc"
+restore
+
+# GREEN: canonical shape passes.
+mkdir -p "docs/tasks/$canon_slug"
+canon_write in-progress "$CANON_OK"
+git add "docs/tasks/$canon_slug/workitem.md"
+out=$(bash plugins/vdm/scripts/crystal-lint.sh --staged 2>&1); rc=$?
+expect_exit "GREEN: canonical workitem ⇒ exit 0" 0 "$rc"
+restore
+
+# The gate reads the STAGED blob, not the disk. Stage a broken file, then fix
+# the working copy WITHOUT re-staging: the gate must stay red, because the fix
+# is not part of the commit it is guarding.
+mkdir -p "docs/tasks/$canon_slug"
+canon_write ready '## START HERE
+x'
+git add "docs/tasks/$canon_slug/workitem.md"
+canon_write in-progress "$CANON_OK"          # fixed on disk only
+out=$(bash plugins/vdm/scripts/crystal-lint.sh --staged 2>&1); rc=$?
+expect_exit "RED: unstaged fix does not clear the gate" 1 "$rc"
+git add "docs/tasks/$canon_slug/workitem.md"  # now stage it
+out=$(bash plugins/vdm/scripts/crystal-lint.sh --staged 2>&1); rc=$?
+expect_exit "GREEN: re-staged fix clears the gate" 0 "$rc"
+restore
+
+# FALSE-POSITIVE 1: a terminal-tier workitem is a historical record. Retro-fitting
+# it to a newer canon would falsify it — the gate must stay silent even though
+# this file is broken by current canon.
+mkdir -p "docs/tasks/$canon_slug"
+canon_write done '## Назначение
+x'
+git add "docs/tasks/$canon_slug/workitem.md"
+out=$(bash plugins/vdm/scripts/crystal-lint.sh --staged 2>&1); rc=$?
+expect_exit "GREEN: terminal tier is out of scope" 0 "$rc"
+restore
+
+# FALSE-POSITIVE 2: same file, non-terminal ⇒ red. Without this pair the test
+# above could be passing because the gate is BLIND rather than because it scopes.
+mkdir -p "docs/tasks/$canon_slug"
+canon_write in-progress '## Назначение
+x'
+git add "docs/tasks/$canon_slug/workitem.md"
+out=$(bash plugins/vdm/scripts/crystal-lint.sh --staged 2>&1); rc=$?
+expect_exit "RED: same file non-terminal ⇒ scope is not blindness" 1 "$rc"
+restore
+
+# FALSE-POSITIVE 3: extra sections and host-repo frontmatter keys are legal —
+# the canon is a floor. A gate that forbade them would be unusable in any repo
+# with its own conventions.
+mkdir -p "docs/tasks/$canon_slug"
+{
+  printf -- '---\n'
+  printf 'title: "canon fixture"\nslug: %s\nstatus: in-progress\n' "$canon_slug"
+  printf 'session-type: other\ncreated: 2026-08-22\nlast-updated: 2026-08-22\n'
+  printf 'type: task\nrelates-to: []\n'
+  printf -- '---\n\n# canon fixture\n%s\n\n## Порядок разбора\nx\n' "$CANON_OK"
+} > "docs/tasks/$canon_slug/workitem.md"
+git add "docs/tasks/$canon_slug/workitem.md"
+out=$(bash plugins/vdm/scripts/crystal-lint.sh --staged 2>&1); rc=$?
+expect_exit "GREEN: extra keys + extra section are legal (canon is a floor)" 0 "$rc"
 restore
 
 # ---------------------------------------------------------------------------

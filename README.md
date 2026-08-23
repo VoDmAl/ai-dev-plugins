@@ -466,6 +466,7 @@ If you forget, a SessionStart hook in `.claude/settings.json` prints a one-line 
 | version-bump | `scripts/check-version-bump.sh` | any file under `plugins/X/**` is staged (bump check) **and** unconditionally (marketplace ↔ plugin.json parity) |
 | skill-paths | `scripts/check-skill-paths.sh` | unconditionally — user-time files must not reference `plugins/X/<subdir>/` (use `${CLAUDE_PLUGIN_ROOT}/...` instead) |
 | crystal | `scripts/check-crystal-completion.sh` | any `docs/tasks/**/workitem.md` (or flat `docs/tasks/*.md`) is staged with frontmatter `status: done` and unchecked `- [ ]` items remain |
+| crystal-canon | `plugins/vdm/scripts/crystal-lint.sh --staged` | any staged workitem whose shape does not match the canon derived from `templates/workitem-template.md` (non-terminal tier only) |
 
 All three can be run manually:
 
@@ -474,6 +475,7 @@ bash scripts/check-lib-sync.sh             # 0 = clean, 1 = drift report
 bash scripts/check-version-bump.sh         # 0 = bumped + in parity, 1 = drift
 bash scripts/check-skill-paths.sh          # 0 = clean, 1 = dev-path leak found
 bash scripts/check-crystal-completion.sh   # 0 = clean, 1 = workitem done with open items
+bash plugins/vdm/scripts/crystal-lint.sh --staged   # 0 = clean, 1 = staged workitem off-canon
 bash tests/gates.test.sh                   # red-tests all of the above (~15s)
 ```
 
