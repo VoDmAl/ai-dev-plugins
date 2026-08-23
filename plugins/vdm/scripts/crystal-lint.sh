@@ -22,10 +22,22 @@
 # Usage:
 #   crystal-lint.sh <file>...              lint the named files
 #   crystal-lint.sh --all                  lint every non-terminal workitem
+#   crystal-lint.sh --staged               lint the STAGED version of staged workitems
 #   crystal-lint.sh --print-canon          print the derived canon
 #   crystal-lint.sh --hook                 read a hook JSON payload on stdin
 #   [--quiet]                              suppress per-file OK lines
 #   [--project-root <path>]                root for resolving relative paths
+#
+# `--staged` is the pre-commit surface, and it lives HERE rather than in a
+# dev-repo `scripts/check-*.sh` for a reason worth stating: the canon is a FILE
+# (`templates/workitem-template.md`), not a regex. The completion gate could be
+# copied into vdm-git for downstream projects because its rule fits in one
+# check; this one cannot, because copying it would mean copying the template —
+# a second copy of the canon, which is exactly what deriving it was meant to
+# prevent. So the gate ships in the plugin that owns the canon, and any project
+# wires it into its own hook:
+#     ${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh --staged
+# Same shape as check-doc-orphans.sh, which is likewise both a hook and a gate.
 #
 # Exit: 0 clean / 1 violations found.
 #
@@ -57,6 +69,7 @@ files=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --all)          mode="all" ;;
+    --staged)       mode="staged" ;;
     --print-canon)  mode="canon" ;;
     --hook)         mode="hook" ;;
     --quiet)        quiet="--quiet" ;;
@@ -180,6 +193,83 @@ EOF
     exit 2
   fi
   exit 0
+fi
+
+# --- --staged: the pre-commit surface -----------------------------------------
+# Lints the STAGED content, never what happens to sit on disk. That distinction
+# is the whole point of a pre-commit gate: an unstaged fix does not travel with
+# the commit, and an unstaged breakage is not part of it either. Same rule
+# check-crystal-completion.sh follows.
+#
+# Each blob is materialized under a directory whose basename is preserved as
+# `workitem.md`, because the linter uses that name to decide whether a file
+# claims the canon at all. Violations are reported against the REAL path — a
+# gate that names a temp file is a gate people learn to ignore.
+if [ "$mode" = "staged" ]; then
+  command -v git >/dev/null 2>&1 || exit 0
+  repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+  cd "$repo_root" 2>/dev/null || exit 0
+
+  staged_files=$(git diff --cached --name-only 2>/dev/null) || exit 0
+  [ -z "$staged_files" ] && exit 0
+
+  roots=$(resolve_crystal_roots 2>/dev/null)
+  [ -z "$roots" ] && exit 0
+
+  tmp=$(mktemp -d 2>/dev/null || mktemp -d -t crystallint) || exit 0
+  trap 'rm -rf "$tmp"' EXIT
+
+  rc=0
+  n=0
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    case "$f" in
+      */workitem.md|*.md) ;;
+      *) continue ;;
+    esac
+
+    # Must live under a resolved crystal root.
+    abs="$repo_root/$f"
+    under=""
+    while IFS= read -r r; do
+      [ -n "$r" ] || continue
+      case "$abs" in "$r"/*) under="yes"; break ;; esac
+    done <<<"$roots"
+    [ -z "$under" ] && continue
+
+    blob=$(git show ":$f" 2>/dev/null) || continue
+
+    n=$((n + 1))
+    holder="$tmp/$n"
+    mkdir -p "$holder"
+    # Preserve the basename: `workitem.md` is itself the claim to the canon.
+    target="$holder/$(basename "$f")"
+    printf '%s\n' "$blob" >"$target"
+
+    out=$(run_linter "$target" 2>&1)
+    lrc=$?
+    if [ "$lrc" -ne 0 ]; then
+      rc=1
+      # Map the scratch path back to the path the committer recognizes.
+      printf '%s\n' "$out" | sed "s|$target|$f|g" >&2
+    fi
+  done <<<"$staged_files"
+
+  if [ "$rc" -eq 0 ]; then
+    echo "crystal-canon: ✓ staged workitems match the canon"
+  else
+    cat >&2 <<'EOF'
+
+crystal-canon: 🚨 a staged workitem does not match the canonical shape.
+
+  Print the canon:  bash plugins/vdm/scripts/crystal-lint.sh --print-canon
+  The canon is derived from plugins/vdm/templates/workitem-template.md.
+  Only MISSING items are reported — extra sections and keys are always legal.
+
+  This gate reads the STAGED content, so fix the file AND re-stage it.
+EOF
+  fi
+  exit "$rc"
 fi
 
 # --- --all: every workitem across resolved roots ------------------------------

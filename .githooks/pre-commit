@@ -2,7 +2,7 @@
 # Local pre-commit hook. Activated by:
 #     git config core.hooksPath .githooks
 #
-# Runs five independent gates. Each fails fast — failure in any gate blocks
+# Runs six independent gates. Each fails fast — failure in any gate blocks
 # the commit:
 #   1. lib-sync       — plugins/{vdm,vdm-git}/lib/ must stay byte-identical
 #                       (caught by scripts/check-lib-sync.sh)
@@ -16,7 +16,10 @@
 #   4. crystal        — workitems under docs/tasks/ with frontmatter status:done
 #                       must have zero `- [ ]` checkboxes (crystal-cut DL #4)
 #                       (caught by scripts/check-crystal-completion.sh)
-#   5. gate red-tests — changing a gate re-runs tests/gates.test.sh, which
+#   5. crystal-canon  — a staged workitem must match the canonical shape
+#                       derived from templates/workitem-template.md
+#                       (caught by plugins/vdm/scripts/crystal-lint.sh --staged)
+#   6. gate red-tests — changing a gate re-runs tests/gates.test.sh, which
 #                       breaks each invariant on purpose and asserts the gate
 #                       goes red. Conditional (~15s) — fires only when a gate
 #                       or the harness is staged.
@@ -47,7 +50,18 @@ scripts/check-skill-paths.sh
 # docs/tasks/ — otherwise no-op.
 scripts/check-crystal-completion.sh
 
-# Gate 5 — the gates' own red tests. A gate does not exist until you have
+# Gate 5 — crystal-canon: the second enforcement surface for the workitem canon.
+# The PostToolUse hook only sees writes made THROUGH the assistant; an edit made
+# directly in an IDE reaches the commit untouched, and in a harness without
+# PostToolUse the hook never runs at all. This is the same defense-in-depth
+# split as gate 4.
+#
+# It lives in the plugin rather than in scripts/check-*.sh because the canon is
+# a FILE (the template), not a rule that can be restated here — restating it
+# would create the second copy of the canon that deriving it exists to prevent.
+plugins/vdm/scripts/crystal-lint.sh --staged
+
+# Gate 6 — the gates' own red tests. A gate does not exist until you have
 # watched it FAIL: green on a clean tree proves nothing, since `exit 0` is also
 # green. The orphan audit shipped BLIND (`--` before grep's flags turned every
 # --exclude into a filename) and passed every run for months — see
@@ -57,7 +71,7 @@ scripts/check-crystal-completion.sh
 # Conditional, because the harness clones the repo and costs ~15s: it fires only
 # when a gate script or the harness itself is staged. That is exactly when the
 # cost is earned — you cannot change a gate without re-proving it still goes red.
-if printf '%s\n' "$staged" | grep -qE '^(scripts/check-.*\.sh|plugins/vdm/scripts/check-doc-orphans\.sh|tests/gates\.test\.sh|\.githooks/pre-commit)$'; then
+if printf '%s\n' "$staged" | grep -qE '^(scripts/check-.*\.sh|plugins/vdm/scripts/(check-doc-orphans|crystal-lint)\.(sh|py)|tests/gates\.test\.sh|\.githooks/pre-commit)$'; then
   echo "gates: a gate changed — re-running its red tests (~15s)…"
   bash tests/gates.test.sh
 fi
