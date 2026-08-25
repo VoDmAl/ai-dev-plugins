@@ -1,6 +1,6 @@
 ---
 name: guard
-description: "Git safety guard. Blocks git commit and push via pre-tool-use hook. The assistant prepares each commit (stage explicit files, write message to a temp file, hand off `git commit -F <path>`) without announcing the gate. Invoke manually for pre-commit review."
+description: "Git safety guard. Blocks git commit and push via pre-tool-use hook. The assistant prepares each commit (stage explicit files, write message to a temp file, hand off `git commit -F <path> -- <paths>`) without announcing the gate. Invoke manually for pre-commit review."
 license: MIT
 ---
 
@@ -67,7 +67,7 @@ When the assistant has finished work that warrants a commit — implementation d
 
        git-guard-prepare "[+] Add foo helper"
 
-   It writes the message to `${TMPDIR:-/tmp}/<repo>-<branch>-commit.txt` and prints a single-line `git commit -F <path>` command on stdout. Capture it.
+   It writes the message to `${TMPDIR:-/tmp}/<repo>-<branch>-commit.txt` and prints a single-line `git commit -F <path> -- <paths>` command on stdout. Capture it and hand it off **verbatim** — the explicit pathspec is the point (see [Why the pathspec](#why-the-pathspec-is-not-optional)).
 
    For a multi-line message (subject + body), pipe via `-`:
 
@@ -91,7 +91,7 @@ When the assistant has finished work that warrants a commit — implementation d
    > Message:
    > > [+] Add token expiry handling
    >
-   > `git commit -F /tmp/limeflow-feat-auth-commit.txt`
+   > `git commit -F /tmp/limeflow-feat-auth-commit.txt -- 'src/auth.ts' 'tests/auth.test.ts'`
 
 5. **Do not execute the commit yourself.** The user runs the command (or aborts) — the gate is theirs.
 
@@ -106,16 +106,52 @@ The user installed git-guard knowingly. Announcing the gate is pure noise. Never
 
 If work is done, prepare. If work is not done, finish it. There is no third state.
 
+### Why the pathspec is not optional
+
+The index is shared per-repository, but the command is written by the assistant
+and run by the human some time later. With several sessions or agents in one
+repo, a neighbour can stage its own files in that gap — and a bare
+`git commit -F <msg>` commits whatever is in the index *at run time*, not what
+you staged. Field report (`global-auth-gap`, 2026-08-25): agent A staged six
+files and handed off; agent B staged `gaps/INDEX.md`; the command committed
+both, and the user could not run it without unpicking the index by hand.
+
+The explicit pathspec makes the emitted command self-contained: what it commits
+is decided when it is written. That is the whole point — so hand the line off
+verbatim and never trim the tail.
+
+**What it costs, and why the helper sometimes refuses.** `git commit -- <paths>`
+commits the *working tree* version of those paths, not the staged one, and the
+staged version is then gone rather than left behind in the index. For a
+`git add -p` partial stage that is silent data loss. So `git-guard-prepare`
+checks `git diff --name-only -- <paths>` at prep time and exits 1 when the two
+differ, rather than emitting either form: the pathspec form would lose the
+staged hunks, and falling back to the bare form would resurrect the defect
+above. Both degradations are silent; the refusal is loud and is fixed by one
+`git add` (or `git checkout --`). Do not work around it.
+
+**Committing a subset.** When you want fewer paths than are staged, name them:
+
+    git-guard-prepare "[+] Add foo helper" -- src/foo.ts
+
+Without an explicit list the helper snapshots the index with
+`git diff --cached --name-only -z --no-renames`. `--no-renames` is load-bearing:
+git reports a `git mv` as a single rename entry naming only the destination, and
+a commit built from that list records the addition without the deletion, leaving
+the old path in the tree.
+
 ### Forbidden command shapes
 
-Commits handed off as anything other than `git commit -F <path>` invite paste failures. Never use:
+Commits handed off as anything other than `git commit -F <path> -- <paths>` invite paste failures or wrong content. Never use:
 
 - `git commit -m "..."` with embedded backticks, quotes, dollar signs, or multi-line subjects — these trigger zsh's `dquote cmdsubst heredoc>` continuation prompts mid-paste.
 - Heredoc forms (`git commit -m "$(cat <<'EOF' ... EOF)"`) — same paste fragility.
 - Markdown fenced code blocks (```` ``` ````) around the command — leading whitespace breaks copy-paste.
-- Listing `git-guard-prepare` (or `git add`) in a copy-paste recipe for the user. The helper lives on the **assistant's** PATH (plugin `bin/` mounted by the harness); it is **not** on the user's shell PATH. If you put it in a numbered list of "run these in order", the user gets `zsh: command not found: git-guard-prepare`. Run `git add` and `git-guard-prepare` yourself in Bash, capture the `git commit -F <path>` line from stdout, and hand off only that line.
+- Listing `git-guard-prepare` (or `git add`) in a copy-paste recipe for the user. The helper lives on the **assistant's** PATH (plugin `bin/` mounted by the harness); it is **not** on the user's shell PATH. If you put it in a numbered list of "run these in order", the user gets `zsh: command not found: git-guard-prepare`. Run `git add` and `git-guard-prepare` yourself in Bash, capture the `git commit -F <path> -- <paths>` line from stdout, and hand off only that line.
 
-Always emit `git commit -F <path>`, written via `git-guard-prepare`, presented as inline code (single backticks).
+- Trimming the `-- <paths>` tail off the emitted line, or re-typing it as a bare `git commit -F <path>`. That silently re-opens the defect the pathspec exists to close: a parallel session's staged files get swept into your commit.
+
+Always emit `git commit -F <path> -- <paths>` exactly as `git-guard-prepare` printed it, presented as inline code (single backticks).
 
 ### Manual fallback
 
@@ -126,13 +162,22 @@ If `git-guard-prepare` is not on the PATH (older install / alternate harness), r
       | sed -e 's|[^A-Za-z0-9_-]|-|g' -e 's|-\{2,\}|-|g' -e 's|^-||' -e 's|-$||')
     path="${TMPDIR:-/tmp}/${repo}-${branch:-detached}-commit.txt"
 
-Use the Write tool to put the message at `$path` (not a heredoc), then hand off `git commit -F $path` as inline code.
+Use the Write tool to put the message at `$path` (not a heredoc). Then build the
+pathspec yourself — the fallback owes the same guarantee as the helper:
+
+    git diff --cached --name-only -z --no-renames   # the paths to append after --
+    git diff --name-only -- <those paths>           # MUST be empty; abort if not
+
+Hand off `git commit -F $path -- '<path>' '<path>'` as inline code, single-quoting
+each path. If the second command prints anything, stop: the working tree differs
+from the index on those paths and a pathspec commit would discard what is staged.
+Reconcile with `git add` / `git checkout --` first.
 
 ### Edge cases
 
 - **Untracked files from other tickets**: list under "not staged (other tickets)" and exclude from `git add`. Never bundle multiple tickets into one commit unless the user explicitly asks.
-- **Multiple commits in one session**: the helper rotates suffixes (`-2`, `-3`, ...) automatically when HEAD has not moved since the last prep — your prior message file is preserved, not overwritten.
-- **Batch commits (multiple separate commits queued from one task)**: prepare each commit *sequentially in your own turn* — `git add <files>` → `git-guard-prepare "<subject>"` → present message preview + `git commit -F <path>` line → wait for the user. Do **not** bundle the sequence into a numbered shell script for the user (`git add ...` / `git-guard-prepare ...` / `# commit` lines stacked together) — `git-guard-prepare` is an assistant-PATH helper, the user's shell does not see it. Only the per-commit `git commit -F <path>` line crosses to the user's shell.
+- **Multiple commits in one session**: the helper rotates suffixes (`-2`, `-3`, ...) automatically when HEAD has not moved since the last prep — your prior message file is preserved, not overwritten. A long-list prep also writes a `.paths` companion file, which always takes the *same* suffix as its message file, so two preps in a row cannot cross their pairs.
+- **Batch commits (multiple separate commits queued from one task)**: prepare each commit *sequentially in your own turn* — `git add <files>` → `git-guard-prepare "<subject>"` → present message preview + `git commit -F <path> -- <paths>` line → wait for the user. Do **not** bundle the sequence into a numbered shell script for the user (`git add ...` / `git-guard-prepare ...` / `# commit` lines stacked together) — `git-guard-prepare` is an assistant-PATH helper, the user's shell does not see it. Only the per-commit `git commit -F <path> -- <paths>` line crosses to the user's shell.
 - **No type-check available locally** (corepack/yarn not set up, missing deps): take the cheapest verification path (linter, single-file `tsc`, one test file) and report what couldn't be verified, rather than skipping verification silently.
 - **Pre-commit hook fails after the user runs your command**: do not retry blindly and do not suggest `--no-verify`. Investigate, fix, re-stage, prepare a fresh message file, hand off again.
 - **User explicitly says "commit"**: same flow. Don't announce the gate; don't bypass it. Prepare the file, hand off the command.
@@ -147,7 +192,7 @@ If they decline, drop it — don't repeat. Don't add the section unilaterally; i
 
 ### Recovery: if the assistant ran `git commit` directly
 
-The PreToolUse hook intercepts `git commit` and `git push` and emits PROJECT COMMIT FORMAT, STAGED CHANGES, and recovery instructions. Treat that output as a soft reminder to switch to the prep workflow above — do not retry `git commit` from Bash. Instead, prepare a message file via `git-guard-prepare` (using the format rules the hook just emitted) and hand off `git commit -F <path>`.
+The PreToolUse hook intercepts `git commit` and `git push` and emits PROJECT COMMIT FORMAT, STAGED CHANGES, and recovery instructions. Treat that output as a soft reminder to switch to the prep workflow above — do not retry `git commit` from Bash. Instead, prepare a message file via `git-guard-prepare` (using the format rules the hook just emitted) and hand off `git commit -F <path> -- <paths>`.
 
 ### Format detection priority (used by the hook)
 
@@ -210,7 +255,7 @@ Safety Checks:
 
 ### Phase 3: User Decision
 
-Prepare the message via `git-guard-prepare "<subject>"` and present the `git commit -F <path>` line as inline code (see [Auto-prep workflow](#auto-prep-workflow)). Surface anything unexpected in the diff so the user can decide whether to run it, adjust the wording, or abort.
+Prepare the message via `git-guard-prepare "<subject>"` and present the `git commit -F <path> -- <paths>` line as inline code (see [Auto-prep workflow](#auto-prep-workflow)). Surface anything unexpected in the diff so the user can decide whether to run it, adjust the wording, or abort.
 
 ## Crystal pre-commit backup
 

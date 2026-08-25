@@ -123,6 +123,38 @@ run_linter() {
 # is the whole point: the correction arrives within one tool call, whether or
 # not the skill was ever invoked. THIS is the trigger on the ACTION rather than
 # on the shape of the session.
+# is_workitem_path <path> <root>
+#
+# True only for the two shapes `find_workitems` enumerates:
+#   <root>/<slug>/workitem.md   folder-stem, canonical
+#   <root>/<slug>.md            flat, legacy
+#
+# Everything deeper is NOT a workitem. That exclusion is the whole reason this
+# predicate exists: a crystal legitimately holds `<slug>/references/*.md` —
+# intercom briefs, exported specs, transcripts — and those carry whatever
+# frontmatter their origin gave them. An intercom brief arrives with
+# `status: pending`, which is not in the workitem taxonomy and never should be.
+# Linting them reports a stack of violations against files that were never
+# claiming the canon, and a linter that fires on legitimate files gets switched
+# off — which costs the real violations too.
+#
+# Keep in step with find_workitems() in lib/crystal-path.sh; that function walks
+# the filesystem, this one tests a path string, and both encode the same shape.
+is_workitem_path() {
+  local path="$1" root="$2" rel
+  case "$path" in
+    "$root"/*) rel="${path#"$root"/}" ;;
+    *) return 1 ;;
+  esac
+  case "$rel" in
+    */*/*)          return 1 ;;   # deeper than <slug>/<file> — references/, attachments/, …
+    */workitem.md)  return 0 ;;   # <slug>/workitem.md
+    */*)            return 1 ;;   # <slug>/anything-else.md
+    *.md)           return 0 ;;   # <slug>.md, flat legacy
+    *)              return 1 ;;
+  esac
+}
+
 if [ "$mode" = "hook" ]; then
   payload=$(cat)
   [ -z "$payload" ] && exit 0
@@ -153,23 +185,13 @@ if cur is not None:
   file_path=$(read_field "tool_input.file_path")
   [ -z "$file_path" ] && exit 0
 
-  # Only workitems. Folder-stem (<root>/<slug>/workitem.md) is canonical; the
-  # flat legacy form is matched by the roots check below instead.
-  case "$file_path" in
-    */workitem.md) ;;
-    *.md) ;;
-    *) exit 0 ;;
-  esac
-
-  # Confirm the file actually sits under a resolved crystal root — otherwise
-  # any stray .md would be linted.
+  # Only workitems, and only in one of the two canonical shapes — a stray .md
+  # outside a crystal root, or a reference artifact inside one, is not linted.
   under_root=""
   if command -v resolve_crystal_roots >/dev/null 2>&1; then
     while IFS= read -r r; do
       [ -n "$r" ] || continue
-      case "$file_path" in
-        "$r"/*) under_root="yes"; break ;;
-      esac
+      if is_workitem_path "$file_path" "$r"; then under_root="yes"; break; fi
     done < <(resolve_crystal_roots)
   fi
   [ -z "$under_root" ] && exit 0
@@ -226,17 +248,12 @@ if [ "$mode" = "staged" ]; then
   n=0
   while IFS= read -r f; do
     [ -n "$f" ] || continue
-    case "$f" in
-      */workitem.md|*.md) ;;
-      *) continue ;;
-    esac
-
-    # Must live under a resolved crystal root.
+    # Must be a workitem, in one of the two canonical shapes, under a root.
     abs="$repo_root/$f"
     under=""
     while IFS= read -r r; do
       [ -n "$r" ] || continue
-      case "$abs" in "$r"/*) under="yes"; break ;; esac
+      if is_workitem_path "$abs" "$r"; then under="yes"; break; fi
     done <<<"$roots"
     [ -z "$under" ] && continue
 
