@@ -1,0 +1,69 @@
+# Прогон references/verify-pathspec-semantics.sh
+# 2026-08-25, macOS, git 2.54.0, запускал пользователь (см. DL #3)
+# lab: /var/folders/vj/.../T//pathspec-lab.Wl1EK0
+
+git version: git version 2.54.0
+  base commit: 15174d3
+
+=== №1  git commit -- <path>: индекс или рабочее дерево? ===
+  index    : v2-STAGED
+  worktree : v3-WORKTREE
+  закоммичено: v3-WORKTREE
+  ПОДТВЕРЖДЕНО: pathspec берёт РАБОЧЕЕ ДЕРЕВО, staged-версия проигнорирована.
+  состояние после коммита:
+  (пусто — рабочее дерево чистое: staged-версия v2-STAGED уничтожена)
+
+=== №1b  Детектор расхождения: git diff --name-only -- <paths> ===
+  git diff --name-only -- b.txt  ->  'b.txt'
+  детектор РАБОТАЕТ: расхождение index/worktree видно до коммита
+
+=== №2  git mv: сколько путей в индексе, что запишет частичный pathspec? ===
+  --name-only -z (| = NUL):
+    renamed.md|
+  --name-status -z:
+    R100|кириллица.md|renamed.md|
+  путей в индексе: 1  (ожидалось 2 — бриф ошибается)
+  ПОДТВЕРЖДЕНО: старый путь ОСТАЛСЯ в дереве коммита — переименование записано неверно.
+  дерево коммита:
+    a.txt
+    b.txt
+    c.txt
+    renamed.md
+    "\320\272\320\270\321\200\320\270\320\273\320\273\320\270\321\206\320\260.md"
+    "\321\201 \320\277\321\200\320\276\320\261\320\265\320\273\320\276\320\274.md"
+  рабочее дерево:
+    D  "\320\272\320\270\321\200\320\270\320\273\320\273\320\270\321\206\320\260.md"
+
+=== №3  git rm: коммитится ли удаление через pathspec? ===
+  --name-status -z:
+    D|c.txt|
+  Удаление записано корректно.
+
+=== Контроль: утекает ли ЧУЖОЙ staged-файл, добавленный после prep? ===
+  агент A застейджил mine.txt и получил команду с pathspec 'mine.txt'
+  агент B застейджил theirs.txt ДО того, как человек запустил команду
+  индекс сейчас: mine.txt theirs.txt
+  Чужой файл в коммит НЕ попал — дефект из брифа закрывается.
+  остаётся ли theirs.txt в индексе: theirs.txt
+
+=== Доп: --pathspec-from-file --pathspec-file-nul ===
+  Поддерживается. В коммите: f1.txt f2.txt
+
+=== ИТОГ ===
+  №1  pathspec берёт .................. worktree
+  №2  старый путь при частичном mv .... leaked
+  №3  удаление через pathspec ......... ok
+  контроль: чужой staged-файл ......... isolated
+  --pathspec-from-file ................ supported
+
+# --------------------------------------------------------------------
+# Дополнительный прогон (ассистент, та же лаборатория): как вернуть
+# оба пути переименования — гипотеза --no-renames.
+
+=== staged rename (git mv a.txt a-renamed.txt), четыре способа ===
+  --- --name-only -z              : a-renamed.txt|
+  --- --name-only -z --no-renames : a-renamed.txt|a.txt|
+  --- --name-status -z            : R100|a.txt|a-renamed.txt|
+  --- --name-status -z --no-renames: A|a-renamed.txt|D|a.txt|
+
+# Вывод: --no-renames возвращает обе стороны переименования.

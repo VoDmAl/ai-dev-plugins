@@ -416,7 +416,29 @@ def build_block_message(op_name, reason, command):
         lines.append(
             "     It writes ${TMPDIR:-/tmp}/<repo>-<branch>-commit.txt and prints"
         )
-        lines.append("     a single-line `git commit -F <path>` command.")
+        lines.append(
+            "     a single-line `git commit -F <path> -- <paths>` command. The"
+        )
+        lines.append(
+            "     pathspec is what keeps a parallel session's staged files out"
+        )
+        lines.append("     of your commit.")
+        lines.append("")
+        lines.append(
+            "     To commit a subset of what is staged, name it explicitly:"
+        )
+        lines.append('       git-guard-prepare "<subject>" -- <path>...')
+        lines.append("")
+        lines.append(
+            "     It exits 1 if nothing is staged, or if the working tree"
+        )
+        lines.append(
+            "     differs from the index on those paths — reconcile with"
+        )
+        lines.append(
+            "     `git add` / `git checkout --` and re-run. Do not work around"
+        )
+        lines.append("     it; the refusal is preventing a wrong commit.")
         lines.append("")
         lines.append(
             "     Multi-line subject + body? Pipe via `-`:"
@@ -432,7 +454,10 @@ def build_block_message(op_name, reason, command):
         lines.append("       - what was staged;")
         lines.append("       - what is intentionally not staged (other tickets);")
         lines.append(
-            "       - the `git commit -F <path>` line as INLINE CODE (single"
+            "       - the `git commit -F <path> -- <paths>` line as INLINE CODE"
+        )
+        lines.append(
+            "         verbatim — never trim the pathspec off it (single"
         )
         lines.append(
             "         backticks), on its own line — never inside a fenced (```)"
