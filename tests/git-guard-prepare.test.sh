@@ -193,6 +193,48 @@ else
   ok "deletion recorded in the commit"
 fi
 
+printf '\n=== nested paths ===\n'
+# Every other fixture in this file sits at the repo root. That gap was found the
+# hard way: a real commit naming only paths under `tests/` produced an empty
+# commit, and the suite could not say whether the pathspec form was to blame
+# because it had never once exercised a nested path. The diagnostic
+# (references/verify-pathspec-subdir.sh) exonerated the form — but the coverage
+# hole was real either way, and a suite that cannot answer "was it us?" is not
+# doing its job.
+
+d=$(new_repo nested); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+mkdir -p sub/deeper
+printf 'x\n' > sub/a.sh
+printf 'y\n' > sub/deeper/b.sh
+git add sub
+cmd=$("$PREP" "[*] nested")
+expect_says "nested path is named in full" "$cmd" "'sub/a.sh'"
+expect_says "doubly-nested path is named in full" "$cmd" "'sub/deeper/b.sh'"
+run_emitted "$cmd" >/dev/null 2>&1
+for p in sub/a.sh sub/deeper/b.sh; do
+  if git cat-file -e "HEAD:$p" 2>/dev/null; then
+    ok "committed from a directory absent in HEAD: $p"
+  else
+    bad "committed from a directory absent in HEAD: $p" "not in HEAD"
+  fi
+done
+
+# A sibling left unnamed must survive untouched — the scoping property, checked
+# where it is least obvious: inside a directory the commit does create.
+d=$(new_repo nested_sibling); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+mkdir -p sub
+printf 'x\n' > sub/named.sh
+printf 'y\n' > sub/unnamed.sh
+git add sub
+cmd=$("$PREP" "[*] nested subset" -- sub/named.sh)
+run_emitted "$cmd" >/dev/null 2>&1
+git cat-file -e HEAD:sub/named.sh 2>/dev/null \
+  && ok "named sibling committed" || bad "named sibling committed" "missing"
+git cat-file -e HEAD:sub/unnamed.sh 2>/dev/null \
+  && bad "unnamed sibling stays out" "sub/unnamed.sh leaked" || ok "unnamed sibling stays out"
+
 printf '\n=== path quoting ===\n'
 # Non-ASCII, spaces and an embedded single quote must survive the round trip
 # through the shell. `-z` is what keeps git from C-quoting the first class.
