@@ -44,6 +44,10 @@ expect_not_says() {
     *)      ok "$1" ;;
   esac
 }
+expect_silent() {
+  # expect_silent <desc> <output>
+  if [ -z "$2" ]; then ok "$1"; else bad "$1" "expected no output, got: $2"; fi
+}
 expect_eq() {
   # expect_eq <desc> <expected> <actual>
   if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "expected [$2], got [$3]"; fi
@@ -306,6 +310,139 @@ printf 'a\n' > a.txt; git add a.txt
 "$PREP" "[*] one" > /dev/null
 "$PREP" "[*] two" > /dev/null
 expect_eq "unborn HEAD does not leak suffixes" "1" "$(ls -1 "$TMPDIR"/*.txt 2>/dev/null | grep -c .)"
+
+printf '\n=== detector: did the commit match what was prepared? ===\n'
+# The reason this exists: a commit lost six files and gained one that was never
+# named, and nothing noticed for two days. Three hypotheses about the cause were
+# raised and all three refuted. A detector needs no theory of the cause — which
+# is why it is the right answer to a defect that resists diagnosis.
+#
+# It must be silent on ordinary git usage. A detector that cries wolf gets
+# ignored, and an ignored detector is worse than an absent one, so the
+# false-positive cases below carry as much weight as the true-positive ones.
+
+# TRUE POSITIVE: a neighbour stages an extra file; the bare form sweeps it in.
+d=$(new_repo detect_extra); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'mine\n' > mine.txt
+git add mine.txt
+"$PREP" "[*] only mine" > /dev/null          # declares: mine.txt
+printf 'theirs\n' > theirs.txt
+git add theirs.txt                            # the neighbour
+git commit -qm "[*] only mine"                # bare form — sweeps both
+printf 'next\n' > next.txt; git add next.txt
+out=$("$PREP" "[*] next" 2>&1 >/dev/null)
+expect_says "detector reports the swept-in path" "$out" "theirs.txt"
+expect_says "detector labels it SWEPT IN" "$out" "SWEPT IN"
+expect_not_says "detector does not accuse the intended path" "$out" "  mine.txt"
+
+# TRUE POSITIVE: an empty commit against a non-empty declaration — the exact
+# shape of e46e697.
+d=$(new_repo detect_empty); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'x\n' > a.txt
+git add a.txt
+"$PREP" "[*] declares a.txt" > /dev/null
+git reset -q a.txt                            # something unstages it
+git commit -q --allow-empty -m "[*] declares a.txt"
+printf 'n\n' > n.txt; git add n.txt
+out=$("$PREP" "[*] next" 2>&1 >/dev/null)
+expect_says "detector catches the empty commit" "$out" "EMPTY COMMIT"
+expect_says "detector names what was expected" "$out" "a.txt"
+
+# TRUE POSITIVE: a non-empty commit that dropped one of the declared paths.
+# Distinct branch from the empty case above, with its own wording — and the
+# wording matters, because a declared path whose content already matched HEAD
+# drops out legitimately, so this report has to stay a warning rather than an
+# accusation.
+d=$(new_repo detect_dropped); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'x\n' > a.txt; printf 'y\n' > b.txt
+git add a.txt b.txt
+"$PREP" "[*] declares both" > /dev/null      # declares: a.txt, b.txt
+git reset -q b.txt                            # b.txt falls out of the index
+git commit -qm "[*] declares both"
+printf 'n\n' > n.txt; git add n.txt
+out=$("$PREP" "[*] next" 2>&1 >/dev/null)
+expect_says "detector reports the dropped path" "$out" "b.txt"
+expect_says "dropped path uses the NOT COMMITTED wording" "$out" "NOT COMMITTED"
+expect_not_says "non-empty commit is not called empty" "$out" "EMPTY COMMIT"
+
+# FALSE POSITIVE 1: the commit matches the declaration exactly ⇒ silence.
+d=$(new_repo detect_clean); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'x\n' > a.txt; printf 'y\n' > b.txt
+git add a.txt b.txt
+cmd=$("$PREP" "[*] clean")
+run_emitted "$cmd" >/dev/null 2>&1
+printf 'n\n' > n.txt; git add n.txt
+out=$("$PREP" "[*] next" 2>&1 >/dev/null)
+expect_silent "exact match ⇒ detector silent" "$out"
+
+# FALSE POSITIVE 2: HEAD moved by something that is not this prep's commit
+# (amend, rebase, an unrelated commit). Not the detector's business.
+d=$(new_repo detect_unrelated); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'x\n' > a.txt
+git add a.txt
+"$PREP" "[*] declares a.txt" > /dev/null
+printf 'z\n' > z.txt; git add z.txt
+git commit -qm "a completely different commit"   # different message
+printf 'n\n' > n.txt; git add n.txt
+out=$("$PREP" "[*] next" 2>&1 >/dev/null)
+expect_silent "unrelated commit ⇒ detector silent" "$out"
+
+# FALSE POSITIVE 3: nothing committed yet — the prep is still pending.
+d=$(new_repo detect_pending); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'x\n' > a.txt
+git add a.txt
+"$PREP" "[*] pending" > /dev/null
+printf 'y\n' > b.txt; git add b.txt
+out=$("$PREP" "[*] second" 2>&1 >/dev/null)
+expect_silent "unconsumed prep ⇒ detector silent" "$out"
+
+# The audit must run ONCE. A record left behind would re-accuse the same commit
+# on every later prep, which is how a real signal becomes background noise.
+d=$(new_repo detect_once); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'mine\n' > mine.txt
+git add mine.txt
+"$PREP" "[*] once" > /dev/null
+printf 'theirs\n' > theirs.txt; git add theirs.txt
+git commit -qm "[*] once"
+printf 'n\n' > n.txt; git add n.txt
+out1=$("$PREP" "[*] n1" 2>&1 >/dev/null)
+printf 'm\n' > m.txt; git add m.txt
+out2=$("$PREP" "[*] n2" 2>&1 >/dev/null)
+expect_says "first prep after the bad commit reports it" "$out1" "theirs.txt"
+expect_silent "second prep does not repeat the accusation" "$out2"
+
+# Standalone mode, for a post-commit hook or a by-hand check.
+d=$(new_repo detect_standalone); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'mine\n' > mine.txt
+git add mine.txt
+"$PREP" "[*] standalone" > /dev/null
+printf 'theirs\n' > theirs.txt; git add theirs.txt
+git commit -qm "[*] standalone"
+out=$("$PREP" --verify-last 2>&1 >/dev/null); rc=$?
+expect_exit "--verify-last exits 0 even when it complains" 0 "$rc"
+expect_says "--verify-last reports the swept-in path" "$out" "theirs.txt"
+
+# Paths with spaces and non-ASCII must survive the round trip through the
+# sidecar and be reported readably, not as octal escapes.
+d=$(new_repo detect_quoting); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+mkdir -p sub
+printf 'x\n' > "sub/имя с пробелом.txt"
+git add "sub/имя с пробелом.txt"
+"$PREP" "[*] quoted" > /dev/null
+printf 'theirs\n' > theirs.txt; git add theirs.txt
+git commit -qm "[*] quoted"
+printf 'n\n' > n.txt; git add n.txt
+out=$("$PREP" "[*] next" 2>&1 >/dev/null)
+expect_not_says "detector does not print octal escapes" "$out" '\3'
 
 printf '\n=== documentation agreement ===\n'
 # The emitted form is described in three places that reach the assistant. When

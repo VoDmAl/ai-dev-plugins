@@ -10,6 +10,7 @@
 #   git-guard-prepare "<commit message>" -- <path>...
 #   echo "<message>" | git-guard-prepare -
 #   echo "<message>" | git-guard-prepare - -- <path>...
+#   git-guard-prepare --verify-last          # audit the previous prep only
 #
 # Output (stdout):
 #   <single-line shell command>           # the user copy-pastes this
@@ -32,11 +33,29 @@
 #   very defect the pathspec exists to fix. Both degradations are silent; the
 #   refusal is loud and is fixed by one `git add`.
 #
+# Verifying the previous commit (the detector)
+#   Each prep records what it INTENDED to commit. On the next run — and on
+#   demand via --verify-last — the helper compares that intent against what the
+#   commit actually contains, and complains on stderr if they differ.
+#
+#   This exists because a commit once lost six files and gained one that was
+#   never named, and nothing noticed for two days. Three hypotheses about the
+#   cause were raised and all three were refuted; the cause is still unknown.
+#   A detector needs no theory of the cause, which is exactly why it is the
+#   right answer to a defect that resists diagnosis.
+#
+#   It is deliberately NOT a git hook. A measurement across 12 repositories
+#   found git hooks wired in exactly one of them, so a check that lives in a
+#   `post-commit` hook is a check that never runs. Living inside the helper,
+#   it runs wherever the helper runs, with nothing to install.
+#
 # Side effects:
 #   Writes the message to:
 #     ${TMPDIR:-/tmp}/<repo-basename>-<branch-safe>-commit.txt
-#   For long path lists, also writes a NUL-separated companion file:
+#   Always writes two companions beside it — the NUL-separated intended path
+#   list and the HEAD it was prepared against:
 #     ${TMPDIR:-/tmp}/<repo-basename>-<branch-safe>-commit.paths
+#     ${TMPDIR:-/tmp}/<repo-basename>-<branch-safe>-commit.meta
 #   On collision against an unconsumed file (same HEAD, recent mtime), appends
 #   -2, -3, ... so a prior prep is not silently overwritten. The message file
 #   and its companion paths file always take the SAME suffix, so two preps in
@@ -56,10 +75,118 @@ set -eu
 # and awkward to paste, so switch to --pathspec-from-file.
 PATHSPEC_INLINE_MAX=${GIT_GUARD_PATHSPEC_INLINE_MAX:-20}
 
+# ---------------------------------------------------------------- detector
+#
+# verify_last <tmpdir> <base>
+#
+# Each prep leaves three sidecars: `<name>.txt` (the message), `<name>.paths`
+# (NUL-separated intended paths) and `<name>.meta` (the HEAD it was prepared
+# against). If HEAD has since moved by exactly one commit whose message equals
+# that prep's message, the commit came from that prep — so compare what it
+# actually touched against what was intended.
+#
+# Two directions, and they are not symmetric:
+#   EXTRA   — in the commit, never named. Always wrong. Something else wrote to
+#             the index or the tree between prep and commit.
+#   MISSING — named, absent from the commit. Usually wrong, but a named path
+#             whose content already equalled HEAD legitimately produces no diff
+#             entry, so it is reported as a warning rather than an error —
+#             EXCEPT when the commit is empty, which is never legitimate.
+#
+# Fail-open everywhere: an unreadable sidecar, a rebase, a squash, anything
+# unexpected — say nothing. A detector that cries wolf on ordinary git usage
+# gets ignored, and then it is worse than absent.
+verify_last() {
+  local tmpdir="$1" base="$2"
+  local meta txt pathsf recorded head parent msg found=0
+
+  head=$(git rev-parse --verify HEAD 2>/dev/null) || return 0
+  parent=$(git rev-parse --verify "HEAD^" 2>/dev/null || echo "")
+
+  for meta in "$tmpdir/$base"*.meta; do
+    [ -f "$meta" ] || continue
+    txt="${meta%.meta}.txt"
+    pathsf="${meta%.meta}.paths"
+    [ -f "$txt" ] && [ -f "$pathsf" ] || continue
+
+    recorded=$(cat "$meta" 2>/dev/null || echo "")
+    [ -n "$recorded" ] || continue
+
+    # Still unconsumed — HEAD has not moved since this prep. Leave it alone.
+    [ "$recorded" = "$head" ] && continue
+
+    # Only audit a commit sitting directly on top of the recorded HEAD. Rebase,
+    # amend, squash and cherry-pick all break that relation and are not this
+    # detector's business.
+    [ "$recorded" = "$parent" ] || { rm -f "$meta"; continue; }
+
+    msg=$(git log -1 --format=%B 2>/dev/null || echo "")
+    # Compare trimmed: git normalises trailing newlines in commit messages.
+    if [ "$(printf '%s' "$msg" | sed -e 's/[[:space:]]*$//')" \
+       != "$(printf '%s' "$(cat "$txt")" | sed -e 's/[[:space:]]*$//')" ]; then
+      rm -f "$meta"; continue
+    fi
+
+    found=1
+    _verify_one "$pathsf" "$parent" "$head"
+    rm -f "$meta"
+  done
+  return 0
+}
+
+_verify_one() {
+  local pathsf="$1" parent="$2" head="$3"
+  local intended=() actual=() extra=() missing=() p
+
+  while IFS= read -r -d '' p; do intended+=("$p"); done < "$pathsf"
+  [ ${#intended[@]} -eq 0 ] && return 0
+
+  while IFS= read -r -d '' p; do actual+=("$p"); done \
+    < <(git diff-tree --no-commit-id -r -z --name-only --no-renames "$parent" "$head" 2>/dev/null)
+
+  local i a hit
+  for a in ${actual[@]+"${actual[@]}"}; do
+    hit=0
+    for i in "${intended[@]}"; do [ "$a" = "$i" ] && { hit=1; break; }; done
+    [ "$hit" -eq 0 ] && extra+=("$a")
+  done
+  for i in "${intended[@]}"; do
+    hit=0
+    for a in ${actual[@]+"${actual[@]}"}; do [ "$i" = "$a" ] && { hit=1; break; }; done
+    [ "$hit" -eq 0 ] && missing+=("$i")
+  done
+
+  [ ${#extra[@]} -eq 0 ] && [ ${#missing[@]} -eq 0 ] && return 0
+
+  {
+    echo "git-guard-prepare: ⚠ the previous commit does not match what was prepared."
+    echo "                   commit $(git rev-parse --short "$head")"
+    if [ ${#extra[@]} -gt 0 ]; then
+      echo
+      echo "  SWEPT IN — in the commit, never named by the prepared command:"
+      for p in "${extra[@]}"; do echo "      $p"; done
+    fi
+    if [ ${#missing[@]} -gt 0 ]; then
+      echo
+      if [ ${#actual[@]} -eq 0 ]; then
+        echo "  EMPTY COMMIT — nothing was committed, though ${#intended[@]} path(s) were named:"
+      else
+        echo "  NOT COMMITTED — named by the prepared command, absent from the commit"
+        echo "  (a named path whose content already matched HEAD is legitimate here):"
+      fi
+      for p in "${missing[@]}"; do echo "      $p"; done
+    fi
+    echo
+    echo "  Something changed the index or the tree between prepare and commit."
+    echo "  Check the commit before building on it: git show --stat $(git rev-parse --short "$head")"
+  } >&2
+}
+
 usage() {
   cat >&2 <<'USAGE'
 Usage: git-guard-prepare "<commit message>" [-- <path>...]
        echo "<message>" | git-guard-prepare - [-- <path>...]
+       git-guard-prepare --verify-last
 
 Writes the message to ${TMPDIR:-/tmp}/<repo>-<branch>-commit.txt and prints a
 single-line `git commit -F <path> -- <paths>` command for the user to run.
@@ -67,6 +194,10 @@ single-line `git commit -F <path> -- <paths>` command for the user to run.
 Paths come from the explicit `--` list when given, otherwise from a snapshot
 of the index at prep time. Exits 1 if the index is empty, or if the working
 tree differs from the index on any of those paths.
+
+Every prep records its intended path list. The next prep — or --verify-last —
+compares that intent against what the commit actually contains and reports any
+path that was swept in or dropped.
 USAGE
 }
 
@@ -77,6 +208,21 @@ fi
 
 if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
   usage
+  exit 0
+fi
+
+# --verify-last audits the previous prep and exits; it prepares nothing. Useful
+# from a post-commit hook, or by hand after a commit that looks wrong.
+if [ "$1" = "--verify-last" ]; then
+  vr_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+  [ -z "$vr_root" ] && { echo "git-guard-prepare: not inside a git repository" >&2; exit 1; }
+  vr_branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null \
+    || git rev-parse --short HEAD 2>/dev/null || echo detached)
+  vr_branch=$(printf '%s' "$vr_branch" \
+    | sed -e 's|[^A-Za-z0-9_-]|-|g' -e 's|-\{2,\}|-|g' -e 's|^-||' -e 's|-$||')
+  [ -z "$vr_branch" ] && vr_branch=detached
+  vr_tmp="${TMPDIR:-/tmp}"; vr_tmp="${vr_tmp%/}"
+  verify_last "$vr_tmp" "$(basename "$vr_root")-${vr_branch}-commit"
   exit 0
 fi
 
@@ -190,6 +336,11 @@ base="${repo_name}-${branch_safe}-commit"
 path="${tmpdir}/${base}.txt"
 paths_file="${tmpdir}/${base}.paths"
 
+# Before preparing anything: did the PREVIOUS prep produce the commit it said
+# it would? This is the moment someone is paying attention to commits, which is
+# why the check lives here rather than in a git hook nobody installs.
+verify_last "$tmpdir" "$base" || true
+
 # If a previous prep file exists and HEAD hasn't moved since it was written
 # (i.e. the user hasn't committed yet), pick the next free suffix instead of
 # overwriting. Otherwise, take the base path — the prior file is "consumed".
@@ -209,7 +360,8 @@ if [ -f "$path" ] && [ -f "$sentinel" ] && [ -n "$head_sha" ]; then
   prior_head=$(cat "$sentinel" 2>/dev/null || echo "")
   if [ "$prior_head" = "$head_sha" ]; then
     n=2
-    while [ -f "${tmpdir}/${base}-${n}.txt" ] || [ -f "${tmpdir}/${base}-${n}.paths" ]; do
+    while [ -f "${tmpdir}/${base}-${n}.txt" ] || [ -f "${tmpdir}/${base}-${n}.paths" ] \
+       || [ -f "${tmpdir}/${base}-${n}.meta" ]; do
       n=$((n + 1))
     done
     path="${tmpdir}/${base}-${n}.txt"
@@ -242,16 +394,25 @@ shell_quote() {
 
 msg_q=$(shell_quote "$path")
 
+# The paths file is written on EVERY prep, not only for long lists: it is both
+# the pathspec source for the long form and the record the detector compares
+# the resulting commit against. A short prep that kept no record would be a
+# blind spot exactly where most commits live.
+tmpfile="${paths_file}.tmp.$$"
+: > "$tmpfile"
+for p in "${paths[@]}"; do
+  printf '%s\0' "$p" >> "$tmpfile"
+done
+mv -f "$tmpfile" "$paths_file"
+
+# The HEAD this prep was made against, alongside its own message and path list.
+# The detector needs all three together; the shared sentinel above cannot serve,
+# because it is per-base and a suffixed prep would read someone else's value.
+printf '%s\n' "${head_sha:-}" > "${path%.txt}.meta"
+
 if [ ${#paths[@]} -gt "$PATHSPEC_INLINE_MAX" ]; then
   # Long list: hand git a NUL-separated file instead of an unreadable line.
   # --pathspec-from-file requires git >= 2.25.
-  tmpfile="${paths_file}.tmp.$$"
-  : > "$tmpfile"
-  for p in "${paths[@]}"; do
-    printf '%s\0' "$p" >> "$tmpfile"
-  done
-  mv -f "$tmpfile" "$paths_file"
-
   printf "git commit -F %s --pathspec-from-file=%s --pathspec-file-nul\n" \
     "$msg_q" "$(shell_quote "$paths_file")"
 else

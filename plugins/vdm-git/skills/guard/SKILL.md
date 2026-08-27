@@ -140,6 +140,33 @@ git reports a `git mv` as a single rename entry naming only the destination, and
 a commit built from that list records the addition without the deletion, leaving
 the old path in the tree.
 
+### The detector: did the commit match what was prepared?
+
+Every prep records the paths it intended to commit. The **next** prep — and
+`git-guard-prepare --verify-last` on demand — compares that intent against what
+the commit actually contains, and complains on stderr when they differ:
+
+- **SWEPT IN** — a path in the commit that the prepared command never named.
+  Always wrong: something wrote to the index or the tree between prepare and
+  commit.
+- **NOT COMMITTED** — a named path absent from the commit. A warning, because a
+  named path whose content already matched HEAD legitimately drops out. When
+  the commit is empty, that excuse does not apply and it is reported as such.
+
+If you see this output, **stop and look at the commit** before building on it:
+`git show --stat <sha>`. Do not re-run the prepare and carry on.
+
+It is not a git hook, and that is deliberate. A measurement across 12
+repositories found git hooks wired in exactly one, so a check living in a
+`post-commit` hook is a check that never runs. Inside the helper it runs
+wherever the helper runs, with nothing to install. Anyone who wants the report
+immediately rather than at the next prep can call `--verify-last` from their own
+`post-commit` hook.
+
+The check fails open — a rebase, an amend, an unrelated commit, an unreadable
+sidecar all produce silence. A detector that fires on ordinary git usage gets
+ignored, and an ignored detector is worse than none.
+
 ### Forbidden command shapes
 
 Commits handed off as anything other than `git commit -F <path> -- <paths>` invite paste failures or wrong content. Never use:
@@ -176,6 +203,7 @@ Reconcile with `git add` / `git checkout --` first.
 ### Edge cases
 
 - **Untracked files from other tickets**: list under "not staged (other tickets)" and exclude from `git add`. Never bundle multiple tickets into one commit unless the user explicitly asks.
+- **Detector output on the next prep**: read it before handing anything off. It means the previous commit is not what was prepared.
 - **Multiple commits in one session**: the helper rotates suffixes (`-2`, `-3`, ...) automatically when HEAD has not moved since the last prep — your prior message file is preserved, not overwritten. A long-list prep also writes a `.paths` companion file, which always takes the *same* suffix as its message file, so two preps in a row cannot cross their pairs.
 - **Batch commits (multiple separate commits queued from one task)**: prepare each commit *sequentially in your own turn* — `git add <files>` → `git-guard-prepare "<subject>"` → present message preview + `git commit -F <path> -- <paths>` line → wait for the user. Do **not** bundle the sequence into a numbered shell script for the user (`git add ...` / `git-guard-prepare ...` / `# commit` lines stacked together) — `git-guard-prepare` is an assistant-PATH helper, the user's shell does not see it. Only the per-commit `git commit -F <path> -- <paths>` line crosses to the user's shell.
 - **No type-check available locally** (corepack/yarn not set up, missing deps): take the cheapest verification path (linter, single-file `tsc`, one test file) and report what couldn't be verified, rather than skipping verification silently.
