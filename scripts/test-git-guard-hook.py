@@ -25,6 +25,21 @@ spec.loader.exec_module(ggh)
 CASES = [
     # (should_block, description, command)
 
+    # --- SUBCOMMAND PREFIXES (must NOT block) ---
+    # `\b` sits between a word char and a non-word one, and `-` is non-word, so
+    # `git\s+commit\b` matched `git commit-tree`. The matcher was reading a
+    # string prefix where it meant to read a subcommand: it blocked plumbing that
+    # moves no ref, while `git update-ref` — which does — was never listed.
+    # Found 2026-08-25 when `git commit-tree` was blocked while building a test
+    # fixture in a throwaway repo.
+    (False, "commit-tree is plumbing",   'git commit-tree $tree -m x'),
+    (False, "commit-graph is a cache",   'git commit-graph write'),
+    (False, "commit-tree after &&",      'cd /r && git commit-tree $t'),
+    (False, "push prefix is not push",   'git push-hook-thing'),
+    # …and the real thing must still block, or the fix has simply disarmed it.
+    (True,  "commit still blocks",       'git commit -m x'),
+    (True,  "commit -- pathspec blocks", "git commit -F /tmp/m.txt -- 'a' 'b'"),
+
     # --- TRUE POSITIVES (must block) ---
     (True,  "direct commit",          'git commit -m foo'),
     (True,  "commit with -F",         "git commit -F /tmp/msg.txt"),

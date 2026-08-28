@@ -78,7 +78,7 @@ _BOUNDARY_CLASS = r"\s;&|()`"
 
 
 def _command_invokes(command, op_subcommand):
-    """True iff `command` would actually invoke `git <op_subcommand>`.
+    r"""True iff `command` would actually invoke `git <op_subcommand>`.
 
     Catches direct invocations and chained / substituted forms:
         git commit -m foo
@@ -91,9 +91,20 @@ def _command_invokes(command, op_subcommand):
         echo 'git commit'
         cat <<EOF ... git commit ... EOF
         # git commit
+
+    …and where the word is a PREFIX of a different subcommand:
+        git commit-tree     — writes an object, moves no ref
+        git commit-graph    — maintains a cache
+
+    That last class is why the trailing guard is `(?![\w-])` rather than `\b`.
+    `\b` sits between a word character and a non-word one, and `-` is non-word,
+    so `git\s+commit\b` matched `git commit-tree` — blocking a plumbing command
+    that changes nothing, while `git update-ref`, which does move refs, was never
+    on the list at all. The matcher was reading a string prefix where it meant to
+    read a subcommand.
     """
     cleaned = _strip_inert_text(command)
-    pattern = rf"(?:^|[{_BOUNDARY_CLASS}])git\s+{re.escape(op_subcommand)}\b"
+    pattern = rf"(?:^|[{_BOUNDARY_CLASS}])git\s+{re.escape(op_subcommand)}(?![\w-])"
     return bool(re.search(pattern, cleaned))
 
 
