@@ -100,12 +100,44 @@ _expand_globs_under_root() {
   # don't leak. Absolute globs respected; relative resolved against project root.
   local project_root="$1" globs="$2"
   (
+    # `globstar` arrived in bash 4.0 and macOS still ships 3.2, where the bare
+    # `shopt -s nullglob globstar` form printed
+    #   shopt: globstar: invalid shell option name
+    # on stderr — which, from a PostToolUse hook, lands in front of the
+    # assistant as the first line of the canon verdict. Noise in a gate's own
+    # output is how gates get switched off.
+    #
+    # Setting them separately silences that, but the quiet half is worse and is
+    # NOT silenced: without globstar, `**` degrades to `*` and matches exactly
+    # one level. `packages/**/tasks` then finds `packages/x/tasks` and misses
+    # `packages/x/y/tasks` — a root that is simply never scanned, with nothing
+    # said. That is the suite's recurring failure: the mechanism quietly
+    # substituted its own scope. So when it actually matters — a `**` glob on a
+    # shell that cannot expand it — say so.
     # shellcheck disable=SC3044
-    shopt -s nullglob globstar
-    local glob expanded e
+    shopt -s nullglob
+    local have_globstar=yes
+    shopt -s globstar 2>/dev/null || have_globstar=no
+
+    local glob expanded e warned=no
     while IFS= read -r glob; do
       [ -n "$glob" ] || continue
       glob="${glob%/}"
+      case "$glob" in
+        *'**'*)
+          if [ "$have_globstar" = no ] && [ "$warned" = no ]; then
+            warned=yes
+            {
+              printf 'crystal-path: this shell (bash %s) has no `globstar`, so `**` matches\n' \
+                "${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"
+              printf '              a single level only. Roots nested deeper than one directory\n'
+              printf '              are NOT scanned. Affected glob: %s\n' "$glob"
+              printf '              Fix: run under bash >= 4, or list the roots explicitly in\n'
+              printf '              crystal.paths instead of using `**`.\n'
+            } >&2
+          fi
+          ;;
+      esac
       case "$glob" in
         /*) expanded=( $glob ) ;;
         *)  expanded=( "$project_root"/$glob ) ;;
