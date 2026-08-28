@@ -503,8 +503,7 @@ pathspec (его затянул `add -A` из копии дерева), пуст
       `.claude-plugin/marketplace.json` + строка в `PROJECT_CHANGELOG.md`
 - [x] Прогнать `tests/git-guard-prepare.test.sh` — 40 passed, 0 failed
       (прогнан непреднамеренно, см. DL #8; детальный вывод не переснимался)
-- [ ] Ответить отправителю через intercom: его пункт про переименования
-      неверен, `--name-only` отдаёт один путь (DL #5)
+
 - [ ] Решить судьбу Sidetracks #1/#2 — тестируемость гарда и матчер по
       подкоманде; оба вне периметра этой правки
 - [x] Диагностика вложенных путей — гипотеза опровергнута (DL #9)
@@ -514,8 +513,9 @@ pathspec (его затянул `add -A` из копии дерева), пуст
 - [x] Проверить гипотезу Gate 6 / утечки индекса — опровергнута дважды (DL #11)
 - [x] Детектор расхождения: сравнить пути коммита с тем, что заявил prepare (DL #11)
       — vdm-git v2.7.0, `verify_last` + `--verify-last`, 16 тестов
-- [ ] Ответить `global-auth-gap` про ошибку в ловушке №2 (DL #5)
-- [ ] `intercom.sh pickup git-guard-explicit-file-list` после закрытия
+- [x] Ответить `global-auth-gap` про ошибку в ловушке №2 (DL #5)
+      — отправлено `git-guard-pathspec-shipped`, 183 строки
+- [x] `intercom.sh pickup git-guard-explicit-file-list` — заархивировано
 
 ## References
 
