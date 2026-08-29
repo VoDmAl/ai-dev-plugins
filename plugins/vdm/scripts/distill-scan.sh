@@ -255,6 +255,38 @@ find_synthesis_docs() {
 # this heuristic into the general rule.
 # ---------------------------------------------------------------------------
 
+_files_under() {
+  # _files_under <dir> <reference-file> — files under <dir> newer than the
+  # reference, excluding anything git ignores.
+  #
+  # Ask git what is ignored; do not restate it. The previous form carried a
+  # hand-written `-not -path` list (.git, node_modules, vendor) — a second copy
+  # of a rule git already owns, and, like every second copy, incomplete. It let
+  # `__pycache__/*.pyc` count as an input, and since python regenerates that on
+  # every import of the hook module, the synthesis document would have reported
+  # itself perpetually stale. A signal that is always on is a signal nobody
+  # reads, which is the one failure this scanner exists to prevent.
+  #
+  # The discovery half of this same script already gets this right, with a
+  # comment calling `--exclude-standard` load-bearing. The rule was applied
+  # correctly in one place and re-derived, wrongly, twenty lines below it.
+  #
+  # `--others --exclude-standard` for the same reason discovery needs it: a file
+  # written this session is untracked, and an input that only counts once
+  # committed would miss exactly the edit that caused the drift.
+  local dir="$1" ref="$2" f
+  if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      [ -f "$f" ] && [ "$f" -nt "$ref" ] && printf '%s\n' "$f"
+    done < <(git ls-files --cached --others --exclude-standard -- "$dir" 2>/dev/null)
+  else
+    find "$dir" -type f -newer "$ref" \
+      -not -path '*/.git/*' -not -path '*/node_modules/*' \
+      -not -path '*/vendor/*' -not -path '*/__pycache__/*' 2>/dev/null
+  fi | sort
+}
+
 newer_inputs() {
   # newer_inputs <synthesis-file>
   # Prints EVERY covered file whose mtime is newer than the synthesis, one per
@@ -291,9 +323,7 @@ newer_inputs() {
           [ "$hit" = "$synth" ] && continue
           printf '%s\n' "$hit"
           emitted=$((emitted + 1))
-        done < <(find "$e" -type f -newer "$synth" \
-                   -not -path '*/.git/*' -not -path '*/node_modules/*' \
-                   -not -path '*/vendor/*' 2>/dev/null | sort)
+        done < <(_files_under "$e" "$synth")
       elif [ -f "$e" ] && [ "$e" -nt "$synth" ]; then
         printf '%s\n' "$e"
         emitted=$((emitted + 1))
