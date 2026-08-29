@@ -65,6 +65,40 @@ for i in 1 2 3; do seed "src/beta/b$i.txt"; done
 git add -A >/dev/null 2>&1
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+printf '\nignored files are not inputs\n'
+# ---------------------------------------------------------------------------
+# The drift half of the scanner used to walk the tree with `find` plus a
+# hand-written `-not -path` list (.git, node_modules, vendor) — a second copy of
+# a rule git already owns, and incomplete like every second copy. It let
+# `__pycache__/*.pyc` count as an input; python regenerates those on every
+# import, so the synthesis document reported itself perpetually stale. A signal
+# that is always on is a signal nobody reads.
+#
+# The discovery half of the SAME script had it right, with a comment calling
+# `--exclude-standard` load-bearing. Correct in one place, re-derived wrongly
+# twenty lines below.
+mkdir -p src/alpha/__pycache__ node_modules/pkg
+printf 'ignored\n' > .gitignore
+printf '__pycache__/\n*.pyc\nbuild/\n' >> .gitignore
+printf 'x\n' > src/alpha/__pycache__/mod.cpython-314.pyc
+mkdir -p src/alpha/build && printf 'x\n' > src/alpha/build/out.o
+git add -A >/dev/null 2>&1
+
+OUT=$(bash "$SCAN" --drift-all)
+says_not "gitignored .pyc is not an input" "$OUT" ".pyc"
+says_not "gitignored build output is not an input" "$OUT" "build/out.o"
+says "real source still counts as an input" "$OUT" "src/alpha/a1.txt"
+
+# An untracked but NOT ignored file must still count: the edit that caused the
+# drift is usually the one not yet committed.
+printf 'x\n' > src/alpha/fresh.txt
+OUT=$(bash "$SCAN" --drift-all)
+says "untracked-but-not-ignored file counts" "$OUT" "src/alpha/fresh.txt"
+rm -f src/alpha/fresh.txt .gitignore
+rm -rf src/alpha/__pycache__ src/alpha/build node_modules
+git add -A >/dev/null 2>&1
+
 printf '\ndrift truncation must be visible\n'
 # ---------------------------------------------------------------------------
 OUT=$(bash "$SCAN" --drift)
