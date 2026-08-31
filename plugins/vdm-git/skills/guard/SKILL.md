@@ -53,6 +53,50 @@ The user installed git-guard knowingly. The point of the gate is the **review** 
 | `git commit` | Modifies history |
 | `git push` | Affects remote |
 
+### Why only these two
+
+The list is not "dangerous git operations". `git update-ref` moves refs,
+`git reset --hard` and `git branch -D` lose work, `git rebase` rewrites it —
+none of them are here, deliberately.
+
+What the list actually covers is **the operation the assistant is already being
+pushed toward by its own instructions.** The `UserPromptSubmit` reminder asks it
+to prepare a commit on every single turn; that is a standing pressure, and a
+standing pressure is what earns a hard stop. Nothing pushes the assistant to run
+`reset --hard`, and when it does run one it is usually because the work needs it.
+Blocking there would add friction with no force to balance.
+
+So the criterion for ever extending this list is not "could this lose work?" but
+**"is something already pushing the assistant to do it?"** — which is why the
+matcher reads a subcommand rather than a string prefix (v2.7.2): `git commit-tree`
+writes an object and moves no ref, so it never belonged here, while `update-ref`,
+which does move refs, was never on the list at all. The old `\b` boundary had
+them exactly backwards.
+
+### What this guard is — and is not
+
+It is a **discipline**, not a boundary. The rule lived in the prompt first, proved
+unreliable there, and moved up to a hook, which makes it markedly harder to forget.
+It does not make it impossible to circumvent: the matcher inspects the command
+string, so any commit reached indirectly — through a script, a wrapper, a test
+harness — passes without being seen.
+
+That is stated plainly rather than left to be discovered, because the discovery is
+cheap and the false impression is expensive. And it follows from something more
+general: **any exemption the assistant can trigger is not a control.** The
+assistant composes the whole command line and the whole environment, so no
+env-var escape or path-based carve-out would preserve the guard while making it
+convenient — there is nothing at this layer the assistant cannot fabricate.
+
+The practical consequence is a rule about intent, not mechanism. When the guard
+fires and you need a real commit to verify something — testing this helper, for
+instance — **write it as a self-contained script under a `references/` directory
+and hand the user the line to run it.** Do not repackage the command to slip past
+the matcher. The cost of the honest path is one round-trip; the cost of the habit
+is the guard. If the user explicitly asks you to run such a script, running it is
+following their instruction, not routing around their guard — the distinction is
+whose decision it was.
+
 ## Auto-prep workflow
 
 When the assistant has finished work that warrants a commit — implementation done, type-check / tests passing where applicable — **prepare the commit and hand off a single command**, without waiting for verbal "go ahead." Do not stop at "should I commit?" — the user can decline by simply not running the command.
