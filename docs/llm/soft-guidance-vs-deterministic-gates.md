@@ -9,7 +9,40 @@ self-justification can route around it. Without a deterministic gate, the
 invariant drifts.
 
 The right pattern: write the rule down for orientation **and** add a gate that
-enforces it without relying on LLM compliance.
+holds without relying on the assistant *remembering*.
+
+### How strong "deterministic" actually is — the two classes differ
+
+This document draws one line between gate classes: dev-time pre-commit versus
+user-time harness hooks, separated by **reach** (who sees them). There is a
+second line, along **strength**, and conflating the two produces exactly the
+false confidence this document exists to prevent.
+
+| Class | Who runs it | Relies on assistant compliance? |
+|---|---|---|
+| `.githooks/pre-commit` | the human, in their own shell | **No.** The assistant is not in the loop. |
+| `PreToolUse` / `PostToolUse` | the harness, around a tool call the assistant makes | **Partly.** It removes reliance on *memory*, not on *cooperation*. |
+
+The reason is structural, not a defect in any particular hook: **a harness hook
+intercepts a tool call, not an effect.** One of the available tools is a shell,
+where the assistant composes an arbitrary string — so an effect reachable
+through Bash is reachable around any hook keyed to another tool, and an effect
+reachable through a script is reachable around any hook that inspects a command
+string. Found on `git-guard` (2026-08-31): it blocks `git commit` and does not
+block the same commit run from a script.
+
+The generalisation worth carrying: **any exemption the assistant can trigger is
+not a control**, because the assistant composes both the command and the
+environment the hook reads. So there is no env-var escape or path carve-out that
+makes such a gate both convenient and real.
+
+None of this makes harness hooks worthless — the opposite. Removing reliance on
+memory is most of the value, because forgetting is the common failure and
+deliberate circumvention is not. But state the strength honestly when you claim
+it. A measurement of zero violations under a harness hook means *the discipline
+held*, which is what you wanted to know; it does not mean *the gate cannot be
+passed*, and the two get conflated the moment nobody writes down which was
+measured.
 
 ## When to promote a soft rule to a gate
 
@@ -159,6 +192,11 @@ forget to bump the version") is still soft guidance — it sits in context
 alongside everything else and competes for attention. Use a reminder when
 soft surfacing is genuinely sufficient (most are); use a gate when the cost
 of drift earns the friction.
+
+**Claiming a harness hook enforces what only a pre-commit gate enforces.** See
+"How strong «deterministic» actually is" above: a hook keyed to a tool call is
+routed around by using a different tool. Layer it with a pre-commit gate when
+the invariant has to hold against more than forgetfulness.
 
 **Tying enforcement to a single harness.** A `PostToolUse` hook works in
 Claude Code; it's silent in Qwen Code. A pre-commit hook works in any
