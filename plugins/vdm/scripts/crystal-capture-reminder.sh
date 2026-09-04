@@ -19,9 +19,13 @@
 #   proactive  — fires every prompt while an active workitem exists. Use
 #                when onboarding or when the user wants maximum noise.
 #
+# Scan cost: crystal.capture-exclude (array of project-relative paths) prunes
+# subtrees that are content rather than source. Empty by default.
+#
 # Throttle: per session_id, default 600s. Override via crystal.capture-throttle
 # (seconds). State file at ${TMPDIR:-/tmp}/vdm-crystal-capture/<session>.
-# touch'd only after emit, so the first qualifying prompt always fires.
+# touch'd only after emit, so the first qualifying prompt always fires. The
+# window is checked *before* the scan, so prompts inside it cost nothing.
 #
 # Budget: <5s. Fails open everywhere — a broken hook must never block work.
 
@@ -65,34 +69,76 @@ active=$(printf '%s\n' "$all_items" | filter_status "in-progress" 2>/dev/null)
 # code but haven't touched the workitem capture". If both are stale, the
 # session is dormant and noise would be counterproductive. If both are
 # fresh, capture is already in flight — also no signal needed.
+# Throttle gate — checked BEFORE the scan, not after. The scan is the expensive
+# part (a tree walk per active workitem); running it on every prompt only to
+# discard the result inside the throttle window is pure waste, and on a
+# content-heavy repo it overran the hook's own time budget, so the harness
+# killed the hook and discarded its output. Order is now: cheap gate →
+# expensive evidence → emit.
+# proactive intentionally bypasses the throttle — if the user opted into noise
+# they get noise.
+sid="default"
+if [ "$mode" = "smart" ] && command -v _vdm_reminder_throttle_check >/dev/null 2>&1; then
+  sid=$(printf '%s' "$payload" | _vdm_reminder_session_id 2>/dev/null || printf 'default')
+  throttle=$(vdm_config_read "crystal" "capture-throttle" "600")
+  if _vdm_reminder_throttle_check "crystal-capture" "$throttle" "$sid"; then
+    exit 0
+  fi
+fi
+
 fire="no"
 if [ "$mode" = "proactive" ]; then
   fire="yes"
 else
-  # Build find exclusions from resolved crystal roots + standard noise dirs.
+  # Build the find prune list from resolved crystal roots + standard noise
+  # dirs. `-prune` rather than `-not -path`: the latter still descends into
+  # every excluded directory and stats every file inside it, the former skips
+  # the subtree outright. Measured on a 35k-note vault: 3.2s -> 0.4s per pass.
   # Single-quote each glob inside the string — without that, the eval call
-  # below would expand globs *before* `find` sees them, turning
-  # `-not -path ./.git/*` into `-not -path ./.git/HEAD ./.git/config ...`,
-  # which silently no-ops the exclusion.
-  excludes=""
+  # below would expand globs *before* `find` sees them, silently no-opping the
+  # exclusion.
+  prunes=""
+  _add_prune() {
+    if [ -z "$prunes" ]; then prunes="$1"; else prunes="$prunes -o $1"; fi
+  }
   while IFS= read -r r; do
     [ -n "$r" ] || continue
     rel="${r#"$PWD"/}"
     case "$rel" in
-      /*) excludes="$excludes -not -path '$rel/*'" ;;
-      *)  excludes="$excludes -not -path './$rel/*'" ;;
+      /*) _add_prune "-path '$rel'" ;;
+      *)  _add_prune "-path './$rel'" ;;
     esac
   done < <(resolve_crystal_roots 2>/dev/null)
 
-  excludes="$excludes -not -path './.git/*' -not -path './node_modules/*' -not -path './vendor/*' -not -path './.claude/*' -not -path './.serena/*' -not -path './.obsidian/*'"
+  # Noise dirs matched by name, so nested copies are pruned too.
+  for n in .git node_modules vendor .claude .serena .obsidian; do
+    _add_prune "-name '$n'"
+  done
+
+  # Project-declared exclusions (crystal.capture-exclude, array of paths
+  # relative to the project root). The standard noise list covers tooling
+  # dirs; a content-heavy repo — a note vault, a media archive, a dataset —
+  # carries tens of thousands of files that are content, not source, and
+  # walking them is the whole cost of this hook. Absent config = scan
+  # everything, which is the right default for a code repo.
+  while IFS= read -r x; do
+    [ -n "$x" ] || continue
+    x="${x#./}"
+    x="${x%/}"
+    case "$x" in
+      *"'"*) continue ;;
+      /*) _add_prune "-path '$x'" ;;
+      *)  _add_prune "-path './$x'" ;;
+    esac
+  done < <(vdm_config_read_array "crystal" "capture-exclude" 2>/dev/null)
 
   while IFS= read -r workitem; do
     [ -n "$workitem" ] || continue
     [ -f "$workitem" ] || continue
-    # eval is acceptable here: excludes string is built from path strings we
+    # eval is acceptable here: the prune string is built from path strings we
     # constructed ourselves, not from external input. find -newer is the
     # whole point — checking "anything newer than this file" in one pass.
-    newer=$(eval "find . -newer \"$workitem\" -type f $excludes 2>/dev/null" | head -1)
+    newer=$(eval "find . \\( $prunes \\) -prune -o -newer '$workitem' -type f -print" 2>/dev/null | head -1)
     if [ -n "$newer" ]; then
       fire="yes"
       break
@@ -102,15 +148,8 @@ fi
 
 [ "$fire" = "yes" ] || exit 0
 
-# Throttle check. Per-session state via shared lib/reminder-throttle.sh.
-# proactive intentionally bypasses throttle — if the user opted into noise
-# they get noise.
-if [ "$mode" = "smart" ] && command -v _vdm_reminder_throttle_check >/dev/null 2>&1; then
-  sid=$(printf '%s' "$payload" | _vdm_reminder_session_id 2>/dev/null || printf 'default')
-  throttle=$(vdm_config_read "crystal" "capture-throttle" "600")
-  if _vdm_reminder_throttle_check "crystal-capture" "$throttle" "$sid"; then
-    exit 0
-  fi
+# Reset the throttle window now that we know we are emitting.
+if [ "$mode" = "smart" ] && command -v _vdm_reminder_throttle_touch >/dev/null 2>&1; then
   _vdm_reminder_throttle_touch "crystal-capture" "$sid"
 fi
 

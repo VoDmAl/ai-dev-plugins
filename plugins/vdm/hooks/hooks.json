@@ -38,7 +38,7 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/crystal-capture-reminder.sh",
-            "timeout": 5
+            "timeout": 15
           },
           {
             "type": "command",
