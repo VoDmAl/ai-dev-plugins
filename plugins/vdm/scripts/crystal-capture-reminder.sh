@@ -23,11 +23,15 @@
 # subtrees that are content rather than source. Empty by default.
 #
 # Throttle: per session_id, default 600s. Override via crystal.capture-throttle
-# (seconds). State file at ${TMPDIR:-/tmp}/vdm-crystal-capture/<session>.
-# touch'd only after emit, so the first qualifying prompt always fires. The
-# window is checked *before* the scan, so prompts inside it cost nothing.
+# (seconds). State lives with the shared helper (lib/reminder-throttle.sh):
+# ${TMPDIR:-/tmp}/vdm-reminder-throttle/crystal-capture-<session>, touch'd
+# only after emit, so the first qualifying prompt always fires. The window is
+# checked *before* the scan, so prompts inside it cost nothing.
 #
-# Budget: <5s. Fails open everywhere — a broken hook must never block work.
+# Budget: <5s by design; the 15s in hooks.json is margin for a cold page cache,
+# not licence. Fails open everywhere — a broken hook must never block work.
+#
+# Tests: tests/crystal-capture-reminder.test.sh
 
 set -u
 
@@ -101,9 +105,16 @@ else
   _add_prune() {
     if [ -z "$prunes" ]; then prunes="$1"; else prunes="$prunes -o $1"; fi
   }
+  # Roots come back as PHYSICAL paths (git resolves symlinks for the toplevel)
+  # while $PWD may be the logical one — on macOS /tmp and /var are symlinks
+  # into /private. Strip against both; otherwise the prune never matches, the
+  # crystal root is scanned like source, and every sibling file under tasks/
+  # counts as "evidence".
+  pwd_phys=$(pwd -P 2>/dev/null) || pwd_phys="$PWD"
   while IFS= read -r r; do
     [ -n "$r" ] || continue
-    rel="${r#"$PWD"/}"
+    rel="${r#"$pwd_phys"/}"
+    if [ "$rel" = "$r" ]; then rel="${r#"$PWD"/}"; fi
     case "$rel" in
       /*) _add_prune "-path '$rel'" ;;
       *)  _add_prune "-path './$rel'" ;;

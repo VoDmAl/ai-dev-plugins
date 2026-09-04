@@ -12,6 +12,18 @@
 # Bare plugin names (e.g. "the vdm plugin") are NOT flagged — only concrete
 # subpaths that the dev tree resolves but a user project doesn't.
 #
+# One carve-out, and it is about the rule rather than an exemption from it: the
+# same substring rooted at an INSTALL directory — `.claude/plugins/…` or
+# `.qwen/plugins/…` — is a user-time path by construction, not a dev-tree path.
+# It resolves on the user's machine and nowhere in this clone, which is the
+# exact inverse of what the gate exists to catch. It appears in guard/SKILL.md
+# because the crystal pre-commit snippet runs in a plain shell where
+# ${CLAUDE_PLUGIN_ROOT} is undefined — the harness sets it for skills, not for
+# git hooks — so that snippet has to resolve the install path itself.
+# The carve-out is deliberately narrow: only when the install root appears
+# BEFORE the match on the same line. A bare `plugins/vdm/scripts/…` is still a
+# leak, wherever it sits.
+#
 # Used by .githooks/pre-commit alongside check-lib-sync.sh and
 # check-version-bump.sh. Scope: dev-time only — the plugins do not see
 # this script at user time.
@@ -40,9 +52,13 @@ fi
 # Pattern: concrete dev-tree subpath that doesn't resolve at user time.
 pattern='plugins/(vdm|vdm-git)/(scripts|lib|hooks|templates|skills)/'
 
+# Install-root anchored form — the one shape of this substring that DOES resolve
+# at user time (see the header note). Anchor must precede the match on the line.
+install_rooted='\.(claude|qwen)/plugins/.*'"$pattern"
+
 drift=0
 for f in "${targets[@]}"; do
-  hits=$(grep -nE "$pattern" "$f" 2>/dev/null || true)
+  hits=$(grep -nE "$pattern" "$f" 2>/dev/null | grep -vE "$install_rooted" || true)
   if [ -n "$hits" ]; then
     drift=1
     {

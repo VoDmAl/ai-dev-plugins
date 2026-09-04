@@ -198,6 +198,26 @@ of drift earns the friction.
 routed around by using a different tool. Layer it with a pre-commit gate when
 the invariant has to hold against more than forgetfulness.
 
+**Counting a gate as wired because its file is present.** An installable
+gate fails in ways that look like success from outside: the hook file exists
+but `core.hooksPath` was never set; the path is set but resolves to nothing;
+the snippet is gated on a variable nobody set — `[ -n "${X:-}" ] && …`
+collapses to a no-op and the commit goes through. Our own "wired in 1 of 12
+repositories" (2026-08-28) was counted by file presence, and the one
+repository was *this* one — which does not use the distributed snippet at all:
+`.githooks/pre-commit` closes the same invariant with a repo-local gate, and
+`CRYSTAL_PRECOMMIT_CHECK` is set nowhere on the machine. So the distributed
+mechanism was assembled in zero repositories, and the count that said
+otherwise was produced by the method whose insufficiency was the point.
+Found by the `vdx` agent (2026-09-03) while deciding *not* to add a rubric
+axis for it: activation is a property of the machine and the clone, not of
+the repository, so the check went into `vdx doctor` (`git-hooks`: declared
+hooks must resolve end to end; gated-on-unset-variable is a named failure
+with its own remedy) rather than into a rubric that grades repositories.
+Rule for reading such counts: a gate is wired when the chain **resolves**,
+never when its file exists. (Details: `vdx → docs/tasks/vdm-gates-wiring-axis/workitem.md`,
+DL #7–#10; the brief that asked for the axis: `docs/tasks/git-guard-explicit-file-list/workitem.md`.)
+
 **Tying enforcement to a single harness.** A `PostToolUse` hook works in
 Claude Code; it's silent in Qwen Code. A pre-commit hook works in any
 contributor's shell regardless of harness. Layer the gates: pre-commit catches
