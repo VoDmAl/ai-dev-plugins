@@ -1,9 +1,9 @@
 #!/bin/bash
 # crystal-path.sh — resolver + workitem helpers for the crystal-* suite.
 #
-# MIRRORED FILE — must stay byte-identical with plugins/vdm/lib/crystal-path.sh.
+# MIRRORED FILE — must stay byte-identical with plugins/vdm-git/lib/crystal-path.sh.
 # Drift is caught by scripts/check-lib-sync.sh in .githooks/pre-commit; any change
-# here MUST be applied to the vdm copy in the same commit.
+# here MUST be applied to the vdm-git copy in the same commit.
 #
 # Strategy:
 #   - Storage root(s) resolve through three branches, in order:
@@ -282,13 +282,31 @@ find_workitems() {
   # Outputs all candidate workitem file paths across ALL resolved roots.
   # Folder-style (<root>/<slug>/workitem.md), then flat-style (<root>/<slug>.md).
   # Sorted, deduped. Empty output when no roots resolved or no roots exist.
-  local root
+  #
+  # TWO find processes total, not two per root. `find` takes any number of
+  # starting points and applies -mindepth/-maxdepth relative to each of them, so
+  # passing all roots at once is exactly equivalent to the per-root loop this
+  # replaces — at O(1) spawns instead of O(roots). Same reason as
+  # _extract_status_batch: a process count that grows with the input degrades
+  # with machine load, and a repo with many roots (a vault of per-project
+  # `tasks/` dirs — 11 of them in the field report) is precisely the repo where
+  # this runs inside a hook with a timeout.
+  local root n=0
+  local roots
+  roots=()
   while IFS= read -r root; do
     [ -n "$root" ] || continue
     [ -d "$root" ] || continue
-    find "$root" -mindepth 2 -maxdepth 2 -type f -name 'workitem.md' 2>/dev/null
-    find "$root" -mindepth 1 -maxdepth 1 -type f -name '*.md' 2>/dev/null
-  done < <(resolve_crystal_roots) | sort -u
+    roots[$n]="$root"
+    n=$((n + 1))
+  done < <(resolve_crystal_roots)
+  # Guarded rather than relying on "${roots[@]}" with an empty array: under
+  # `set -u` (which every calling hook sets) bash 3.2 treats that as unbound.
+  [ "$n" -eq 0 ] && return 0
+  {
+    find "${roots[@]}" -mindepth 2 -maxdepth 2 -type f -name 'workitem.md' 2>/dev/null
+    find "${roots[@]}" -mindepth 1 -maxdepth 1 -type f -name '*.md' 2>/dev/null
+  } | sort -u
 }
 
 extract_frontmatter_field() {
@@ -317,6 +335,49 @@ extract_frontmatter_field() {
   ' "$file" 2>/dev/null
 }
 
+_extract_status_batch() {
+  # Reads workitem paths on stdin; prints "<path>\t<status>" for every file
+  # whose frontmatter carries a `status:`. Files without one are dropped.
+  #
+  # ONE awk process for the whole list — not one per file. The per-file spawn
+  # was the hot phase of every hook that resolves active workitems: it scales
+  # with machine load rather than with repository size, so it degrades exactly
+  # when the machine is busy and the hook's time budget matters most. Measured
+  # on an 80k-file vault (51 candidates): 5.6s cold idle, 15.3s at load
+  # average 101 — the one phase that alone overran a 15s hook timeout, while
+  # the tree walk beside it barely moved.
+  #
+  # Paths arrive on stdin rather than argv so the batch is not bounded by
+  # ARG_MAX; awk opens each with getline and closes it immediately.
+  #
+  # Frontmatter semantics are identical to extract_frontmatter_field (which
+  # stays for single-file callers): count `---` fences, read keys inside the
+  # first pair, first match wins, strip trailing space and surrounding quotes.
+  awk '
+    {
+      file = $0
+      if (file == "") next
+      status = ""
+      count = 0
+      while ((getline line < file) > 0) {
+        if (line ~ /^---[[:space:]]*$/) {
+          count++
+          if (count == 2) break
+          continue
+        }
+        if (count == 1 && match(line, /^status[[:space:]]*:[[:space:]]*/)) {
+          status = substr(line, RSTART + RLENGTH)
+          sub(/[[:space:]]+$/, "", status)
+          gsub(/^["\047]|["\047]$/, "", status)
+          break
+        }
+      }
+      close(file)
+      if (status != "") print file "\t" status
+    }
+  ' 2>/dev/null
+}
+
 filter_status() {
   # filter_status <expected-status>|tier:<tier-name>
   # Reads file paths on stdin; prints only those whose frontmatter `status`
@@ -328,24 +389,28 @@ filter_status() {
   case "$expected" in
     tier:*) match_tier="${expected#tier:}" ;;
   esac
-  local f raw resolved tier
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    raw=$(extract_frontmatter_field "$f" status)
-    [ -z "$raw" ] && continue
-    resolved=$(_apply_status_alias "$raw")
-    if [ -n "$match_tier" ]; then
-      tier=$(derive_status_tier "$resolved")
-      if [ "$tier" = "$match_tier" ]; then
-        printf '%s\n' "$f"
+  # Status extraction is batched into a single awk (see _extract_status_batch);
+  # alias resolution and tier derivation stay here, in-process and cached, so
+  # the rule that maps a raw status to a canonical one has exactly one home.
+  _extract_status_batch | {
+    local f raw resolved tier
+    while IFS=$'\t' read -r f raw; do
+      [ -n "$f" ] || continue
+      [ -n "$raw" ] || continue
+      resolved=$(_apply_status_alias "$raw")
+      if [ -n "$match_tier" ]; then
+        tier=$(derive_status_tier "$resolved")
+        if [ "$tier" = "$match_tier" ]; then
+          printf '%s\n' "$f"
+        fi
+      else
+        if [ "$resolved" = "$expected" ]; then
+          printf '%s\n' "$f"
+        fi
       fi
-    else
-      if [ "$resolved" = "$expected" ]; then
-        printf '%s\n' "$f"
-      fi
-    fi
-  done
-  # Explicit return — guard against the while-loop exit code being non-zero
+    done
+  }
+  # Explicit return — guard against the pipeline's exit code being non-zero
   # when the final iteration takes the no-match branch (bash returns the
   # last command's status, and `[ ... ] = ... ]` returns 1 on no match).
   return 0

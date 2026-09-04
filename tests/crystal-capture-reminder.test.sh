@@ -158,18 +158,35 @@ says     "a different session still fires" "$OUT" "Active: alpha"
 count_is "…after its own scan"             1 "$(scans)"
 
 # ---------------------------------------------------------------------------
-printf '\nno evidence: silent, but it looked — and the window stays open\n'
+printf '\nno evidence: silent, and the window closes anyway — the SCAN is the cost\n'
 # ---------------------------------------------------------------------------
+# Inverted in v2.23.0. The window used to open only on emit, which made the
+# quiet case — nothing newer than the workitems, i.e. nothing to say — pay for
+# a full tree walk on every single prompt. The hook was at its most expensive
+# exactly when it had nothing to contribute, and on a content-heavy repo that
+# is what overran the timeout and got its output discarded.
+#
+# The price is latency: evidence appearing inside a closed window is not
+# reported until the window elapses. Acceptable because the Stop-hook
+# counterpart (crystal-stop-reminder) carries no throttle at all and fires at
+# the end of every turn — the discipline still gets its nudge; only this
+# second, redundant channel waits.
 reset_state; age_all
 touch "$PROJ/tasks/alpha/workitem.md"                # the workitem is now the newest file
 OUT=$(run_hook s3)
 silent   "nothing newer than the workitem ⇒ silent"                "$OUT"
 count_is "…but it did scan (silence by evidence, not by skipping)" 1 "$(scans)"
-absent   "no emit ⇒ throttle untouched"                            "$(state_file s3)"
-# So the first qualifying prompt fires — a silent pass does not consume the window.
+exists   "…and the scan consumed the window, emit or not"          "$(state_file s3)"
+
+# Evidence arriving inside that window waits for it — and costs no second walk.
 printf 'edit\n' >"$PROJ/src/main.sh"
 OUT=$(run_hook s3)
-says "first qualifying prompt after a silent one fires" "$OUT" "Active: alpha"
+silent   "evidence inside a closed window waits (Stop hook covers the gap)" "$OUT"
+count_is "…and no second tree walk was paid for"                    1 "$(scans)"
+
+# The window is per session, so the same evidence fires at once elsewhere.
+OUT=$(run_hook s3b)
+says     "another session sees the same evidence immediately" "$OUT" "Active: alpha"
 
 # ---------------------------------------------------------------------------
 printf '\ncapture-exclude: declared content is not evidence — the same file undeclared is\n'
@@ -182,10 +199,11 @@ cfg '{"crystal":{"capture-exclude":["_import/"]}}'   # trailing slash on purpose
 OUT=$(run_hook s4)
 silent   "the only newer file sits in an excluded subtree ⇒ silent" "$OUT"
 count_is "…and it did scan"                                          1 "$(scans)"
-# Same tree, same session (nothing was emitted, so nothing is throttled),
-# exclusion removed: now that file IS the evidence.
+# Same tree, exclusion removed: now that file IS the evidence. A FRESH session
+# id, because s4's silent scan legitimately consumed s4's window (above) — the
+# point under test is the exclusion, not the throttle.
 cfg '{}'
-OUT=$(run_hook s4)
+OUT=$(run_hook s4b)
 says "the same file with the exclusion removed fires" "$OUT" "Active: alpha"
 rm -rf "$PROJ/_import"
 

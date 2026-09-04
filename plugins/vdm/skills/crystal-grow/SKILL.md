@@ -380,6 +380,26 @@ and the reminder is silently discarded. Declare those subtrees:
 Paths are relative to the project root. Absent = scan everything, which is
 what a code repo wants.
 
+**Entries are `find -path` globs, not plain prefixes.** `*` matches within a
+path segment and `?` a single character, so one line can cover a family of
+directories that a literal list would have to enumerate:
+
+```json
+{ "crystal": { "capture-exclude": ["_import", "projects/*/data", "projects/*/profiles"] } }
+```
+
+Worth spelling out because the glob support was there from the start and
+undocumented, and the directories it is for — build output, caches, a browser
+profile, a dataset — are usually the same ones `.gitignore` already lists. The
+hook does **not** read `.gitignore`: answering "is this path ignored?" honestly
+costs a worktree walk, which is the very thing being avoided here, so the
+declaration is explicit. Copying the relevant lines across is a minute of work
+and, in the field report this paragraph comes from, took the hook from 10.7s to
+5.4s on its own — before any of the code fixes.
+
+An entry containing a single quote is skipped (it would break the quoting of
+the generated `find` expression); use a glob instead of quoting.
+
 ## Pre-action gate — before anything irreversible
 
 > **Кристалл защищает не только своё закрытие, но и прод.** Нельзя совершать
