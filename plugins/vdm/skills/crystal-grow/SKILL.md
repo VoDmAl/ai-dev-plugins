@@ -496,22 +496,63 @@ weaker guarantee than a hook, and it is stated plainly rather than dressed up.
 
 ### `references/` — the provenance rule («чат не хранилище»)
 
-**An artifact a Decision Log entry rests on lands in `references/` *before*
-that entry is written — not afterwards, and not "if it turns out to matter."**
+**A Decision Log entry has to stay re-checkable by someone who wasn't there, and
+whatever makes it re-checkable is put in place *before* the entry is written** —
+not afterwards, and not "if it turns out to matter."
 
-Screenshots, exported configs, ticket text, API response dumps, log excerpts,
-query results: if a conclusion stands on it, it is saved at the moment it is
-received. `<root>/<slug>/references/<name>.<ext>`, and the DL entry's
-`Basis-detail` points at it.
+Chat scrollback is not that. It is truncated by compaction, and pasted images are
+typically the first thing to go — so the artifact a decision rests on evaporates
+while the decision itself survives, leaving an entry that claims `Basis: observed`
+with nothing left to show for it. An observation whose evidence is gone has
+quietly decayed into an assertion, and nobody gets told.
 
-Chat scrollback is **not** storage. It is truncated by compaction, and pasted
-images are typically the first thing to go — so the artifact that a decision
-depends on evaporates while the decision itself survives, leaving an entry that
-claims `Basis: observed` with nothing left to show for it. An observation whose
-evidence is gone has quietly decayed into an assertion, and nobody gets told.
+There are exactly **two** ways to discharge that obligation, and every entry uses
+one of them:
+
+| | When | What it means |
+|---|---|---|
+| **Store** | the claim does not survive being retold | copy the artifact to `<root>/<slug>/references/<name>.<ext>` the moment it arrives; `Basis-detail` points at it |
+| **Transcribe** | prose reconstructs the claim in full | the reconstruction goes into the entry itself; `Basis-detail` says where the original lives and why it was not copied |
+
+Screenshots, raw API responses, log excerpts, query output, "I saw X" where X does
+not survive retelling — those are the *store* column. Directory structures, config
+values, lists, counts, schemas — prose carries them without loss, and the
+transcription **is** the artifact.
+
+#### Storing is one of the two answers, not the default
+
+The rule as first shipped had only the *store* column, and so quietly assumed two
+things: that the artifact is **yours**, and that keeping it is **worth
+something**. Both break, often together.
+
+1. **May you keep it?** Someone else's operational data — live identifiers,
+   credentials, customer records, an export from another team's system — does not
+   become yours because a decision leaned on it. In a repository that is published
+   or distributed, the copy is **irreversible**: history keeps the file long after
+   the file is deleted. This is a **veto**, not a discount — it removes the *store*
+   column, so *transcribe* becomes mandatory and has to stand on its own.
+2. **Is keeping it worth anything?** If your own prose already lets a reader
+   re-derive the claim, the original adds weight and nothing else.
+3. **Anchoring.** Vendoring a domain-specific specimen into the design crystal of
+   a *general* tool drags the design toward that domain. Named separately from (2)
+   because `references/` is the path of least resistance by which a domain crawls
+   back in after being evicted from the prose — through the back door, while the
+   rule is being obeyed to the letter.
+
+**Провенанс — не хоардинг.** The artifact is stored when the claim cannot be
+checked against your own writing — *and* when you are entitled to store it.
+
+#### An unexplained empty `references/` reads as forgetting
+
+*Deliberately not copied* and *never got round to it* look identical from the
+outside. So when the *transcribe* column is used, `Basis-detail` carries the
+address of what was **not** copied — repository, path, date of observation, how it
+reproduces — plus one clause on why. Without that line, "нельзя" and "не нужно"
+become an excuse nobody can check, and the rule is back where it started.
 
 This is what makes `Basis: observed` verifiable by someone other than the person
-who wrote it. Without the artifact, `observed` is just a stronger-sounding word.
+who wrote it. Without one of the two columns, `observed` is just a
+stronger-sounding word.
 
 ### Cross-referencing workitems (wikilink form)
 

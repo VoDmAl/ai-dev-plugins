@@ -100,12 +100,22 @@ workitem (Decision Log #4).
 - `references/` — original sources (specs, screenshots, exported transcripts)
 - External links (URLs, ticket IDs) go here too
 
-<!-- Provenance rule — «чат не хранилище»: an artifact a Decision Log entry
-     rests on lands in `references/` BEFORE that entry is written, not after.
-     Screenshots, exports, ticket text, API response dumps, log excerpts —
-     if a conclusion stands on it, it is saved at the moment it is received.
-     Chat scrollback is not storage: it is truncated by compaction, and
-     pasted images are the first thing to go. -->
+<!-- Provenance rule — «чат не хранилище»: a Decision Log entry must stay
+     re-checkable by someone who wasn't there, and whatever makes it so is in
+     place BEFORE the entry is written. Two ways to discharge that; pick one.
+     STORE — the claim does not survive being retold (screenshots, raw dumps,
+     log excerpts, query output): the artifact goes to `references/` the moment
+     it arrives, and `Basis-detail` points at it.
+     TRANSCRIBE — prose reconstructs the claim in full (structures, config
+     values, lists, counts): the reconstruction IS the artifact.
+     Storing is not the default. You may have no right to keep someone else's
+     operational data, and in a published repo the copy is irreversible —
+     history keeps the file after the file is deleted. That is a veto: it
+     removes STORE, so TRANSCRIBE becomes mandatory and must stand alone.
+     When you transcribe, `Basis-detail` names where the original lives and why
+     it was not copied — an unexplained empty `references/` reads as forgetting.
+     Chat scrollback is not storage: compaction truncates it, pasted images go
+     first. Провенанс — не хоардинг. -->
 
 <!-- Delete the boilerplate above once real references accumulate. -->
 
