@@ -458,20 +458,37 @@ If the user accepts the risk, that acceptance is itself a Decision Log entry
 ### Why this isn't a hook
 
 The rest of this suite prefers deterministic gates over soft guidance — the
-completion-guard is a hook precisely because "does this file contain `- [ ]`"
-is mechanically decidable. This gate is soft on purpose, and the reason is
-worth stating so nobody "fixes" it later without knowing:
+completion-guard is a hook precisely because "does this file contain `- [ ]`" is
+mechanically decidable. This gate is soft on purpose. The reason was **audited
+rather than assumed**, and is written down so nobody "fixes" it later without
+knowing what was measured.
 
-**"Irreversible external action" is not decidable from a tool call.** A shell
-command gives no reliable signal — `curl -X POST` is a health check as often as
-it is a payment. Worse, the truly expensive actions frequently do not pass
-through an interceptable tool at all: they happen in an external UI, through a
-third-party integration, or in the user's own hands after you hand them a
-recommendation. A gate that fires on the wrong things and stays silent on the
-right ones is worse than none: it trains everyone to click through it.
+**Interception is not the obstacle.** A `PreToolUse` hook receives the tool name
+and the full tool input, the matcher is optional, and exiting `2` blocks the
+call — every tool call is reachable. The only question is whether "irreversible"
+can be told apart from everything else that arrives, and that splits three ways:
 
-So the enforcement here is the assistant reading this and *doing it*. That is a
-weaker guarantee than a hook, and it is stated plainly rather than dressed up.
+| How the action travels | Separable? | What it costs | Who could know |
+|---|---|---|---|
+| A named tool — an MCP tool, a publish / send / schedule tool | yes, by matcher | nothing | **not a plugin**: which tools exist is a property of the *installation*, not of the repository |
+| `Bash` | only by parsing the command string | 75 lines of an admittedly approximate shell parser for **one** binary and two subcommands (measured on this suite's own `git-guard`), on top of a blocklist with no end | a plugin can, but the list is unbounded |
+| Outside the tool boundary — a web console, a third-party UI, the user's own hands | never | — | nobody |
+
+Under all three sits the limit that actually decides it: **a hook intercepts the
+call, not the effect**, and "irreversible" is a property of the effect. `curl -X
+POST` is a health check as often as it is a payment, and at the boundary the hook
+stands on, the two are the same string.
+
+So a general gate would fire on the wrong things and stay silent on the right
+ones — and one that lies in both directions is worse than none, because it
+teaches everyone to click through it. The enforcement here is the assistant
+reading this and *doing it*: a weaker guarantee than a hook, stated plainly
+rather than dressed up.
+
+**Where a gate does work:** when the irreversible action has a stable name *and*
+a stable syntax, the middle row collapses into the top one. `git commit` /
+`git push` are exactly that, which is why `vdm-git:guard` exists and holds. Build
+those one at a time, each named explicitly — do not build the general one.
 
 ## Storage layout (DL #2, #18, #20, #12 in crystal-multi-root)
 
