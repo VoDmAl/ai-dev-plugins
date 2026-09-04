@@ -70,9 +70,33 @@ cmd_whoami() {
   printf '   inbox:        %s   (%s pending)\n' "$(intercom_inbox_dir "$id")" "$n"
   missing="$(intercom_registration_missing "$id")"
   if [ -z "$missing" ]; then
+    # Deduplicated: `names` and `aliases` routinely contain an entry that folds
+    # to the identity itself (a repo whose directory basename IS its slug), and
+    # printing it three times in the one line that answers "what am I called?"
+    # is the opposite of what the line is for. Fold via the shared helper — the
+    # comparison rule has one home (_intercom_fold), and restating it here would
+    # be a second copy of it.
     printf '   registration: ✓ complete — other agents can address you as: %s' "$id"
-    [ -n "$names" ] && printf ', %s' "$names"
-    [ -n "$aliases" ] && printf ', %s' "$aliases"
+    _seen="$(_intercom_fold "$id")"
+    _print_unique() {
+      local raw folded
+      raw="$1"
+      [ -n "$raw" ] || return 0
+      while IFS= read -r n; do
+        [ -n "$n" ] || continue
+        folded="$(_intercom_fold "$n")"
+        case "
+$_seen
+" in *"
+$folded
+"*) continue ;; esac
+        _seen="$_seen
+$folded"
+        printf ', %s' "$n"
+      done <<<"$(printf '%s' "$raw" | tr ',' '\n' | sed 's/^ *//; s/ *$//')"
+    }
+    _print_unique "$names"
+    _print_unique "$aliases"
     printf '\n'
   else
     printf '   registration: ⚠ INCOMPLETE — missing: %s\n' "$missing"

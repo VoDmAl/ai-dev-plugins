@@ -2,7 +2,7 @@
 title: "docs-distill: слой синтеза — систематизировано ли то, что выходит наружу"
 slug: docs-distill
 description: "Учит суиту пересобирать сводное знание, а не копить разрозненные фрагменты"
-status: in-progress
+status: dormant
 session-type: prd-work
 created: 2026-07-14
 last-updated: 2026-09-04
@@ -841,6 +841,13 @@ Discovery-hook — ссылка из `CLAUDE.md`. Тест пройден: ск�
 Остаётся один открытый побег — #4, post-action verification, и он по-прежнему **кандидат в отдельный
 стем**, а не работа этого кристалла: смешивать обязательство (`crystal-cut`) со знанием
 (дистилляция) означает размыть оба.
+
+**2026-09-04, снова усыплён.** `in-progress` → `dormant`: активный слот освобождён под
+[[crystal-capture-hook-timeout/workitem|crystal-capture-hook-timeout]] — полевой замер из
+`obsidianvault` показал, что `crystal-capture-reminder` выходит за лимит хука и его вывод
+молча отбрасывается, то есть механизм капчера не работает там, где он больше всего нужен.
+Условие возврата не изменилось: побег #4 (post-action verification) по-прежнему кандидат в
+отдельный стем, а не работа этого кристалла.
 
 ## References
 

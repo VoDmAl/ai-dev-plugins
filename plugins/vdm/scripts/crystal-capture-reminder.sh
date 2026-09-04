@@ -24,9 +24,14 @@
 #
 # Throttle: per session_id, default 600s. Override via crystal.capture-throttle
 # (seconds). State lives with the shared helper (lib/reminder-throttle.sh):
-# ${TMPDIR:-/tmp}/vdm-reminder-throttle/crystal-capture-<session>, touch'd
-# only after emit, so the first qualifying prompt always fires. The window is
-# checked *before* the scan, so prompts inside it cost nothing.
+# ${TMPDIR:-/tmp}/vdm-reminder-throttle/crystal-capture-<session>.
+#
+# The window is checked as the FIRST thing this script does and is reset after
+# every SCAN, not only after an emit. Both halves matter, and both were wrong
+# before: a gate placed after the workitem resolution still pays for it, and a
+# window that opens only on emit leaves the quiet case — nothing to report —
+# rescanning the tree on every prompt. The invariant the two together buy is
+# "at most one tree walk per window, whatever the outcome".
 #
 # Budget: <5s by design; the 15s in hooks.json is margin for a cold page cache,
 # not licence. Fails open everywhere — a broken hook must never block work.
@@ -56,6 +61,27 @@ payload=$(cat 2>/dev/null || true)
 mode=$(vdm_config_read "crystal" "capture-mode" "smart")
 [ "$mode" = "silent" ] && exit 0
 
+# Throttle gate FIRST — before any filesystem work at all.
+#
+# It used to sit below the workitem resolution, and the comment beside it
+# claimed it ran "before the scan". That was true only of the `find -newer`
+# tree walk: `find_workitems` + `filter_status` ran unconditionally on every
+# prompt, including every prompt inside a closed window. Measured on an
+# 80k-file vault, a throttled prompt — one that emits nothing and is meant to
+# cost nothing — still paid 1.2s of it.
+#
+# Everything needed to answer "am I inside the window?" is the mode and the
+# session id, both cheap. proactive intentionally bypasses the throttle: if
+# the user opted into noise they get noise.
+sid="default"
+if [ "$mode" = "smart" ] && command -v _vdm_reminder_throttle_check >/dev/null 2>&1; then
+  sid=$(printf '%s' "$payload" | _vdm_reminder_session_id 2>/dev/null || printf 'default')
+  throttle=$(vdm_config_read "crystal" "capture-throttle" "600")
+  if _vdm_reminder_throttle_check "crystal-capture" "$throttle" "$sid"; then
+    exit 0
+  fi
+fi
+
 # Find active workitems. Silent if none — no crystal, no in-flight discipline
 # to remind about.
 all_items=$(find_workitems 2>/dev/null)
@@ -73,23 +99,6 @@ active=$(printf '%s\n' "$all_items" | filter_status "in-progress" 2>/dev/null)
 # code but haven't touched the workitem capture". If both are stale, the
 # session is dormant and noise would be counterproductive. If both are
 # fresh, capture is already in flight — also no signal needed.
-# Throttle gate — checked BEFORE the scan, not after. The scan is the expensive
-# part (a tree walk per active workitem); running it on every prompt only to
-# discard the result inside the throttle window is pure waste, and on a
-# content-heavy repo it overran the hook's own time budget, so the harness
-# killed the hook and discarded its output. Order is now: cheap gate →
-# expensive evidence → emit.
-# proactive intentionally bypasses the throttle — if the user opted into noise
-# they get noise.
-sid="default"
-if [ "$mode" = "smart" ] && command -v _vdm_reminder_throttle_check >/dev/null 2>&1; then
-  sid=$(printf '%s' "$payload" | _vdm_reminder_session_id 2>/dev/null || printf 'default')
-  throttle=$(vdm_config_read "crystal" "capture-throttle" "600")
-  if _vdm_reminder_throttle_check "crystal-capture" "$throttle" "$sid"; then
-    exit 0
-  fi
-fi
-
 fire="no"
 if [ "$mode" = "proactive" ]; then
   fire="yes"
@@ -143,26 +152,47 @@ else
     esac
   done < <(vdm_config_read_array "crystal" "capture-exclude" 2>/dev/null)
 
+  # ONE tree walk, not one per active workitem. `\( -newer A -o -newer B \)`
+  # is find's own OR, so a single pass answers exactly the question the old
+  # loop asked N times: "does any file post-date any active workitem?" — which
+  # is the same as "does any file post-date the oldest of them". Building the
+  # OR clause out of find primaries rather than comparing mtimes ourselves
+  # keeps `stat` (whose flags differ between BSD and GNU) out of the path.
+  newers=""
   while IFS= read -r workitem; do
     [ -n "$workitem" ] || continue
     [ -f "$workitem" ] || continue
-    # eval is acceptable here: the prune string is built from path strings we
-    # constructed ourselves, not from external input. find -newer is the
-    # whole point — checking "anything newer than this file" in one pass.
-    newer=$(eval "find . \\( $prunes \\) -prune -o -newer '$workitem' -type f -print" 2>/dev/null | head -1)
-    if [ -n "$newer" ]; then
-      fire="yes"
-      break
+    # A single quote in the path would break out of the quoting below; such a
+    # path is pathological for a workitem, and skipping it only costs this one
+    # file's contribution to the OR — the same guard the exclude list uses.
+    case "$workitem" in *"'"*) continue ;; esac
+    if [ -z "$newers" ]; then
+      newers="-newer '$workitem'"
+    else
+      newers="$newers -o -newer '$workitem'"
     fi
   done <<<"$active"
+
+  if [ -n "$newers" ]; then
+    # eval is acceptable here: the prune string and the -newer clause are built
+    # from path strings we constructed ourselves, not from external input.
+    newer=$(eval "find . \\( $prunes \\) -prune -o \\( $newers \\) -type f -print" 2>/dev/null | head -1)
+    if [ -n "$newer" ]; then
+      fire="yes"
+    fi
+  fi
 fi
 
-[ "$fire" = "yes" ] || exit 0
-
-# Reset the throttle window now that we know we are emitting.
+# Reset the window now that the scan has been PAID FOR — whether or not it
+# found anything. The scan is the cost; a window that only opens on emit
+# leaves the quiet case (nothing newer than the workitems — i.e. nothing to
+# say) rescanning the tree on every single prompt. That made the hook most
+# expensive exactly when it had nothing to contribute.
 if [ "$mode" = "smart" ] && command -v _vdm_reminder_throttle_touch >/dev/null 2>&1; then
   _vdm_reminder_throttle_touch "crystal-capture" "$sid"
 fi
+
+[ "$fire" = "yes" ] || exit 0
 
 # Render the reminder. Brief — every char costs context. List active slugs
 # inline so the assistant knows WHICH file is the capture target without

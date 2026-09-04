@@ -57,6 +57,32 @@ mismatch="$(intercom_remote_mismatch "$id" 2>/dev/null || true)"
 pending="$(intercom_inbox_count "$id" 2>/dev/null)"
 case "$pending" in ''|*[!0-9]*) pending=0 ;; esac
 
+# Defaults for the incomplete-registration notice (see the comment where they
+# are used). Both are derived, never invented: the name is what this directory
+# is actually called, the description is the README's own first heading.
+default_name=""
+default_desc=""
+if [ -n "$missing" ]; then
+  _proj_root="$(git rev-parse --show-toplevel 2>/dev/null)" || _proj_root=""
+  [ -n "$_proj_root" ] || _proj_root="$PWD"
+  default_name="$(basename "$_proj_root")"
+  # First ATX heading in the README, minus the hashes and any trailing
+  # punctuation; falls back to the first non-empty, non-badge line. Quotes and
+  # backslashes are stripped rather than escaped — this string is interpolated
+  # into a shell command the agent will run, and a stray quote there breaks the
+  # command silently, which is the failure this whole block exists to avoid.
+  for _rd in README.md readme.md README; do
+    [ -f "$_proj_root/$_rd" ] || continue
+    default_desc="$(awk '
+      /^#[[:space:]]+/ { sub(/^#+[[:space:]]*/, ""); print; exit }
+    ' "$_proj_root/$_rd" 2>/dev/null)"
+    [ -n "$default_desc" ] && break
+  done
+  [ -n "$default_desc" ] || default_desc="$default_name"
+  default_desc="$(printf '%s' "$default_desc" | tr -d '"\\`$' | cut -c1-120)"
+  default_name="$(printf '%s' "$default_name" | tr -d '"\\`$' | cut -c1-60)"
+fi
+
 msg=""
 if [ -z "$missing" ]; then
   msg="[intercom] 🪪 You are \`${id}\`"
@@ -73,9 +99,23 @@ else
   msg="[intercom] ⚠ Agent registration INCOMPLETE for \`${id}\` — missing: ${missing}."
   msg="${msg}
 Right now other agents can reach this repo only as ${reach} — those are machine-derived names. A brief the user addresses to \"vdm\", \"the intercom agent\" or whatever they actually call this project will NOT land here."
+  # A READY-TO-RUN line, not an instruction to derive one.
+  #
+  # Field report (obsidianvault, 2026-09-04): the notice used to say "infer the
+  # names from the README / the directory name / how the user refers to it; if
+  # unsure, ask once". The agent deferred it to the end of the session and then
+  # asked the user — who replied «Странно, что он тебе не предложил дефолт по
+  # названию папки». The directory was literally called `ObsidianVault`.
+  #
+  # The diagnosis is about the FORM of the notice, not the agent: a command an
+  # agent can execute gets executed; a request to derive one, hedged with "if
+  # you are confident", is exactly the shape that produces a question instead.
+  # So derive the obvious default here — deterministically, in the hook — and
+  # print it filled in. The agent's remaining job is to correct it, which is a
+  # much cheaper judgement than inventing it.
   msg="${msg}
-Before other work, register the names this project really goes by: infer them from the README title, the product/plugin/skill names, the directory name, and how the user refers to it in chat; if you cannot infer them with confidence, ask the user ONCE — do not invent names. Then run:
-  /vdm:intercom register --name \"<short name>\" --name \"<another name>\" --describe \"<one line: what this repo is / which agent lives here>\"
+Before other work, register the names this project really goes by. A default derived from this repo — run it as-is if it is right, or edit the name / add --name for whatever else the user calls this project (do not invent names; ask ONCE if the default is clearly wrong):
+  /vdm:intercom register --name \"${default_name}\" --describe \"${default_desc}\"
 Verify with /vdm:intercom whoami. This notice repeats every session until the registration is complete (opt out: /vdm:intercom identity-check off)."
 fi
 

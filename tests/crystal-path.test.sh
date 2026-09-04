@@ -153,6 +153,50 @@ d=$(new_project absolute "\"$TMP/functional/packages/shallow/tasks\"")
 out=$(resolve_out "$d")
 expect_says "absolute glob is respected" "$out" "packages/shallow/tasks"
 
+printf '\n=== filter_status: cost is O(1) processes, not O(candidates) ===\n'
+# The defect this replaces: filter_status called extract_frontmatter_field per
+# path, and that spawned an awk per file. 51 candidates cost 51 processes.
+#
+# Why a COUNT and not a stopwatch: process spawn scales with machine load, not
+# with repository size, so the wall-clock symptom (a UserPromptSubmit hook
+# timing out and having its output discarded — obsidianvault, 2026-09-04, 15.3s
+# for this phase alone at load average 101) only reproduces on a busy machine.
+# The count reproduces anywhere and is the actual invariant: whatever the
+# candidate list, the work is one pass.
+fs_awk_count() {
+  # fs_awk_count <n-candidates> — build n synthetic workitems, run filter_status
+  # under xtrace, and count how many awk processes the trace shows.
+  local n="$1" d="$TMP/fsprobe-$1" i
+  rm -rf "$d"; mkdir -p "$d"
+  for i in $(seq 1 "$n"); do
+    mkdir -p "$d/w$i"
+    printf -- '---\nstatus: in-progress\n---\nbody\n' >"$d/w$i/workitem.md"
+  done
+  find "$d" -name workitem.md | bash -c "
+    set -u
+    . '$CFG' 2>/dev/null
+    . '$LIB' 2>/dev/null
+    set -x
+    filter_status in-progress >/dev/null
+  " 2>&1 | grep -c 'awk'
+}
+few=$(fs_awk_count 3)
+many=$(fs_awk_count 30)
+expect_eq "3 candidates ⇒ one awk process"  "1" "$few"
+expect_eq "30 candidates ⇒ still one"       "1" "$many"
+
+# And the answer must not have changed while getting cheaper.
+mkdir -p "$TMP/fsmix/a" "$TMP/fsmix/b" "$TMP/fsmix/c"
+printf -- '---\nstatus: in-progress\n---\n'  >"$TMP/fsmix/a/workitem.md"
+printf -- '---\nstatus: done\n---\n'         >"$TMP/fsmix/b/workitem.md"
+printf -- 'no frontmatter at all\n'            >"$TMP/fsmix/c/workitem.md"
+mix=$(find "$TMP/fsmix" -name workitem.md | sort | bash -c ". '$CFG' 2>/dev/null; . '$LIB' 2>/dev/null; filter_status in-progress")
+expect_eq "only the in-progress file survives the filter" "$TMP/fsmix/a/workitem.md" "$mix"
+mixdone=$(find "$TMP/fsmix" -name workitem.md | sort | bash -c ". '$CFG' 2>/dev/null; . '$LIB' 2>/dev/null; filter_status done")
+expect_eq "…and asking for done returns the other one"    "$TMP/fsmix/b/workitem.md" "$mixdone"
+mixtier=$(find "$TMP/fsmix" -name workitem.md | sort | bash -c ". '$CFG' 2>/dev/null; . '$LIB' 2>/dev/null; filter_status tier:active")
+expect_eq "…and the tier: form still resolves"            "$TMP/fsmix/a/workitem.md" "$mixtier"
+
 printf '\n=== the mirror ===\n'
 # lib/ is mirrored across both plugins by invariant; a fix applied to one copy
 # only would pass every test above and ship broken to vdm-git.
