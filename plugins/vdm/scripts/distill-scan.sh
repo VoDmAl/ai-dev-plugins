@@ -245,14 +245,37 @@ find_synthesis_docs() {
 }
 
 # ---------------------------------------------------------------------------
-# Drift: is any covered input newer than the synthesis that claims to cover it?
+# Drift: has any covered input CHANGED since the synthesis that claims to
+# cover it was last written?
 #
-# mtime, not content hash. The suite already uses this exact comparison in
-# crystal-capture-reminder.sh ("sources newer than the workitem"); DL #4 says to
-# aim the existing form at a new pair of files rather than invent a mechanism.
-# A better detector exists for systems that expose a fingerprint — that is the
-# decay-detector ladder, still open as Sidetrack #5. Do not silently promote
-# this heuristic into the general rule.
+# Two rungs of the decay-detector ladder (SKILL.md -> "Decay detectors"), used
+# in order of strength:
+#
+#   mtime          — "was this file written after that one". Cheap, universal,
+#                    and not the question: every gesture that rewrites a file
+#                    without changing it moves mtime. It is what a non-git
+#                    project gets, and it is the bottom rung.
+#   git content    — "is this file's content what it was when the synthesis was
+#                    written". A fact, not a heuristic. Free where the inputs
+#                    live in the same repository, because git already stores
+#                    the content.
+#
+# mtime still selects the candidates (it is the fast pass); git then confirms
+# or drops each one. Adding no state: the second operand is the repository
+# history, on disk like every other artefact this suite compares.
+#
+# Why it mattered: `git checkout -- <file>` after an abandoned edit, a
+# formatter, a restored stash — each raises drift on a file identical to what
+# the synthesis was written against. The reader can only clear that by
+# re-stamping `observed:`, i.e. by recording a verification that verified
+# nothing. A signal permitted to cry wolf is dismissed unread, which is the one
+# failure this scanner exists to prevent.
+#
+# The rung ABOVE both — a fingerprint the external system itself exposes — is
+# not this script's to compute: it belongs to the project that owns the
+# external system, and the way to hand it here is to project that state into
+# the tree and list it under `covers:`. Then the comparison above is already
+# the right one. See SKILL.md.
 # ---------------------------------------------------------------------------
 
 _files_under() {
@@ -287,6 +310,57 @@ _files_under() {
   fi | sort
 }
 
+_CF_ACTIVE=0
+_CF_CHANGED=""
+
+_content_filter_init() {
+  # _content_filter_init <synthesis-file>
+  # Arms the content confirmation, but only when every one of these holds:
+  #   - we are inside a git work tree;
+  #   - the synthesis is tracked AND identical to HEAD. An edited-but-uncommitted
+  #     synthesis is one somebody is rebuilding right now, and then its own
+  #     mtime is the honest reference — git cannot know what that edit covered;
+  #   - git can name the commit that last touched it.
+  # Otherwise the filter stays off and the behaviour is exactly the old
+  # mtime-only one, which is also, deliberately, what a non-git project gets.
+  local synth="$1" base
+  _CF_ACTIVE=0
+  _CF_CHANGED=""
+  command -v git >/dev/null 2>&1 || return 0
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  git ls-files --error-unmatch -- "$synth" >/dev/null 2>&1 || return 0
+  git diff --quiet HEAD -- "$synth" >/dev/null 2>&1 || return 0
+  base=$(git log -1 --format=%H -- "$synth" 2>/dev/null)
+  [ -n "$base" ] || return 0
+
+  # Three questions, one git call each — cost independent of the number of
+  # candidates:
+  #   changed and committed since the synthesis was written  ... base..HEAD
+  #   changed but not committed (staged or not)              ... diff HEAD
+  #   never committed at all                                 ... untracked
+  # `--relative` because every other path in this script is relative to the
+  # current directory, while `git diff --name-only` on its own reports from the
+  # repository root; without it the membership test below would silently never
+  # match when run from a subdirectory, and the filter would drop everything.
+  _CF_CHANGED=$(
+    { git diff --name-only --relative "$base" HEAD 2>/dev/null
+      git diff --name-only --relative HEAD 2>/dev/null
+      git ls-files --others --exclude-standard 2>/dev/null
+    } | sort -u
+  )
+  _CF_ACTIVE=1
+  return 0
+}
+
+_content_changed() {
+  # _content_changed <path> — true unless the filter is armed AND can prove the
+  # content identical to what it was when the synthesis was written. Unprovable
+  # always counts as changed: a false alarm is recoverable, false silence is
+  # the failure this tier exists to prevent.
+  [ "$_CF_ACTIVE" = "1" ] || return 0
+  printf '%s\n' "$_CF_CHANGED" | grep -Fxq -e "$1"
+}
+
 newer_inputs() {
   # newer_inputs <synthesis-file>
   # Prints EVERY covered file whose mtime is newer than the synthesis, one per
@@ -305,6 +379,7 @@ newer_inputs() {
   # (default 3) — the caller wants evidence, not an inventory.
   local synth="$1"
   local emitted=0 glob e hit
+  _content_filter_init "$synth"
 
   while IFS= read -r glob; do
     [ -n "$glob" ] || continue
@@ -321,10 +396,12 @@ newer_inputs() {
         while IFS= read -r hit; do
           [ -n "$hit" ] || continue
           [ "$hit" = "$synth" ] && continue
+          _content_changed "$hit" || continue
           printf '%s\n' "$hit"
           emitted=$((emitted + 1))
         done < <(_files_under "$e" "$synth")
       elif [ -f "$e" ] && [ "$e" -nt "$synth" ]; then
+        _content_changed "$e" || continue
         printf '%s\n' "$e"
         emitted=$((emitted + 1))
       fi
