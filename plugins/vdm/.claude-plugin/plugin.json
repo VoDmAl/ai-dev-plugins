@@ -1,6 +1,6 @@
 {
   "name": "vdm",
-  "version": "2.21.3",
+  "version": "2.22.0",
   "description": "SDLC workflow plugins: docs-sync (documentation synchronization), docs-distill (synthesis layer — the summary view that is rebuilt, not appended to; drift signal on `covers:` frontmatter), learn (knowledge capture), changelog (project change tracking), crystal-* (workitem discipline gate — grow/bud/cut/cave + migrate for batch legacy-doc onboarding), intercom (central cross-agent/cross-session message store with an agent directory — canonical identity + the names the user says, kept complete by a SessionStart check).",
   "author": {
     "name": "Dmitry Vorobyev",

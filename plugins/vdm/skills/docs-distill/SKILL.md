@@ -220,11 +220,29 @@ Do not present the weakest rung as the general rule.
 | Rung | Detector | Cost of a miss |
 |---|---|---|
 | **Best** | Fingerprint/hash the external system exposes — matches ⇒ current, by proof | none; it is a fact, not a guess |
-| **Middle** | Regenerable, diffable export — re-export and read `git diff` | you must remember to re-export |
+| **Middle** | The input's own content, under version control — what it is now against what it was when the synthesis was written | none, while the content is versioned |
 | **Worst** | Observation date + a manual gesture (what `observed:` is) | it is a heuristic, and it lies quietly |
 
-Most systems do not expose a fingerprint, so `observed:` is the fallback — but
-when a system *does* offer one, wiring it in beats any reminder we could write.
+**Where the inputs live in the repository, the middle rung is already wired and
+costs nothing.** `distill-scan.sh` uses mtime only to *propose* candidates, then
+asks git whether the content actually changed since the commit that last touched
+the synthesis. A file rewritten without being changed — an abandoned edit put
+back with `git checkout --`, a formatter, a restored stash — no longer raises
+drift. Where git cannot prove it (no repository, synthesis never committed, or
+the synthesis carrying uncommitted edits of its own, which means somebody is
+rebuilding it right now), the scanner falls back to mtime and reports:
+**unprovable always counts as changed**, because a false alarm is recoverable
+and false silence is what this tier exists to prevent.
+
+The top rung is not the scanner's to compute, and that is the useful half of the
+ladder rather than its limitation. A fingerprint belongs to the external system;
+the way to bring it here is to **project that state into the tree** — an export,
+a snapshot file — and list it under `covers:`. The comparison above is then
+already the right one. So the rungs are not three detectors to choose between:
+they are three degrees to which the external state has been projected into the
+repository, and improving your rung means improving the projection, not swapping
+the mechanism.
+
 And the corollary the field taught: **a new failure mode earns a new assertion
 in a script, not a resolution to remember.**
 
