@@ -352,18 +352,43 @@ with `git config core.hooksPath .githooks`):
 
 ```bash
 # Crystal completion-discipline backup gate (from vdm-git plugin).
-# Resolve the installed path once and pin it via env var. To find it:
-#   $ find ~/.claude ~/.qwen -name 'crystal-precommit-check.sh' 2>/dev/null
-# Then set CRYSTAL_PRECOMMIT_CHECK to that absolute path (in your shell
-# profile, in the hook itself, or in your CI environment).
-[ -n "${CRYSTAL_PRECOMMIT_CHECK:-}" ] && [ -x "$CRYSTAL_PRECOMMIT_CHECK" ] \
-  && { "$CRYSTAL_PRECOMMIT_CHECK" || exit 1; }
+# Resolves itself: the marketplace checkout carries an UNVERSIONED copy, so
+# the path survives plugin updates. CRYSTAL_PRECOMMIT_CHECK overrides it
+# (CI, a non-standard install, a fork).
+crystal_check="${CRYSTAL_PRECOMMIT_CHECK:-}"
+if [ -z "$crystal_check" ]; then
+  for c in "$HOME"/.claude/plugins/marketplaces/*/plugins/vdm-git/scripts/crystal-precommit-check.sh \
+           "$HOME"/.qwen/plugins/marketplaces/*/plugins/vdm-git/scripts/crystal-precommit-check.sh; do
+    [ -x "$c" ] && { crystal_check="$c"; break; }
+  done
+fi
+if [ -n "$crystal_check" ]; then
+  "$crystal_check" || exit 1
+else
+  # Say so. A gate that cannot find itself must not look like a gate that
+  # found nothing to report.
+  echo "[crystal] pre-commit backup gate not found — vdm-git not installed?" >&2
+fi
 ```
 
-The install path varies by harness; pinning it via env var avoids
-hardcoding harness-specific globs into your repo. The script fails open on
-any error so this hook entry is safe even before the `vdm` plugin starts
-shipping crystal workitems.
+**Why the resolution, not a pinned variable.** The earlier form was
+`[ -n "${CRYSTAL_PRECOMMIT_CHECK:-}" ] && …` — with the variable unset the
+whole conjunction is false, the commit proceeds, and nothing is printed. The
+gate then fails *indistinguishably from passing*, which is the exact defect
+this suite keeps finding elsewhere. Measured 2026-09-03 (by the `vdx` agent,
+across one machine and 12 repositories): the variable was set in no shell
+profile and no settings file, so the distributed snippet was assembled in zero
+repositories — while a count based on "the hook file exists" reported one.
+Two consequences, both applied above: resolve the path instead of demanding it
+be pinned by hand (install drops from three steps to two), and **be loud when
+resolution fails** — an unresolvable gate is a broken gate, not a quiet one.
+
+The unversioned marketplace path is stable across plugin updates, unlike
+`…/plugins/cache/<marketplace>/vdm-git/<version>/…`, whose version segment
+moves on every release. The glob covers both harness install roots
+(`.claude/`, `.qwen/`) and any marketplace name. The script itself still fails
+open on internal errors, so this hook entry is safe in a repo that has no
+crystal workitems yet.
 
 ### Why three layers (DL #7)
 

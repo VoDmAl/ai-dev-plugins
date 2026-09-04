@@ -478,6 +478,7 @@ bash scripts/check-crystal-completion.sh   # 0 = clean, 1 = workitem done with o
 bash plugins/vdm/scripts/crystal-lint.sh --staged   # 0 = clean, 1 = staged workitem off-canon
 bash tests/gates.test.sh                   # red-tests all of the above (~15s)
 bash tests/intercom.test.sh                # agent directory + name resolution, against a scratch store
+bash tests/crystal-capture-reminder.test.sh # capture reminder: throttle before scan (proven via a find shim), capture-exclude
 ```
 
 **lib-sync.** The two plugins ship duplicated copies of `lib/config-path.sh` and `lib/config-read.sh` (each plugin must be self-contained for independent installation). The check normalizes the cross-reference comments that name the opposite plugin (`plugins/vdm/lib` ↔ `plugins/vdm-git/lib`); everything else must match byte-for-byte. A GitHub Actions workflow running the same check on PRs is planned but not yet wired up (the file `.github/workflows/lib-sync.yml` was blocked by a local security hook during a prior commit).
@@ -490,6 +491,8 @@ bash tests/intercom.test.sh                # agent directory + name resolution, 
 Always pair the bump with a `PROJECT_CHANGELOG.md` entry.
 
 **skill-paths.** Lints `plugins/*/skills/**/SKILL.md` and `plugins/*/templates/*.md` for direct references to `plugins/(vdm|vdm-git)/(scripts|lib|hooks|templates|skills)/...`. Those paths only resolve inside this dev clone — at user time the plugin lives under `${CLAUDE_PLUGIN_ROOT}` (resolved by Claude Code). Use `${CLAUDE_PLUGIN_ROOT}/<subdir>/...` everywhere in user-time files. Bare plugin names (e.g. "the vdm plugin") are not flagged — only concrete subpaths.
+
+One carve-out, added 2026-09-04, and it sharpens the rule rather than excusing a case: the same substring **rooted at an install directory** (`~/.claude/plugins/…`, `~/.qwen/plugins/…`) is a user-time path by construction — it resolves on the user's machine and nowhere in this clone, the exact inverse of what the gate catches. It exists because `guard/SKILL.md` emits a git-hook snippet that runs in a plain shell, where `${CLAUDE_PLUGIN_ROOT}` is undefined (the harness sets it for skills, not for git hooks), so that snippet has to resolve the install path itself. The anchor must appear **before** the match on the same line; a bare dev-tree path on a line that merely mentions an install directory later is still a leak, and there is a red test for exactly that — otherwise the exemption would be a hole shaped like a sentence.
 
 **gate red-tests.** `tests/gates.test.sh` is the fifth pre-commit gate, and it is a *meta*-gate: it breaks every invariant above **on purpose** and asserts the gate goes red and names the offending file — plus false-positive tests (a gate that over-fires gets switched off by its users, which is the same as not existing). It fires only when a gate script or the harness itself is staged, because it costs ~15s: **you cannot change a gate without re-proving it still goes red.**
 
