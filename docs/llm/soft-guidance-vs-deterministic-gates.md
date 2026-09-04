@@ -36,6 +36,27 @@ not a control**, because the assistant composes both the command and the
 environment the hook reads. So there is no env-var escape or path carve-out that
 makes such a gate both convenient and real.
 
+There is a third axis, and it is the one that bites during development of the
+gate itself: **which version is running.** A harness hook executes the
+*installed* plugin, not your working tree. Measured here 2026-09-04: the drift
+detector was fixed and committed in the dev clone, and the very next prompt the
+hook raised the exact false positive the fix removes — because the harness runs
+`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`, where the newest
+cached copy was the previous release and contained none of the new code
+(`grep -c` for the new function: 0 in all five cached versions; the dev-tree
+scanner was silent on the same tree at the same moment).
+
+Two consequences, both cheap to apply:
+
+- **"I just fixed it" is not "this session behaves fixed."** Between commit and
+  plugin reload, the session is judged by the previous release. Do not read a
+  hook's verdict as evidence about code you have not yet shipped *and* reloaded.
+- **Before concluding your fix failed, check which copy spoke.** Run the
+  dev-tree script directly on the same tree and compare. A one-line `grep` for
+  the new symbol in the cached copy settles it, and it is the difference between
+  "the fix is wrong" and "the fix is not loaded" — two conclusions that look
+  identical from the hook's output.
+
 None of this makes harness hooks worthless — the opposite. Removing reliance on
 memory is most of the value, because forgetting is the common failure and
 deliberate circumvention is not. But state the strength honestly when you claim
@@ -197,6 +218,29 @@ of drift earns the friction.
 "How strong «deterministic» actually is" above: a hook keyed to a tool call is
 routed around by using a different tool. Layer it with a pre-commit gate when
 the invariant has to hold against more than forgetfulness.
+
+**Treating an obligation as closed because the work was done.** The obligation
+and the record of it live in different files, and nothing compares them. Three
+instances in this repo, all the same shape: the *answer* was written down, in a
+neighbouring document, while the *question* stayed open where it was filed.
+(1) The decay-detector ladder shipped inside `docs-distill/SKILL.md` on
+2026-07-14 — the same day the sidetrack asking "what do we do about the ladder?"
+was opened; it stayed open six weeks. (2) The limit "a harness hook intercepts a
+tool call, not an effect" was recorded in `docs/model/suite.md` on 2026-08-31
+while analysing `git-guard`; the sidetrack it answers had been open seven weeks
+and stayed open five more days. (3) A sidetrack carried "to be fixed in crystal
+X" for six weeks while no such sidetrack existed in X — the cross-reference
+pointed at nothing.
+
+No gate covers this, and the reason is worth stating rather than treating as a
+todo: the dangling-doc-reference audit checks that a *file* exists, which is
+decidable; "this open question was already answered elsewhere" is semantic, and
+a gate that guessed at it would fire on everything. What is cheap is procedural,
+and it is the step that produced all three findings: **when you wake a paused
+workitem, re-read its open sidetracks against the current state of the artefacts
+they name, before doing any new work.** Half of them are usually already
+answered. Same shape as the entry below — the failure is not in the doing, it is
+in the measuring.
 
 **Counting a gate as wired because its file is present.** An installable
 gate fails in ways that look like success from outside: the hook file exists
