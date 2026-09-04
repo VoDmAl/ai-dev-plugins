@@ -255,6 +255,42 @@ built to prevent. Put the gate next to its data and give other callers an entry
 point into it (`crystal-lint.sh --staged`, `check-doc-orphans.sh --file`) rather
 than a copy of it.
 
+**A gate harness that runs inside the thing it inspects.** A pre-commit gate's
+test harness is a child of a live `git commit`, and git exports its plumbing
+environment to hooks. For a pathspec commit, `GIT_INDEX_FILE` names the
+*temporary index holding the tree about to be committed*. Every `git` command
+in the harness inherits it — including the ones aimed at a scratch fixture. On
+2026-09-04 that turned `git add -A`, run inside a fixture clone deliberately
+built without `tests/`, into a deletion of eight test files from the real
+commit (`7d80c73`); the files were never touched on disk, and the harness
+reported all 54 assertions green while doing it.
+
+Three rules follow, and the third is the general one:
+
+1. **Scrub the git environment at the top of any harness a hook runs** —
+   `GIT_INDEX_FILE`, `GIT_DIR`, `GIT_WORK_TREE`, `GIT_OBJECT_DIRECTORY`,
+   `GIT_ALTERNATE_OBJECT_DIRECTORIES`, `GIT_COMMON_DIR`, `GIT_NAMESPACE`.
+   Isolating the *filesystem* (a temp clone) is not isolation while the
+   *session* is still shared.
+2. **Prove the isolation from outside the harness.** Its own output cannot
+   witness this failure — it passed. Poison the environment with an index you
+   control, run the harness, compare that file byte for byte, and keep a red
+   half that runs an unscrubbed copy and requires the corruption to happen.
+   (`tests/gates-harness-isolation.test.sh`.) Two traps here, both hit on the
+   first attempt: the probe runs from the hook too, so it needs the same scrub
+   — a test that must poison an environment has to own that environment first;
+   and **a comparison must have a third branch.** `cksum` of a missing file is
+   an empty string on both sides, so "no data" and "unchanged" rendered as the
+   same verdict and both halves passed against a bait that did not exist. Every
+   read gets an explicit existence check, and the probe re-runs itself once
+   under the poisoned environment to prove it survives the hook that calls it.
+3. **A hypothesis refuted on a sample where its cause cannot occur is not
+   refuted.** This exact leak was hypothesis #2 of the 2026-08-27 investigation
+   and was dropped as unreproducible — because it was tested against ordinary
+   commits, and the harness only runs when a *gate file* is staged. Before
+   discarding a hypothesis, state the condition under which its cause would
+   fire, and check that the sample contains it.
+
 **Gating without a remediation message.** Exit 1 with no stderr is hostile.
 Every gate's failure path must explain what to do — name the file, name the
 fix, give the exact command if possible.

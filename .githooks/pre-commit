@@ -21,8 +21,10 @@
 #                       (caught by plugins/vdm/scripts/crystal-lint.sh --staged)
 #   6. gate red-tests — changing a gate re-runs tests/gates.test.sh, which
 #                       breaks each invariant on purpose and asserts the gate
-#                       goes red. Conditional (~15s) — fires only when a gate
-#                       or the harness is staged.
+#                       goes red, plus tests/gates-harness-isolation.test.sh,
+#                       which asserts the harness does not write into the
+#                       commit that is running it. Conditional (~15s) — fires
+#                       only when a gate or a harness is staged.
 
 set -eu
 
@@ -71,7 +73,14 @@ plugins/vdm/scripts/crystal-lint.sh --staged
 # Conditional, because the harness clones the repo and costs ~15s: it fires only
 # when a gate script or the harness itself is staged. That is exactly when the
 # cost is earned — you cannot change a gate without re-proving it still goes red.
-if printf '%s\n' "$staged" | grep -qE '^(scripts/check-.*\.sh|plugins/vdm/scripts/(check-doc-orphans|crystal-lint)\.(sh|py)|tests/gates\.test\.sh|\.githooks/pre-commit)$'; then
+if printf '%s\n' "$staged" | grep -qE '^(scripts/check-.*\.sh|plugins/vdm/scripts/(check-doc-orphans|crystal-lint)\.(sh|py)|tests/gates(-harness-isolation)?\.test\.sh|\.githooks/pre-commit)$'; then
   echo "gates: a gate changed — re-running its red tests (~15s)…"
   bash tests/gates.test.sh
+  # The harness runs inside THIS commit. Prove it is not writing into it:
+  # git exports GIT_INDEX_FILE to hooks, and for a pathspec commit that names
+  # the temporary index holding the tree about to be committed. On 2026-09-04
+  # the harness's `git add -A` (run in a clone deliberately built without
+  # tests/) followed that variable home and dropped eight test files from
+  # commit 7d80c73. Cheap — the probe runs the harness setup only.
+  bash tests/gates-harness-isolation.test.sh
 fi

@@ -479,6 +479,7 @@ bash plugins/vdm/scripts/crystal-lint.sh --staged   # 0 = clean, 1 = staged work
 bash tests/gates.test.sh                   # red-tests all of the above (~15s)
 bash tests/intercom.test.sh                # agent directory + name resolution, against a scratch store
 bash tests/crystal-capture-reminder.test.sh # capture reminder: throttle before scan (proven via a find shim), capture-exclude
+bash tests/gates-harness-isolation.test.sh # the gate harness must not write into the commit that runs it
 ```
 
 **lib-sync.** The two plugins ship duplicated copies of `lib/config-path.sh` and `lib/config-read.sh` (each plugin must be self-contained for independent installation). The check normalizes the cross-reference comments that name the opposite plugin (`plugins/vdm/lib` ↔ `plugins/vdm-git/lib`); everything else must match byte-for-byte. A GitHub Actions workflow running the same check on PRs is planned but not yet wired up (the file `.github/workflows/lib-sync.yml` was blocked by a local security hook during a prior commit).
