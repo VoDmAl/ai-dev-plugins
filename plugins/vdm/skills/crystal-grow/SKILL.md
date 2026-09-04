@@ -367,6 +367,19 @@ The hooks honor `crystal.capture-mode` in `.claude/vdm-plugins.json`:
 | `proactive` | Fires every UserPromptSubmit while an active workitem exists. Use during onboarding or when discipline isn't yet internalised. |
 | `silent`    | Never fires. Use only after the discipline is fully internalised — the cost of a missed капчер is the cost of the suite. |
 
+`smart` mode proves "work happened" by walking the tree for files newer than
+the workitem. In a repo whose bulk is content rather than source — a note
+vault, a media archive, a dataset — that walk is the entire cost of the hook,
+and it can overrun the hook's time budget, at which point the harness kills it
+and the reminder is silently discarded. Declare those subtrees:
+
+```json
+{ "crystal": { "capture-exclude": ["_import", "attachments"] } }
+```
+
+Paths are relative to the project root. Absent = scan everything, which is
+what a code repo wants.
+
 ## Pre-action gate — before anything irreversible
 
 > **Кристалл защищает не только своё закрытие, но и прод.** Нельзя совершать
