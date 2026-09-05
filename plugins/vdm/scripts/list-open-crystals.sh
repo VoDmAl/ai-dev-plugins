@@ -27,6 +27,15 @@ set -u
 # shellcheck disable=SC1091
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/crystal-path.sh" 2>/dev/null || exit 0
 
+# Warm the root cache in THIS shell before anything fans out into subshells.
+# The memo inside resolve_crystal_roots is process-scoped, and every use of it
+# below sits inside `$(...)`, `< <(...)` or a pipeline — a subshell inherits the
+# cache but cannot fill it. Without this line the tree is rescanned once per
+# call site (measured: 7× per hook run on an 11-root vault).
+if command -v vdm_prime_crystal_roots >/dev/null 2>&1; then
+  vdm_prime_crystal_roots
+fi
+
 all_items=$(find_workitems)
 [ -z "$all_items" ] && exit 0
 

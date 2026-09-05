@@ -256,6 +256,81 @@ expect_eq "the fenced example is not an obligation"    "7" "$unchecked"
 fenced_od=$(bash -c ". '$CFG' 2>/dev/null; . '$LIB' 2>/dev/null; list_overdue '$OD' 2026-09-04" | grep -c 'DOCUMENTED')
 expect_eq "…nor a phantom overdue promise"             "0" "$fenced_od"
 
+printf '\n=== root resolution: found once, and found at all ===\n'
+# Two defects found during the 2.24.0 acceptance run, both of the same shape as
+# everything else this suite keeps rediscovering: a mechanism that LOOKS like it
+# works. The memo inside resolve_crystal_roots carried a comment claiming it made
+# a hook call O(1); it had in fact never been hit, because every caller reaches it
+# from inside a subshell, which inherits the cache but cannot fill it.
+GITP="$TMP/gitproj"
+rm -rf "$GITP"; mkdir -p "$GITP/docs/tasks/alpha"
+( cd "$GITP" && git init -q . 2>/dev/null )
+printf -- '---\nstatus: in-progress\n---\n' >"$GITP/docs/tasks/alpha/workitem.md"
+
+# (1) An untracked tasks/ tree — exactly the state crystal-grow leaves behind,
+# before anyone runs `git add`. The git branch of the auto-scan returns
+# unconditionally, so a miss here is silent and total: hydrate shows nothing,
+# cave says "No crystals found", the capture reminder finds no active workitem.
+found=$(cd "$GITP" && bash -c ". '$CFG' 2>/dev/null; . '$LIB' 2>/dev/null; resolve_crystal_roots" | grep -c 'docs/tasks')
+expect_eq "an untracked tasks/ tree is still a crystal root" "1" "$found"
+
+# …and once indexed it is still found exactly once (no double-listing from
+# --cached and --others both reporting the same path).
+( cd "$GITP" && git add -A 2>/dev/null )
+found2=$(cd "$GITP" && bash -c ". '$CFG' 2>/dev/null; . '$LIB' 2>/dev/null; resolve_crystal_roots" | grep -c 'docs/tasks')
+expect_eq "…and an indexed one is found exactly once"        "1" "$found2"
+
+# (2) The scan happens ONCE per process, not once per call site. Counted by
+# wrapping the scanner itself: the counter file is appended from subshells too,
+# so a cache that only ever warms a child shows up immediately.
+COUNTER="$TMP/scan.count"
+: >"$COUNTER"
+( cd "$GITP" && bash -c "
+  . '$CFG' 2>/dev/null
+  . '$LIB' 2>/dev/null
+  eval \"orig_\$(declare -f _auto_scan_tasks_dirs)\"
+  _auto_scan_tasks_dirs() { printf 'scan\n' >>'$COUNTER'; orig__auto_scan_tasks_dirs \"\$@\"; }
+  vdm_prime_crystal_roots
+  # the fan-out a real hook performs: every one of these is a subshell
+  n=\$(resolve_crystal_roots | grep -c '.')
+  find_workitems >/dev/null
+  r=\$(resolve_crystal_root)
+  m=\$(derive_singleton_mode)
+" ) >/dev/null 2>&1
+scans=$(grep -c '.' "$COUNTER" 2>/dev/null || echo 0)
+expect_eq "primed: the tree is scanned once for the whole process" "1" "$scans"
+
+# Without priming, the same fan-out rescans — this is the defect, kept as an
+# executable statement of it rather than a comment that could go stale.
+: >"$COUNTER"
+( cd "$GITP" && bash -c "
+  . '$CFG' 2>/dev/null
+  . '$LIB' 2>/dev/null
+  eval \"orig_\$(declare -f _auto_scan_tasks_dirs)\"
+  _auto_scan_tasks_dirs() { printf 'scan\n' >>'$COUNTER'; orig__auto_scan_tasks_dirs \"\$@\"; }
+  n=\$(resolve_crystal_roots | grep -c '.')
+  r=\$(resolve_crystal_root)
+" ) >/dev/null 2>&1
+unprimed=$(grep -c '.' "$COUNTER" 2>/dev/null || echo 0)
+if [ "$unprimed" -gt 1 ]; then
+  ok "unprimed: the same fan-out rescans (why the priming call exists)"
+else
+  bad "unprimed: the same fan-out rescans (why the priming call exists)" "expected >1, got $unprimed"
+fi
+
+# Every script that resolves roots must prime. This is the obligation the fix
+# rests on, and memory is not an acceptable enforcement for it.
+missing=""
+for sc in "$REPO_ROOT"/plugins/vdm/scripts/crystal-capture-reminder.sh \
+          "$REPO_ROOT"/plugins/vdm/scripts/crystal-cave.sh \
+          "$REPO_ROOT"/plugins/vdm/scripts/crystal-hydrate.sh \
+          "$REPO_ROOT"/plugins/vdm/scripts/crystal-stop-reminder.sh \
+          "$REPO_ROOT"/plugins/vdm/scripts/list-open-crystals.sh \
+          "$REPO_ROOT"/plugins/vdm/scripts/crystal-migrate-scan.sh; do
+  grep -q 'vdm_prime_crystal_roots' "$sc" 2>/dev/null || missing="$missing $(basename "$sc")"
+done
+expect_eq "every root-resolving script primes the cache" "" "$missing"
+
 printf '\n=== the mirror ===\n'
 # lib/ is mirrored across both plugins by invariant; a fix applied to one copy
 # only would pass every test above and ship broken to vdm-git.
