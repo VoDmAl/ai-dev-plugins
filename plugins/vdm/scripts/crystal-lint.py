@@ -148,6 +148,42 @@ def parse_canon(template_text):
     }
 
 
+# A promise may carry the date it was promised for: `- [ ] do it (due: 2026-07-22)`.
+# Absent is LEGAL — most promises have no external timer, and demanding a date
+# would produce invented ones (checkbox-decay-signal DL #2). MALFORMED is not:
+# `(due: soon)` or `(due: 22-07-2026)` reads as a deadline to a human and is
+# invisible to the overdue check, which is this repository's recurring failure —
+# a mechanism that silently narrows its own scope. So the canon requires nothing
+# and rejects only what claims to be a projection without being one.
+DUE_OK_RE = re.compile(r"\(due:\s*\d{4}-\d{2}-\d{2}\s*\)")
+DUE_ANY_RE = re.compile(r"\(due:")
+UNCHECKED_RE = re.compile(r"^[ \t]*-[ \t]*\[ \]")
+FENCE_RE = re.compile(r"^[ \t]*(```|~~~)")
+
+
+def malformed_due(body_lines):
+    """Unchecked-checkbox lines whose `due:` marker is not an ISO date.
+
+    Fenced blocks are skipped: a checkbox inside ``` is the format being
+    documented, not a promise being made. Mirrors `_unchecked_lines` in
+    lib/crystal-path.sh and check-crystal-completion.sh — kept in step by the
+    conformance test in tests/crystal-lint.test.sh.
+    """
+    out = []
+    fence = False
+    for line in body_lines:
+        if FENCE_RE.match(line):
+            fence = not fence
+            continue
+        if fence:
+            continue
+        if not UNCHECKED_RE.match(line):
+            continue
+        if DUE_ANY_RE.search(line) and not DUE_OK_RE.search(line):
+            out.append(line.strip())
+    return out
+
+
 def dl_entries(body_lines):
     """[(lineno, heading_line, [body lines])] for entries under ## Decision Log."""
     entries, in_dl, current = [], False, None
@@ -255,6 +291,14 @@ def lint(path, text, canon, terminal, canonical, aliases):
                     "DL entry %s has `Basis: %s` — allowed: %s"
                     % (label.replace("### ", ""), basis, ", ".join(allowed))
                 )
+
+    # --- due markers (floor: absent is legal, malformed is not) -------------
+    bad_due = malformed_due(body)
+    if bad_due:
+        problems.append(
+            "malformed `due:` marker(s) — expected `(due: YYYY-MM-DD)`:\n    %s"
+            % "\n    ".join(bad_due[:5])
+        )
 
     return "checked", problems
 

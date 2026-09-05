@@ -625,5 +625,80 @@ restore
 
 # ---------------------------------------------------------------------------
 echo ""
+
+# ---------------------------------------------------------------------------
+printf '\n== conformance: three implementations of "what is an obligation" ==\n'
+# ---------------------------------------------------------------------------
+# The rule "an unchecked `- [ ]` is an obligation" is implemented THREE times,
+# and that is deliberate, not debt:
+#
+#   lib/crystal-path.sh          sees a FILE     (awk)     — the hot path
+#   crystal-completion-guard.py  sees a STRING   (Python)  — reconstructed post-edit
+#                                                            content, never on disk
+#   check-crystal-completion.sh  sees a BLOB     (awk)     — deliberately carries no
+#                                                            dependency on the lib, so a
+#                                                            mid-refactor lib cannot
+#                                                            silently disable the gate
+#
+# What went wrong on 2026-09-05 was NOT the duplication. All three diverged from
+# INTENT together — none skipped fenced code blocks, so a workitem documenting the
+# checkbox format could never be closed — and nothing compared them. Identical
+# wrongness is invisible; only an outside comparison sees it.
+#
+# So the answer is conformance, not consolidation: one fixture, three engines,
+# they must agree. This test is what makes the three copies safe to keep.
+CONF="$TMP/conformance.md"
+cat >"$CONF" <<'FIXTURE'
+---
+status: done
+---
+## Next actions
+- [ ] a real obligation
+-   [ ]   spaced oddly but real
+- [x] already done
+	- [ ] tab-indented, still real
+Not a checkbox at all - [ ] mid-sentence
+```markdown
+- [ ] documented example, NOT an obligation
+```
+~~~
+- [ ] tilde-fenced example, also not one
+~~~
+- [ ] the last real one
+FIXTURE
+
+conf_lib=$(bash -c ". '$REPO_ROOT/plugins/vdm/lib/crystal-path.sh' 2>/dev/null; count_unchecked '$CONF'")
+conf_gate=$(cat "$CONF" | awk '
+  /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+  fence { next }
+  /^[[:space:]]*-[[:space:]]*\[[[:space:]]\]/ { n++ }
+  END { print n+0 }
+')
+conf_py=$(python3 -c "
+import sys, importlib.util
+spec = importlib.util.spec_from_file_location('g', '$REPO_ROOT/plugins/vdm/scripts/crystal-completion-guard.py')
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+print(len(m._unchecked_lines(open('$CONF').read())))
+" 2>/dev/null)
+
+# 4 real obligations; the two fenced examples and the mid-sentence text are not.
+# Absolute values FIRST, agreement second. Agreement alone is not the test: three
+# engines that all return 0 agree perfectly and are all wrong — which is exactly
+# the shape of the incident this guards against. Pinning the number is what makes
+# the agreement assertion mean something.
+conf_eq() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "expected $2, got $3"; fi; }
+conf_eq "lib (file/awk) counts only real obligations"        "4" "$conf_lib"
+conf_eq "pre-commit gate (blob/awk) agrees"                  "4" "$conf_gate"
+conf_eq "PreToolUse guard (string/Python) agrees"            "4" "$conf_py"
+
+# And that they cannot drift apart without this failing.
+if [ "$conf_lib" = "$conf_gate" ] && [ "$conf_gate" = "$conf_py" ]; then
+  ok "all three implementations agree on the same document"
+else
+  bad "all three implementations agree on the same document" \
+      "lib=$conf_lib gate=$conf_gate py=$conf_py"
+fi
+
 printf 'gates: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
