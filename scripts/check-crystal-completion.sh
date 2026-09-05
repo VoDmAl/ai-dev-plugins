@@ -58,18 +58,28 @@ while IFS= read -r f; do
   ')
   [ "$status" = "done" ] || continue
 
-  # Fenced blocks excluded: a `- [ ]` inside ``` is a documentation example, not
-  # a promise. Same rule as lib/crystal-path.sh `_unchecked_lines` and the
-  # PostToolUse guard's Python twin — three copies, because this one sees a
-  # staged blob rather than a file, and neither of the other two can be called
-  # on a string. Keep them in step by hand until they are consolidated
-  # (checkbox-decay-signal → Sidetrack #2).
+  # A DELIBERATE third copy of "what is an unchecked obligation", not an
+  # accident. The header of this file states the reason: this gate carries no
+  # dependency on the plugins' lib/, so that it keeps working while that lib is
+  # mid-refactor — and a pre-commit gate that stops working is a gate that
+  # silently reports success. Sourcing lib/crystal-path.sh here would couple the
+  # guard to the code it guards, which is the one coupling worth paying to avoid.
+  #
+  # What was actually wrong in the 2026-09-05 incident was not the duplication —
+  # it was that all three copies DIVERGED FROM INTENT TOGETHER (none skipped
+  # fenced examples) and nothing compared them. The fix for that is a conformance
+  # test, not consolidation: tests/gates.test.sh feeds one fixture set to all
+  # three implementations and fails if any disagrees.
+  #
+  # Fenced blocks are excluded: a `- [ ]` inside ``` is the format being
+  # documented, not a promise being made.
   unchecked_count=$(printf '%s\n' "$staged_content" | awk '
     /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
     fence { next }
     /^[[:space:]]*-[[:space:]]*\[[[:space:]]\]/ { n++ }
     END { print n+0 }
   ' 2>/dev/null) || unchecked_count=0
+  case "$unchecked_count" in ''|*[!0-9]*) unchecked_count=0 ;; esac
   [ "${unchecked_count:-0}" -gt 0 ] || continue
 
   drift=1
