@@ -433,16 +433,125 @@ audit_non_canonical() {
   return 0
 }
 
+# The one place that decides what an obligation IS. Fenced code blocks are
+# excluded: a `- [ ]` inside ``` is a documentation example — the shape being
+# explained, not a promise being made. Proved by construction 2026-09-04, when
+# checkbox-decay-signal's own workitem (which documents the `(due:)` syntax in a
+# fence) reported a phantom overdue promise, and `count_unchecked` agreed with
+# it: the workitem that explains the format could never have been closed.
+#
+# The awk state machine is shared by every obligation-shaped question so the
+# fence rule has ONE home; callers that need a different projection of the same
+# lines (overdue, malformed dates) pipe through it rather than re-deriving it.
+_unchecked_lines() {
+  # Prints every unchecked-checkbox line that is NOT inside a fenced block.
+  local file="$1"
+  [ -f "$file" ] || return 0
+  awk '
+    /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+    fence { next }
+    /^[[:space:]]*-[[:space:]]*\[[[:space:]]\]/ { print }
+  ' "$file" 2>/dev/null
+}
+
 count_unchecked() {
   # Counts unchecked markdown checkboxes (`- [ ]`) in the file. The crystal-cut
   # gate (Decision Log #4 in crystal-design) generalizes "completion discipline"
   # to any unchecked checkbox in the workitem, not only items inside
-  # `## Sidetracks`.
+  # `## Sidetracks`. Examples inside fenced blocks do not count — see above.
   local file="$1"
   [ -f "$file" ] || { printf '0\n'; return; }
   local n
-  n=$(grep -cE '^[[:space:]]*-[[:space:]]*\[[[:space:]]\]' "$file" 2>/dev/null) || n=0
+  n=$(_unchecked_lines "$file" | grep -c '.' 2>/dev/null) || n=0
+  case "$n" in ''|*[!0-9]*) n=0 ;; esac
   printf '%s\n' "$n"
+}
+
+# ----------------------------------------------------------------------------
+# Overdue promises (checkbox-decay-signal DL #1)
+# ----------------------------------------------------------------------------
+#
+# A checkbox has no decay signal of its own. Every other signal in this suite is
+# a comparison of two artifacts on disk; an unchecked `- [ ]` has no second
+# operand, so no detector — good or bad — can be written for it. The answer is
+# not a cleverer scanner but a better PROJECTION (docs-distill DL #19: the rungs
+# of the ladder are degrees of how far external state is projected into the
+# tree). The external state of a promise is the date by which it was promised.
+#
+# Syntax, written by whoever makes the promise, in the SAME line as the promise:
+#
+#     - [ ] verify the event lands in GA4 (due: 2026-07-22)
+#
+# Optional on purpose (DL #2): most promises have no meaningful date, and
+# demanding one would produce invented dates — a signal allowed to lie stops
+# being read. Absent date = "not named" = soft, which is the suite's first law.
+#
+# "Today" is not state: it is recomputed at every run, exactly like the mtimes
+# `find -newer` compares. Nothing is stored, nothing can desynchronise.
+
+_vdm_today() {
+  date +%Y-%m-%d 2>/dev/null || printf '0000-00-00'
+}
+
+list_overdue() {
+  # list_overdue <file> [today]
+  # Prints one line per unchecked checkbox whose `(due: YYYY-MM-DD)` is in the
+  # past (strictly before today): "<due-date>\t<the promise text>".
+  # Silent for checked items, for undated ones, and for dates not yet reached.
+  #
+  # `today` is injectable so tests can pin it; production callers omit it.
+  #
+  # One awk over the file, not a process per line — the cost lesson from
+  # crystal-capture-hook-timeout. ISO dates compare correctly as strings, so no
+  # date arithmetic and no `date -d` (whose flags differ between BSD and GNU).
+  local file="$1"
+  local today="${2:-}"
+  [ -f "$file" ] || return 0
+  [ -n "$today" ] || today="$(_vdm_today)"
+  _unchecked_lines "$file" | awk -v today="$today" '
+    # Unchecked checkbox carrying a well-formed due date.
+    {
+      line = $0
+      if (match(line, /\(due:[[:space:]]*[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][[:space:]]*\)/)) {
+        due = substr(line, RSTART, RLENGTH)
+        gsub(/[^0-9-]/, "", due)
+        if (due < today) {
+          text = line
+          sub(/^[[:space:]]*-[[:space:]]*\[[[:space:]]\][[:space:]]*/, "", text)
+          sub(/[[:space:]]*\(due:[[:space:]]*[0-9-]+[[:space:]]*\)[[:space:]]*$/, "", text)
+          sub(/[[:space:]]+$/, "", text)
+          print due "\t" text
+        }
+      }
+    }
+  ' 2>/dev/null
+}
+
+count_overdue() {
+  # count_overdue <file> [today] — number of overdue promises. Always prints a
+  # number, including 0, so callers can use it unguarded.
+  local n
+  n=$(list_overdue "$1" "${2:-}" | grep -c '.' 2>/dev/null) || n=0
+  case "$n" in ''|*[!0-9]*) n=0 ;; esac
+  printf '%s\n' "$n"
+}
+
+audit_malformed_due() {
+  # audit_malformed_due <file>
+  # Prints the offending lines where a checkbox carries a `due:` marker that is
+  # NOT a well-formed ISO date. Missing dates are legal (see above); a MALFORMED
+  # one is not, and is worse than missing: it reads as a projection while being
+  # invisible to the detector. A mechanism that silently narrows its own scope
+  # is this repository's recurring failure mode (docs/model/suite.md).
+  local file="$1"
+  [ -f "$file" ] || return 0
+  _unchecked_lines "$file" | awk '
+    /\(due:/ {
+      if (!match($0, /\(due:[[:space:]]*[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][[:space:]]*\)/)) {
+        print $0
+      }
+    }
+  ' 2>/dev/null
 }
 
 audit_sidetracks_without_markers() {
@@ -562,28 +671,40 @@ format_active_summary() {
   local roots_count
   roots_count=$(resolve_crystal_roots | grep -c '.' 2>/dev/null || echo 0)
   if [ "${roots_count:-1}" -le 1 ]; then
-    local first=1 line="" f slug n
+    local first=1 line="" f slug n od
     while IFS= read -r f; do
       [ -n "$f" ] || continue
       slug=$(extract_slug "$f")
       n=$(count_unchecked "$f")
+      # Overdue is reported only when non-zero: a crystal with no dated promises
+      # (the common case — the marker is optional by design) must read exactly
+      # as it did before this existed.
+      od=$(count_overdue "$f")
+      if [ "$od" -gt 0 ]; then
+        item="${slug} (${n} open, ⏰${od} overdue)"
+      else
+        item="${slug} (${n} open)"
+      fi
       if [ $first -eq 1 ]; then
-        line="${slug} (${n} open)"
+        line="$item"
         first=0
       else
-        line="${line}, ${slug} (${n} open)"
+        line="${line}, ${item}"
       fi
     done
     [ -n "$line" ] && printf '%s\n' "$line"
   else
-    local current_group="" group_items="" f slug n group item
+    local current_group="" group_items="" f slug n od group item suffix
     while IFS= read -r f; do
       [ -n "$f" ] || continue
       slug=$(extract_slug "$f")
       n=$(count_unchecked "$f")
+      od=$(count_overdue "$f")
+      suffix=""
+      [ "$od" -gt 0 ] && suffix="⏰${od}"
       case "$slug" in
-        */*) group="${slug%%/*}"; item="${slug#*/} (${n})" ;;
-        *)   group="(root)"; item="${slug} (${n})" ;;
+        */*) group="${slug%%/*}"; item="${slug#*/} (${n}${suffix})" ;;
+        *)   group="(root)"; item="${slug} (${n}${suffix})" ;;
       esac
       if [ "$group" != "$current_group" ]; then
         [ -n "$current_group" ] && printf '  - %s: %s\n' "$current_group" "$group_items"

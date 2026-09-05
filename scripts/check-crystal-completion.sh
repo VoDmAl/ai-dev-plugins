@@ -58,8 +58,18 @@ while IFS= read -r f; do
   ')
   [ "$status" = "done" ] || continue
 
-  unchecked_count=$(printf '%s\n' "$staged_content" \
-    | grep -cE '^[[:space:]]*-[[:space:]]*\[[[:space:]]\]' 2>/dev/null) || unchecked_count=0
+  # Fenced blocks excluded: a `- [ ]` inside ``` is a documentation example, not
+  # a promise. Same rule as lib/crystal-path.sh `_unchecked_lines` and the
+  # PostToolUse guard's Python twin — three copies, because this one sees a
+  # staged blob rather than a file, and neither of the other two can be called
+  # on a string. Keep them in step by hand until they are consolidated
+  # (checkbox-decay-signal → Sidetrack #2).
+  unchecked_count=$(printf '%s\n' "$staged_content" | awk '
+    /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+    fence { next }
+    /^[[:space:]]*-[[:space:]]*\[[[:space:]]\]/ { n++ }
+    END { print n+0 }
+  ' 2>/dev/null) || unchecked_count=0
   [ "${unchecked_count:-0}" -gt 0 ] || continue
 
   drift=1

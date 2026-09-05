@@ -94,6 +94,16 @@ workitem (Decision Log #4).
 
 - [ ] First concrete action
 - [ ] Second concrete action
+- [ ] An action that waits on something with a known time — add the date it was
+      promised for, in this exact form (due: 2026-12-31)
+
+<!-- `(due: YYYY-MM-DD)` is OPTIONAL and belongs only on promises that wait on
+     something external: a deploy landing, data accumulating, someone else's
+     release, an obligation to another party. Most items have no such timer and
+     should carry no date — an invented deadline turns the signal into noise.
+     A date that is present but malformed is a violation: it reads as a
+     deadline and is invisible to the check. See crystal-bud → "Обещание со
+     сроком". Overdue items surface at session start and in /vdm:crystal-cave. -->
 
 ## References
 
