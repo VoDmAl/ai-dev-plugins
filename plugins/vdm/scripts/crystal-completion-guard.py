@@ -123,6 +123,35 @@ def _split_csv(value: str, default: str) -> set[str]:
     return {item.strip() for item in raw.split(",") if item.strip()}
 
 
+def _unchecked_lines(content: str) -> list[str]:
+    """Unchecked `- [ ]` lines that are NOT inside a fenced code block.
+
+    A checkbox inside ``` or ~~~ is a documentation example — the shape being
+    explained, not a promise being made. Without this, a workitem that documents
+    the checkbox format could never reach status:done: the gate would block on
+    the very example that teaches the format.
+
+    Found 2026-09-04 by construction, when checkbox-decay-signal's own workitem
+    reported a phantom overdue promise from its own syntax example. The same
+    rule lives in `lib/crystal-path.sh` (`_unchecked_lines`) and in
+    `scripts/check-crystal-completion.sh`; three copies because the three gates
+    take three different inputs — a tool-input string here, a file there, a
+    staged blob in the third. Consolidating them is Sidetrack #2 of that crystal,
+    not a thing to improvise while fixing the rule they all got wrong.
+    """
+    out: list[str] = []
+    fence = False
+    for line in content.splitlines():
+        if re.match(r"^[ \t]*(```|~~~)", line):
+            fence = not fence
+            continue
+        if fence:
+            continue
+        if re.match(r"^[ \t]*-[ \t]*\[ \]", line):
+            out.append(line)
+    return out
+
+
 def _audit_sidetracks_without_markers(content: str) -> list[str]:
     """Open sidetrack cards (Status: open) that lack an inline `- [ ] Sidetrack #N`
     marker in the workitem body. Returns "#N. <title>" entries.
@@ -199,7 +228,7 @@ def main() -> int:
     superseded_set = _split_csv(os.environ.get("CRYSTAL_GATE_SUPERSEDED", ""), "superseded")
 
     if status in done_set:
-        unchecked = re.findall(r"(?m)^[ \t]*-[ \t]*\[ \](.*)$", content)
+        unchecked = _unchecked_lines(content)
         orphans = _audit_sidetracks_without_markers(content)
         if not unchecked and not orphans:
             return 0

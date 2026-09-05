@@ -106,9 +106,19 @@ if [ -n "$active" ]; then
       [ -n "$f" ] || continue
       slug=$(extract_slug "$f")
       n=$(count_unchecked "$f")
+      # A promise carrying `(due: YYYY-MM-DD)` that has passed. Surfaced here
+      # because session start is the moment a stale checklist is still cheap to
+      # notice — the failure it answers to is a checklist that reads as current
+      # for six weeks (checkbox-decay-signal, field report from lime-analytics).
+      # Silent at zero: the marker is optional, so most crystals show nothing.
+      od=$(count_overdue "$f")
       rel="${f#"$root"/}"
       ref="${cfg_rel}/${rel}"
-      body="${body}  - ${slug}: ${n} open  (Read ${ref})\\n"
+      if [ "${od:-0}" -gt 0 ]; then
+        body="${body}  - ${slug}: ${n} open, ⏰${od} ПРОСРОЧЕНО  (Read ${ref})\\n"
+      else
+        body="${body}  - ${slug}: ${n} open  (Read ${ref})\\n"
+      fi
     done <<<"$active"
   else
     # Multi-root: group-by-root via format_active_summary

@@ -71,6 +71,7 @@ SINGLETON_MODE=$(derive_singleton_mode)
 #   $9  description   optional one-liner for cave/base overview
 #   $10 icon          ●/⏸/○/◦/✓/!
 #   $11 canon         ""|off-canon|legacy — STRUCTURAL canon, from crystal-lint
+#   $12 overdue       count of `- [ ]` items whose `(due: YYYY-MM-DD)` has passed
 #
 # Structural canon is a SEPARATE axis from the status taxonomy, and the two are
 # reported separately on purpose: a workitem can carry a perfectly canonical
@@ -106,7 +107,7 @@ canon_flag_for() {
 }
 
 build_meta() {
-  local all_items f raw resolved tier slug type updated description group short to icon canon
+  local all_items f raw resolved tier slug type updated description group short to icon canon overdue
   all_items=$(find_workitems)
   [ -z "$all_items" ] && return 0
   while IFS= read -r f; do
@@ -136,9 +137,13 @@ build_meta() {
       *)        to=5; icon='!' ;;
     esac
     canon=$(canon_flag_for "$f")
-    printf '%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    # A third axis, separate from status and from structural canon: promises
+    # whose declared date has passed. Zero for every workitem that never named
+    # a date — which is most of them, by design (checkbox-decay-signal DL #2).
+    overdue=$(count_overdue "$f")
+    printf '%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       "$group" "$to" "${updated:-0000-00-00}" "$short" "$tier" "$resolved" \
-      "${type:-}" "${updated:-}" "${description:-}" "$icon" "${canon:-}"
+      "${type:-}" "${updated:-}" "${description:-}" "$icon" "${canon:-}" "${overdue:-0}"
   done <<<"$all_items"
 }
 
@@ -298,10 +303,12 @@ END {
     updated = F[8]
     desc    = F[9]
     canon   = F[11]
+    overdue = F[12] + 0
     # Idea rows hide the type column (status implies type)
     if (status == "idea") type = ""
     type_padded = pad(type, typew)
     desc_suffix = (desc != "") ? "  — \"" desc "\"" : ""
+    if (overdue > 0)            desc_suffix = desc_suffix "  ⏰ " overdue " overdue"
     if (canon == "off-canon")   desc_suffix = desc_suffix "  ⚠ off-canon"
     else if (canon == "legacy") desc_suffix = desc_suffix "  ℹ legacy"
     if (typew == 0)
@@ -327,6 +334,29 @@ fi
 # Structural canon — a separate axis from status, so a separate line.
 if [ "$N_OFFCANON" -gt 0 ]; then
   printf '\n⚠ Off-canon shape: %d workitems. Details: crystal-lint.sh --all\n' "$N_OFFCANON"
+fi
+
+# Overdue promises — a third axis again, and the one with no gate behind it: a
+# passed date is not an error, it is a promise that slipped, and only a person
+# can decide whether to do it, move it or drop it.
+# A `due:` that is not a date is worse than no date: it READS as a projection
+# while being invisible to the detector — a mechanism silently narrowing its own
+# scope, which is this repository's recurring failure mode. Reported separately
+# from the count, because the fix is different: not "do the work", but "write
+# the date properly or drop the marker".
+MALFORMED=$(while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  audit_malformed_due "$f"
+done < <(find_workitems) | grep -c '.' 2>/dev/null || true)
+if [ "${MALFORMED:-0}" -gt 0 ]; then
+  printf '\n⚠ Malformed `due:` markers: %d. They look like a deadline and are invisible to the\n' "$MALFORMED"
+  printf '   overdue check. Expected form: `- [ ] promise (due: YYYY-MM-DD)`.\n'
+fi
+
+N_OVERDUE=$(printf '%s\n' "$META" | awk -F'\t' '{ s += $12 } END { print s+0 }')
+if [ "${N_OVERDUE:-0}" -gt 0 ]; then
+  printf '\n⏰ Overdue promises: %d across all crystals. A date that passed is not a failure —\n' "$N_OVERDUE"
+  printf '   decide per item: do it, move the date, or drop the promise explicitly.\n'
 fi
 
 if [ "$N_LEGACY" -gt 0 ]; then

@@ -400,6 +400,48 @@ and, in the field report this paragraph comes from, took the hook from 10.7s to
 An entry containing a single quote is skipped (it would break the quoting of
 the generated `find` expression); use a glob instead of quoting.
 
+## Обещание со сроком — `(due: YYYY-MM-DD)`
+
+Каждый сигнал этой суиты — сравнение двух артефактов на диске. У незакрытого
+чекбокса второго артефакта нет, поэтому детектора «этот пункт протух» не
+существует и **не может** существовать: сравнивать не с чем. Чек-лист выглядит
+актуальным ровно до момента, когда его сверишь с хроникой вручную.
+
+Недостающий артефакт — **дата, к которой пункт обещал быть сделанным**. Она
+пишется в той же строке, что обещание:
+
+    - [ ] verify the event lands in GA4 (due: 2026-07-22)
+
+Тогда сравнение становится обычным, и просроченное видно при старте сессии и в
+`/vdm:crystal-cave`, без нового гейта и без состояния где-либо.
+
+**Когда писать срок.** Не всегда — и это не послабление, а условие того, чтобы
+сигнал был читаемым. Пиши, когда обещание зависит от наступления события с
+известным временем:
+
+| Признак | Пример |
+|---|---|
+| ждём, пока что-то доедет | «проверить метрику после выкатки» — выкатка в пятницу |
+| ждём, пока накопятся данные | «сверить конверсию» — нужна неделя трафика |
+| ждём чужой релиз / ответ | «перейти на v8, когда выйдет» |
+| обязательство перед кем-то извне | «ответить агенту X» |
+
+**Когда не писать.** «Переименовать функцию», «дочистить комментарии» — работа
+без внешнего таймера. Выдуманный срок хуже отсутствующего: он превращает сигнал
+в шум, а сигнал, которому позволено врать, перестают читать.
+
+**Сломанный срок — нарушение, отсутствующий — нет.** `(due: 22-07-2026)` или
+`(due: скоро)` выглядят проекцией и невидимы детектору; это механизм, молча
+сузивший свою область. `/vdm:crystal-cave` называет такие строки отдельно.
+
+**Просроченное — не провал.** Дата прошла — значит нужно решение: сделать,
+перенести дату явно, или снять обещание с записанной причиной. Молча оставить —
+единственный вариант, который эта проекция и существует, чтобы исключить.
+
+Полевой источник: `lime-analytics` через интерком, 2026-09-04 — пять пунктов
+блокирующего хвоста простояли неотмеченными полтора месяца, а назначенная
+проверка не была сделана шесть недель, потому что заметить это было нечем.
+
 ## Pre-action gate — before anything irreversible
 
 > **Кристалл защищает не только своё закрытие, но и прод.** Нельзя совершать
@@ -509,6 +551,41 @@ rather than dressed up.
 a stable syntax, the middle row collapses into the top one. `git commit` /
 `git push` are exactly that, which is why `vdm-git:guard` exists and holds. Build
 those one at a time, each named explicitly — do not build the general one.
+
+### What to build instead, when the action is outside the harness
+
+The bottom row of the table is not a shrug. It is the most common case in
+projects where the assistant prepares work a human then applies — and there is a
+known answer, confirmed in the field rather than reasoned out here.
+
+Field report (`lime-analytics`, 2026-09-04, answering a question this suite had
+left open since 2026-07-13). Four production publishes of a Google Tag Manager
+container: the assistant built an import file with a script; a **person** opened
+the vendor's web console, reviewed the preview diff and pressed Publish; the
+assistant then verified against a fresh export. The assistant had no API access
+at any point — so the irreversible action **is not in the tool trace at all**.
+Not "it went through `Bash` and could have been caught": there is no event.
+
+Three things carried the risk, and none of them is interception:
+
+1. **A diff predictor.** The spec declares the expected shape of the change
+   ahead of time — *N added / M modified / 0 deleted* — and the person compares
+   it against what the vendor's preview shows **before** applying. A mismatch is
+   a stop. This is a gate on the human's side of the boundary, made possible by
+   handing them something to check against.
+2. **An artifact that cannot do the damage.** An additions-only import
+   physically cannot modify or delete anything. Safety by the construction of
+   the file, not by permission to act on it.
+3. **Verification after the fact, against a projection.** A tick in a document
+   is a claim; a script that re-reads the live export and prints
+   *confirmed / claimed-only / refuted* is evidence. Their two real incidents
+   were both caught this way and would have been caught by no `PreToolUse`.
+
+The generalisation, and the reason this belongs next to the gate discussion:
+**when an action leaves the harness, strengthen the checkability of the artifact
+the human carries out, and the reconciliation afterwards — not the prohibition.**
+A prohibition you cannot enforce costs the same as none; an artifact whose
+expected effect is stated in advance turns the person into the gate.
 
 ## Storage layout (DL #2, #18, #20, #12 in crystal-multi-root)
 
