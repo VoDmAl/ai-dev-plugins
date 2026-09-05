@@ -55,6 +55,15 @@ SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if command -v vdm_is_enabled >/dev/null 2>&1; then
   vdm_is_enabled "crystal" || exit 0
+
+# Warm the root cache in THIS shell before anything fans out into subshells.
+# The memo inside resolve_crystal_roots is process-scoped, and every use of it
+# below sits inside `$(...)`, `< <(...)` or a pipeline — a subshell inherits the
+# cache but cannot fill it. Without this line the tree is rescanned once per
+# call site (measured: 7× per hook run on an 11-root vault).
+if command -v vdm_prime_crystal_roots >/dev/null 2>&1; then
+  vdm_prime_crystal_roots
+fi
 fi
 
 TEMPLATE="$SELF_DIR/../templates/workitem-template.md"

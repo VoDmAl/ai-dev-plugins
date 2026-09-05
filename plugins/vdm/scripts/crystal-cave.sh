@@ -37,6 +37,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/../lib/config-read.sh" 2>/dev/null || true
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/crystal-path.sh" 2>/dev/null || {
+
+# Warm the root cache in THIS shell before anything fans out into subshells.
+# The memo inside resolve_crystal_roots is process-scoped, and every use of it
+# below sits inside `$(...)`, `< <(...)` or a pipeline — a subshell inherits the
+# cache but cannot fill it. Without this line the tree is rescanned once per
+# call site (measured: 7× per hook run on an 11-root vault).
+if command -v vdm_prime_crystal_roots >/dev/null 2>&1; then
+  vdm_prime_crystal_roots
+fi
   echo "crystal-cave: lib/crystal-path.sh not found relative to $SCRIPT_DIR" >&2
   exit 1
 }

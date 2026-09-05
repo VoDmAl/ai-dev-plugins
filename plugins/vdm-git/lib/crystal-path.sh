@@ -181,7 +181,17 @@ _auto_scan_tasks_dirs() {
 
   if command -v git >/dev/null 2>&1 && \
      ( cd "$root" 2>/dev/null && git rev-parse --is-inside-work-tree >/dev/null 2>&1 ); then
-    ( cd "$root" 2>/dev/null && git ls-files 2>/dev/null ) \
+    # `--others --exclude-standard` alongside the index: a `tasks/` tree that
+    # crystal-grow has just written but nobody has `git add`ed yet is on disk
+    # and NOT in `git ls-files`. Without this the whole suite is blind to it —
+    # hydrate shows nothing, cave says "No crystals found", the capture
+    # reminder finds no active workitem and stays silent — for the entire
+    # window between grow and the next `git add`, which is every session.
+    # Verified 2026-09-05 on a fresh `git init`: 0 roots before the flag, 1
+    # after. Same single process, so the speed the git branch exists for is
+    # kept; the tempting alternative — "empty result ⇒ fall through to find" —
+    # would pay a ~4s tree walk in every repo that simply has no crystals.
+    ( cd "$root" 2>/dev/null && git ls-files --cached --others --exclude-standard 2>/dev/null ) \
       | _extract_tasks_dirs_from_git_files \
       | awk -v r="$root/" '/./{ print r $0 }' \
       | grep -vE '/(node_modules|vendor)/' \
@@ -249,6 +259,29 @@ resolve_crystal_root() {
   # Backward-compat wrapper — returns first root or empty. Callers that need
   # full multi-root awareness must use resolve_crystal_roots directly.
   resolve_crystal_roots | head -n 1
+}
+
+vdm_prime_crystal_roots() {
+  # Populate the root cache IN THE CALLING SHELL. Call once, early, from any
+  # script that will later resolve roots — before the first `$(...)`, `< <(…)`
+  # or pipeline that reaches resolve_crystal_roots.
+  #
+  # Why this exists: the memo above is process-scoped, and every caller in the
+  # suite reaches it from inside a subshell — `count=$(resolve_crystal_roots |
+  # …)`, `done < <(resolve_crystal_roots)`, and `resolve_crystal_root`'s own
+  # `| head -n 1`. A subshell inherits the parent's variables but cannot write
+  # back, so `_VDM_CRYSTAL_ROOTS_LOADED` was set in a child and thrown away
+  # every single time. The cache had never once been hit across processes, while
+  # its own comment claimed it made a hook call O(1).
+  #
+  # Measured 2026-09-05 on an 11-root vault: `_auto_scan_tasks_dirs` ran SEVEN
+  # times per hook invocation. Priming here makes every later subshell inherit
+  # a warm cache, so it runs once.
+  #
+  # The obligation to call this is enforced by a test, not by memory:
+  # tests/crystal-path.test.sh asserts one scan per hook run.
+  resolve_crystal_roots >/dev/null 2>&1
+  return 0
 }
 
 # ----------------------------------------------------------------------------
