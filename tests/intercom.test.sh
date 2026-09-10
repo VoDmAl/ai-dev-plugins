@@ -267,5 +267,60 @@ cd "$TMP/widget-clone"
 out="$(bash "$IC" check)"
 says "check lists the pending briefs" "$out" "pending message(s) for \`widget\`"
 
+printf '\n[$HOME is not a project — and its basename is somebody'"'"'s name]\n'
+# Field report (vodmal-work-imac, 2026-09-10): the SessionStart hook has always
+# skipped $HOME and /, but `send` / `check` / `claim` register from wherever the
+# shell sits and had no such guard. On the reporting machine `basename $HOME` is
+# `vdm` — a registered NAME of ai-dev-plugins — so one send from the home
+# directory would have created a second entry claiming it and made routing to
+# the plugin repo ambiguous. Fixture mirrors that exactly: a home directory
+# whose basename is `wgt`, already a name of `widget`.
+FAKEHOME="$TMP/wgt"; mkdir -p "$FAKEHOME"
+machine="$( { scutil --get LocalHostName 2>/dev/null || hostname -s 2>/dev/null || echo localhost; } \
+  | LC_ALL=C tr '[:upper:]' '[:lower:]' | sed -e 's|[^a-z0-9._-]|-|g' -e 's|-\{2,\}|-|g' -e 's|^-||' -e 's|-$||')"
+# Whoever owns `wgt` by now — earlier assertions move it between agents on
+# purpose. The claim under test is that it does not MOVE here, not who holds it.
+WGT_OWNER="$(bash "$IC" resolve wgt)"
+
+out="$(cd "$FAKEHOME" && HOME="$FAKEHOME" bash "$IC" identity)"
+eq "identity from \$HOME is the machine, not the home basename" "$out" "$machine"
+says_not "identity from \$HOME is not the colliding basename" "$out" "wgt"
+
+( cd "$FAKEHOME" && HOME="$FAKEHOME" bash "$IC" send widget probe-from-home --title t ) >/dev/null 2>&1
+[ -f "$VDM_INTERCOM_ROOT/_registry/wgt.json" ] \
+  && bad "send from \$HOME does not register the home basename" "wgt.json was created" \
+  || ok "send from \$HOME does not register the home basename"
+eq "the name it would have hijacked still routes" "$(bash "$IC" resolve wgt)" "$WGT_OWNER"
+eq "the machine entry carries no basename alias" \
+  "$(jq -r '[.aliases[] | select(. == "wgt")] | length' "$VDM_INTERCOM_ROOT/_registry/$machine.json" 2>/dev/null)" "0"
+
+printf '\n[implicit registration needs more than a cwd basename]\n'
+# `check` and `send` ride along on registration — the natural "I exist" moment —
+# but they run from whatever directory the shell is in. That is how a directory
+# named after a version, or a browser profile, becomes an agent.
+GHOSTDIR="$TMP/0.2.42"; mkdir -p "$GHOSTDIR"
+( cd "$GHOSTDIR" && bash "$IC" check ) >/dev/null 2>&1
+[ -f "$VDM_INTERCOM_ROOT/_registry/0.2.42.json" ] \
+  && bad "check from a non-project cwd registers nothing" "0.2.42.json was created" \
+  || ok "check from a non-project cwd registers nothing"
+
+# The escape hatch has to stay open: a real non-git project says so explicitly.
+out="$(cd "$TMP/notes-vault" && bash "$IC" register 2>&1)"
+says "explicit register still works for a non-git project" "$out" "registered: notes-vault →"
+
+printf '\n[an identity that is already a name is refused]\n'
+# Worse than a name clash, because intercom_resolve_target answers from
+# <registry>/<input>.json before it looks at names: the new entry does not tie,
+# it WINS, and silently takes over routing that used to work.
+COLLIDE="$TMP/wgt-project/wgt"; mkdir -p "$COLLIDE"
+out="$(cd "$COLLIDE" && bash "$IC" register 2>&1)"; rc=$?
+eq "register refuses when the identity is another agent's name" "$rc" "1"
+says "the refusal names the agent that owns it" "$out" "already a NAME of \`$WGT_OWNER\`"
+says "the refusal says what would break" "$out" "would hijack"
+[ -f "$VDM_INTERCOM_ROOT/_registry/wgt.json" ] \
+  && bad "the refused registration wrote nothing" "wgt.json was created" \
+  || ok "the refused registration wrote nothing"
+eq "routing survives the refusal" "$(bash "$IC" resolve wgt)" "$WGT_OWNER"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

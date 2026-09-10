@@ -235,7 +235,7 @@ cmd_resolve() {
 cmd_check() {
   local count_only=0
   [ "${1:-}" = "--count" ] && count_only=1
-  intercom_register 2>/dev/null   # checking your inbox is the natural "I exist" moment
+  intercom_register --implicit 2>/dev/null   # checking your inbox is the natural "I exist" moment
   local id n
   id="$(intercom_identity)"
   n="$(intercom_inbox_count "$id")"; [ -n "$n" ] || n=0
@@ -370,7 +370,7 @@ cmd_send() {
     printf '%s\n' "$line"
   done < "$_INTERCOM_TEMPLATE" > "$outfile"
 
-  intercom_register 2>/dev/null   # so the recipient (or a reply) can resolve us by alias
+  intercom_register --implicit 2>/dev/null   # so the recipient (or a reply) can resolve us by alias
 
   printf '✉️  intercom: staged message → %s\n' "$outfile"
   if [ "$to" != "$canon" ]; then
@@ -425,7 +425,7 @@ cmd_claim() {
       _ic_die "claim: \`$inbox\` matches none of your names/aliases (intercom whoami). If it really is yours: intercom claim $inbox --force"
     fi
   fi
-  intercom_register >/dev/null 2>&1
+  intercom_register --implicit >/dev/null 2>&1
   dst="$(intercom_inbox_dir "$id")"
   mkdir -p "$dst/_done" 2>/dev/null || _ic_die "claim: cannot create $dst"
 
