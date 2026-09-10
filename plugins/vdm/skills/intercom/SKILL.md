@@ -76,10 +76,48 @@ The current project's canonical identity resolves as (DL #4, #7):
 1. `.claude/vdm-plugins.json` → `intercom.identity` (explicit per-project override);
 2. `git remote get-url origin` → last path segment, minus `.git`, lowercased;
 3. basename of the git toplevel (non-git fallback);
-4. basename of the working directory.
+4. **in `$HOME` or `/` — the machine**, `scutil --get LocalHostName` (macOS) or
+   `hostname -s`, never the basename;
+5. basename of the working directory.
 
 Print it with `/vdm:intercom identity`; see everything the directory knows
 about you with `/vdm:intercom whoami`.
+
+### Why `$HOME` gets the machine name
+
+`$HOME` is not a project, and its basename is not an identity — on one machine
+in the field `basename $HOME` was literally `vdm`, a registered **name** of
+`ai-dev-plugins`, so a single `send` from the home directory would have created
+a second entry claiming that name and left `resolve vdm` ambiguous. Routing to a
+repo would have been broken by standing in the wrong directory.
+
+What such a session actually *is*, is **this machine** — and the OS already
+knows its name in slug form. `LocalHostName` is machine-local **by
+construction**: it lives in the system, not in `~/.claude`, which for a user who
+syncs settings is shared across every machine they own. That is why the
+documented `intercom.identity` override cannot express "this computer" even in
+principle — the key would follow the sync and every machine would answer to one
+name. Nothing to install, nothing to configure, and correct per-machine on its
+own.
+
+### Two guards on registration
+
+**Implicit registration needs more than a cwd basename.** `check`, `send` and
+`claim` register along the way — the natural "I exist" moments — but they run
+from wherever the shell happens to sit. When the identity rests on nothing
+sturdier than that basename (source `cwd`), they now register **nothing**. This
+is what stops a version folder or a browser-profile directory from becoming an
+agent. Explicit `/vdm:intercom register` is unaffected and remains the way to
+say "this really is a project" — the escape hatch for genuine non-git projects.
+
+**An identity that is already someone's name is refused.** Worse than a name
+clash, because resolution answers from `<registry>/<input>.json` *before* it
+looks at names: the new entry would not tie, it would **win**, and silently take
+over routing that used to work. `register` refuses and writes nothing, naming
+the agent that owns it. Machine-derived **aliases** get the softer treatment —
+one that already routes elsewhere is dropped rather than refused, because a
+clone sitting in a directory that happens to share another agent's name is the
+user's filesystem, not their intent. A name is intent; an alias is a guess.
 
 ## Agent directory (the registry)
 
@@ -189,9 +227,12 @@ at session start, and says nothing mid-session. What it does:
 5. **Unconfirmed second remote** → appended, with the two ways to resolve it
    (see above).
 
-Skipped in `$HOME` and `/` (not projects — their basename would register as an
-agent). Works without git (basename identity). Silent without `jq`. Opt out per
-project with `/vdm:intercom identity-check off`.
+Skipped in `$HOME` and `/` (not projects). This hook carried that guard alone
+for a long time while `check` / `send` / `claim` registered from any directory —
+the asymmetry is gone (§ Two guards on registration), and the predicate now
+lives with identity resolution rather than in one caller. Works without git
+(basename identity). Silent without `jq`. Opt out per project with
+`/vdm:intercom identity-check off`.
 
 ## Subcommands
 

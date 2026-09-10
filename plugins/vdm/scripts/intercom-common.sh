@@ -92,8 +92,41 @@ _intercom_owner_repo_from_url() {
   esac
 }
 
+# A session run from $HOME (or /) is not a project, and its basename is not an
+# identity — on this machine `basename $HOME` is literally `vdm`, a registered
+# NAME of ai-dev-plugins, so one send from the home directory would have created
+# a second entry claiming that name and made `resolve vdm` ambiguous. What such
+# a session actually is, is *this machine*, and the OS already knows its name in
+# slug form. `LocalHostName` is machine-local BY CONSTRUCTION — it lives in the
+# system, not in ~/.claude, which here is a symlink into Dropbox shared by every
+# machine the user owns, so the documented `intercom.identity` override cannot
+# express "this computer" even in principle.
+_intercom_machine_name() {
+  local m=""
+  command -v scutil >/dev/null 2>&1 && m="$(scutil --get LocalHostName 2>/dev/null || true)"
+  [ -n "$m" ] || m="$(hostname -s 2>/dev/null || true)"
+  [ -n "$m" ] || m="localhost"
+  printf '%s' "$m" | LC_ALL=C tr '[:upper:]' '[:lower:]' \
+    | sed -e 's|[^a-z0-9._-]|-|g' -e 's|-\{2,\}|-|g' -e 's|^-||' -e 's|-$||'
+}
+
+# True when $PWD is a directory that cannot be a project — the same predicate
+# the SessionStart check has always applied (intercom-identity-check.sh), lifted
+# here so every caller gets it rather than only the hook.
+_intercom_pwd_is_not_a_project() {
+  case "$PWD" in
+    "$HOME"|"/") return 0 ;;
+    *)           return 1 ;;
+  esac
+}
+
 # Where the identity came from — for `whoami` / the session-start line.
-# Prints one of: config | remote | git-toplevel | cwd
+# Prints one of: config | remote | git-toplevel | machine | cwd
+#
+# `machine` and `cwd` are the two weak sources and they are NOT equivalent:
+# `machine` is stable and cannot collide with a project slug by accident, while
+# `cwd` is whatever directory the shell happens to sit in. Only the latter is
+# refused for implicit registration (see intercom_register --implicit).
 intercom_identity_source() {
   local ov=""
   if command -v vdm_config_read >/dev/null 2>&1; then
@@ -106,6 +139,7 @@ intercom_identity_source() {
     printf 'remote'; return 0
   fi
   if git rev-parse --show-toplevel >/dev/null 2>&1; then printf 'git-toplevel'; return 0; fi
+  if _intercom_pwd_is_not_a_project; then printf 'machine'; return 0; fi
   printf 'cwd'
 }
 
@@ -131,6 +165,10 @@ intercom_identity() {
   top="$(git rev-parse --show-toplevel 2>/dev/null)"
   if [ -n "$top" ]; then
     basename "$top" | tr '[:upper:]' '[:lower:]'
+    return 0
+  fi
+  if _intercom_pwd_is_not_a_project; then
+    _intercom_machine_name
     return 0
   fi
   basename "$PWD" | tr '[:upper:]' '[:lower:]'
@@ -300,7 +338,7 @@ intercom_remote_mismatch() {
 
 intercom_register() {
   command -v jq >/dev/null 2>&1 || return 0
-  local same_project=0 desc="" names=() n
+  local same_project=0 implicit=0 desc="" names=() n
   while [ $# -gt 0 ]; do
     case "$1" in
       --name)          n="$(_intercom_norm_name "${2:-}")"; [ -n "$n" ] && names+=("$n"); shift 2 ;;
@@ -308,13 +346,40 @@ intercom_register() {
       --describe)      desc="${2:-}"; shift 2 ;;
       --describe=*)    desc="${1#--describe=}"; shift ;;
       --same-project)  same_project=1; shift ;;
+      --implicit)      implicit=1; shift ;;
       *)               shift ;;
     esac
   done
 
+  # Registration rides along on `check` / `send` / `claim` — the natural "I
+  # exist" moments — and those run from whatever directory the shell is in, not
+  # from a project the user chose. When the identity rests on nothing sturdier
+  # than that basename, riding along is how the directory acquires agents named
+  # after a version folder or a browser profile. Explicit `register` stays the
+  # way to say "this really is a project"; it is the only gesture that carries
+  # the assertion.
+  if [ "$implicit" -eq 1 ] && [ "$(intercom_identity_source)" = "cwd" ]; then
+    return 0
+  fi
+
   local id
   id="$(intercom_identity)"
   [ -n "$id" ] || return 0
+
+  # The identity itself can collide with a human NAME another agent already
+  # owns, and that direction is worse than a name clash: `intercom_resolve_target`
+  # answers from `<registry>/<input>.json` before it ever looks at names, so the
+  # new entry does not merely tie — it WINS, and silently takes over routing
+  # that used to work. Refuse before writing anything.
+  local id_owner id_rc=0
+  id_owner="$(intercom_resolve_target "$id" 2>/dev/null)"; id_rc=$?
+  if [ "$id_rc" -eq 0 ] && [ -n "$id_owner" ] && [ "$id_owner" != "$id" ]; then
+    printf 'intercom: ✗ identity "%s" is already a NAME of `%s` — refusing to register.\n' "$id" "$id_owner" >&2
+    printf '          Registering it would hijack `intercom send %s ...`, which today reaches `%s`.\n' "$id" "$id_owner" >&2
+    printf '          Set a distinct intercom.identity in .claude/vdm-plugins.json, or work from the project directory.\n' >&2
+    return 1
+  fi
+
   local regdir regfile url top basename_alias ownerrepo now tmp base aliasjson namesjson
   regdir="$(intercom_registry_dir)"
   mkdir -p "$regdir" 2>/dev/null || return 0
@@ -353,15 +418,39 @@ intercom_register() {
   fi
 
   top="$(git rev-parse --show-toplevel 2>/dev/null)"
-  [ -n "$top" ] || top="$PWD"
-  basename_alias="$(basename "$top" | tr '[:upper:]' '[:lower:]')"
+  if [ -n "$top" ]; then
+    basename_alias="$(basename "$top" | tr '[:upper:]' '[:lower:]')"
+  elif _intercom_pwd_is_not_a_project; then
+    # $HOME has a basename like any directory, and here it is `vdm`. Guarding
+    # only the identity moved the collision into `aliases`, which resolve just
+    # as well — the first version of this fix passed four acceptance criteria
+    # and broke the fifth exactly this way.
+    basename_alias=""
+  else
+    basename_alias="$(basename "$PWD" | tr '[:upper:]' '[:lower:]')"
+  fi
   ownerrepo="$(_intercom_owner_repo_from_url "$url" 2>/dev/null || true)"
 
+  # An alias is machine-derived guesswork, not something the user asked for, so
+  # one that already routes elsewhere is dropped rather than refused: a clone
+  # sitting in a directory that happens to share another agent's name is the
+  # user's filesystem, not their intent. Names get the opposite treatment above
+  # (hard refusal) because a name IS the intent.
+  _intercom_alias_is_free() {
+    local a="$1" owner rc=0
+    owner="$(intercom_resolve_target "$a" 2>/dev/null)"; rc=$?
+    [ "$rc" -eq 0 ] && [ -n "$owner" ] && [ "$owner" != "$id" ] && return 1
+    [ "$rc" -eq 3 ] && return 1
+    return 0
+  }
+
   local aliases=()
-  if [ -n "$basename_alias" ] && [ "$basename_alias" != "$id" ]; then
+  if [ -n "$basename_alias" ] && [ "$basename_alias" != "$id" ] \
+     && _intercom_alias_is_free "$basename_alias"; then
     aliases+=("$basename_alias")
   fi
-  if [ -n "$ownerrepo" ] && [ "$ownerrepo" != "$id" ]; then
+  if [ -n "$ownerrepo" ] && [ "$ownerrepo" != "$id" ] \
+     && _intercom_alias_is_free "$ownerrepo"; then
     aliases+=("$ownerrepo")
   fi
   aliasjson='[]'
