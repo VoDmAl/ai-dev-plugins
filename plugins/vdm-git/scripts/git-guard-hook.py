@@ -425,15 +425,26 @@ def build_block_message(op_name, reason, command):
         lines.append('       git-guard-prepare "<subject>"')
         lines.append("")
         lines.append(
-            "     It writes ${TMPDIR:-/tmp}/<repo>-<branch>-commit.txt and prints"
+            "     It writes a per-prep message file under ${TMPDIR:-/tmp} and"
         )
         lines.append(
-            "     a single-line `git commit -F <path> -- <paths>` command. The"
+            "     prints a single-line `git commit -F <path> -- <paths>`"
         )
         lines.append(
-            "     pathspec is what keeps a parallel session's staged files out"
+            "     command. The pathspec is what keeps a parallel session's"
         )
-        lines.append("     of your commit.")
+        lines.append("     staged files out of your commit.")
+        lines.append("")
+        lines.append(
+            "     Preparing again supersedes the previous command: the earlier"
+        )
+        lines.append(
+            "     message file is deleted, so that line is dead. If the helper"
+        )
+        lines.append(
+            "     says a prepared command was NEVER RUN, tell the user the"
+        )
+        lines.append("     earlier line is void when you hand off the new one.")
         lines.append("")
         lines.append(
             "     To commit a subset of what is staged, name it explicitly:"
@@ -476,7 +487,34 @@ def build_block_message(op_name, reason, command):
         lines.append("         block, never as a heredoc, never with -m.")
         lines.append("")
         lines.append(
-            "  5. Do not execute `git commit` yourself. The user runs it."
+            "  5. Amending? `git commit --amend` WITHOUT `-- <paths>` takes the"
+        )
+        lines.append(
+            "     whole index and sweeps in whatever a neighbouring session"
+        )
+        lines.append(
+            "     staged. Name the paths explicitly, every time:"
+        )
+        lines.append("")
+        lines.append(
+            "       git commit --amend -F <path> -- <path1> <path2> ..."
+        )
+        lines.append("")
+        lines.append(
+            "  6. One commit per turn. For several commits, repeat steps 1-4"
+        )
+        lines.append(
+            "     sequentially — stage, prepare, hand off, WAIT for the user —"
+        )
+        lines.append(
+            "     rather than stacking them into one recipe. Skipping the wait"
+        )
+        lines.append(
+            "     is how a superseded line ends up next to a current one."
+        )
+        lines.append("")
+        lines.append(
+            "  7. Do not execute `git commit` yourself. The user runs it."
         )
         lines.append("")
         lines.append(

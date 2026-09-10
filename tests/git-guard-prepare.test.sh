@@ -281,35 +281,114 @@ git add a.txt
 cmd=$("$PREP" "[*] few")
 expect_not_says "under threshold stays inline" "$cmd" "--pathspec-from-file"
 
-printf '\n=== prep file pairing ===\n'
-# Two preps against an unmoved HEAD must not overwrite each other, and a
-# message file must never be paired with another prep's path list.
+printf '\n=== superseding a prepared line ===\n'
+# The incident this section exists for: a line was prepared, the owner sent
+# corrections instead of running it, a second line was prepared — and the FIRST
+# one, still in the scrollback and still perfectly valid, was the one that ran.
+# The commit went out carrying the superseded message, and nothing said so.
+#
+# So the contract is not "two preps must not overwrite each other" — that was
+# the old one, and it is what kept the stale line alive. It is the opposite:
+# preparing again must KILL the earlier line, loudly enough that running it
+# fails rather than committing something that has moved on.
 
-d=$(new_repo pairing); cd "$d" || exit 1
+# msg_path <emitted command> — the -F argument, unquoted. shell_quote always
+# single-quotes, so the first quoted field is the message path.
+msg_path() { printf '%s' "$1" | sed -e "s/^git commit -F '//" -e "s/'.*$//"; }
+
+d=$(new_repo supersede); cd "$d" || exit 1
 export TMPDIR="$d/tmp"
-i=1; while [ $i -le 25 ]; do printf '%s\n' "$i" > "g$i.txt"; i=$((i+1)); done
-git add .
-"$PREP" "[*] first"  > /dev/null
-"$PREP" "[*] second" > /dev/null
-for f in "$TMPDIR"/*.txt; do
-  base="${f%.txt}"
-  if [ -f "$base.paths" ]; then
-    ok "message file has its own paths companion: $(basename "$f")"
-  else
-    bad "message file has its own paths companion: $(basename "$f")" "missing $base.paths"
-  fi
-done
+printf 'a\n' > a.txt
+git add a.txt
+stale=$("$PREP" "[*] first wording")
+fresh=$("$PREP" "[*] corrected wording" 2>/dev/null)
 
-# Unborn HEAD must not leak the literal string "HEAD" into the sentinel and
-# make every prep take a fresh suffix.
+if [ "$(msg_path "$stale")" = "$(msg_path "$fresh")" ]; then
+  bad "the second prep gets its own message file" "both preps point at $(msg_path "$fresh")"
+else
+  ok "the second prep gets its own message file"
+fi
+if [ -e "$(msg_path "$stale")" ]; then
+  bad "the superseded message file is deleted" "$(msg_path "$stale") survived"
+else
+  ok "the superseded message file is deleted"
+fi
+
+run_emitted "$stale" >/dev/null 2>&1; rc=$?
+expect_exit "the superseded line refuses to run" 128 "$rc"
+expect_eq "the superseded line commits nothing" "base" "$(git log -1 --format=%s)"
+run_emitted "$fresh" >/dev/null 2>&1
+expect_eq "the current line commits the corrected message" "[*] corrected wording" "$(git log -1 --format=%s)"
+
+# Deleting is not enough on its own: a freed name can be handed out again, and
+# then an older scrollback line is silently re-pointed at a newer message. So a
+# path is never issued twice, not even after its prep was properly consumed.
+d=$(new_repo no_reuse); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'a\n' > a.txt; git add a.txt
+c1=$("$PREP" "[*] one")
+run_emitted "$c1" >/dev/null 2>&1
+printf 'b\n' > b.txt; git add b.txt
+c2=$("$PREP" "[*] two")
+if [ "$(msg_path "$c1")" = "$(msg_path "$c2")" ]; then
+  bad "a consumed prep's path is not issued again" "reused $(msg_path "$c1")"
+else
+  ok "a consumed prep's path is not issued again"
+fi
+
+# Whatever the history, at most one trio survives. Nineteen live message files
+# in one session's TMPDIR is what the previous scheme left behind, and every one
+# of them was a runnable command.
+d=$(new_repo one_trio); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+i=1
+while [ $i -le 4 ]; do
+  printf '%s\n' "$i" > "f$i.txt"; git add "f$i.txt"
+  "$PREP" "[*] prep $i" >/dev/null 2>&1
+  i=$((i+1))
+done
+expect_eq "one message file survives four preps" "1" "$(ls -1 "$TMPDIR"/*.txt   2>/dev/null | grep -c .)"
+expect_eq "one paths file survives four preps"   "1" "$(ls -1 "$TMPDIR"/*.paths 2>/dev/null | grep -c .)"
+expect_eq "one meta file survives four preps"    "1" "$(ls -1 "$TMPDIR"/*.meta  2>/dev/null | grep -c .)"
+# The survivor must be a matched set — a message paired with someone else's path
+# list would commit one prep's wording over the other's files.
+surv=$(ls -1 "$TMPDIR"/*.txt); surv="${surv%.txt}"
+if [ -f "$surv.paths" ] && [ -f "$surv.meta" ]; then
+  ok "the surviving message file has its own companions"
+else
+  bad "the surviving message file has its own companions" "incomplete trio: $surv"
+fi
+
+# Files from the pre-token scheme carry no .meta. They are precisely what
+# accumulated, and they go without comment: HEAD moved past them long ago, so
+# there is nothing to report — only litter to clear.
+d=$(new_repo legacy); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+br=$(git symbolic-ref --quiet --short HEAD)
+legacy="$TMPDIR/$(basename "$d")-${br}-commit"
+printf 'stale message\n' > "$legacy.txt"
+: > "$legacy.paths"
+printf 'x\n' > a.txt; git add a.txt
+out=$("$PREP" "[*] fresh" 2>&1 >/dev/null)
+if [ -e "$legacy.txt" ] || [ -e "$legacy.paths" ]; then
+  bad "a pre-token leftover is swept" "$legacy.txt survived"
+else
+  ok "a pre-token leftover is swept"
+fi
+expect_silent "sweeping an already-audited leftover says nothing" "$out"
+
+# Unborn HEAD: no commits at all, so every prep's recorded HEAD is empty. The
+# empty value must not read as "this prep was consumed" — nor make each prep
+# take a fresh name and leak the ones before it.
 d="$TMP/unborn"; rm -rf "$d"; mkdir -p "$d/tmp"
 cd "$d" || exit 1
 git init -q .; git config user.email t@t; git config user.name t
 export TMPDIR="$d/tmp"
 printf 'a\n' > a.txt; git add a.txt
-"$PREP" "[*] one" > /dev/null
-"$PREP" "[*] two" > /dev/null
-expect_eq "unborn HEAD does not leak suffixes" "1" "$(ls -1 "$TMPDIR"/*.txt 2>/dev/null | grep -c .)"
+"$PREP" "[*] one" > /dev/null 2>&1
+out=$("$PREP" "[*] two" 2>&1 >/dev/null)
+expect_eq "unborn HEAD leaves one message file" "1" "$(ls -1 "$TMPDIR"/*.txt 2>/dev/null | grep -c .)"
+expect_says "unborn HEAD still reports the superseded line" "$out" "never run"
 
 printf '\n=== detector: did the commit match what was prepared? ===\n'
 # The reason this exists: a commit lost six files and gained one that was never
@@ -392,7 +471,11 @@ printf 'n\n' > n.txt; git add n.txt
 out=$("$PREP" "[*] next" 2>&1 >/dev/null)
 expect_silent "unrelated commit ⇒ detector silent" "$out"
 
-# FALSE POSITIVE 3: nothing committed yet — the prep is still pending.
+# FALSE POSITIVE 3: nothing committed yet — the prep is still pending. The
+# detector must not accuse a commit that never happened. The supersession notice
+# on the same stderr is a different statement about a different thing, and it is
+# required here, so this asserts the absence of the accusation rather than
+# silence.
 d=$(new_repo detect_pending); cd "$d" || exit 1
 export TMPDIR="$d/tmp"
 printf 'x\n' > a.txt
@@ -400,7 +483,9 @@ git add a.txt
 "$PREP" "[*] pending" > /dev/null
 printf 'y\n' > b.txt; git add b.txt
 out=$("$PREP" "[*] second" 2>&1 >/dev/null)
-expect_silent "unconsumed prep ⇒ detector silent" "$out"
+expect_not_says "unconsumed prep ⇒ no accusation about a commit" "$out" "does not match what was prepared"
+expect_not_says "unconsumed prep ⇒ nothing labelled SWEPT IN" "$out" "SWEPT IN"
+expect_says "unconsumed prep ⇒ the earlier line is declared void" "$out" "never run"
 
 # The audit must run ONCE. A record left behind would re-accuse the same commit
 # on every later prep, which is how a real signal becomes background noise.
@@ -416,7 +501,8 @@ out1=$("$PREP" "[*] n1" 2>&1 >/dev/null)
 printf 'm\n' > m.txt; git add m.txt
 out2=$("$PREP" "[*] n2" 2>&1 >/dev/null)
 expect_says "first prep after the bad commit reports it" "$out1" "theirs.txt"
-expect_silent "second prep does not repeat the accusation" "$out2"
+expect_not_says "second prep does not repeat the accusation" "$out2" "theirs.txt"
+expect_not_says "second prep does not repeat the SWEPT IN label" "$out2" "SWEPT IN"
 
 # Standalone mode, for a post-commit hook or a by-hand check.
 d=$(new_repo detect_standalone); cd "$d" || exit 1
