@@ -49,17 +49,31 @@
 #   `post-commit` hook is a check that never runs. Living inside the helper,
 #   it runs wherever the helper runs, with nothing to install.
 #
-# Side effects:
-#   Writes the message to:
-#     ${TMPDIR:-/tmp}/<repo-basename>-<branch-safe>-commit.txt
-#   Always writes two companions beside it — the NUL-separated intended path
-#   list and the HEAD it was prepared against:
-#     ${TMPDIR:-/tmp}/<repo-basename>-<branch-safe>-commit.paths
-#     ${TMPDIR:-/tmp}/<repo-basename>-<branch-safe>-commit.meta
-#   On collision against an unconsumed file (same HEAD, recent mtime), appends
-#   -2, -3, ... so a prior prep is not silently overwritten. The message file
-#   and its companion paths file always take the SAME suffix, so two preps in
-#   a row cannot cross their pairs.
+# Side effects — one trio of sidecars per prep, and only ever one:
+#     ${TMPDIR:-/tmp}/<repo>-<branch>-commit-<token>.txt     the message
+#     ${TMPDIR:-/tmp}/<repo>-<branch>-commit-<token>.paths   NUL-separated intent
+#     ${TMPDIR:-/tmp}/<repo>-<branch>-commit-<token>.meta    the HEAD prepped against
+#
+#   `<token>` is minted per prep and never reused, and every prep first DELETES
+#   the trio of any earlier prep for the same repo and branch. Both halves are
+#   load-bearing; neither alone closes the class:
+#
+#     - Reusable names let a line still sitting in the terminal scrollback be
+#       re-pointed at a newer message. It stays runnable and commits the wrong
+#       thing, silently.
+#     - Unique names alone leave every superseded line runnable forever. That is
+#       the reported incident: a line was prepared, the message was then revised,
+#       a second line was prepared, and the first — still perfectly valid — was
+#       the one that ran, carrying the previous message.
+#
+#   With both, a superseded line dies on `No such file or directory`. A visible
+#   failure beats a quiet commit nobody re-reads.
+#
+#   The cost is named rather than hidden: two sessions on the same repo AND
+#   branch annul each other's pending line, last prep wins. The loser's line
+#   then fails loudly instead of committing something stale — the better
+#   direction to fail in, but a real behaviour change from the -2/-3 suffix
+#   scheme this replaced.
 #
 # Exit codes:
 #   0 success
@@ -74,6 +88,72 @@ set -eu
 # Above this many paths, the inline `-- 'a' 'b' ...` form becomes unreadable
 # and awkward to paste, so switch to --pathspec-from-file.
 PATHSPEC_INLINE_MAX=${GIT_GUARD_PATHSPEC_INLINE_MAX:-20}
+
+# ------------------------------------------------------------ sidecar files
+#
+# rm_trio <stem> — retire one prep completely.
+#
+# All three go together or none do. Removing only `.meta` (which is all the
+# audit needs) leaves `.txt` on disk, and a message file on disk is a command
+# line that still runs — the whole defect this file now guards against.
+rm_trio() { rm -f "$1.txt" "$1.paths" "$1.meta"; }
+
+# sweep_superseded <tmpdir> <base> <head>
+#
+# Every prep begins by clearing the field. Whatever sidecars survived the audit
+# belong to preps this one replaces, and each surviving `.txt` is a runnable
+# command carrying a message that is no longer the current one.
+#
+# A prep whose recorded HEAD is still the current HEAD was demonstrably never
+# committed, so its line is outstanding in somebody's scrollback and the caller
+# has to be told. One whose `.meta` is gone was already audited by verify_last —
+# or predates this scheme entirely, which is how a machine accumulated nineteen
+# live message files — and is swept without comment.
+sweep_superseded() {
+  local tmpdir="$1" base="$2" head="$3"
+  local f stem recorded pending=0
+
+  for f in "$tmpdir/$base"*.txt; do
+    [ -f "$f" ] || continue
+    stem="${f%.txt}"
+    if [ -f "$stem.meta" ]; then
+      recorded=$(cat "$stem.meta" 2>/dev/null || echo "")
+      [ "$recorded" = "$head" ] && pending=$((pending + 1))
+    fi
+    rm_trio "$stem"
+  done
+
+  # Leftover from the pre-token scheme, which kept one shared sentinel per base.
+  rm -f "$tmpdir/.$base.head"
+
+  [ "$pending" -eq 0 ] && return 0
+  {
+    echo "git-guard-prepare: ⚠ a prepared command for this branch was never run (pending: $pending)."
+    echo "                   Its message file is deleted, so that line is now dead — running it"
+    echo "                   fails instead of committing a stale message."
+    echo "                   Hand off the line below, and say the earlier one is void."
+  } >&2
+  return 0
+}
+
+# mint_stem <tmpdir> <base>
+#
+# A stem is never reused. Reuse is the half of the defect the sweep above does
+# not cover: delete a file and its name becomes free again, and the next prep
+# taking that name silently re-points an old scrollback line at a new message.
+#
+# Seconds + PID cannot collide within one process — a process preps at most
+# once — and the existence loop covers a clock that moves backwards.
+mint_stem() {
+  local tmpdir="$1" base="$2"
+  local root="${tmpdir}/${base}-$(date +%s)-$$"
+  local stem="$root" n=2
+  while [ -e "$stem.txt" ] || [ -e "$stem.paths" ] || [ -e "$stem.meta" ]; do
+    stem="${root}-${n}"
+    n=$((n + 1))
+  done
+  printf '%s' "$stem"
+}
 
 # ---------------------------------------------------------------- detector
 #
@@ -118,18 +198,18 @@ verify_last() {
     # Only audit a commit sitting directly on top of the recorded HEAD. Rebase,
     # amend, squash and cherry-pick all break that relation and are not this
     # detector's business.
-    [ "$recorded" = "$parent" ] || { rm -f "$meta"; continue; }
+    [ "$recorded" = "$parent" ] || { rm_trio "${meta%.meta}"; continue; }
 
     msg=$(git log -1 --format=%B 2>/dev/null || echo "")
     # Compare trimmed: git normalises trailing newlines in commit messages.
     if [ "$(printf '%s' "$msg" | sed -e 's/[[:space:]]*$//')" \
        != "$(printf '%s' "$(cat "$txt")" | sed -e 's/[[:space:]]*$//')" ]; then
-      rm -f "$meta"; continue
+      rm_trio "${meta%.meta}"; continue
     fi
 
     found=1
     _verify_one "$pathsf" "$parent" "$head"
-    rm -f "$meta"
+    rm_trio "${meta%.meta}"
   done
   return 0
 }
@@ -188,8 +268,11 @@ Usage: git-guard-prepare "<commit message>" [-- <path>...]
        echo "<message>" | git-guard-prepare - [-- <path>...]
        git-guard-prepare --verify-last
 
-Writes the message to ${TMPDIR:-/tmp}/<repo>-<branch>-commit.txt and prints a
+Writes the message to a per-prep file under ${TMPDIR:-/tmp} and prints a
 single-line `git commit -F <path> -- <paths>` command for the user to run.
+
+Preparing again supersedes the previous command: its message file is deleted,
+so the earlier line fails instead of committing a message that has moved on.
 
 Paths come from the explicit `--` list when given, otherwise from a snapshot
 of the index at prep time. Exits 1 if the index is empty, or if the working
@@ -333,51 +416,31 @@ tmpdir="${TMPDIR:-/tmp}"
 tmpdir="${tmpdir%/}"
 
 base="${repo_name}-${branch_safe}-commit"
-path="${tmpdir}/${base}.txt"
-paths_file="${tmpdir}/${base}.paths"
+
+# `--verify` matters: a plain `git rev-parse HEAD` in a repo with an unborn HEAD
+# prints the literal string "HEAD" on stdout while exiting non-zero, so the
+# `|| echo ""` fallback never gets a chance and head_sha becomes "HEAD" — a
+# value that then compares equal to itself forever.
+head_sha=$(git rev-parse --verify HEAD 2>/dev/null || echo "")
 
 # Before preparing anything: did the PREVIOUS prep produce the commit it said
 # it would? This is the moment someone is paying attention to commits, which is
 # why the check lives here rather than in a git hook nobody installs.
 verify_last "$tmpdir" "$base" || true
 
-# If a previous prep file exists and HEAD hasn't moved since it was written
-# (i.e. the user hasn't committed yet), pick the next free suffix instead of
-# overwriting. Otherwise, take the base path — the prior file is "consumed".
-#
-# The message file and its companion paths file must move to the SAME suffix,
-# or two preps in a row would cross their pairs and a commit would take one
-# prep's message with the other's file list.
-# `--verify` matters: a plain `git rev-parse HEAD` in a repo with an unborn
-# HEAD prints the literal string "HEAD" on stdout while exiting non-zero, so
-# the `|| echo ""` fallback never gets a chance and head_sha becomes "HEAD".
-# The sentinel then always matches itself and every prep takes a fresh -N
-# suffix, leaking temp files. `--verify` fails silently instead.
-head_sha=$(git rev-parse --verify HEAD 2>/dev/null || echo "")
-sentinel="${tmpdir}/.${base}.head"
+# Then clear the field. Anything the audit left behind belongs to a prep this
+# one supersedes, and a superseded message file is a runnable command line.
+sweep_superseded "$tmpdir" "$base" "$head_sha"
 
-if [ -f "$path" ] && [ -f "$sentinel" ] && [ -n "$head_sha" ]; then
-  prior_head=$(cat "$sentinel" 2>/dev/null || echo "")
-  if [ "$prior_head" = "$head_sha" ]; then
-    n=2
-    while [ -f "${tmpdir}/${base}-${n}.txt" ] || [ -f "${tmpdir}/${base}-${n}.paths" ] \
-       || [ -f "${tmpdir}/${base}-${n}.meta" ]; do
-      n=$((n + 1))
-    done
-    path="${tmpdir}/${base}-${n}.txt"
-    paths_file="${tmpdir}/${base}-${n}.paths"
-  fi
-fi
+stem=$(mint_stem "$tmpdir" "$base")
+path="${stem}.txt"
+paths_file="${stem}.paths"
 
 # Write the message (atomic via temp + rename to avoid torn reads if the user
 # is `cat`ing the file in another pane).
 tmpfile="${path}.tmp.$$"
 printf '%s\n' "$message" > "$tmpfile"
 mv -f "$tmpfile" "$path"
-
-# Record the HEAD this prep was made against, so subsequent preps can detect
-# whether the prior file was consumed.
-[ -n "$head_sha" ] && printf '%s\n' "$head_sha" > "$sentinel"
 
 # ------------------------------------------------------------------- emit
 
@@ -406,9 +469,14 @@ done
 mv -f "$tmpfile" "$paths_file"
 
 # The HEAD this prep was made against, alongside its own message and path list.
-# The detector needs all three together; the shared sentinel above cannot serve,
-# because it is per-base and a suffixed prep would read someone else's value.
-printf '%s\n' "${head_sha:-}" > "${path%.txt}.meta"
+# Per-prep rather than shared: the detector needs all three of a prep together,
+# and it is this file that later tells a superseded prep (recorded HEAD still
+# current ⇒ never committed) from a consumed one.
+#
+# Written last, before the command line is printed. A trio without it is a prep
+# that died mid-write: the detector skips it and the next sweep clears it away,
+# neither of them guessing at what it meant to commit.
+printf '%s\n' "${head_sha:-}" > "${stem}.meta"
 
 if [ ${#paths[@]} -gt "$PATHSPEC_INLINE_MAX" ]; then
   # Long list: hand git a NUL-separated file instead of an unreadable line.

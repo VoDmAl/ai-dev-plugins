@@ -111,11 +111,13 @@ When the assistant has finished work that warrants a commit — implementation d
 
        git-guard-prepare "[+] Add foo helper"
 
-   It writes the message to `${TMPDIR:-/tmp}/<repo>-<branch>-commit.txt` and prints a single-line `git commit -F <path> -- <paths>` command on stdout. Capture it and hand it off **verbatim** — the explicit pathspec is the point (see [Why the pathspec](#why-the-pathspec-is-not-optional)).
+   It writes the message to a per-prep file under `${TMPDIR:-/tmp}` and prints a single-line `git commit -F <path> -- <paths>` command on stdout. Capture it and hand it off **verbatim** — the explicit pathspec is the point (see [Why the pathspec](#why-the-pathspec-is-not-optional)).
 
    For a multi-line message (subject + body), pipe via `-`:
 
        printf '%s\n\n%s\n' "[+] Add foo helper" "Why: needed for X." | git-guard-prepare -
+
+   **Preparing again kills the earlier line.** Each prep gets its own message file and deletes the previous one, so a superseded command fails instead of committing a message that has since been revised (see [Superseding a prepared line](#superseding-a-prepared-line)). When the helper reports `a prepared command for this branch was never run`, say so on hand-off: the user still has the dead line in their scrollback.
 
 4. **Hand off to the user.** Your end-of-work message should contain:
    - what was staged (file list);
@@ -123,7 +125,7 @@ When the assistant has finished work that warrants a commit — implementation d
    - **the commit message itself** as a quoted preview, so the user can review it without opening the file;
    - the one-line command from step 3, **as inline code** (single backticks) on its own line — never inside a fenced code block, never inside a heredoc.
 
-   Write the full path verbatim — never abbreviate it with `…` or `/var/folders/<hash>/T/...` in your narration. On macOS the temp path is long (`/var/folders/<id>/T/<repo>-<branch>-commit.txt`) and that is fine; the user copies the command line, they don't retype it.
+   Write the full path verbatim — never abbreviate it with `…` or `/var/folders/<hash>/T/...` in your narration. On macOS the temp path is long (`/var/folders/<id>/T/<repo>-<branch>-commit-<token>.txt`) and that is fine; the user copies the command line, they don't retype it.
 
    Example:
 
@@ -135,7 +137,7 @@ When the assistant has finished work that warrants a commit — implementation d
    > Message:
    > > [+] Add token expiry handling
    >
-   > `git commit -F /tmp/limeflow-feat-auth-commit.txt -- 'src/auth.ts' 'tests/auth.test.ts'`
+   > `git commit -F /tmp/limeflow-feat-auth-commit-1757520411-48213.txt -- 'src/auth.ts' 'tests/auth.test.ts'`
 
 5. **Do not execute the commit yourself.** The user runs the command (or aborts) — the gate is theirs.
 
@@ -211,6 +213,49 @@ The check fails open — a rebase, an amend, an unrelated commit, an unreadable
 sidecar all produce silence. A detector that fires on ordinary git usage gets
 ignored, and an ignored detector is worse than none.
 
+### Superseding a prepared line
+
+A prepared line lives in the user's terminal scrollback, and scrollback does not
+expire. Field report (`t23b-content`, 2026-09-09): a line was prepared, the owner
+sent corrections instead of running it, a second line was prepared — and the
+first, still valid, was the one that ran. The commit went out carrying the
+superseded message and needed an `--amend` to fix. The same session left
+**nineteen** live message files in one `TMPDIR`, every one of them runnable.
+
+So each prep now takes a name that is never issued twice **and** deletes the
+previous prep's files. Both halves are needed: reusable names let an old line be
+re-pointed at a newer message, and unique names alone leave every superseded line
+runnable forever. Together the stale line dies on `No such file or directory` —
+a visible failure instead of a quiet wrong commit.
+
+What this asks of you:
+
+- When the helper prints `⚠ a prepared command for this branch was never run`,
+  **tell the user the earlier line is void** as you hand off the new one. They
+  cannot see which of two lines in their scrollback is current; you can.
+- Prepare **once per turn** and wait. Preparing twice before the user has run
+  anything is what produces two lines side by side in the first place.
+
+Known boundary: two sessions on the same repo *and* branch annul each other's
+pending line, last prep wins. The loser's line then fails loudly rather than
+committing something stale — the better direction to fail in, but real.
+
+### Amending
+
+`git commit --amend` **without** a pathspec takes the whole index — including
+whatever a neighbouring session staged after your prep. That is the same defect
+the pathspec exists to prevent, arriving through the one command shape that
+looks too small to need it. Field report (`t23b-content`, 2026-09-09): a foreign
+staged file was swept into an amend exactly this way.
+
+Name the paths, every time:
+
+    git commit --amend -F <path> -- <path1> <path2>
+
+The helper has no `--amend` mode: the detector deliberately ignores amends
+(HEAD's parent relation breaks), so an amend is prepared like any other commit
+and `--amend` is added to the emitted line by hand.
+
 ### Forbidden command shapes
 
 Commits handed off as anything other than `git commit -F <path> -- <paths>` invite paste failures or wrong content. Never use:
@@ -231,7 +276,9 @@ If `git-guard-prepare` is not on the PATH (older install / alternate harness), r
     repo=$(basename "$(git rev-parse --show-toplevel)")
     branch=$(git symbolic-ref --short HEAD 2>/dev/null \
       | sed -e 's|[^A-Za-z0-9_-]|-|g' -e 's|-\{2,\}|-|g' -e 's|^-||' -e 's|-$||')
-    path="${TMPDIR:-/tmp}/${repo}-${branch:-detached}-commit.txt"
+    base="${TMPDIR:-/tmp}/${repo}-${branch:-detached}-commit"
+    rm -f "$base"*.txt "$base"*.paths      # any earlier line is superseded — kill it
+    path="${base}-$(date +%s)-$$.txt"      # a name that is never issued twice
 
 Use the Write tool to put the message at `$path` (not a heredoc). Then build the
 pathspec yourself — the fallback owes the same guarantee as the helper:
@@ -248,7 +295,7 @@ Reconcile with `git add` / `git checkout --` first.
 
 - **Untracked files from other tickets**: list under "not staged (other tickets)" and exclude from `git add`. Never bundle multiple tickets into one commit unless the user explicitly asks.
 - **Detector output on the next prep**: read it before handing anything off. It means the previous commit is not what was prepared.
-- **Multiple commits in one session**: the helper rotates suffixes (`-2`, `-3`, ...) automatically when HEAD has not moved since the last prep — your prior message file is preserved, not overwritten. A long-list prep also writes a `.paths` companion file, which always takes the *same* suffix as its message file, so two preps in a row cannot cross their pairs.
+- **Multiple commits in one session**: each prep gets its own message file, never a name already issued, and **deletes the previous prep's files** — a superseded line fails instead of committing a stale message (see [Superseding a prepared line](#superseding-a-prepared-line)). The `.paths` and `.meta` companions always share the message file's stem, so two preps cannot cross their pairs. What this costs you: prepare one commit per turn and wait, because the second prep kills the first line whether or not the user has run it.
 - **Batch commits (multiple separate commits queued from one task)**: prepare each commit *sequentially in your own turn* — `git add <files>` → `git-guard-prepare "<subject>"` → present message preview + `git commit -F <path> -- <paths>` line → wait for the user. Do **not** bundle the sequence into a numbered shell script for the user (`git add ...` / `git-guard-prepare ...` / `# commit` lines stacked together) — `git-guard-prepare` is an assistant-PATH helper, the user's shell does not see it. Only the per-commit `git commit -F <path> -- <paths>` line crosses to the user's shell.
 - **No type-check available locally** (corepack/yarn not set up, missing deps): take the cheapest verification path (linter, single-file `tsc`, one test file) and report what couldn't be verified, rather than skipping verification silently.
 - **Pre-commit hook fails after the user runs your command**: do not retry blindly and do not suggest `--no-verify`. Investigate, fix, re-stage, prepare a fresh message file, hand off again.
