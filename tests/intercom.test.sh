@@ -174,6 +174,16 @@ says "directory shows names + aliases" "$out" "• widget   aka: widget app, wid
 says "directory shows description" "$out" "— The widget service (billing)"
 says "directory flags pending mail" "$out" "[📬 1 pending]"
 says "directory flags unnamed agents" "$out" "⚠ unnamed"
+# The flag must mean what the legend under the listing says it means: no human
+# NAME. It also fired on a missing description, and nobody noticed while both
+# fields were empty together — the wrong condition kept giving the right answer.
+# Naming an agent without describing it is what separates them.
+bash "$IC" names add --for gadget "gizmo-named" >/dev/null 2>&1
+out="$(bash "$IC" directory)"
+line="$(printf '%s\n' "$out" | grep '• gadget')"
+says "a named-but-undescribed agent still shows (no description)" "$line" "(no description)"
+says_not "a named-but-undescribed agent is not called unnamed" "$line" "⚠ unnamed"
+bash "$IC" names rm --for gadget "gizmo-named" >/dev/null 2>&1
 out="$(bash "$IC" who)"
 says "who is an alias of directory" "$out" "intercom directory"
 says "directory lists orphan first-contact inboxes" "$out" "NO registered agent"

@@ -615,7 +615,19 @@ intercom_resolve_target() {
 
 # One directory line per agent. Format:
 #   • <identity>   aka: <names, aliases>   — <description|(no description)>
-# `intercom_directory_line <identity> [mark]` — mark ⚠ when incomplete.
+# `intercom_directory_line <identity>` — marks ⚠ unnamed when NO human name.
+#
+# The flag tracks names ONLY, matching the legend the listing prints under
+# itself ("⚠ unnamed = that repo has not yet registered how the user calls it").
+# It used to fire on a missing description as well, and the two drifted apart
+# without anyone noticing — because while both fields were empty together the
+# wrong condition gave the right answer. Naming eleven agents in one pass
+# separated them and the label started lying about every row it marked.
+#
+# A missing description needs no flag of its own: this same line already prints
+# `(no description)` a few characters to the left. `intercom_registration_missing`
+# still requires both — the SessionStart nag is a different consumer with a
+# different question ("is my registration finished?"), and there the answer is no.
 intercom_directory_line() {
   local id="$1" rf
   rf="$(intercom_registry_file "$id")"
@@ -626,7 +638,7 @@ intercom_directory_line() {
     | "  • " + $id
       + (if ($aka | length) > 0 then "   aka: " + ($aka | joinlist) else "" end)
       + "   — " + (if ((.description // "") | length) > 0 then .description else "(no description)" end)
-      + (if (((.names // []) | length) == 0) or (((.description // "") | length) == 0) then "   ⚠ unnamed" else "" end)
+      + (if ((.names // []) | length) == 0 then "   ⚠ unnamed" else "" end)
   ' "$rf" 2>/dev/null
 }
 
