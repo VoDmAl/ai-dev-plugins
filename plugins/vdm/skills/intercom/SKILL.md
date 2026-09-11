@@ -260,6 +260,20 @@ at session start, and says nothing mid-session. What it does:
 5. **Unconfirmed second remote** → appended, with the two ways to resolve it
    (see above).
 
+It also reports a brief that was **filed but never archived**: a message still in
+your inbox whose envelope `slug:` appears in a `<crystal>/references/*.md` copy.
+That pairing means the brief was taken into a crystal, so `pickup` was owed and
+never happened — and until it does, every later session reads the brief as
+untouched. The join key is the envelope `slug:`, not the filename, because a
+brief is routinely renamed on its way into `references/`.
+
+This exists because archiving is a separate gesture with nothing comparing it
+against anything. Field case (2026-09-11, this repo): `intercom-home-guard-missing`
+was implemented, shipped, and answered — and was found still pending by a manual
+sweep at the end of the session. The notice names the slug and the command, and
+it disappears the moment `pickup` runs, so it cannot settle into background the
+way a standing "don't forget to archive" would.
+
 Skipped in `$HOME` and `/` (not projects). This hook carried that guard alone
 for a long time while `check` / `send` / `claim` registered from any directory —
 the asymmetry is gone (§ Two guards on registration), and the predicate now

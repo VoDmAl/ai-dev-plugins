@@ -411,5 +411,41 @@ eq "--force removes a named entry" "$rc" "0"
   && bad "--force actually removed it" "gadget.json survived" \
   || ok "--force actually removed it"
 
+printf '\n[a brief filed into a crystal but never archived]\n'
+# Archiving a consumed brief is a separate gesture with nothing comparing it to
+# anything, so a brief can be worked to completion — code shipped, reply sent —
+# and still read as pending to every later session. Observed 2026-09-11 on
+# `intercom-home-guard-missing`, found only by a manual sweep at the end.
+#
+# The join key is the envelope `slug:`, NOT the filename: a brief is routinely
+# renamed on its way into references/ (this repo holds two different briefs both
+# called intercom-brief-obsidianvault.md). The fixture renames on purpose.
+cd "$TMP/widget-clone" || exit 1
+mkdir -p docs/tasks/probe-crystal/references
+{ printf -- '---\nintercom: v1\nfrom: someone\nto: widget\nslug: hello\nstatus: pending\n---\n\n# filed copy\n'; } \
+  > docs/tasks/probe-crystal/references/renamed-on-the-way-in.md
+out="$(printf '{"session_id":"t","source":"startup"}' | bash "$HOOK")"
+says "a filed-but-pending brief is named" "$out" "hello\` is still in your inbox"
+says "the notice points at where it is filed" "$out" "renamed-on-the-way-in.md"
+says "the notice gives the command that closes it" "$out" "pickup hello"
+
+# A reference that is not an intercom brief must not be scanned for slugs — the
+# tree is full of other references, and a stray `slug:` line in one of them
+# would accuse a message nobody filed.
+mkdir -p docs/tasks/probe-crystal2/references
+printf -- '---\nslug: hello\n---\n\nnot an intercom brief\n' \
+  > docs/tasks/probe-crystal2/references/plain-note.md
+rm -f docs/tasks/probe-crystal/references/renamed-on-the-way-in.md
+out="$(printf '{"session_id":"t","source":"startup"}' | bash "$HOOK")"
+says_not "a non-brief reference does not trigger the notice" "$out" "still in your inbox"
+
+# And the signal must extinguish itself: once the message is gone, so is the line.
+printf -- '---\nintercom: v1\nslug: hello\n---\n' > docs/tasks/probe-crystal/references/again.md
+mv "$VDM_INTERCOM_ROOT/widget/hello.md" "$VDM_INTERCOM_ROOT/widget/_done/hello.md" 2>/dev/null \
+  || { mkdir -p "$VDM_INTERCOM_ROOT/widget/_done"; mv "$VDM_INTERCOM_ROOT/widget/hello.md" "$VDM_INTERCOM_ROOT/widget/_done/"; }
+out="$(printf '{"session_id":"t","source":"startup"}' | bash "$HOOK")"
+says_not "archiving the message silences the notice" "$out" "still in your inbox"
+rm -rf docs/tasks/probe-crystal docs/tasks/probe-crystal2
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

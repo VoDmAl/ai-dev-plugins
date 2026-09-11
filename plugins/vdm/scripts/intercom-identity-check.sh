@@ -31,6 +31,10 @@ _IC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$_IC_DIR/../lib/config-read.sh" 2>/dev/null || true
 # shellcheck disable=SC1091
 . "$_IC_DIR/intercom-common.sh" 2>/dev/null || exit 0
+# Best-effort: gives intercom_filed_but_pending the crystal roots. Absent (older
+# install, crystal disabled) the notice below simply never fires.
+# shellcheck disable=SC1091
+. "$_IC_DIR/../lib/crystal-path.sh" 2>/dev/null || true
 
 cat >/dev/null 2>&1 || true   # drain the hook payload; nothing in it is needed
 
@@ -117,6 +121,19 @@ Right now other agents can reach this repo only as ${reach} — those are machin
 Before other work, register the names this project really goes by. A default derived from this repo — run it as-is if it is right, or edit the name / add --name for whatever else the user calls this project (do not invent names; ask ONCE if the default is clearly wrong):
   /vdm:intercom register --name \"${default_name}\" --describe \"${default_desc}\"
 Verify with /vdm:intercom whoami. This notice repeats every session until the registration is complete (opt out: /vdm:intercom identity-check off)."
+fi
+
+# A brief that was filed into a crystal but never archived reads as pending to
+# every later session — indistinguishable from one nobody has looked at. The
+# signal names the slug and the command, and it goes out the moment `pickup`
+# runs, so it cannot become background the way a standing "don't forget" would.
+stale="$(intercom_filed_but_pending "$id" 2>/dev/null || true)"
+if [ -n "$stale" ]; then
+  while IFS=$'\t' read -r sl where; do
+    [ -n "$sl" ] || continue
+    msg="${msg}
+📂 \`${sl}\` is still in your inbox, but its brief is already filed under \`${where}\` — taken into a crystal and never archived. Close the loop: /vdm:intercom pickup ${sl}"
+  done <<<"$stale"
 fi
 
 unclaimed="$(intercom_orphans_matching "$id" 2>/dev/null || true)"

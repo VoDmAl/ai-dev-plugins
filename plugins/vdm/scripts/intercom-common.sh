@@ -545,6 +545,74 @@ intercom_names_edit() {
   fi
 }
 
+# intercom_filed_but_pending
+#
+# Prints, one slug per line, every message still sitting in this repo's inbox
+# whose brief has ALREADY been filed into a crystal — i.e. a copy of it exists
+# under `<crystal-root>/<slug>/references/` carrying the same envelope `slug:`.
+#
+# The gap this closes. Archiving a consumed brief (`pickup`) is a separate
+# gesture with nothing comparing it against anything, so a brief can be worked
+# to completion — code shipped, reply sent — and still read as pending to the
+# next session. Observed here 2026-09-11 on `intercom-home-guard-missing`: fully
+# closed, answered, and found in the inbox only by a manual sweep at the end.
+#
+# Why the envelope `slug:` and not the filename: a brief is routinely RENAMED on
+# the way into `references/` (this repo holds `intercom-brief-obsidianvault.md`
+# twice, for two different briefs). The frontmatter survives the rename, so it
+# is the only join key that actually joins. Files without an `intercom:` header
+# are other kinds of reference and are skipped.
+#
+# Cost, and the order below is that cost. The EMPTY INBOX is checked first and
+# costs one glob on one directory — which is the common case, and it exits before
+# resolving crystal roots at all. That matters because root resolution scans for
+# `tasks/` directories, `crystal-hydrate.sh` already pays for it at the same
+# SessionStart, and the two hooks are separate processes so the memo is not
+# shared. Only when something is actually pending does this walk
+# `<root>/*/references/*.md` — bounded by the number of crystals, never by the
+# size of the tree. A tree walk here would repeat a mistake this repo has already
+# paid for (docs/tasks/crystal-capture-hook-timeout).
+#
+# Fails open: no crystal resolver, no roots, no inbox — print nothing.
+intercom_filed_but_pending() {
+  command -v resolve_crystal_roots >/dev/null 2>&1 || return 0
+  local id="${1:-}"
+  [ -n "$id" ] || id="$(intercom_identity 2>/dev/null)"
+  [ -n "$id" ] || return 0
+
+  local pending
+  pending="$(intercom_inbox_list "$id" 2>/dev/null)" || return 0
+  [ -n "$pending" ] || return 0
+
+  local roots ref filed="" s
+  roots="$(resolve_crystal_roots 2>/dev/null)" || return 0
+  [ -n "$roots" ] || return 0
+
+  # One pass over the reference files; collect "<slug>\t<path>" for each.
+  while IFS= read -r root; do
+    [ -n "$root" ] || continue
+    for ref in "$root"/*/references/*.md; do
+      [ -f "$ref" ] || continue
+      grep -q '^intercom: ' "$ref" 2>/dev/null || continue
+      s="$(sed -n 's/^slug:[[:space:]]*//p' "$ref" 2>/dev/null | head -1)"
+      [ -n "$s" ] && filed="${filed}${s}	${ref}
+"
+    done
+  done <<<"$roots"
+  [ -n "$filed" ] || return 0
+
+  # Output is "<slug>\t<where it is filed>" so the caller can name the file
+  # without searching for it a second time.
+  local p base hit
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    base="$(basename "$p" .md)"
+    hit="$(printf '%s' "$filed" | awk -F'\t' -v s="$base" '$1 == s { print $2; exit }')"
+    [ -n "$hit" ] && printf '%s\t%s\n' "$base" "$hit"
+  done <<<"$pending"
+  return 0
+}
+
 # intercom_describe_edit [--for <identity>] <text>
 #
 # Symmetric with intercom_names_edit. Descriptions are normally written by the
