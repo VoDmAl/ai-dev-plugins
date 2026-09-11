@@ -167,6 +167,32 @@ cmd_names() {
   esac
 }
 
+cmd_describe() {
+  case "${1:-}" in
+    ""|list)
+      local id
+      id="$(intercom_identity)"
+      printf 'description of %s: %s\n' "$id" "$(intercom_registry_get "$id" '.description // ""')"
+      ;;
+    *)
+      intercom_describe_edit "$@" || exit 1
+      local id="" a prev=""
+      for a in "$@"; do
+        case "$a" in --for=*) id="${a#--for=}" ;; esac
+        [ "$prev" = "--for" ] && id="$a"
+        prev="$a"
+      done
+      [ -n "$id" ] || id="$(intercom_identity)"
+      id="$(_intercom_fold "$id")"
+      printf 'description of %s: %s\n' "$id" "$(intercom_registry_get "$id" '.description // ""')"
+      ;;
+  esac
+}
+
+cmd_unregister() {
+  intercom_unregister "$@" || exit 1
+}
+
 cmd_directory() {
   local verbose=0
   case "${1:-}" in -v|--verbose) verbose=1 ;; esac
@@ -516,6 +542,8 @@ case "$sub" in
   store)                      cmd_store "$@" ;;
   register)                   cmd_register "$@" ;;
   names)                      cmd_names "$@" ;;
+  describe)                   cmd_describe "$@" ;;
+  unregister)                 cmd_unregister "$@" ;;
   directory|who|list|agents)  cmd_directory "$@" ;;
   resolve)                    cmd_resolve "$@" ;;
   check|inbox)                cmd_check "$@" ;;
@@ -535,6 +563,11 @@ intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
                                         confirm this clone's remote as the same project)
   intercom names [add|rm] [--for ID] <name>...
                                         list / edit an agent's human names
+  intercom describe [--for ID] "<one-liner>"
+                                        set an agent's description (own entry without --for)
+  intercom unregister <identity> [--force]
+                                        remove ONE directory entry; refuses while the agent
+                                        is addressed by a human name. Never a sweep.
   intercom directory [-v]               every registered agent (aka: who, list, agents)
   intercom resolve <name>               which agent does <name> address?
   intercom check [--count]              list (or count) pending messages for this repo
@@ -548,5 +581,5 @@ intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
   intercom pickup <slug> [--grow]       archive a message (or promote with --grow)
 HELP
     ;;
-  *) _ic_die "unknown subcommand '$sub' (try: identity|whoami|store|register|names|directory|resolve|check|send|claim|pickup)" ;;
+  *) _ic_die "unknown subcommand '$sub' (try: identity|whoami|store|register|names|describe|unregister|directory|resolve|check|send|claim|pickup)" ;;
 esac

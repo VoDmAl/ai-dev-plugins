@@ -545,6 +545,93 @@ intercom_names_edit() {
   fi
 }
 
+# intercom_describe_edit [--for <identity>] <text>
+#
+# Symmetric with intercom_names_edit. Descriptions are normally written by the
+# agent about itself (`register --describe`), and that stays the preferred path:
+# the one line that says what a repo is, is a thing the repo knows. `--for`
+# exists because the alternative does not scale — a directory of a dozen agents
+# cannot be completed without opening a session in each of a dozen repositories,
+# and until it is completed the listing cannot tell an unfinished onboarding
+# from an accidental entry.
+intercom_describe_edit() {
+  command -v jq >/dev/null 2>&1 || { printf 'intercom: describe needs jq.\n' >&2; return 1; }
+  local id="" desc=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --for)   id="$(_intercom_fold "${2:-}")"; shift 2 ;;
+      --for=*) id="$(_intercom_fold "${1#--for=}")"; shift ;;
+      *)       [ -z "$desc" ] && desc="$1"; shift ;;
+    esac
+  done
+  [ -n "$id" ] || id="$(intercom_identity)"
+  local rf
+  rf="$(intercom_registry_file "$id")"
+  if [ ! -f "$rf" ]; then
+    printf 'intercom: ✗ no registered agent `%s` (intercom directory lists them).\n' "$id" >&2
+    return 1
+  fi
+  [ -n "${desc//[[:space:]]/}" ] || { printf 'intercom: describe: no text given.\n' >&2; return 1; }
+
+  local tmp now
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo '')"
+  tmp="$(mktemp 2>/dev/null)" || return 1
+  if jq --arg d "$desc" --arg now "$now" '.description = $d | .updated = $now' "$rf" > "$tmp" 2>/dev/null; then
+    mv "$tmp" "$rf" 2>/dev/null || { rm -f "$tmp"; return 1; }
+  else
+    rm -f "$tmp"; return 1
+  fi
+}
+
+# intercom_unregister <identity> [--force]
+#
+# Removes ONE registry entry. Never a sweep: an entry that turns out to be real
+# is not recoverable from the listing it disappeared from, and the sender who
+# addressed it gets "no agent is registered as …" — which reads as a typo, not
+# as a deletion. So removal is per-item and refuses anything that looks alive.
+#
+# A human NAME is the strong signal of alive: names exist only because someone
+# said them. `--force` is there for the case where the user is removing an entry
+# they themselves just named by mistake.
+#
+# The inbox is left alone. Messages are data, and an inbox without an agent is
+# already a recognised state — `directory` lists it and `claim` recovers it.
+intercom_unregister() {
+  command -v jq >/dev/null 2>&1 || { printf 'intercom: unregister needs jq.\n' >&2; return 1; }
+  local id="" force=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --force) force=1; shift ;;
+      *)       [ -z "$id" ] && id="$(_intercom_fold "$1")"; shift ;;
+    esac
+  done
+  [ -n "$id" ] || { printf 'intercom: unregister: which agent? (intercom directory lists them)\n' >&2; return 1; }
+
+  local rf
+  rf="$(intercom_registry_file "$id")"
+  if [ ! -f "$rf" ]; then
+    printf 'intercom: ✗ no registered agent `%s` — nothing to remove.\n' "$id" >&2
+    return 1
+  fi
+
+  local nm
+  nm="$(jq -r '(.names // []) | join(", ")' "$rf" 2>/dev/null || echo "")"
+  if [ -n "$nm" ] && [ "$force" -eq 0 ]; then
+    printf 'intercom: ✗ `%s` is addressed by name: %s\n' "$id" "$nm" >&2
+    printf '          Someone reaches this agent that way; removing the entry breaks it silently.\n' >&2
+    printf '          Drop the names first (intercom names rm --for %s "<name>"), or pass --force.\n' "$id" >&2
+    return 1
+  fi
+
+  local pending
+  pending="$(intercom_inbox_count "$id" 2>/dev/null || echo 0)"
+  rm -f "$rf" 2>/dev/null || { printf 'intercom: ✗ could not remove %s\n' "$rf" >&2; return 1; }
+  printf 'intercom: ✓ removed `%s` from the directory.\n' "$id"
+  if [ "${pending:-0}" -gt 0 ] 2>/dev/null; then
+    printf '           Its inbox still holds %s message(s) and now lists as an unclaimed inbox.\n' "$pending"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Target resolution. One jq pass over the whole registry classifies every
 # agent against the folded input:
@@ -576,7 +663,14 @@ _intercom_match() {
         if (.keys | any(. == $t)) then "exact\t" + .id
         elif ($t | length) >= 2
              and ( (.keys | any(contains($t)))
-                   or (.keys | any((length >= 3) and ($t | contains(.))))
+                   # `. as $k` is load-bearing: inside `$t | contains(.)` the pipe
+                   # rebinds `.` to $t, so that form asks whether $t contains
+                   # ITSELF — always true. The whole clause then degraded to "has
+                   # a key of 3+ chars", which every agent does, and every lookup
+                   # that missed returned the entire directory under the heading
+                   # "Did you mean:". Invisible for as long as the tests only
+                   # asserted that the RIGHT agent appears in the list.
+                   or (.keys | any(. as $k | ($k | length) >= 3 and ($t | contains($k))))
                    or (.desc | contains($t)) )
         then "partial\t" + .id
         else empty end

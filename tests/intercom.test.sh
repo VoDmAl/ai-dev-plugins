@@ -118,6 +118,13 @@ says "partial match suggests the agent" "$out" "Did you mean:"
 says "suggestion line carries the identity" "$out" "• widget"
 out="$(bash "$IC" resolve "billing" 2>&1)"
 says "description words are searchable too" "$out" "• widget"
+# A suggestion list that names everyone suggests nothing. The assertions above
+# passed while the matcher returned the ENTIRE directory for every miss: a jq
+# pipe rebound `.`, so one clause asked whether the input contains itself and
+# was always true. Checking that the right agent APPEARS can never catch that.
+# This input resembles nothing, so the only correct answer is silence.
+out="$(bash "$IC" resolve "zzqq" 2>&1)"
+says_not "a miss with nothing similar suggests nobody" "$out" "• widget"
 
 printf '\n[send — routing by human name]\n'
 out="$(bash "$IC" send "Widget App" hello --title "Hi" 2>&1)"; rc=$?
@@ -331,6 +338,78 @@ says "the refusal says what would break" "$out" "would hijack"
   && bad "the refused registration wrote nothing" "wgt.json was created" \
   || ok "the refused registration wrote nothing"
 eq "routing survives the refusal" "$(bash "$IC" resolve wgt)" "$WGT_OWNER"
+
+printf '\n[suggestions stay narrow once there is more than one agent]\n'
+# Repeated here rather than beside the first resolve block on purpose: up there
+# only one agent existed, so "the list excludes the others" was true whatever
+# the matcher did. An assertion that cannot fail is worse than none — it reports
+# coverage that is not there.
+nagents=$(ls -1 "$VDM_INTERCOM_ROOT/_registry/"*.json 2>/dev/null | grep -c .)
+[ "$nagents" -ge 2 ] \
+  && ok "fixture: at least two agents registered ($nagents)" \
+  || bad "fixture: at least two agents registered" "only $nagents — the assertions below cannot fail"
+out="$(bash "$IC" resolve "widg" 2>&1)"
+says "near miss still finds the right agent" "$out" "• widget"
+says_not "near miss does not list the unrelated one" "$out" "• gadget"
+out="$(bash "$IC" resolve "qqzz" 2>&1)"
+says_not "a total miss lists nobody (1/2)" "$out" "• widget"
+says_not "a total miss lists nobody (2/2)" "$out" "• gadget"
+
+printf '\n[describe --for]\n'
+# A description is normally what an agent says about itself. But a directory of a
+# dozen agents cannot be completed that way without opening a session in each of
+# a dozen repositories, and until it is completed the listing cannot tell an
+# unfinished onboarding from an accidental entry.
+out="$(bash "$IC" describe --for gadget "The gadget service" 2>&1)"; rc=$?
+eq "describe --for succeeds" "$rc" "0"
+eq "description landed on the named agent" \
+  "$(jq -r '.description' "$VDM_INTERCOM_ROOT/_registry/gadget.json")" "The gadget service"
+out="$(bash "$IC" directory)"
+says "the described agent shows its description" "$out" "— The gadget service"
+out="$(bash "$IC" describe --for nosuchagent "x" 2>&1)"; rc=$?
+eq "describe refuses an unknown agent" "$rc" "1"
+says "the refusal names the agent" "$out" 'no registered agent `nosuchagent`'
+out="$(bash "$IC" describe --for gadget "" 2>&1)"; rc=$?
+eq "describe refuses empty text" "$rc" "1"
+eq "the refused describe left the old text" \
+  "$(jq -r '.description' "$VDM_INTERCOM_ROOT/_registry/gadget.json")" "The gadget service"
+
+printf '\n[unregister — one entry, never a sweep]\n'
+# Removing an entry that turns out to be real is not recoverable from the listing
+# it vanished from: the next sender gets "no agent is registered as …", which
+# reads as their own typo rather than as a deletion. A human name is the strong
+# signal of alive — names exist only because somebody said them.
+mkdir -p "$TMP/junkdir"
+( cd "$TMP/junkdir" && bash "$IC" register ) >/dev/null 2>&1
+[ -f "$VDM_INTERCOM_ROOT/_registry/junkdir.json" ] \
+  && ok "fixture: an unnamed entry exists to remove" \
+  || bad "fixture: an unnamed entry exists to remove" "junkdir.json missing"
+
+out="$(bash "$IC" unregister widget 2>&1)"; rc=$?
+eq "unregister refuses an agent that has names" "$rc" "1"
+says "the refusal lists the names in use" "$out" "addressed by name"
+[ -f "$VDM_INTERCOM_ROOT/_registry/widget.json" ] \
+  && ok "the refused unregister removed nothing" \
+  || bad "the refused unregister removed nothing" "widget.json is gone"
+eq "routing to the refused agent is intact" "$(bash "$IC" resolve "widget app")" "widget"
+
+out="$(bash "$IC" unregister junkdir 2>&1)"; rc=$?
+eq "unregister removes an unnamed entry" "$rc" "0"
+says "removal is reported" "$out" "removed \`junkdir\`"
+[ -f "$VDM_INTERCOM_ROOT/_registry/junkdir.json" ] \
+  && bad "the entry is gone from the registry" "junkdir.json survived" \
+  || ok "the entry is gone from the registry"
+out="$(bash "$IC" unregister junkdir 2>&1)"; rc=$?
+eq "unregistering twice is an error, not a silent no-op" "$rc" "1"
+says "the second attempt says there is nothing to remove" "$out" "nothing to remove"
+
+# --force is for the case the user named something by mistake themselves.
+bash "$IC" names add --for gadget "throwaway-name" >/dev/null 2>&1
+out="$(bash "$IC" unregister gadget --force 2>&1)"; rc=$?
+eq "--force removes a named entry" "$rc" "0"
+[ -f "$VDM_INTERCOM_ROOT/_registry/gadget.json" ] \
+  && bad "--force actually removed it" "gadget.json survived" \
+  || ok "--force actually removed it"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
