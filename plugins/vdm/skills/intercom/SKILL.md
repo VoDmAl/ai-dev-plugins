@@ -100,6 +100,39 @@ principle — the key would follow the sync and every machine would answer to on
 name. Nothing to install, nothing to configure, and correct per-machine on its
 own.
 
+### Completing someone else's entry, and removing one
+
+A registration is complete when it has at least one human `name` and a
+`description`, and both are normally written by the agent that lives in that
+repo. That does not scale to a directory that already has twenty entries: it
+would need a session opened in each of twenty repositories, and until then the
+listing cannot tell an unfinished onboarding from an accidental entry. So
+`names add --for` and `describe --for` exist to finish another agent's entry
+from outside.
+
+**Names cannot be derived — only descriptions partly can.** Field pass,
+2026-09-10: eleven entries were named in one sweep, and eight of the names came
+from each repository's own README title. The other three came only from the user
+(`gas` for a Global Auth showcase appears in no file anywhere). Plan the step as
+a confirmation pass with the user, not as automation; propose what the
+repositories say about themselves and let the user correct it.
+
+**Removal is per-item and refuses anything that looks alive.** `unregister` takes
+one identity, and there is deliberately no `--prune` / `--all`. An entry that
+turns out to be real is not recoverable from the listing it vanished from: the
+next sender is told *no agent is registered as …*, which reads as their own typo
+rather than as a deletion. A human name is the strong signal of alive — names
+exist only because somebody said them — so the command refuses while any remain
+and points at `names rm --for` first. The inbox is left untouched; messages are
+data, and an inbox without an agent already has a name (§ orphan inboxes) and a
+recovery path (`claim`).
+
+**The order that makes removal safe is naming first.** Completing the directory
+turns "which of these is a ghost?" from a guess into a residue: after the eleven
+were named, exactly the two entries that were not projects — a plugin-cache
+version folder and a parent directory — were the ones left unnamed. No predicate
+was needed, and none was written.
+
 ### Two guards on registration
 
 **Implicit registration needs more than a cwd basename.** `check`, `send` and
@@ -250,6 +283,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/intercom.sh <subcommand> [args]
 | `store` | Print the resolved store root. |
 | `register [--name N]… [--describe D] [--same-project]` | Record this repo in the directory. Without flags: the mechanical part only. `--name` (repeatable) and `--describe` supply the human part; `--same-project` confirms this clone's remote. Refuses a name that routes to another agent. |
 | `names [add\|rm] [--for ID] <name>…` | List (no args) or edit human names — own entry by default, `--for <identity>` for another agent's. |
+| `describe [--for ID] "<one-liner>"` | Set a description. Own entry by default; `--for` completes another agent's (see § Completing someone else's entry). |
+| `unregister <identity> [--force]` | Remove **one** directory entry. Refuses while the agent is addressed by a human name; `--force` overrides. Never a sweep — there is no bulk form on purpose. |
 | `directory [-v]` (aka `who`, `list`, `agents`) | Every registered agent: identity, names + aliases, description, pending count; `⚠ unnamed` where the human part is missing; plus inboxes that exist with no registered agent (unclaimed first-contact sends). `-v` adds remotes and paths. |
 | `resolve <name>` | Print the canonical identity `<name>` addresses; on failure list the nearest agents (exit 2 unknown, 3 ambiguous). |
 | `check [--count]` | List (or count) pending messages for this repo; also registers it. |
