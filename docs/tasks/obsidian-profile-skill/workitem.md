@@ -2,10 +2,10 @@
 title: "Skill: раскатка эталонного профиля Obsidian на любой vault"
 slug: obsidian-profile-skill
 description: "Довести профиль Obsidian до любого vault'а из сессии любого репозитория"
-status: in-progress
+status: dormant
 session-type: prd-prep
 created: 2026-09-08
-last-updated: 2026-09-08
+last-updated: 2026-09-21
 ---
 
 ## Назначение
