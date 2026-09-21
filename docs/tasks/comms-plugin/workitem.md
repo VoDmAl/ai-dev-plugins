@@ -2,7 +2,7 @@
 title: "comms-plugin: домен коммуникаций трёх репозиториев — что едет в суиту, что в vdx, что остаётся"
 slug: comms-plugin
 description: "Разрезать коллективный бриф о встречах, письмах, висяках и почте до кода"
-status: in-progress
+status: done
 session-type: brainstorm
 created: 2026-09-21
 last-updated: 2026-09-21
@@ -147,7 +147,11 @@ mailbox». **Области «черновики без отправки» не�
 гейт при отказе блокирует с «не проверено»** (DL #10); **D7 — fffd в `vdm-git` на обеих
 поверхностях** (DL #11); **D8 — висяки в 0.2, два маркера срока, один детектор** (DL #12); **D9 — почта v1
 только чтение, черновики файлами** (DL #13). **Все девять решений приняты 2026-09-21.**
-Осталось: ответы агентам, кристаллы-ломти в `ready`, закрытие этого кристалла.
+Ответы отправлены в тот же день (`comms-plugin-verdict` ×3, `wait-due-verdict`), шесть
+кристаллов заведены в `ready`, кристалл закрыт без кода. Урожай: факты о предмете
+(scope'ы Gmail, fail-open гейтов суиты, закон «провалена ≠ не выполнена») перенесены в
+кристаллы ломтей — `vdm-comms-mail`, `gate-fail-closed-audit`; в `suite.md` закон попадёт
+пересборкой из последнего.
 
 **Итог разреза — что куда едет:**
 
@@ -456,7 +460,7 @@ send…», `gmail.readonly` — «View your email messages and settings»; об�
 
 ### #1. Гейты самой суиты fail-open при отсутствии `python3`/`jq` — тот же класс, что в эстафете
 
-**Status:** open
+**Status:** migrated → gate-fail-closed-audit (2026-09-21)
 **Возникло в:** чтение `crystal-completion-guard.sh`, `crystal-lint.sh`, `lib/config-read.sh`
 при сборе фактуры.
 
@@ -469,7 +473,7 @@ send…», `gmail.readonly` — «View your email messages and settings»; об�
 
 ### #2. У интеркома нет формы эстафеты — три агента вклеивали предыдущее письмо целиком
 
-**Status:** open
+**Status:** migrated → intercom-relay-form (2026-09-21)
 **Возникло в:** чтение `references/intercom-brief-t23b-program-relay.md` — §Б содержит §12,
 §12 содержит исходник; 64 КБ с двумя уровнями `>`-цитирования.
 
@@ -480,7 +484,8 @@ send…», `gmail.readonly` — «View your email messages and settings»; об�
 
 ### #3. `wait-due-outside-crystals` (limeflow, 14.09) — тот же предмет, что ломоть «висяки», и срок ответа уже прошёл
 
-**Status:** open
+**Status:** resolved — ответ `wait-due-verdict` отправлен, бриф скопирован в
+`references/intercom-brief-limeflow-wait-due.md` и заархивирован (2026-09-21)
 **Возникло в:** просмотр инбокса при поиске «коллективного» письма.
 
 `limeflow` просит детектор `(due:)` видеть ожидания вне кристаллов (ticket-doc'и, разделы
@@ -491,7 +496,7 @@ send…», `gmail.readonly` — «View your email messages and settings»; об�
 
 ### #4. Третий плагин задевает два pre-commit гейта, захардкоженных на `vdm|vdm-git`
 
-**Status:** open
+**Status:** migrated → vdm-comms-core (Next action «обобщить гейты до первого коммита», 2026-09-21)
 **Возникло в:** D2 — вариант отдельного `vdm-comms`.
 
 Уже разобрано в `obsidian-profile-skill` Sidetrack #6: `scripts/check-lib-sync.sh` держит
@@ -501,7 +506,9 @@ send…», `gmail.readonly` — «View your email messages and settings»; об�
 
 ### #5. `file://`-ссылки на файлы в ответах — соглашение ответа, не comms
 
-**Status:** open
+**Status:** cancelled (reason: соглашение формата ответа, не предмет плагина; в вердикте
+агентам названо «висит отдельно»; если владелец захочет — глобальный `CLAUDE.md`, после
+проверки в терминале; 2026-09-21)
 **Возникло в:** дополнение §2.1.
 
 «Любой подготовленный файл — как `[имя](file:///путь)`» — правило про формат ответа
@@ -533,7 +540,8 @@ send…», `gmail.readonly` — «View your email messages and settings»; об�
 
 ### #8. Три расхождения в `t23b-program`, оставленные до нашего вердикта
 
-**Status:** open
+**Status:** resolved — вердикт `comms-plugin-verdict` §4 говорит по каждому, что чинить
+сейчас и что ждать (2026-09-21)
 **Возникло в:** §А10 эстафеты.
 
 Дрейф `type: meeting-agenda/meeting-prep` (шаблоны несут `meeting`), `INDEX.md` руками и
@@ -543,7 +551,7 @@ send…», `gmail.readonly` — «View your email messages and settings»; об�
 
 ### #9. `space-hq` расширил модель серии полями `cadence_days` / `cadence_anchor`
 
-**Status:** open
+**Status:** migrated → vdm-comms-core (контракт — пол, лишние ключи не нарушение; 2026-09-21)
 **Возникло в:** шапка `space-hq/.claude/hooks/meeting-reminder.py`.
 
 Напоминание предсказывает очередную встречу серии по каденции, «даже если каталога под неё
@@ -553,7 +561,8 @@ send…», `gmail.readonly` — «View your email messages and settings»; об�
 
 ### #10. `check-outgoing.py` в `t23b` — четвёртый comms-механизм, выросший за 12 дней
 
-**Status:** open
+**Status:** resolved — DL #6: остаётся в репозитории до хотелки; так и сказано в
+вердикте §4 (2026-09-21)
 **Возникло в:** инвентарь `t23b-program/scripts/`.
 
 Stop-хук от 20.09: в неотправленном письме нет обстоятельства без источника. Правило
@@ -587,11 +596,14 @@ Stop-хук от 20.09: в неотправленном письме нет об
 - [x] **D9.** Почта v1 — только чтение (`gmail.readonly`): синк «Отправленных», приём
       входящих с вложениями; черновики — файлы; создание черновиков — v2 под отдельным
       принципалом — DL #13, 2026-09-21
-- [ ] Ответить `space-hq`, `global-auth-gap`, `t23b-program` одним брифом: вердикт по D1–D9,
-      что чинить у себя сейчас (Sidetrack #8), просьба сообщать изменения модели (DL #3)
-- [ ] Ответить `limeflow` по `wait-due-outside-crystals` — с признанием, что их срок
-      2026-09-18 прошёл (Sidetrack #3); после ответа — `pickup`
-- [ ] Завести кристаллы-ломти в `ready` по принятым решениям; закрыть этот кристалл без кода
+- [x] Ответить `space-hq`, `global-auth-gap`, `t23b-program` одним брифом — отправлен
+      `comms-plugin-verdict` в три инбокса 2026-09-21 (вердикт, §4 «что чинить сейчас»,
+      §6 «что присылать»)
+- [x] Ответить `limeflow` — отправлен `wait-due-verdict` 2026-09-21, исходный бриф
+      заархивирован
+- [x] Кристаллы-ломти в `ready` заведены 2026-09-21: `vdm-comms-core`, `fffd-two-surfaces`,
+      `vdm-comms-pending`, `vdm-comms-mail`, `gate-fail-closed-audit`, плюс
+      `intercom-relay-form` из побега #2; этот кристалл закрыт без кода
 - [x] Скопировать оба письма в `references/` и заархивировать в `_done/` — 2026-09-21
 
 ## References
