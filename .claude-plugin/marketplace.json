@@ -35,6 +35,20 @@
         "path": "plugins/vdm-git"
       },
       "category": "workflow"
+    },
+    {
+      "name": "vdm-comms",
+      "description": "Meetings and correspondence discipline for repositories that keep them as files: a configurable contract linter for meetings/<date>-<slug>/ and series files (the contract is a floor distilled from three repositories — a track may resolve as a directory or a single file, index.md is owed only after the meeting has happened), a drift signal for the generated registry and per-track meeting pointers, and a PreToolUse guard that refuses to create an outgoing letter already claiming to have been sent. python3 stdlib only — the frontmatter reader is vendored.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Dmitry Vorobyev"
+      },
+      "source": {
+        "source": "git-subdir",
+        "url": "VoDmAl/ai-dev-plugins",
+        "path": "plugins/vdm-comms"
+      },
+      "category": "workflow"
     }
   ]
 }

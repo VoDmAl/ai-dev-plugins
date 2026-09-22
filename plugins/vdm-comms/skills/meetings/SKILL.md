@@ -1,0 +1,158 @@
+---
+name: meetings
+description: "Meetings and correspondence discipline for a repository that keeps them as files — meetings/<date>-<slug>/ with agenda/prep/index, per-series files, and comms/ letters on tracks. Use when writing or fixing a meeting file, when the contract linter reports a violation, when onboarding a repo that already has a meetings tree, or when the user asks what shape a meeting file should have. Triggers include: «контракт встречи», «линтер встреч», «завести встречу», «протокол встречи», «письмо в comms», «черновик письма», meeting contract, meeting lint, onboarding meetings."
+license: MIT
+---
+
+# meetings — the contract over a meetings tree
+
+## Purpose
+
+Three repositories independently grew the same model: meetings as directories,
+a file per series, letters in `comms/` beside each track. They also grew three
+copies of the tool that holds it, and the copies drifted. This plugin is the
+one home for that tool; this skill is what the assistant needs to work inside
+it.
+
+**The contract is a FLOOR.** Extra frontmatter keys, extra sections, extra file
+classes are never violations. A project layers its own conventions on top and
+the linter stays silent about them. Only what is MISSING or CONTRADICTORY is
+reported.
+
+## The shape
+
+```
+<meetings-dir>/                     default: meetings/
+  INDEX.md                          registry — generated (see /vdm-comms:index)
+  <series>.md                       one file per series, type: meeting-series
+  <YYYY-MM-DD>-<slug>/
+    prep.md                         before: reasoning, branches
+    agenda.md                       before: what we walk through
+    index.md                        after: the record
+    pitch.md, pitch-v2.md           optional
+    anything-else.md                raw material — NOT under contract
+```
+
+**The role comes from the FILE NAME, not from `type:`.** `index`, `prep`,
+`agenda`, `pitch[-vN]` are role files and owe the contract whatever their
+`type` says; everything else in the directory is raw material (transcripts,
+handouts, checklists) and is left alone. This is not a detail: one field
+repository keeps thirteen transcripts with no frontmatter at all next to its
+meetings, and another grew its own `type` vocabulary — keying the contract off
+`type` would have shouted about both while leaving the real role files
+unchecked.
+
+## What the linter enforces
+
+| Rule | Level |
+|------|-------|
+| a meeting lives in `<meetings-dir>/<YYYY-MM-DD>-<slug>/` | error |
+| `date:` present, parseable, equal to the directory's date | error |
+| `index.md` exists **only if the meeting is in the past** | error |
+| `series:` is one of the declared series (when the list is configured) | error |
+| each track in `tracks:` resolves as `<track>/` **or** `<track>.md` | error |
+| a track's first segment is a configured root (when configured) | error |
+| `topics[].track` is one of this meeting's `tracks:` | error |
+| `type:` on a role file is not `meeting` | warning |
+| a declared series has no `<meetings-dir>/<series>.md` yet | warning |
+| a topic has neither a track nor `tail: true` | warning |
+| the body of a series file | never checked |
+
+Two of these carry more weight than their one line suggests:
+
+- **`index.md` only for a past meeting.** A planned meeting legitimately has
+  only `prep.md` and `agenda.md`; the record is written afterwards. A linter
+  demanding `index.md` unconditionally blocks every write into a perfectly
+  healthy directory, and that phase is exactly the one in which the files are
+  being edited.
+- **A track may be a file.** In one repository half of the tracks resolve to
+  `<path>.md` rather than a directory. Checking `isdir` alone rejects ten live
+  tracks, so both forms are tried.
+
+Print the floor at any time:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh --print-contract
+```
+
+Lint by hand — one file, or the whole tree:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh path/to/meetings/2026-09-21-x/agenda.md
+${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh --all
+```
+
+A `PostToolUse` hook runs the same linter after every write into the meetings
+tree, so a violation comes back within one tool call. Treat that feedback as
+the contract speaking, not as noise — and fix the file rather than working
+around it.
+
+## Configuration
+
+`.claude/vdm-plugins.json` (or `.qwen/vdm-plugins.json`) → `comms`:
+
+```json
+{
+  "comms": {
+    "meetings-dir": "meetings",
+    "track-roots": ["gaps", "org", "incidents"],
+    "series": ["sb", "bocy", "plc"],
+    "topic-sections": false,
+    "enabled": true
+  }
+}
+```
+
+| Key | Meaning |
+|-----|---------|
+| `meetings-dir` | where meetings live. Default `meetings`. |
+| `track-roots` | allowed FIRST segment of a track path. Empty (default) accepts any. **Not a path template**: depth is unbounded and case is preserved, because real tracks run one to three segments deep and some contain capitals. |
+| `series` | declared series slugs. Empty (default) disables the membership check. |
+| `topic-sections` | also check that the body has one `## Тема N. <name>` section per topic. Default `false` — body conventions differ between projects. |
+| `enabled` | `false` switches the whole plugin off. |
+
+Only what genuinely differed between the three repositories is configurable.
+Everything else is the floor, in code, identical everywhere.
+
+## Outgoing letters
+
+A `PreToolUse` guard refuses to **create** `*/comms/*-out.md` that already
+carries `sent: <date>`. A letter is sent by a person: until then the file is a
+draft (`draft: true`), and `sent:` is the record of what actually went out.
+
+The guard keys off the **path shape**, not a list of track prefixes. The field
+version matched `/gaps/` only, and by the time anyone measured it the same
+repository had grown `org/` and `incidents/`: nineteen letters sat outside the
+guard, and nothing said so — a narrowed guard looks exactly like a quiet one.
+
+Editing an existing letter is never blocked.
+
+## Onboarding a repository that already has meetings
+
+1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh --all` and read the output
+   **before changing anything**. Expect warnings; they are the diff between
+   this floor and the project's own habits.
+2. Fill in `comms.track-roots` and `comms.series` from what the repository
+   actually contains — not from what its README says it contains. The two
+   diverge; that is why the membership check exists.
+3. Fix errors one file at a time. Warnings are a conversation with the user,
+   not a task list: `type: meeting-agenda` on a role file may be a drift worth
+   converging, or a convention worth keeping.
+4. The generated layer is a separate step — see `/vdm-comms:index`.
+
+## When the linter cannot run
+
+A blocking hook that cannot run says `NOT CHECKED` and blocks, rather than
+returning silence. "The check failed" and "the check did not run" are
+different events, and only the first one is what a clean exit means. If you
+see it: the linter needs `python3` (standard library only — this plugin brings
+no third-party dependencies). Do not work around it by writing the file
+another way.
+
+## Integration
+
+| Other skill | Interaction |
+|-------------|-------------|
+| `/vdm-comms:index` | rebuilds the registry, the series lists and the track pointers |
+| `/vdm:crystal-bud` | a contract divergence worth deciding later is a побег, not a silent edit |
+| `/vdm:changelog` | record a contract change in the project's own changelog |

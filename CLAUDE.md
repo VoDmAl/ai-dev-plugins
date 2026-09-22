@@ -1,6 +1,6 @@
 # cc-vdm-plugins — Project Notes
 
-Two plugins (`vdm`, `vdm-git`) live under `plugins/`. They run under multiple AI coding harnesses — Claude Code (primary) and Qwen Code (via `qwen-extension.json`).
+Three plugins (`vdm`, `vdm-git`, `vdm-comms`) live under `plugins/`. They run under multiple AI coding harnesses — Claude Code (primary) and Qwen Code (via `qwen-extension.json`).
 
 ## Scope of this CLAUDE.md
 
@@ -81,9 +81,13 @@ Each rule is paired with a deterministic gate — see `docs/llm/soft-guidance-vs
 
 2. **Every long-lived doc must have a discovery hook.** Two families, one rule: every `docs/llm/*.md`, **and every synthesis document** (any `.md` declaring `covers:` — e.g. `docs/model/suite.md`). A hook is a CLAUDE.md ref, a source-code @see comment, a `docs/features/` ref, a sibling `docs/llm/` ref, or a reference from a synthesis document; `PROJECT_CHANGELOG.md` mentions don't count. Without one the doc is invisible to future sessions, because only `CLAUDE.md` is auto-loaded — the file is then *current and unreachable*, the worst state available. Synthesis docs are in scope for a non-obvious reason: they are **not** rescued by the drift signal, since a synthesis whose inputs never change never drifts and so never gets surfaced. Enforced inside this repo by the `orphan-guard` `PostToolUse` hook (`plugins/vdm/scripts/orphan-guard-hook.sh`) — i.e. by the plugin's own user-time hook, which we benefit from while developing here. Periodic audit via `plugins/vdm/scripts/check-doc-orphans.sh` (also called by `/vdm:docs-sync` Phase 1.5).
 
-3. **Keep `plugins/{vdm,vdm-git}/lib/` byte-identical.** Mirror invariant; any divergence beyond the cross-reference comment must be resolved before commit. Enforced by `scripts/check-lib-sync.sh` via `.githooks/pre-commit`.
+3. **Keep every mirrored `lib/` file byte-identical across the plugins that carry it.** The
+   invariant is per file, not per plugin: a file present in two or more `plugins/*/lib/`
+   directories must match byte-for-byte, modulo the cross-reference comment that names a
+   sibling. A plugin carrying a subset is legal; a single-copy file is a note, not a
+   failure. Enforced by `scripts/check-lib-sync.sh` via `.githooks/pre-commit`.
 
-4. **No dev-tree paths in user-time files.** Inside `plugins/*/skills/**/SKILL.md` and `plugins/*/templates/*.md`, references to scripts/lib/hooks/templates must use `${CLAUDE_PLUGIN_ROOT}/...`, not `plugins/X/...` — the latter only resolves inside this dev clone, not in a user project. Enforced by `scripts/check-skill-paths.sh` via `.githooks/pre-commit` (runs on every commit).
+4. **No dev-tree paths in user-time files.** Inside `plugins/*/skills/**/SKILL.md` and `plugins/*/templates/*.md`, references to scripts/lib/hooks/templates must use `${CLAUDE_PLUGIN_ROOT}/...`, not `plugins/X/...` (any plugin name — the gate does not enumerate them) — the latter only resolves inside this dev clone, not in a user project. Enforced by `scripts/check-skill-paths.sh` via `.githooks/pre-commit` (runs on every commit).
 
 5. **Workitem completion discipline (crystal gate).** Any file under `docs/tasks/<slug>/workitem.md` (or flat `docs/tasks/<slug>.md`) with frontmatter `status: in-progress` must have zero `- [ ]` checkboxes before transitioning to `status: done`. This generalizes "completion discipline" — every unchecked checkbox is an open obligation, not only items inside `## Sidetracks`. Five resolution paths (resolve / migrate / cancel / defer / promote-to-stem) per Decision Log #9 in `docs/tasks/crystal-design/workitem.md`. Enforced in three layers (Decision Log #7): (a) PreToolUse hook `crystal-completion-guard` in the `vdm` plugin (primary, fires on Write/Edit/MultiEdit of any workitem); (b) Stop hook `crystal-stop-reminder` (visibility); (c) `.githooks/pre-commit` Gate 4 — `scripts/check-crystal-completion.sh` — for IDE-direct edits that bypass the assistant. Same backup ships in `vdm-git` for downstream projects.
 
@@ -144,9 +148,14 @@ If you see `[vdm-dev] Dev hooks not active in this clone…`, run the command ab
 
 - `plugins/vdm/` — core plugin (docs-sync, docs-distill, learn, changelog, crystal-*, intercom skills)
 - `plugins/vdm-git/` — optional git safety plugin (guard skill)
-- `plugins/{vdm,vdm-git}/lib/` — **mirrored** config helpers (drift-checked by `scripts/check-lib-sync.sh`)
+- `plugins/vdm-comms/` — optional meetings/correspondence plugin (meetings, index skills)
+- `plugins/*/lib/` — **mirrored** config helpers. The invariant is per FILE: every file
+  present in two or more plugins must match byte-for-byte (modulo the cross-reference
+  comment naming a sibling). A plugin may carry a subset — a plugin with no crystals has
+  no business vendoring `crystal-path.sh` — and a single-copy file is reported as a note,
+  not a failure. Drift-checked by `scripts/check-lib-sync.sh`.
 - `scripts/check-lib-sync.sh` — manual run of the drift check
-- `.githooks/pre-commit` — runs the drift check before any commit that stages `plugins/{vdm,vdm-git}/lib/**`
+- `.githooks/pre-commit` — runs the drift check before any commit that stages `plugins/*/lib/**`
 - `scripts/ensure-githooks.sh` — SessionStart warner (warn-only check that `core.hooksPath=.githooks`)
 
 See `README.md` → Development for the full developer protocol.

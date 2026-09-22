@@ -1,0 +1,40 @@
+{
+  "description": "VDM comms hooks — meeting contract linter (PostToolUse), outgoing-draft guard (PreToolUse), and the registry/pointer drift signal (SessionStart + PostToolUse). Every hook exits silently in a project without a meetings directory.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/comms-index-check.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/comms-draft-guard.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh --hook",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
