@@ -99,13 +99,23 @@ def _is_workitem_path(abs_path: str, roots: list[str]) -> tuple[bool, bool, str]
     Workitem files: <root>/<slug>/workitem.md (folder, canonical) or
     <root>/<slug>.md (flat, legacy). Anything else returns (False, False, "").
     """
-    base = os.path.basename(abs_path)
+    # Both sides are resolved through symlinks before they are compared, and
+    # that is not tidiness. Roots arrive from `git rev-parse --show-toplevel`,
+    # which returns the REAL path, while the path in a hook payload is whatever
+    # the harness was handed. On macOS a project under /tmp or /var reaches the
+    # gate as /var/… while its root resolves to /private/var/… — the prefix
+    # match fails, the file is judged "outside every root", and the gate exits
+    # 0 on a genuine violation. Silent, and indistinguishable from a clean tree.
+    # `abspath` normalises `..` and relativeness but never resolves a symlink,
+    # which is exactly the half that does not help here.
+    real_path = os.path.realpath(abs_path)
+    base = os.path.basename(real_path)
     for root in roots:
         if not root:
             continue
-        abs_root = os.path.abspath(root)
+        abs_root = os.path.realpath(root)
         try:
-            rel = os.path.relpath(abs_path, abs_root)
+            rel = os.path.relpath(real_path, abs_root)
         except ValueError:
             continue
         if rel.startswith(".."):
