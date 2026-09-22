@@ -8,10 +8,10 @@
 # treats as the record of what went out.
 #
 # Scope is the PATH SHAPE — `*/comms/*-out.md` — and deliberately not a list of
-# track prefixes. The field version of this guard matched `/gaps/` only, and by
-# the time it was measured its own repository had grown `org/` and `incidents/`:
-# nineteen outgoing letters sat outside the guard, and nothing said so, because
-# a narrowed guard looks exactly like a quiet one.
+# track prefixes. The field version of this guard matched ONE prefix, and by the
+# time anyone measured it that repository had grown two more: nineteen outgoing
+# letters sat outside the guard, and nothing said so, because a narrowed guard
+# looks exactly like a quiet one.
 #
 # Editing an EXISTING file is allowed: fixing a typo in a letter that really
 # was sent is legitimate, and the guard has nothing to say about it.

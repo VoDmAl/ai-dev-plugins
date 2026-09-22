@@ -33,7 +33,52 @@ DEFAULTS = {
     "track-roots": [],
     "series": [],
     "topic-sections": False,
+    "labels": "en",
 }
+
+# Wording for the files the generator writes INTO THE PROJECT. It is the one
+# part of this plugin that ends up in somebody else's document, so it cannot be
+# hardcoded in the language its authors happen to work in: a table headed
+# "Дата | Встреча" appearing in an English repository is the plugin deciding
+# something that was never its call.
+#
+# `comms.labels` takes "en" (default), "ru", or an object overriding individual
+# keys — the object is merged over English, so a project renames one column
+# without restating the rest.
+LABELS = {
+    "en": {
+        "col-date": "Date",
+        "col-meeting": "Meeting",
+        "col-series": "Series",
+        "col-tracks": "Tracks",
+        "registry-empty": "no meetings yet",
+        "series-empty": "no meetings in this series yet",
+        "pointer-line": "Meeting %(date)s — [%(source)s](%(link)s)",
+        "pointer-record": "record",
+        "pointer-topics": "Topics on this track:",
+    },
+    "ru": {
+        "col-date": "Дата",
+        "col-meeting": "Встреча",
+        "col-series": "Серия",
+        "col-tracks": "Треки",
+        "registry-empty": "встреч пока нет",
+        "series-empty": "встреч серии пока нет",
+        "pointer-line": "Встреча %(date)s — [%(source)s](%(link)s)",
+        "pointer-record": "протокол",
+        "pointer-topics": "Темы этого трека:",
+    },
+}
+
+
+def labels(cfg):
+    """Resolve `comms.labels` into a complete wording map."""
+    value = cfg.get("labels", "en")
+    if isinstance(value, dict):
+        merged = dict(LABELS["en"])
+        merged.update({k: v for k, v in value.items() if isinstance(v, str)})
+        return merged
+    return dict(LABELS.get(str(value), LABELS["en"]))
 
 
 def today():

@@ -39,9 +39,10 @@ is reported.
 {
   "comms": {
     "meetings-dir": "meetings",
-    "track-roots": ["gaps", "org", "incidents"],
-    "series": ["sb", "bocy"],
-    "topic-sections": false
+    "track-roots": ["projects", "teams", "incidents"],
+    "series": ["weekly", "steering"],
+    "topic-sections": false,
+    "labels": "en"
   }
 }
 ```
@@ -51,6 +52,12 @@ configurable. `track-roots` is a list of allowed **first segments**, not a path
 template: real track paths run one to three segments deep, some contain
 capitals, and half of one repository's tracks resolve to `<path>.md` rather
 than a directory.
+
+`labels` is the wording of the files the generator writes **into your
+repository** — `"en"` (default), `"ru"`, or an object overriding individual
+keys (`{"col-meeting": "Созвон"}`), merged over English. It exists because a
+table headed in the plugin author's language appearing in your document is the
+plugin deciding something that was never its call.
 
 ## Dependencies
 

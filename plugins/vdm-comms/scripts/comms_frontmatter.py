@@ -115,9 +115,9 @@ def parse(fm_text):
                 continue
             im = _ITEM_RE.match(nxt)
             # A block sequence may sit at indent 0 — that is ordinary YAML, and
-            # it is what one of the three field repositories writes:
+            # it is what one of the field repositories writes:
             #     people:
-            #     - dmitry-vorobiev
+            #     - some-person
             # So the end of a block value is the next KEY at indent 0, never
             # just "indent 0". Reading it as the end cost this parser every
             # `index.md` in that repository on its first run.

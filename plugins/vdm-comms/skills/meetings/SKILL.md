@@ -95,9 +95,10 @@ around it.
 {
   "comms": {
     "meetings-dir": "meetings",
-    "track-roots": ["gaps", "org", "incidents"],
-    "series": ["sb", "bocy", "plc"],
+    "track-roots": ["projects", "teams", "incidents"],
+    "series": ["weekly", "steering"],
     "topic-sections": false,
+    "labels": "en",
     "enabled": true
   }
 }
@@ -108,8 +109,13 @@ around it.
 | `meetings-dir` | where meetings live. Default `meetings`. |
 | `track-roots` | allowed FIRST segment of a track path. Empty (default) accepts any. **Not a path template**: depth is unbounded and case is preserved, because real tracks run one to three segments deep and some contain capitals. |
 | `series` | declared series slugs. Empty (default) disables the membership check. |
-| `topic-sections` | also check that the body has one `## Тема N. <name>` section per topic. Default `false` — body conventions differ between projects. |
+| `topic-sections` | also check that the body has one topic section per topic — `## Topic N. <name>` or `## Тема N. <name>`. Default `false`: body conventions differ between projects. |
+| `labels` | wording of the files the GENERATOR writes into your repository: `"en"` (default), `"ru"`, or an object overriding individual keys, merged over English. |
 | `enabled` | `false` switches the whole plugin off. |
+
+Fill `track-roots` and `series` from what the repository actually contains. The
+values above are placeholders — a project's real ones are its own, and the two
+lists exist precisely because no two of the field repositories agreed on them.
 
 Only what genuinely differed between the three repositories is configurable.
 Everything else is the floor, in code, identical everywhere.
@@ -121,9 +127,9 @@ carries `sent: <date>`. A letter is sent by a person: until then the file is a
 draft (`draft: true`), and `sent:` is the record of what actually went out.
 
 The guard keys off the **path shape**, not a list of track prefixes. The field
-version matched `/gaps/` only, and by the time anyone measured it the same
-repository had grown `org/` and `incidents/`: nineteen letters sat outside the
-guard, and nothing said so — a narrowed guard looks exactly like a quiet one.
+version matched one prefix, and by the time anyone measured it that repository
+had grown two more: nineteen letters sat outside the guard, and nothing said
+so — a narrowed guard looks exactly like a quiet one.
 
 Editing an existing letter is never blocked.
 

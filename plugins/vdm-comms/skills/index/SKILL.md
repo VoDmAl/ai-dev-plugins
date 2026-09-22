@@ -56,6 +56,17 @@ otherwise. It never fires per-write: every edit to a meeting file makes the
 registry stale by definition, so a per-write reminder would be permanently on,
 and a reminder that is always on is one nobody reads.
 
+## The wording is yours
+
+Everything this generator writes into the project — table headers, the "no
+meetings yet" placeholder, the pointer's sentence — comes from `comms.labels`:
+`"en"` (default), `"ru"`, or an object overriding individual keys, merged over
+English. Titles, topic names and dates are the project's own data and are never
+translated.
+
+Set it before the first `--write`, or the first rebuild lands in a language the
+repository does not use and the second one rewrites every generated file again.
+
 ## Insertion markers
 
 Tables are written **between explicit markers** — nothing is guessed, and a
