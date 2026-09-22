@@ -43,6 +43,28 @@ Until specialization is needed, everything lives here.
 |-------|---------|-------------|
 | guard | `/vdm-git:guard` | Blocks commit/push until user confirms, enforces commit message format |
 
+### `vdm-comms` — Meetings & Correspondence (optional)
+
+For a repository that keeps meetings and letters as files: `meetings/<date>-<slug>/`
+with agenda/prep/index, a file per series, and `comms/` letters beside each track.
+
+| Skill | Command | Description |
+|-------|---------|-------------|
+| meetings | `/vdm-comms:meetings` | The contract over a meetings tree — what is checked, how to configure it, how to onboard a repo that already has one |
+| index | `/vdm-comms:index` | Rebuild the generated layer: the registry, the per-series lists, and the pointer each track's `comms/` gets for a meeting that touched it |
+
+Three hooks: a `PostToolUse` contract linter, a `PreToolUse` guard that refuses to
+create an outgoing letter already claiming `sent:`, and a `SessionStart` drift
+signal for the generated layer. All exit silently in a project without a
+meetings directory. Dependency: `python3`, standard library only — the
+frontmatter reader is vendored so installing the plugin does not add the first
+third-party dependency to a project that has none.
+
+The contract is a **floor** distilled from three repositories that grew the same
+model independently: extra frontmatter keys, extra sections and a project's own
+file classes are never violations. Only what differed between them is
+configurable (`comms.meetings-dir`, `track-roots`, `series`).
+
 ## What It Does
 
 ### docs-sync
@@ -150,6 +172,9 @@ claude plugin install vdm@vodmal --scope user
 
 # Install git safety (optional)
 claude plugin install vdm-git@vodmal --scope user
+
+# Install meetings & correspondence discipline (optional)
+claude plugin install vdm-comms@vodmal --scope user
 ```
 
 ### Qwen Code
@@ -398,7 +423,7 @@ Add to your critical rules section:
 
 ## Namespaces
 
-Two plugin namespaces:
+Three plugin namespaces:
 
 **`vdm`** (core):
 - `vdm:docs-sync` — documentation synchronization
@@ -407,6 +432,10 @@ Two plugin namespaces:
 
 **`vdm-git`** (optional):
 - `vdm-git:guard` — git safety guard (commit/push protection)
+
+**`vdm-comms`** (optional):
+- `vdm-comms:meetings` — the contract over a meetings tree
+- `vdm-comms:index` — the generated registry, series lists and track pointers
 
 ## changelog Skill Quick Reference
 

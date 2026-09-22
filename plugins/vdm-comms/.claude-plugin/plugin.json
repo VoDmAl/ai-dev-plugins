@@ -1,0 +1,9 @@
+{
+  "name": "vdm-comms",
+  "version": "0.1.0",
+  "description": "Meetings and correspondence discipline: a configurable contract linter for meetings/<date>-<slug>/ and series files, a drift signal for the generated registry and per-track meeting pointers, and a draft guard that refuses to mark an unsent letter as sent.",
+  "author": {
+    "name": "Dmitry Vorobyev"
+  },
+  "license": "MIT"
+}

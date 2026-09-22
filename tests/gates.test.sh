@@ -168,14 +168,41 @@ expect_exit "RED: divergent mirror ⇒ exit 1" 1 "$rc"
 expect_says "RED: names the drifted file" "$out" "config-read.sh"
 restore
 
-# RED 2: a file exists in only one copy.
-printf '#!/bin/bash\n' > plugins/vdm-git/lib/only-here.sh
+# RED 2: a THIRD plugin's copy drifts. This is the case the gate could not see
+# until 2026-09-21: its scope was the hardcoded pair vdm ↔ vdm-git, so a third
+# plugin's lib/ was outside it — and the miss looked exactly like a clean run.
+mkdir -p plugins/vdm-third/lib
+cp plugins/vdm/lib/config-read.sh plugins/vdm-third/lib/config-read.sh
+printf '\n# injected drift in the third plugin\n' >> plugins/vdm-third/lib/config-read.sh
 out=$(bash scripts/check-lib-sync.sh 2>&1); rc=$?
-expect_exit "RED: orphan file in vdm-git/lib ⇒ exit 1" 1 "$rc"
-expect_says "RED: names the orphan" "$out" "only-here.sh"
+expect_exit "RED: third plugin's copy drifts ⇒ exit 1" 1 "$rc"
+expect_says "RED: names the third plugin" "$out" "vdm-third"
+rm -rf plugins/vdm-third
 restore
 
-# FALSE-POSITIVE: the cross-reference comment naming the OTHER plugin is the
+# GREEN: a third plugin carrying an IDENTICAL copy is in sync, not drift.
+mkdir -p plugins/vdm-third/lib
+cp plugins/vdm/lib/config-read.sh plugins/vdm-third/lib/config-read.sh
+out=$(bash scripts/check-lib-sync.sh 2>&1); rc=$?
+expect_exit "GREEN: third plugin with an identical copy ⇒ exit 0" 0 "$rc"
+rm -rf plugins/vdm-third
+restore
+
+# GREEN, and deliberately so: a file that exists in exactly ONE plugin is not a
+# mirror. Until 2026-09-21 this was RED — correct while every plugin was
+# required to carry every helper, wrong once a plugin may legitimately carry a
+# subset (a plugin with no crystals has no business vendoring crystal-path.sh).
+# From here the gate cannot tell "added to one, forgotten in the other" from
+# "local to this plugin on purpose", so it reports the file as a note and does
+# not pick for you. Recorded here rather than silently relaxed: a red test that
+# turns green is a decision, not a maintenance detail.
+printf '#!/bin/bash\n' > plugins/vdm-git/lib/only-here.sh
+out=$(bash scripts/check-lib-sync.sh 2>&1); rc=$?
+expect_exit "GREEN: single-copy lib file ⇒ exit 0" 0 "$rc"
+expect_says "GREEN: but it is named in a note" "$out" "only-here.sh"
+restore
+
+# FALSE-POSITIVE: the cross-reference comment naming another plugin is the
 # one legal difference. It must not be reported as drift.
 out=$(bash scripts/check-lib-sync.sh 2>&1); rc=$?
 expect_exit "GREEN: legal cross-ref comment is not drift" 0 "$rc"
@@ -256,6 +283,19 @@ printf '\nBackground: docs/tasks/docs-distill/workitem.md\n' >> "$SKILL"
 out=$(bash scripts/check-skill-paths.sh 2>&1); rc=$?
 expect_exit "RED: dangling repo-doc ref ⇒ exit 1" 1 "$rc"
 expect_says "RED: calls it dangling" "$out" "dangling repo-doc reference"
+restore
+
+# RED 3: the leak names a plugin that did not exist when the gate was written.
+# Until 2026-09-21 the pattern enumerated (vdm|vdm-git), so a SKILL.md in any
+# later plugin could point at its own dev-tree path and pass. The gate has to
+# be blind to WHICH plugin, or it narrows itself every time one is added.
+mkdir -p plugins/vdm-third/skills/demo
+printf -- '---\nname: demo\n---\n\nRun plugins/vdm-third/scripts/demo.sh to start.\n' \
+  > plugins/vdm-third/skills/demo/SKILL.md
+out=$(bash scripts/check-skill-paths.sh 2>&1); rc=$?
+expect_exit "RED: dev-tree leak in a third plugin ⇒ exit 1" 1 "$rc"
+expect_says "RED: names the third plugin's file" "$out" "vdm-third/skills/demo/SKILL.md"
+rm -rf plugins/vdm-third
 restore
 
 # FALSE-POSITIVE 1: the same crystal, written as an explicit cross-repo

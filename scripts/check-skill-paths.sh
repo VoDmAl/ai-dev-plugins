@@ -8,7 +8,7 @@
 # clone; in a user project that path doesn't exist (the plugin is installed
 # wherever Claude Code put it).
 #
-# Pattern flagged: plugins/(vdm|vdm-git)/(scripts|lib|hooks|templates|skills)/...
+# Pattern flagged: plugins/<any-plugin>/(scripts|lib|hooks|templates|skills)/...
 # Bare plugin names (e.g. "the vdm plugin") are NOT flagged — only concrete
 # subpaths that the dev tree resolves but a user project doesn't.
 #
@@ -50,7 +50,11 @@ if [ ${#targets[@]} -eq 0 ]; then
 fi
 
 # Pattern: concrete dev-tree subpath that doesn't resolve at user time.
-pattern='plugins/(vdm|vdm-git)/(scripts|lib|hooks|templates|skills)/'
+#
+# Any plugin name, not a hardcoded list: a gate whose scope is an enumeration
+# silently narrows the day a plugin is added, and the narrowing looks exactly
+# like a clean run. Generalised 2026-09-21, before the third plugin landed.
+pattern='plugins/[A-Za-z0-9_-]+/(scripts|lib|hooks|templates|skills)/'
 
 # Install-root anchored form — the one shape of this substring that DOES resolve
 # at user time (see the header note). Anchor must precede the match on the line.
