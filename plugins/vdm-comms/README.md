@@ -7,11 +7,14 @@ files. One home for a tool three repositories had each copied and drifted.
 
 | Piece | Kind | When |
 |-------|------|------|
-| contract linter | `PostToolUse` hook + CLI | after any write into the meetings tree |
+| meeting contract linter | `PostToolUse` hook + CLI | after any write into the meetings tree |
+| pending-item linter | `PostToolUse` hook + CLI | after a write into a `pending-paths` file — **new lines only** |
 | outgoing-draft guard | `PreToolUse` hook | when creating `*/comms/*-out.md` |
 | generated-layer drift signal | `SessionStart` hook | once per session, and only when something is behind |
+| overdue signal | `SessionStart` hook | once per session, and only when something is due |
 | `/vdm-comms:meetings` | skill | the contract, configuration, onboarding |
 | `/vdm-comms:index` | skill | rebuild the registry, series lists and track pointers |
+| `/vdm-comms:pending` | skill | who owes what, to whom, and by when |
 
 ## The model
 
@@ -25,6 +28,10 @@ meetings/
 <track>/comms/
   <date>-<slug>-out.md              a letter; `draft: true` until a person sends it
   <date>-<slug>-meeting.md          generated pointer back to a meeting
+<any file in pending-paths>
+  - [ ] **<owner>** — <what> ⏰ 2026-09-26        an obligation that can fire
+  - [ ] **<owner>** — <what> ⏰ after: <event>    …when the signal arrives on its own
+  - [ ] <what> (due: 2026-09-26)                 the crystal suite's own form
 ```
 
 The contract is a **floor**: extra keys, extra sections and a project's own
@@ -42,7 +49,13 @@ is reported.
     "track-roots": ["projects", "teams", "incidents"],
     "series": ["weekly", "steering"],
     "topic-sections": false,
-    "labels": "en"
+    "labels": "en",
+
+    "pending-paths": ["projects/*/index.md", "docs/tasks/*/*.md"],
+    "pending-sections": { "waiting": ["Waiting on"], "action": ["Our actions"] },
+    "owners": ["Dmitry", "risk model", "legal"],
+    "people-dir": "people",
+    "pending-draft-days": 3
   }
 }
 ```
@@ -52,6 +65,13 @@ configurable. `track-roots` is a list of allowed **first segments**, not a path
 template: real track paths run one to three segments deep, some contain
 capitals, and half of one repository's tracks resolve to `<path>.md` rather
 than a directory.
+
+`pending-paths` is empty by default, and that switches the whole pending half
+off. It is the one thing that genuinely cannot be guessed: the three field
+repositories keep their open items in `gaps|org|incidents/*/index.md`, in
+`tracks/*/index.md` and in `docs/tasks/<key>/<slug>.md`. Declaring a section in
+`pending-sections` is what makes everything under that heading an obligation —
+elsewhere, only a line already carrying a date marker is an item at all.
 
 `labels` is the wording of the files the generator writes **into your
 repository** — `"en"` (default), `"ru"`, or an object overriding individual
@@ -78,4 +98,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh --all             # lint the tree
 ${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh --print-contract  # print the floor
 ${CLAUDE_PLUGIN_ROOT}/scripts/comms-index.py --check          # what is behind?
 ${CLAUDE_PLUGIN_ROOT}/scripts/comms-index.py --write          # rebuild, printing every path
+${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh               # what is overdue, due soon, waiting on an event
+${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh --owner       # …grouped by who owes it
+${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh --lint        # items outside the contract
 ```

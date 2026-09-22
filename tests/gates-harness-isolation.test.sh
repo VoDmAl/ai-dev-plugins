@@ -183,6 +183,29 @@ for v in GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
 done
 
 # ---------------------------------------------------------------------------
+printf '\nevery test harness carries the scrub, not just the ones a gate runs today\n'
+# ---------------------------------------------------------------------------
+# The scrub used to live only in the two suites a gate happened to run, which
+# made isolation a property of the SCHEDULE rather than of the harness. On
+# 2026-09-22 gate 7 was widened to run two more suites, and the first of them
+# called `git add -A` in its fixture: 158 index entries of the pending commit
+# became 9 fixture paths. Nothing about those suites had changed — only who
+# invoked them.
+#
+# So the invariant is stated over every file, with no predicate about whether
+# it "uses git": a harness never wants the caller's git session, and a rule
+# with an exception is a rule someone has to remember to apply.
+for f in "$REPO_ROOT"/tests/*.test.sh; do
+  name=$(basename "$f")
+  if grep -q '^unset GIT_INDEX_FILE ' "$f"; then
+    ok "$name scrubs the inherited git session"
+  else
+    bad "$name scrubs the inherited git session" \
+        "add the unset block right after \`set -u\` — see tests/gates.test.sh"
+  fi
+done
+
+# ---------------------------------------------------------------------------
 # The regression guard for what happened on 2026-09-04: this file must survive
 # being run from inside a poisoned git session, because that is how the hook
 # runs it. Without the scrub at the top, `mk_bait` followed GIT_DIR home, left

@@ -8,6 +8,18 @@
 # Run: bash tests/crystal-migrate-scan.test.sh   (exit 0 = all pass)
 set -u
 
+# Scrub git's per-invocation environment before anything else. A test harness
+# run from inside a live `git commit` (which is what a pre-commit gate is)
+# inherits GIT_INDEX_FILE / GIT_DIR pointing at THAT commit — and every `git`
+# call against a throwaway fixture then writes into the user's real commit
+# instead. Measured 2026-09-22 on this file's sibling: one `git add -A` in a
+# fixture replaced all 158 entries of the pending commit's index with 9
+# fixture paths. The commit survived only because the objects were missing.
+unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
+      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE \
+      GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION 2>/dev/null || true
+
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCAN="$REPO_ROOT/plugins/vdm/scripts/crystal-migrate-scan.sh"
 DATES="$REPO_ROOT/plugins/vdm/scripts/crystal-dates.sh"

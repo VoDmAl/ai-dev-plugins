@@ -10,11 +10,16 @@ to read three keys would undo that.
 
 Config lives in `.claude/vdm-plugins.json` (or `.qwen/…`) under `comms`:
 
-    meetings-dir    where meetings live                    (default "meetings")
-    track-roots     allowed first segment of a track path  (default: any)
-    series          declared series slugs                  (default: no check)
-    topic-sections  also check the body's topic sections   (default false)
-    enabled         false switches the whole plugin off    (default true)
+    meetings-dir      where meetings live                    (default "meetings")
+    track-roots       allowed first segment of a track path  (default: any)
+    series            declared series slugs                  (default: no check)
+    topic-sections    also check the body's topic sections   (default false)
+    pending-paths     globs of files holding pending items   (default: none -> off)
+    pending-sections  {"waiting": [...], "action": [...]}    (default: none)
+    owners            accepted owner names, in report order  (default: none)
+    people-dir        directory of people profiles           (default "people")
+    pending-draft-days unsent-draft age threshold, 0 = off   (default 3)
+    enabled           false switches the whole plugin off    (default true)
 
 Only what genuinely differed between the three field repositories is
 configurable; everything else is a floor written into the code.
@@ -34,6 +39,17 @@ DEFAULTS = {
     "series": [],
     "topic-sections": False,
     "labels": "en",
+    # The pending half. `pending-paths` defaults to nothing on purpose: where a
+    # repository keeps its open obligations is the one thing that cannot be
+    # guessed — the three field repositories put them in `gaps|org|incidents/
+    # */index.md`, in `tracks/*/index.md` and in `docs/tasks/<key>/<slug>.md`
+    # respectively. Empty means the pending tools stay silent rather than
+    # enforcing a contract nobody declared.
+    "pending-paths": [],
+    "pending-sections": {},
+    "owners": [],
+    "people-dir": "people",
+    "pending-draft-days": 3,
 }
 
 # Wording for the files the generator writes INTO THE PROJECT. It is the one
