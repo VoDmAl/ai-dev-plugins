@@ -131,8 +131,9 @@ describe the current whole. Ask, out loud, the question the tier exists for:
 An edit that only bolts the new input onto the end has failed the phase.
 
 **When drift fired but nothing substantive changed.** This happens and it is not
-a malfunction: the signal is mtime-based, so a typo fix or a comment in a
-covered file trips it. The honest response has three steps, and the shortcut is
+a malfunction: the signal compares content, and a typo fix or a new comment in a
+covered file is a content change. Whether it touched the model is a judgement no
+detector can make for you — which is the point of the steps below. The honest response has three steps, and the shortcut is
 forbidden:
 
 1. **Read the newer input.** You do not know it changed nothing until you look.
@@ -151,6 +152,20 @@ Otherwise: **never** `touch` the file, and never edit it cosmetically to silence
 the signal. Both skip step 1 and leave `observed:` asserting a verification that
 did not happen — turning the only date the reader can trust into a lie. A signal
 you are allowed to dismiss without looking is not a signal.
+
+**This prohibition used to be the only thing standing there, and a prohibition
+only stops what is done on purpose.** Until 2026-09-22 the scanner picked its
+candidates by mtime, so rewriting the synthesis — a formatter, an editor save, a
+scripted replace that matched nothing — made it newer than every input, emptied
+the candidate list, and the content check was never reached. The document then
+reported itself current while its inputs had genuinely changed, and nobody had
+to intend any of it. Found by doing it accidentally to a live synthesis.
+
+Now the candidates ARE the content-changed set wherever git can answer, so
+touching the document changes nothing about what the signal says. The rule above
+still stands for `observed:` — that date is a claim about a verification, and
+only you can make it true — but the signal itself no longer depends on anyone
+honouring it.
 
 **The three steps are symmetric in the direction of error, and that is why they
 earn their cost.** They read as a remedy for false *positives* — drift fired,
@@ -224,15 +239,22 @@ Do not present the weakest rung as the general rule.
 | **Worst** | Observation date + a manual gesture (what `observed:` is) | it is a heuristic, and it lies quietly |
 
 **Where the inputs live in the repository, the middle rung is already wired and
-costs nothing.** `distill-scan.sh` uses mtime only to *propose* candidates, then
-asks git whether the content actually changed since the commit that last touched
-the synthesis. A file rewritten without being changed — an abandoned edit put
-back with `git checkout --`, a formatter, a restored stash — no longer raises
+costs nothing.** `distill-scan.sh` asks git which covered files differ in content
+from what they were at the commit that last touched the synthesis, and those are
+the drifted inputs. A file rewritten without being changed — an abandoned edit
+put back with `git checkout --`, a formatter, a restored stash — does not raise
 drift. Where git cannot prove it (no repository, synthesis never committed, or
 the synthesis carrying uncommitted edits of its own, which means somebody is
 rebuilding it right now), the scanner falls back to mtime and reports:
 **unprovable always counts as changed**, because a false alarm is recoverable
 and false silence is what this tier exists to prevent.
+
+mtime does not select the candidates, and that distinction is the whole
+difference between a signal and a courtesy. While it did, the set could be
+emptied by writing to the *synthesis* — no edit to any input required — and the
+content check never ran at all. Three git calls answer the question directly,
+at a cost that does not grow with the number of candidates, so there is nothing
+for mtime to save.
 
 The top rung is not the scanner's to compute, and that is the useful half of the
 ladder rather than its limitation. A fingerprint belongs to the external system;

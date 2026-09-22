@@ -27,7 +27,7 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_COMMON_DIR GIT_INDEX_VERSION 2>/dev/null || true
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCAN="$REPO_ROOT/plugins/vdm/scripts/distill-scan.sh"
+SCAN="${DISTILL_SCAN_BIN:-$REPO_ROOT/plugins/vdm/scripts/distill-scan.sh}"
 
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); printf '  ✓ %s\n' "$1"; }
@@ -235,6 +235,46 @@ touch src/a.txt
 OUT=$(bash "$SCAN" --drift)
 says "dirty synthesis ⇒ filter disarms, mtime rules" "$OUT" "src/a.txt"
 git checkout -- docs/model/m.md
+
+# ---------------------------------------------------------------------------
+# The hole in the other direction: the signal must not be silenceable by
+# touching the SYNTHESIS.
+#
+# Until 2026-09-22 mtime selected the candidates and the content filter only
+# confirmed what it had picked. So rewriting the synthesis — a formatter, an
+# editor save, a scripted replace that matched nothing — made it newer than
+# every input, emptied the candidate set, and the filter was never asked. The
+# document then reported itself current while its inputs had genuinely changed.
+#
+# `docs-distill` forbids this move in prose ("do not touch the document to
+# quiet the signal"). The prohibition assumed intent; no intent was required.
+# Found by doing it accidentally to this repository's own suite.md.
+git add -A >/dev/null 2>&1
+git commit -qm "settle" >/dev/null 2>&1
+
+printf 'alpha\nreal change\n' > src/a.txt   # input content genuinely changes
+sleep 1
+touch docs/model/m.md                       # …and the synthesis is touched AFTER it
+OUT=$(bash "$SCAN" --drift)
+says "synthesis touched after a changed input ⇒ STILL drifts" "$OUT" "src/a.txt"
+
+# Same shape, the way it actually happened: rewritten with identical bytes
+# rather than `touch`ed — which is what a no-op scripted edit does.
+cp docs/model/m.md "$TMP2/m.copy"
+sleep 1
+cat "$TMP2/m.copy" > docs/model/m.md        # byte-identical rewrite
+OUT=$(bash "$SCAN" --drift)
+says "synthesis rewritten identically ⇒ STILL drifts" "$OUT" "src/a.txt"
+
+# And the guard on the other side, so the fix is not "report everything": once
+# the input is back to the content the synthesis was written against, touching
+# either file changes nothing.
+git checkout -- src/a.txt
+sleep 1
+touch src/a.txt docs/model/m.md
+OUT=$(bash "$SCAN" --drift)
+if [ -z "$OUT" ]; then ok "content identical again ⇒ silent, whatever the mtimes"
+else bad "content identical again ⇒ silent, whatever the mtimes" "$OUT"; fi
 
 cd "$TMP" || exit 1
 

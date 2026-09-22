@@ -279,8 +279,11 @@ find_synthesis_docs() {
 # ---------------------------------------------------------------------------
 
 _files_under() {
-  # _files_under <dir> <reference-file> — files under <dir> newer than the
-  # reference, excluding anything git ignores.
+  # _files_under <dir> <reference-file|""> — files under <dir>, excluding
+  # anything git ignores. With a reference, only those newer than it; with an
+  # EMPTY reference, all of them, because the caller is about to decide by
+  # content and mtime would only be able to hide things from it (see
+  # newer_inputs).
   #
   # Ask git what is ignored; do not restate it. The previous form carried a
   # hand-written `-not -path` list (.git, node_modules, vendor) — a second copy
@@ -301,10 +304,16 @@ _files_under() {
   if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     while IFS= read -r f; do
       [ -n "$f" ] || continue
-      [ -f "$f" ] && [ "$f" -nt "$ref" ] && printf '%s\n' "$f"
+      [ -f "$f" ] || continue
+      [ -n "$ref" ] && { [ "$f" -nt "$ref" ] || continue; }
+      printf '%s\n' "$f"
     done < <(git ls-files --cached --others --exclude-standard -- "$dir" 2>/dev/null)
-  else
+  elif [ -n "$ref" ]; then
     find "$dir" -type f -newer "$ref" \
+      -not -path '*/.git/*' -not -path '*/node_modules/*' \
+      -not -path '*/vendor/*' -not -path '*/__pycache__/*' 2>/dev/null
+  else
+    find "$dir" -type f \
       -not -path '*/.git/*' -not -path '*/node_modules/*' \
       -not -path '*/vendor/*' -not -path '*/__pycache__/*' 2>/dev/null
   fi | sort
@@ -358,7 +367,15 @@ _content_changed() {
   # always counts as changed: a false alarm is recoverable, false silence is
   # the failure this tier exists to prevent.
   [ "$_CF_ACTIVE" = "1" ] || return 0
-  printf '%s\n' "$_CF_CHANGED" | grep -Fxq -e "$1"
+  # Exact-line membership, as a builtin rather than `printf | grep -Fxq`. Once
+  # the candidate set became "every file under covers" instead of "the few mtime
+  # picked", this runs per file, and two forks per file was the entire cost of
+  # the change: 0.77s against 0.47s on this repository's largest synthesis, back
+  # to 0.49s once they were gone.
+  case $'\n'"$_CF_CHANGED"$'\n' in
+    *$'\n'"$1"$'\n'*) return 0 ;;
+    *)                return 1 ;;
+  esac
 }
 
 newer_inputs() {
@@ -378,8 +395,32 @@ newer_inputs() {
   # Old signature note: the second positional arg (max) is gone. Callers cap.
   # (default 3) — the caller wants evidence, not an inventory.
   local synth="$1"
-  local emitted=0 glob e hit
+  local emitted=0 glob e hit mtime_ref
   _content_filter_init "$synth"
+
+  # WHO SELECTS THE CANDIDATES decides what this signal can be silenced by.
+  #
+  # mtime used to select them unconditionally, and the content filter only
+  # confirmed or dropped what mtime had already picked. That leaves a hole in
+  # the direction nobody looks: rewrite the SYNTHESIS — with a formatter, an
+  # editor save, a scripted replace that matched nothing — and it becomes newer
+  # than every input, the candidate set is empty, and the filter is never asked.
+  # The document then reports itself current while its inputs have genuinely
+  # changed. `docs-distill` forbids exactly this move in prose ("do not touch
+  # the document to quiet the signal"); the prohibition assumed intent, and no
+  # intent was required. Observed 2026-09-22 on suite.md in this repository.
+  #
+  # So when the filter is armed, the candidates ARE the content-changed set:
+  # mtime is dropped entirely rather than intersected, because every file it
+  # could remove is one whose content differs. `_content_filter_init` has
+  # already paid for this — three git calls, cost independent of how many
+  # candidates there turn out to be.
+  #
+  # mtime stays where it is the only thing available: no git, an untracked
+  # synthesis, or one edited and not yet committed (then its own mtime is the
+  # honest reference — git cannot know what that edit covered).
+  mtime_ref="$synth"
+  [ "$_CF_ACTIVE" = "1" ] && mtime_ref=""
 
   while IFS= read -r glob; do
     [ -n "$glob" ] || continue
@@ -399,8 +440,8 @@ newer_inputs() {
           _content_changed "$hit" || continue
           printf '%s\n' "$hit"
           emitted=$((emitted + 1))
-        done < <(_files_under "$e" "$synth")
-      elif [ -f "$e" ] && [ "$e" -nt "$synth" ]; then
+        done < <(_files_under "$e" "$mtime_ref")
+      elif [ -f "$e" ] && { [ -z "$mtime_ref" ] || [ "$e" -nt "$mtime_ref" ]; }; then
         _content_changed "$e" || continue
         printf '%s\n' "$e"
         emitted=$((emitted + 1))
