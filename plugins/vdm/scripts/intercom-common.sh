@@ -227,6 +227,89 @@ intercom_fm_field() {
 }
 
 # ---------------------------------------------------------------------------
+# Letter references — the relay form.
+#
+# A relay (agent A → B → C) used to travel by each hop pasting the previous
+# letter inside its own. Measured on the whole store 2026-09-22: one such relay
+# in 318 letters, and it cost 64 KB with two levels of `>` quoting, 288 of 550
+# lines being re-transmitted text the last recipient had to read past.
+#
+# Nothing forced that. The store is ONE machine-level directory and every inbox
+# is a sibling, so the previous letter was readable by path the whole time —
+# what was missing was a form for naming it. That is all `reply-to:` is: an
+# address, not a copy.
+#
+# A reference is `<identity>/<slug>`, or a bare `<slug>` when it is unambiguous.
+# Both the inbox and its `_done/` archive are searched, because a relay's
+# previous hop is routinely picked up before the next hop is written.
+# ---------------------------------------------------------------------------
+
+intercom_find_letter() {
+  local ref="${1:-}" root id slug d f
+  [ -n "$ref" ] || return 0
+  root="$(intercom_store_root)"
+  [ -d "$root" ] || return 0
+  case "$ref" in
+    */*) id="${ref%%/*}"; slug="${ref##*/}" ;;
+    *)   id=""; slug="$ref" ;;
+  esac
+  slug="${slug%.md}"
+  [ -n "$slug" ] || return 0
+
+  if [ -n "$id" ]; then
+    for f in "$root/$id/$slug.md" "$root/$id/_done/$slug.md"; do
+      [ -f "$f" ] && printf '%s\n' "$f"
+    done
+    return 0
+  fi
+  for d in "$root"/*/; do
+    [ -d "$d" ] || continue
+    [ "$(basename "$d")" = "_registry" ] && continue
+    for f in "${d}${slug}.md" "${d}_done/${slug}.md"; do
+      [ -f "$f" ] && printf '%s\n' "$f"
+    done
+  done
+}
+
+# Path → `<identity>/<slug>`, the form written into an envelope. A path would
+# go stale the moment the letter is picked up (inbox → `_done/`); the reference
+# does not, because it is resolved on every read.
+intercom_letter_ref() {
+  local f="${1:-}" root rel id
+  [ -n "$f" ] || return 0
+  root="$(intercom_store_root)"
+  rel="${f#"$root"/}"
+  id="${rel%%/*}"
+  [ -n "$id" ] && [ "$id" != "$rel" ] || return 0
+  printf '%s/%s\n' "$id" "$(basename "$f" .md)"
+}
+
+# Walk back along `reply-to:`, one hop per line: `<ref>\t<path>\t<title>`.
+# The chain is DERIVED, never stored: each letter names only its immediate
+# predecessor, so there is no list to keep in sync and no way for a stored
+# chain to disagree with the letters. A missing link and a cycle are both
+# reported rather than silently ending the walk — a chain that stops early
+# looks exactly like a chain that was complete.
+intercom_chain() {
+  local ref="${1:-}" depth=0 seen="" path title
+  while [ -n "$ref" ] && [ "$depth" -lt 12 ]; do
+    case "|$seen|" in
+      *"|$ref|"*) printf '%s\t\t(cycle — this letter is already in the chain)\n' "$ref"; return 0 ;;
+    esac
+    seen="$seen|$ref"
+    path="$(intercom_find_letter "$ref" | head -1)"
+    if [ -z "$path" ]; then
+      printf '%s\t\t(missing — no letter with that reference is in the store)\n' "$ref"
+      return 0
+    fi
+    title="$(grep -m1 '^# ' "$path" 2>/dev/null | sed 's/^# //')"
+    printf '%s\t%s\t%s\n' "$ref" "$path" "${title:-$ref}"
+    ref="$(intercom_fm_field "$path" reply-to)"
+    depth=$((depth + 1))
+  done
+}
+
+# ---------------------------------------------------------------------------
 # Name folding. A human says "VDM plugins", "vdm_plugins" or "vdm-plugins" and
 # means the same agent; every comparison in the registry goes through this
 # fold on BOTH sides. Lowercase (ASCII); runs of whitespace/underscore → "-";
