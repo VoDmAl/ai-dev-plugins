@@ -268,6 +268,34 @@ OUT=$(cd "$FX" && python3 "$INDEX" --check --project-root "$FX" 2>&1); rc=$?
 expect_says "GREEN: a hand-written pointer is left alone, with a note" "$OUT" "was not generated"
 
 echo ""
+echo "== wording of generated files is the project's, not the plugin's =="
+
+# The generator writes into somebody else's repository, so the language of what
+# it writes cannot be the language its authors happen to work in. Default is
+# English; a project switches with one key, or renames individual columns.
+POINTER="$FX/gaps/alpha/comms/$PAST-one-meeting.md"
+rm -f "$FX/.claude/vdm-plugins.json" 2>/dev/null
+sed -i.bak 's|  - incidents/one|  - gaps/alpha|' "$FX/meetings/$PAST-one/index.md"
+rm -f "$FX/meetings/$PAST-one/index.md.bak"
+rm -f "$POINTER"
+OUT=$(cd "$FX" && python3 "$INDEX" --write --project-root "$FX" 2>&1)
+expect_says "GREEN: default wording is English" "$(cat "$POINTER")" "Topics on this track:"
+expect_says "GREEN: and the registry header too" "$(cat "$FX/meetings/INDEX.md")" "| Date | Meeting |"
+
+mkdir -p "$FX/.claude"
+printf '{\n  "comms": {\n    "labels": "ru"\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
+OUT=$(cd "$FX" && python3 "$INDEX" --write --project-root "$FX" 2>&1)
+expect_says "GREEN: labels: ru switches the generated wording" "$(cat "$POINTER")" "Темы этого трека:"
+
+printf '{\n  "comms": {\n    "labels": { "col-meeting": "Созвон" }\n  }\n}\n' \
+  > "$FX/.claude/vdm-plugins.json"
+OUT=$(cd "$FX" && python3 "$INDEX" --write --project-root "$FX" 2>&1)
+REG=$(cat "$FX/meetings/INDEX.md")
+expect_says "GREEN: a map overrides one column" "$REG" "Созвон"
+expect_says "GREEN: …and the rest stays English" "$REG" "| Date |"
+rm -f "$FX/.claude/vdm-plugins.json"
+
+echo ""
 echo "== fail-closed: the two blocking hooks with python3 stripped from PATH =="
 
 FARM="$TMP/bin-nopy"

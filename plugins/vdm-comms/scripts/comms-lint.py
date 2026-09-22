@@ -3,10 +3,10 @@
 """comms-lint — contract validator for a meetings tree.
 
 The contract is a FLOOR, not a ceiling: what the linter checks is the part
-three independent repositories turned out to share (the meetings relay,
-`space-hq` → `global-auth-gap` → `t23b-program`). Extra frontmatter keys,
-extra sections and extra file classes are never violations — a project layers
-its own conventions on top, and this linter stays silent about them.
+three independent repositories turned out to share, measured on their live
+trees rather than on their documentation. Extra frontmatter keys, extra
+sections and extra file classes are never violations — a project layers its own
+conventions on top, and this linter stays silent about them.
 
 What is configurable lives in `.claude/vdm-plugins.json` → `comms`, and it is
 only the part that genuinely differs between those repositories:

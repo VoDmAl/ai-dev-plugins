@@ -130,25 +130,27 @@ def collect(root, meetings_dir):
     return meetings
 
 
-def registry_table(meetings):
-    rows = ["| Дата | Встреча | Серия | Треки |", "|---|---|---|---|"]
+def registry_table(meetings, lab):
+    rows = ["| %s | %s | %s | %s |" % (lab["col-date"], lab["col-meeting"],
+                                       lab["col-series"], lab["col-tracks"]),
+            "|---|---|---|---|"]
     for m in sorted(meetings, key=lambda x: x.date, reverse=True):
         link = "[%s](%s/%s)" % (m.title.replace("|", "\\|"), m.dir_name, m.source or "")
         tracks = ", ".join("`%s`" % t for t in m.tracks) or "—"
         rows.append("| %s | %s | %s | %s |" % (m.date, link, m.series or "—", tracks))
     if len(rows) == 2:
-        rows.append("| — | встреч пока нет | — | — |")
+        rows.append("| — | %s | — | — |" % lab["registry-empty"])
     return "\n".join(rows)
 
 
-def series_table(meetings, series):
-    rows = ["| Дата | Встреча |", "|---|---|"]
+def series_table(meetings, series, lab):
+    rows = ["| %s | %s |" % (lab["col-date"], lab["col-meeting"]), "|---|---|"]
     picked = [m for m in meetings if m.series == series]
     for m in sorted(picked, key=lambda x: x.date, reverse=True):
         rows.append("| %s | [%s](%s/%s) |"
                     % (m.date, m.title.replace("|", "\\|"), m.dir_name, m.source or ""))
     if len(rows) == 2:
-        rows.append("| — | встреч серии пока нет |")
+        rows.append("| — | %s |" % lab["series-empty"])
     return "\n".join(rows)
 
 
@@ -168,7 +170,7 @@ def pointer_path(root, track, meeting):
     return os.path.join(root, track, "comms", "%s-%s-meeting.md" % (meeting.date, meeting.slug))
 
 
-def pointer_body(meeting, track):
+def pointer_body(meeting, track, lab):
     lines = [
         "---",
         "type: meeting-link",
@@ -179,13 +181,14 @@ def pointer_body(meeting, track):
         "",
         "# %s" % meeting.title,
         "",
-        "Встреча %s — [%s](../../%s)" % (meeting.date, meeting.source or "протокол",
-                                         meeting.rel_source),
+        lab["pointer-line"] % {"date": meeting.date,
+                               "source": meeting.source or lab["pointer-record"],
+                               "link": "../../%s" % meeting.rel_source},
         "",
     ]
     topics = meeting.topics_for(track)
     if topics:
-        lines.append("Темы этого трека:")
+        lines.append(lab["pointer-topics"])
         lines.append("")
         for t in topics:
             lines.append("- %s" % t)
@@ -199,14 +202,14 @@ def is_directory_track(root, track):
     return os.path.isdir(os.path.join(root, track))
 
 
-def plan(root, meetings_dir, meetings):
+def plan(root, meetings_dir, meetings, lab):
     """Return (actions, notes). Each action is (kind, path, payload)."""
     actions = []
     notes = []
 
     # 1. Registry.
     index_path = os.path.join(root, meetings_dir, "INDEX.md")
-    table = registry_table(meetings)
+    table = registry_table(meetings, lab)
     if os.path.isfile(index_path):
         with open(index_path, encoding="utf-8") as fh:
             current = fh.read()
@@ -229,7 +232,7 @@ def plan(root, meetings_dir, meetings):
         with open(spath, encoding="utf-8") as fh:
             current = fh.read()
         new, status = replace_between(current, SERIES_START, SERIES_END,
-                                      series_table(meetings, series))
+                                      series_table(meetings, series, lab))
         if status == "missing-markers":
             notes.append("%s/%s.md has no %s / %s markers — add them to get the meeting "
                          "list generated" % (meetings_dir, series, SERIES_START, SERIES_END))
@@ -246,7 +249,7 @@ def plan(root, meetings_dir, meetings):
                              % (track, m.rel_dir))
                 continue
             p = pointer_path(root, track, m)
-            wanted[p] = pointer_body(m, track)
+            wanted[p] = pointer_body(m, track, lab)
 
     for p, body in sorted(wanted.items()):
         if os.path.isfile(p):
@@ -307,7 +310,7 @@ def main(argv):
         return 0
 
     meetings = collect(root, meetings_dir)
-    actions, notes = plan(root, meetings_dir, meetings)
+    actions, notes = plan(root, meetings_dir, meetings, cfgmod.labels(cfg))
 
     if args.write:
         for kind, path, payload in actions:
