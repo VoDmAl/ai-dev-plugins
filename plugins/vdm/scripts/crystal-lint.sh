@@ -151,8 +151,26 @@ run_linter() {
 #
 # Keep in step with find_workitems() in lib/crystal-path.sh; that function walks
 # the filesystem, this one tests a path string, and both encode the same shape.
+# Resolve a path through symlinks without requiring the file to exist: the
+# directory is canonicalised, the basename is kept. Both sides of the scope
+# comparison below go through this — a root comes from `git rev-parse
+# --show-toplevel` and is already real, while the path in a hook payload is
+# whatever the harness was handed, and on macOS a project under /tmp or /var
+# arrives as /var/… against a root of /private/var/…. Comparing those as
+# strings puts the file outside every root, so the linter says nothing about a
+# file it should have checked — the same silence a clean file produces.
+canonicalize_path() {
+  local p="$1" dir base real
+  dir=$(dirname "$p")
+  base=$(basename "$p")
+  real=$(cd "$dir" 2>/dev/null && pwd -P) || { printf '%s' "$p"; return; }
+  printf '%s/%s' "$real" "$base"
+}
+
 is_workitem_path() {
   local path="$1" root="$2" rel
+  path=$(canonicalize_path "$path")
+  root=$(cd "$root" 2>/dev/null && pwd -P) || root="$root"
   case "$path" in
     "$root"/*) rel="${path#"$root"/}" ;;
     *) return 1 ;;
