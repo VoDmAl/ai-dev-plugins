@@ -452,6 +452,9 @@ which is exactly when you want a deterministic check.
 ## Configuration
 
 Helper: `git-guard-prepare` (on PATH via the plugin's `bin/` directory).
-Block hook: `${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-hook.py` — edit `BLOCKED_PATTERNS` to customize.
+Block hook: `${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-hook.sh` — a thin wrapper that
+keeps the guard fail-closed (a missing or crashing `python3` blocks a commit-shaped
+command instead of letting it through silently); the guard itself, including
+`BLOCKED_PATTERNS`, is `${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-hook.py`.
 Reminder: `${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-reminder.sh` — gated by `enabled` / `mode` in `.claude/vdm-plugins.json`.
 Crystal backup: `${CLAUDE_PLUGIN_ROOT}/scripts/crystal-precommit-check.sh` — see [Crystal pre-commit backup](#crystal-pre-commit-backup) above.

@@ -52,6 +52,8 @@ SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SELF_DIR/../lib/config-read.sh" 2>/dev/null || true
 # shellcheck disable=SC1091
 . "$SELF_DIR/../lib/crystal-path.sh" 2>/dev/null || true
+# shellcheck disable=SC1091
+. "$SELF_DIR/../lib/gate-guard.sh" 2>/dev/null || true
 
 if command -v vdm_is_enabled >/dev/null 2>&1; then
   vdm_is_enabled "crystal" || exit 0
@@ -168,7 +170,33 @@ if [ "$mode" = "hook" ]; then
   payload=$(cat)
   [ -z "$payload" ] && exit 0
 
+  # Dependency-free scope prefilter — the answer is available precisely when
+  # the linter is not. See lib/gate-guard.sh for why an unrunnable check
+  # blocks rather than returning silence.
+  lint_in_scope() {
+    printf '%s' "$payload" | grep -qE '"tool_name"[[:space:]]*:[[:space:]]*"(Write|Edit|MultiEdit)"' 2>/dev/null || return 1
+    printf '%s' "$payload" | grep -qE 'workitem\.md|/tasks/' 2>/dev/null || return 1
+    return 0
+  }
+
+  lint_unverified() {
+    lint_in_scope || exit 0
+    if command -v vdm_gate_unverified >/dev/null 2>&1; then
+      vdm_gate_unverified "crystal-lint" "$1" \
+        "a workitem was just written — whether it matches the canonical shape was never checked" \
+        "install python3 — the linter is a python script — then re-run: \${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh <file>" \
+        "or compare the file against templates/workitem-template.md by hand"
+    else
+      printf '\n[crystal-lint] NOT CHECKED — %s\n  A workitem was written and the canon check could not run.\n\n' "$1" >&2
+    fi
+    exit 2
+  }
+
   read_field() {
+    if command -v vdm_json_field >/dev/null 2>&1; then
+      vdm_json_field "$payload" "$1"
+      return 0
+    fi
     FIELD_PATH="$1" python3 -c '
 import json, os, sys
 try:
@@ -186,6 +214,13 @@ if cur is not None:
   }
 
   tool_name=$(read_field "tool_name")
+  # Every hook payload carries `tool_name`, so an empty value means the payload
+  # was not read — no parser on the machine, or a parser that is present and
+  # broken. Both are "the check did not run", and the prefilter inside
+  # lint_unverified decides whether this call was ours to check. Testing for
+  # parser *availability* here instead would miss the broken-parser case
+  # exactly the way the original code missed the missing-parser one.
+  [ -z "$tool_name" ] && lint_unverified "could not read \`tool_name\` from the hook payload"
   case "$tool_name" in
     Write|Edit|MultiEdit) ;;
     *) exit 0 ;;
@@ -193,6 +228,9 @@ if cur is not None:
 
   file_path=$(read_field "tool_input.file_path")
   [ -z "$file_path" ] && exit 0
+
+  # The linter itself is python, so jq alone parses the payload but cannot lint.
+  command -v python3 >/dev/null 2>&1 || lint_unverified "python3 is not on PATH"
 
   # Only workitems, and only in one of the two canonical shapes — a stray .md
   # outside a crystal root, or a reference artifact inside one, is not linted.
@@ -208,6 +246,12 @@ if cur is not None:
 
   out=$(run_linter "$file_path" 2>&1 >/dev/null)
   rc=$?
+  # 0 clean / 1 violations. Anything else means the linter never reached a
+  # verdict, which must not be reported as "clean".
+  case "$rc" in
+    0|1) ;;
+    *)   lint_unverified "the linter exited $rc without reaching a verdict" ;;
+  esac
   if [ "$rc" -eq 1 ]; then
     printf '%s\n' "$out" >&2
     cat >&2 <<'EOF'
