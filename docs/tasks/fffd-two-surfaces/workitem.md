@@ -2,10 +2,10 @@
 title: "fffd в vdm-git: проверка U+FFFD внутри git-guard-prepare и скриптом pre-commit"
 slug: fffd-two-surfaces
 description: "Перенести check-fffd-bytes из трёх репозиториев в vdm-git на обе поверхности коммита"
-status: blocked
+status: in-progress
 session-type: prd-work
 created: 2026-09-21
-last-updated: 2026-09-21
+last-updated: 2026-09-22
 relates-to:
   - "[[comms-plugin/workitem|comms-plugin]]"
   - "[[vdm-comms-core/workitem|vdm-comms-core]]"
@@ -13,11 +13,9 @@ relates-to:
 
 # fffd в vdm-git: проверка U+FFFD внутри git-guard-prepare и скриптом pre-commit
 
-> Ломоть решения `comms-plugin` DL #11 (2026-09-21). Код написан и проверен в
-> тот же день. Статус `blocked`, а не `in-progress`: оставшиеся шаги —
-> бамп `vdm-git`, запись в каталог, строка в чанджлоге и раздел в
-> `guard/SKILL.md` — правят файлы, уже застейдженные под предыдущий коммит.
-> Разблокируется в момент, когда тот коммит запущен.
+> Ломоть решения `comms-plugin` DL #11 (2026-09-21), отгружен 2026-09-22 как
+> `vdm-git` v2.13.0. Открытым остаётся одно: три репозитория снимут свои копии
+> после объявления — это работа в их деревьях.
 
 ## Назначение
 
@@ -133,12 +131,9 @@ pre-commit-поверхность не успокаивает.
       нечитаемом индексе, никогда не молчит из-за упавшей команды
 - [x] Красные тесты (16): обе поверхности, staged против рабочего дерева, вне
       репозитория, чистый случай
-- [ ] `vdm-git/skills/guard/SKILL.md`: раздел про обе поверхности и про то, что
-      активация git-хука — свойство клона — **заблокировано**: файл застейджен
-      под предыдущий коммит
-- [ ] Бамп `plugins/vdm-git/.claude-plugin/plugin.json`, зеркало в
-      `.claude-plugin/marketplace.json`, `PROJECT_CHANGELOG.md` — **заблокировано**
-      по той же причине
+- [x] `vdm-git/skills/guard/SKILL.md`: раздел «U+FFFD» — обе поверхности, сниппет
+      установки, и что проволоченность цепочки — свойство клона (2026-09-22)
+- [x] Бамп `vdm-git` 2.13.0, зеркало в каталоге, строка в `PROJECT_CHANGELOG.md`
 - [ ] Сообщить трём агентам: снять симлинки на свои копии после установки
       (Sidetrack #1)
 

@@ -410,6 +410,53 @@ if [ ${#divergent[@]} -gt 0 ]; then
   exit 1
 fi
 
+# ----------------------------------------------------------- U+FFFD check
+#
+# Refuse to prepare a commit whose content carries U+FFFD (the replacement
+# character). It is what a truncated multi-byte codepoint decodes to, and a
+# batch write across many files is how it arrives: one interrupted Cyrillic
+# letter becomes two of these and nothing else changes. Origin incident
+# (commit ff78039, 2026-04-24): 21 corruption points across 11 files, noticed
+# three weeks later.
+#
+# Why here and not only in a git hook. The corruption is produced by a batch
+# write, and a batch write is followed by a commit the assistant prepares —
+# which is this helper. A pre-commit hook covers the other side (a commit made
+# by hand or from an IDE), but it has to be installed in every clone, and an
+# uninstalled hook is indistinguishable from a clean one. This check has no
+# installation step: it works wherever the helper works.
+#
+# The check is the grep's exit status, so a broken `git diff` cannot turn an
+# empty file list into a clean verdict — the paths come from the array already
+# validated above.
+
+corrupt=()
+for p in "${paths[@]}"; do
+  [ -f "$p" ] || continue
+  if LC_ALL=C grep -q $'\xef\xbf\xbd' "$p" 2>/dev/null; then
+    corrupt+=("$p")
+  fi
+done
+
+if [ ${#corrupt[@]} -gt 0 ]; then
+  {
+    echo "git-guard-prepare: U+FFFD (replacement character) in:"
+    for p in "${corrupt[@]}"; do
+      echo "                     $p"
+      LC_ALL=C grep -n $'\xef\xbf\xbd' "$p" 2>/dev/null | head -3 | sed 's/^/                       /'
+    done
+    echo
+    echo "  That character is what a truncated multi-byte codepoint decodes to —"
+    echo "  usually a batch write that cut a Cyrillic letter in half. Committing it"
+    echo "  preserves the damage in history, where it is found weeks later."
+    echo
+    echo "  Restore the missing characters, then re-run. If the character is"
+    echo "  genuinely part of the content, commit that file separately with"
+    echo "  'git commit --no-verify' after staging it deliberately."
+  } >&2
+  exit 1
+fi
+
 # ------------------------------------------------------------- write files
 
 tmpdir="${TMPDIR:-/tmp}"

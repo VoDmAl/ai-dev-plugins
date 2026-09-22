@@ -449,6 +449,55 @@ No layer is sufficient alone. The pre-commit gate is the "last line of
 defense" — by the time it fires, the assistant didn't catch the drift,
 which is exactly when you want a deterministic check.
 
+## U+FFFD: corruption that arrives by batch write
+
+U+FFFD, the replacement character, is what a truncated multi-byte codepoint
+decodes to. A batch write across many files is how it arrives: one interrupted
+Cyrillic letter becomes two of these, everything around it looks intact, and
+nothing reports it. Origin incident: 21 corruption points across 11 files,
+found three weeks later.
+
+It is checked on **two surfaces**, and the split matters more than the check:
+
+| Surface | Covers | Installation |
+|---------|--------|--------------|
+| `git-guard-prepare` | every commit the assistant prepares — i.e. the side that produces the corruption | none |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/fffd-precommit-check.sh` | commits made by hand or from an IDE, which the helper never sees | once per clone |
+
+The helper refuses before it writes the message file and names the offending
+lines; nothing is emitted, so there is no stale command to run by mistake.
+
+The pre-commit script reads the **staged blob** (`git show :path`), never the
+working tree — an unstaged fix does not travel with the commit, and an unstaged
+breakage is not part of it either. It also refuses when it cannot read the
+index at all: an empty file list from a failed command is the exact shape of a
+check that silently did not run.
+
+### Activating in a downstream project
+
+Same shape as the crystal backup above — resolve the installed path, and say so
+when it is not found:
+
+```bash
+# U+FFFD guard (from vdm-git plugin).
+fffd_check="${FFFD_PRECOMMIT_CHECK:-}"
+if [ -z "$fffd_check" ]; then
+  for c in "$HOME"/.claude/plugins/marketplaces/*/plugins/vdm-git/scripts/fffd-precommit-check.sh \
+           "$HOME"/.qwen/plugins/marketplaces/*/plugins/vdm-git/scripts/fffd-precommit-check.sh; do
+    [ -x "$c" ] && { fffd_check="$c"; break; }
+  done
+fi
+if [ -n "$fffd_check" ]; then
+  "$fffd_check" || exit 1
+else
+  echo "[fffd] pre-commit guard not found — vdm-git not installed?" >&2
+fi
+```
+
+Whether that chain actually resolves is a property of the machine and the
+clone, not of the repository — so it is not something this plugin can report
+on. A gate is wired when the chain resolves, never when its file exists.
+
 ## Configuration
 
 Helper: `git-guard-prepare` (on PATH via the plugin's `bin/` directory).
@@ -458,3 +507,4 @@ command instead of letting it through silently); the guard itself, including
 `BLOCKED_PATTERNS`, is `${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-hook.py`.
 Reminder: `${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-reminder.sh` — gated by `enabled` / `mode` in `.claude/vdm-plugins.json`.
 Crystal backup: `${CLAUDE_PLUGIN_ROOT}/scripts/crystal-precommit-check.sh` — see [Crystal pre-commit backup](#crystal-pre-commit-backup) above.
+U+FFFD guard: `${CLAUDE_PLUGIN_ROOT}/scripts/fffd-precommit-check.sh` — see [U+FFFD](#ufffd-corruption-that-arrives-by-batch-write) above; the same check runs inside `git-guard-prepare`, where it needs no installation.
