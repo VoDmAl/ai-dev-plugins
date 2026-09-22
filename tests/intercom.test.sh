@@ -27,7 +27,11 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
 
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IC="$REPO_ROOT/plugins/vdm/scripts/intercom.sh"
+# Overridable so the suite can be pointed at a PRE-CHANGE copy of the plugin and
+# watched go red — a test that has never failed is the defect it was written
+# against. The script resolves its library and its template relative to itself,
+# so one variable swaps the whole implementation.
+IC="${INTERCOM_BIN:-$REPO_ROOT/plugins/vdm/scripts/intercom.sh}"
 HOOK="$REPO_ROOT/plugins/vdm/scripts/intercom-identity-check.sh"
 
 PASS=0; FAIL=0
@@ -458,6 +462,91 @@ mv "$VDM_INTERCOM_ROOT/widget/hello.md" "$VDM_INTERCOM_ROOT/widget/_done/hello.m
 out="$(printf '{"session_id":"t","source":"startup"}' | bash "$HOOK")"
 says_not "archiving the message silences the notice" "$out" "still in your inbox"
 rm -rf docs/tasks/probe-crystal docs/tasks/probe-crystal2
+
+echo ""
+echo "== relay form: a letter references the previous one, never contains it =="
+# The specimen: one relay in 318 letters (measured 2026-09-22) arrived as 64 KB
+# with two levels of `>` quoting, 288 of 550 lines being re-transmitted text.
+# Nothing forced that — every inbox is a sibling directory in one store, so the
+# previous letter was readable by path all along. What was missing was a form
+# for naming it.
+
+mkrepo "$TMP/hop-a" "git@example.com:acme/hop-a.git"
+mkrepo "$TMP/hop-b" "git@example.com:acme/hop-b.git"
+mkrepo "$TMP/hop-c" "git@example.com:acme/hop-c.git"
+( cd "$TMP/hop-a" && bash "$IC" register --name "hop-a" --describe "first hop"  >/dev/null 2>&1 )
+( cd "$TMP/hop-b" && bash "$IC" register --name "hop-b" --describe "second hop" >/dev/null 2>&1 )
+( cd "$TMP/hop-c" && bash "$IC" register --name "hop-c" --describe "third hop"  >/dev/null 2>&1 )
+
+( cd "$TMP/hop-a" && bash "$IC" send hop-b relay-one --title "Facts from A" >/dev/null 2>&1 )
+eq "an ordinary letter carries no reply-to field" \
+   "$(grep -c '^reply-to:' "$VDM_INTERCOM_ROOT/hop-b/relay-one.md")" "0"
+eq "…and no blank line where the token was" \
+   "$(sed -n '9p' "$VDM_INTERCOM_ROOT/hop-b/relay-one.md")" "status: pending"
+says_not "…and no CONTINUES banner" "$(cat "$VDM_INTERCOM_ROOT/hop-b/relay-one.md")" "CONTINUES"
+
+( cd "$TMP/hop-b" && bash "$IC" send hop-c relay-two --title "What B adds" --reply-to relay-one >/dev/null 2>&1 )
+eq "a relay letter records the reference, qualified by identity" \
+   "$(grep '^reply-to:' "$VDM_INTERCOM_ROOT/hop-c/relay-two.md")" "reply-to: hop-b/relay-one"
+says "the banner names the previous letter and its title" \
+   "$(cat "$VDM_INTERCOM_ROOT/hop-c/relay-two.md")" "**CONTINUES:** \`hop-b/relay-one\` — Facts from A"
+says_not "the previous letter is NOT inlined" \
+   "$(cat "$VDM_INTERCOM_ROOT/hop-c/relay-two.md")" "📤 **FROM:** \`hop-a\`"
+
+out="$( cd "$TMP/hop-c" && bash "$IC" check 2>&1 )"
+says "check shows what the letter continues" "$out" "hop-b/relay-one — Facts from A"
+
+out="$( cd "$TMP/hop-c" && bash "$IC" chain relay-two 2>&1 )"
+says "chain walks back one hop" "$out" "hop-b/relay-one"
+says "chain prints where the link lives now" "$out" "$VDM_INTERCOM_ROOT/hop-b/relay-one.md"
+
+# The reason the envelope stores a REFERENCE and not a path: picking a letter up
+# moves it, and a stored path would quietly start lying.
+( cd "$TMP/hop-b" && bash "$IC" pickup relay-one >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-c" && bash "$IC" chain relay-two 2>&1 )"
+says "an archived link still resolves — _done/ is searched too" "$out" "hop-b/_done/relay-one.md"
+
+( cd "$TMP/hop-c" && bash "$IC" send hop-a relay-three --title "What C adds" --reply-to relay-two >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-a" && bash "$IC" chain relay-three 2>&1 )"
+says "three hops: the chain reaches the second link" "$out" "hop-c/relay-two"
+says "three hops: …and the first" "$out" "hop-b/relay-one"
+eq "the chain is derived, not stored — each letter names only its predecessor" \
+   "$(grep -c '^reply-to:' "$VDM_INTERCOM_ROOT/hop-a/relay-three.md")" "1"
+
+out="$( cd "$TMP/hop-c" && bash "$IC" send hop-a relay-ghost --reply-to no-such-letter 2>&1 )"; rc=$?
+eq "a reference that matches nothing refuses" "$rc" "2"
+says "…and says what a reference looks like" "$out" "<identity>/<slug>"
+[ ! -f "$VDM_INTERCOM_ROOT/hop-a/relay-ghost.md" ] \
+  && ok "…and writes no letter: a letter naming one that is not is worse than none" \
+  || bad "relay-ghost.md was written despite the bad reference"
+
+cp "$VDM_INTERCOM_ROOT/hop-c/relay-two.md" "$VDM_INTERCOM_ROOT/hop-a/relay-two.md"
+out="$( cd "$TMP/hop-c" && bash "$IC" send hop-a relay-amb --reply-to relay-two 2>&1 )"; rc=$?
+eq "an ambiguous bare slug refuses" "$rc" "3"
+says "…and names every candidate" "$out" "hop-c/relay-two"
+says "…and says how to qualify it" "$out" "--reply-to <identity>/<slug>"
+[ ! -f "$VDM_INTERCOM_ROOT/hop-a/relay-amb.md" ] \
+  && ok "…and writes no letter" || bad "relay-amb.md was written despite ambiguity"
+
+out="$( cd "$TMP/hop-c" && bash "$IC" send hop-a relay-qual --reply-to hop-c/relay-two 2>&1 )"; rc=$?
+eq "the qualified form resolves what the bare one could not" "$rc" "0"
+eq "…and records exactly what was asked for" \
+   "$(grep '^reply-to:' "$VDM_INTERCOM_ROOT/hop-a/relay-qual.md")" "reply-to: hop-c/relay-two"
+rm -f "$VDM_INTERCOM_ROOT/hop-a/relay-two.md"
+
+# A link that is deleted after the fact must be REPORTED, not silently skipped:
+# a chain that stops early looks exactly like a chain that was complete.
+mv "$VDM_INTERCOM_ROOT/hop-b/_done/relay-one.md" "$TMP/relay-one.parked"
+out="$( cd "$TMP/hop-a" && bash "$IC" chain relay-three 2>&1 )"
+says "a missing link is named, not skipped" "$out" "(missing"
+says "…and the reference that could not be resolved is shown" "$out" "hop-b/relay-one"
+mv "$TMP/relay-one.parked" "$VDM_INTERCOM_ROOT/hop-b/_done/relay-one.md"
+
+out="$( cd "$TMP/hop-a" && bash "$IC" chain relay-one 2>&1 )"
+says "a letter that starts a chain says so" "$out" "starts the chain"
+
+out="$( cd "$TMP/hop-a" && bash "$IC" chain no-such-letter 2>&1 )"; rc=$?
+eq "chain on an unknown slug refuses" "$rc" "2"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

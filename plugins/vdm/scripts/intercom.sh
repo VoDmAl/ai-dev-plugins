@@ -11,7 +11,8 @@
 #   intercom directory [-v]               list every registered agent (aka: who, list, agents)
 #   intercom resolve <name>               which agent does <name> address?
 #   intercom check [--count]              list (or count) pending messages
-#   intercom send <to> <slug> [--title T] [--from-agent A] [--to ID] [--first-contact]
+#   intercom chain <slug>                 the relay chain behind a letter, and where each link lives
+#   intercom send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--to ID] [--first-contact]
 #   intercom claim <inbox> [--force]      move an unclaimed inbox addressed to one of your names home
 #   intercom pickup <slug> [--grow]       archive a message (or promote with --grow)
 #
@@ -276,7 +277,7 @@ cmd_check() {
   fi
   _ic_print_unclaimed "$id" "   "
   printf '📬 intercom: %s pending message(s) for `%s`\n   inbox: %s\n\n' "$n" "$id" "$(intercom_inbox_dir "$id")"
-  local f from created slug title
+  local f from created slug title prev
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     from="$(intercom_fm_field "$f" from)"
@@ -285,13 +286,67 @@ cmd_check() {
     [ -n "$slug" ] || slug="$(basename "$f" .md)"
     title="$(grep -m1 '^# ' "$f" 2>/dev/null | sed 's/^# //')"
     [ -n "$title" ] || title="$slug"
-    printf '  • %s\n    from: %s   created: %s\n    file: %s\n    pickup: /vdm:intercom pickup %s\n\n' \
-      "$title" "${from:-?}" "${created:-?}" "$f" "$slug"
+    printf '  • %s\n    from: %s   created: %s\n    file: %s\n' \
+      "$title" "${from:-?}" "${created:-?}" "$f"
+    # A relay letter is only half a message without what it continues, and the
+    # chain is derived here rather than written into the letter so that picking
+    # a link up (inbox → _done/) cannot make a stored path lie.
+    prev="$(intercom_fm_field "$f" reply-to)"
+    if [ -n "$prev" ]; then
+      printf '    continues:\n'
+      _ic_print_chain "$prev" "      "
+    fi
+    printf '    pickup: /vdm:intercom pickup %s\n\n' "$slug"
   done < <(intercom_inbox_list "$id")
 }
 
+_ic_print_chain() {
+  # <ref> <indent> — one line per hop, oldest last. Nothing is printed for a
+  # letter that starts no chain.
+  local ref="${1:-}" pad="${2:-}" n=0 r path title
+  [ -n "$ref" ] || return 0
+  while IFS="$(printf '\t')" read -r r path title; do
+    [ -n "$r" ] || continue
+    n=$((n + 1))
+    if [ -n "$path" ]; then
+      printf '%s↩ %s — %s\n%s   %s\n' "$pad" "$r" "$title" "$pad" "$path"
+    else
+      printf '%s↩ %s %s\n' "$pad" "$r" "$title"
+    fi
+  done < <(intercom_chain "$ref")
+  [ "$n" -gt 0 ]
+}
+
+cmd_chain() {
+  local input="${1:-}"
+  [ -n "$input" ] || _ic_die "chain: missing <slug>. Usage: intercom chain <slug | identity/slug>"
+  local n path ref prev
+  n="$(intercom_find_letter "$input" | wc -l | tr -d ' ')"
+  if [ "$n" -eq 0 ]; then
+    printf 'intercom: ✗ no letter matches "%s".\n' "$input" >&2
+    printf '   A reference is `<identity>/<slug>`, or a bare `<slug>` when it is unique.\n' >&2
+    exit 2
+  fi
+  if [ "$n" -gt 1 ]; then
+    printf 'intercom: ✗ "%s" is ambiguous — %s letters carry that slug:\n' "$input" "$n" >&2
+    intercom_find_letter "$input" | while IFS= read -r p; do
+      printf '     %s\n' "$(intercom_letter_ref "$p")"
+    done >&2
+    exit 3
+  fi
+  path="$(intercom_find_letter "$input" | head -1)"
+  ref="$(intercom_letter_ref "$path")"
+  printf '%s — %s\n   %s\n' "$ref" "$(grep -m1 '^# ' "$path" 2>/dev/null | sed 's/^# //')" "$path"
+  prev="$(intercom_fm_field "$path" reply-to)"
+  if [ -z "$prev" ]; then
+    printf '   (starts the chain — no reply-to)\n'
+    return 0
+  fi
+  _ic_print_chain "$prev" "   "
+}
+
 cmd_send() {
-  local to="" slug="" title="" from_agent="" first_contact=0 deliver_to=""
+  local to="" slug="" title="" from_agent="" first_contact=0 deliver_to="" reply_to=""
   to="${1:-}"; [ $# -gt 0 ] && shift
   slug="${1:-}"; [ $# -gt 0 ] && shift
   while [ $# -gt 0 ]; do
@@ -302,11 +357,13 @@ cmd_send() {
       --from-agent=*)   from_agent="${1#--from-agent=}"; shift ;;
       --to)             deliver_to="${2:-}"; shift 2 ;;
       --to=*)           deliver_to="${1#--to=}"; shift ;;
+      --reply-to)       reply_to="${2:-}"; shift 2 ;;
+      --reply-to=*)     reply_to="${1#--reply-to=}"; shift ;;
       --first-contact)  first_contact=1; shift ;;
       *)                shift ;;
     esac
   done
-  [ -n "$to" ]   || _ic_die "send: missing <target>. Usage: intercom send <target> <slug> [--title T] [--from-agent A] [--to <identity>] [--first-contact]"
+  [ -n "$to" ]   || _ic_die "send: missing <target>. Usage: intercom send <target> <slug> [--title T] [--from-agent A] [--reply-to <ref>] [--to <identity>] [--first-contact]"
   [ -n "$slug" ] || _ic_die "send: missing <slug>."
   slug="$(_ic_sanitize_slug "$slug")"
   [ -n "$slug" ] || _ic_die "send: slug is empty after sanitization."
@@ -366,6 +423,33 @@ cmd_send() {
     fi
   fi
 
+  # A chain link that points at nothing reads exactly like a chain that was
+  # never broken, so an unresolvable --reply-to is a hard stop, the same law
+  # that governs an unresolvable recipient. Resolved BEFORE the file is written:
+  # a letter on disk naming a letter that is not is worse than no letter.
+  local reply_ref="" reply_path="" reply_title="" n_hits
+  if [ -n "$reply_to" ]; then
+    n_hits="$(intercom_find_letter "$reply_to" | wc -l | tr -d " ")"
+    if [ "$n_hits" -eq 0 ]; then
+      printf 'intercom: ✗ --reply-to "%s" matches no letter in the store — not sending.\n' "$reply_to" >&2
+      printf '   A reference is `<identity>/<slug>`, or a bare `<slug>` when it is unique.\n' >&2
+      printf '   Both the inbox and its _done/ archive are searched, so a picked-up letter still resolves.\n' >&2
+      printf '   Store: %s\n' "$(intercom_store_root)" >&2
+      exit 2
+    fi
+    if [ "$n_hits" -gt 1 ]; then
+      printf 'intercom: ✗ --reply-to "%s" is ambiguous — %s letters carry that slug:\n' "$reply_to" "$n_hits" >&2
+      intercom_find_letter "$reply_to" | while IFS= read -r _p; do
+        printf '     %s\n' "$(intercom_letter_ref "$_p")"
+      done >&2
+      printf '   Qualify it: --reply-to <identity>/<slug>\n' >&2
+      exit 3
+    fi
+    reply_path="$(intercom_find_letter "$reply_to" | head -1)"
+    reply_ref="$(intercom_letter_ref "$reply_path")"
+    reply_title="$(grep -m1 "^# " "$reply_path" 2>/dev/null | sed "s/^# //")"
+  fi
+
   from="$(intercom_identity)"
   created="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date +%Y-%m-%d)"
   [ -n "$title" ] || title="$slug"
@@ -381,10 +465,29 @@ cmd_send() {
   local from_agent_suffix=""
   [ -n "$from_agent" ] && from_agent_suffix=" ($from_agent)"
 
+  # Both tokens expand to nothing for an ordinary letter, and the line they sit
+  # on is then dropped entirely: an envelope field claiming an empty chain is a
+  # claim, and the envelope is the machine-readable truth.
+  local reply_line="" reply_banner=""
+  if [ -n "$reply_ref" ]; then
+    reply_line="reply-to: $reply_ref"
+    reply_banner="> ↩ **CONTINUES:** \`$reply_ref\`"
+    [ -n "$reply_title" ] && reply_banner="$reply_banner — $reply_title"
+    reply_banner="$reply_banner
+>    Whole chain, and where each link lives now: \`/vdm:intercom chain $slug\`"
+  fi
+
   # Literal token substitution (bash ${//}, not sed/awk) so free-text values
   # containing & \ / cannot corrupt the output.
-  local line
+  local line raw
   while IFS= read -r line || [ -n "$line" ]; do
+    raw="$line"
+    line="${line//'{{REPLY_TO_LINE}}'/$reply_line}"
+    line="${line//'{{REPLY_TO_BANNER}}'/$reply_banner}"
+    # A token line that expanded to nothing leaves no blank line behind.
+    case "$raw" in
+      *'{{REPLY_TO_'*) [ -z "$line" ] && continue ;;
+    esac
     line="${line//'{{FROM}}'/$from}"
     line="${line//'{{FROM_AGENT}}'/$from_agent}"
     line="${line//'{{FROM_AGENT_SUFFIX}}'/$from_agent_suffix}"
@@ -550,6 +653,7 @@ case "$sub" in
   send)                       cmd_send "$@" ;;
   claim)                      cmd_claim "$@" ;;
   pickup)                     cmd_pickup "$@" ;;
+  chain)                      cmd_chain "$@" ;;
   ""|-h|--help|help)
     cat <<'HELP'
 intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
@@ -571,7 +675,8 @@ intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
   intercom directory [-v]               every registered agent (aka: who, list, agents)
   intercom resolve <name>               which agent does <name> address?
   intercom check [--count]              list (or count) pending messages for this repo
-  intercom send <to> <slug> [--title T] [--from-agent A] [--to ID] [--first-contact]
+  intercom chain <slug>                 the relay chain behind a letter, and where each link lives
+  intercom send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--to ID] [--first-contact]
                                         stage a message addressed to <to> (identity, alias
                                         or name); unknown target = hard stop with next steps.
                                         --to <identity>: deliver there and record <to> as

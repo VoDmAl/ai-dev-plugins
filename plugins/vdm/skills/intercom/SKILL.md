@@ -302,7 +302,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/intercom.sh <subcommand> [args]
 | `directory [-v]` (aka `who`, `list`, `agents`) | Every registered agent: identity, names + aliases, description, pending count; `⚠ unnamed` where the human part is missing; plus inboxes that exist with no registered agent (unclaimed first-contact sends). `-v` adds remotes and paths. |
 | `resolve <name>` | Print the canonical identity `<name>` addresses; on failure list the nearest agents (exit 2 unknown, 3 ambiguous). |
 | `check [--count]` | List (or count) pending messages for this repo; also registers it. |
-| `send <to> <slug> [--title T] [--from-agent A] [--to ID] [--first-contact]` | Scaffold an envelope message addressed to `<to>` (identity, alias or name) and print its path. Unknown / ambiguous target = **hard stop** with suggestions and the next command. `--to <identity>` delivers there and records `<to>` as that agent's name (the resend after the user said whom they meant). `--first-contact` creates a fresh inbox for a recipient that has never registered. |
+| `send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--to ID] [--first-contact]` | Scaffold an envelope message addressed to `<to>` (identity, alias or name) and print its path. Unknown / ambiguous target = **hard stop** with suggestions and the next command. `--to <identity>` delivers there and records `<to>` as that agent's name (the resend after the user said whom they meant). `--reply-to <ref>` records which letter this one continues (§ The relay form). `--first-contact` creates a fresh inbox for a recipient that has never registered. |
+| `chain <slug>` | The relay chain behind a letter — every link it continues, and where each one lives right now. |
 | `claim <inbox> [--force]` | Move an unclaimed inbox (no registered agent) whose name matches one of your names/aliases into your own inbox; `to:` is rewritten to your identity, `to_input` stays as the trace, the name is recorded. `--force` for an orphan that matches none of your names. |
 | `pickup <slug> [--grow]` | Archive a message to `_done/` (or, with `--grow`, hand it to `/vdm:crystal-grow`). |
 
@@ -326,6 +327,51 @@ refusal text (§ The negative scenario, step by step): resend with
 user's word as that agent's name; ask the user if it is not clear; use the
 identity alone for a hint that is not a name. Only when the recipient genuinely
 has never registered (a brand-new repo) use `--first-contact`.
+
+### The relay form — reference the previous letter, never paste it
+
+A relay is a letter that travels: A writes to B, B adds facts and passes it to
+C, C to D. Each hop adds something; none of them should re-transmit what came
+before.
+
+**Measured on the whole store, 2026-09-22: one relay in 318 letters** — and it
+arrived as 64 KB with two levels of `>` quoting, 288 of its 550 lines being
+text the last recipient had already been able to read. Nothing forced that.
+The store is **one machine-level directory and every inbox is a sibling**, so
+the previous letter was openable by path the entire time. What was missing was
+a form for naming it.
+
+```bash
+intercom.sh send <to> <slug> --title "…" --reply-to <ref>
+```
+
+`<ref>` is `<identity>/<slug>`, or a bare `<slug>` when only one letter carries
+it. Both the inbox and its `_done/` archive are searched, so a letter that has
+already been picked up still resolves.
+
+What it does, and deliberately no more:
+
+- writes **`reply-to: <identity>/<slug>`** into the envelope — an address, not
+  a copy;
+- renders a `↩ **CONTINUES:**` line in the banner naming the previous letter
+  and its title;
+- makes `check` print what an incoming letter continues, and `chain <slug>`
+  walk the whole way back.
+
+**The chain is derived, never stored.** Each letter names only its immediate
+predecessor; `chain` follows the links. So there is no list to keep in sync,
+and a link that moves (inbox → `_done/`) cannot make a stored path lie. A
+missing link and a cycle are both **reported by name** rather than ending the
+walk quietly — a chain that stops early looks exactly like a chain that was
+complete.
+
+**An unresolvable `--reply-to` is a hard stop and nothing is written.** Same
+law as an unresolvable recipient: a letter naming a letter that does not exist
+is worse than no letter, because the reader cannot tell a broken link from an
+unbroken one. Ambiguity refuses too, and names every candidate.
+
+When you are the one continuing a relay: write **only what you are adding**,
+and reference the rest. The recipient can open every link.
 
 ### Receiving / picking up
 
