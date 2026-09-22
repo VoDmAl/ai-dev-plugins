@@ -27,6 +27,12 @@
 # Configuration: respects .claude/vdm-plugins.json → docs-sync.enabled flag,
 # since this is conceptually part of the docs-sync invariant. Fail-open on any
 # unexpected error: never block the assistant on a hook bug.
+#
+# One exception, and it is not a bug case: when the audit could not RUN at all
+# — no JSON parser on the machine, the audit script gone, a crash — the hook
+# says so and blocks, because silence here is indistinguishable from "no
+# orphans found". Measured 2026-09-21: without `python3` this hook exited 0 on
+# a genuine orphan. See lib/gate-guard.sh.
 
 set -u
 # Note: deliberately NOT using `set -e` or an ERR trap. We want to swallow
@@ -35,6 +41,8 @@ set -u
 
 # shellcheck disable=SC1091
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/config-read.sh" 2>/dev/null || true
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/gate-guard.sh" 2>/dev/null || true
 
 # Honor the docs-sync enable flag if config-read is available. If config-read
 # isn't loaded (graceful degradation), default to enabled.
@@ -47,7 +55,34 @@ fi
 payload=$(cat)
 [ -z "$payload" ] && exit 0
 
+# Dependency-free scope prefilter, used only when the audit cannot run. Narrow
+# on purpose: it names the two shapes the audit is responsible for — a file
+# under docs/llm/, and a synthesis document (one declaring `covers:`) — so a
+# machine without a JSON parser does not have every markdown write blocked.
+orphan_in_scope() {
+  printf '%s' "$payload" | grep -qE '"tool_name"[[:space:]]*:[[:space:]]*"(Write|Edit|MultiEdit)"' 2>/dev/null || return 1
+  printf '%s' "$payload" | grep -qE 'docs/llm/|covers:' 2>/dev/null || return 1
+  return 0
+}
+
+orphan_unverified() {
+  orphan_in_scope || exit 0
+  if command -v vdm_gate_unverified >/dev/null 2>&1; then
+    vdm_gate_unverified "orphan-guard" "$1" \
+      "a long-lived doc was just written — whether it has a discovery hook was never checked" \
+      "install python3 or jq so the hook can read its payload, then write again, or" \
+      "run the audit by hand: \${CLAUDE_PLUGIN_ROOT}/scripts/check-doc-orphans.sh"
+  else
+    printf '\n[orphan-guard] NOT CHECKED — %s\n  A long-lived doc was written and the orphan audit could not run.\n\n' "$1" >&2
+  fi
+  exit 2
+}
+
 read_field() {
+  if command -v vdm_json_field >/dev/null 2>&1; then
+    vdm_json_field "$payload" "$1"
+    return 0
+  fi
   FIELD_PATH="$1" python3 -c '
 import json, os, sys
 try:
@@ -67,7 +102,11 @@ if cur is not None:
 }
 
 tool_name=$(read_field "tool_name")
-[ -z "$tool_name" ] && exit 0
+# Every hook payload carries `tool_name`. Empty means the payload was not read
+# — no parser, or a parser that is present and broken — which is "the check did
+# not run", not "out of scope". The prefilter inside orphan_unverified decides
+# whether this particular call was ours to check.
+[ -z "$tool_name" ] && orphan_unverified "could not read \`tool_name\` from the hook payload"
 
 # We care about file-creating/modifying tools. Edit/MultiEdit may also touch
 # docs/llm/ files; treat them the same way.
@@ -131,13 +170,19 @@ case "$file_path" in
 esac
 
 audit_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-doc-orphans.sh"
-[ -x "$audit_script" ] || exit 0
+[ -x "$audit_script" ] || orphan_unverified "audit script not found at $audit_script"
 
 # Run the audit on this single file. Capture stderr for the feedback message.
 # We deliberately let exit 1 propagate without triggering set -e (we don't
 # have it set) and capture it via $?.
 audit_stderr=$("$audit_script" --file "$relative_path" --project-root "$project_root" --quiet 2>&1 >/dev/null)
 audit_exit=$?
+
+# 0 clean / 1 orphan. Anything else means the audit did not reach a verdict.
+case "$audit_exit" in
+  0|1) ;;
+  *)   orphan_unverified "the audit exited $audit_exit without reaching a verdict" ;;
+esac
 
 if [ "$audit_exit" -eq 1 ]; then
   # Orphan detected. Re-emit the audit's remediation message on stderr and

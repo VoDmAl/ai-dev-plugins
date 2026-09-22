@@ -11,8 +11,15 @@
 #   exit 2  stderr surfaces as feedback to the assistant — used to block the
 #           done-transition with the five-path diagnostic from Decision Log #9
 #
-# Fail-open by design: parse errors, missing config, exotic edits — all exit 0.
-# Better to miss one edit than to block the assistant on a hook bug.
+# Fail-open for everything it CAN evaluate: parse errors, missing config,
+# exotic edits — all exit 0. Better to miss one edit than to block on a hook bug.
+#
+# Fail-CLOSED for the one case that is not an evaluation at all: when the
+# checker could not run, the gate blocks instead of returning silence. "The
+# check failed" and "the check did not run" are different events, and only the
+# first one is what `exit 0` means. Measured 2026-09-21: without `python3` this
+# hook exited 127, which the harness treats as non-blocking — the gate was off
+# and looked healthy. See lib/gate-guard.sh for the shape and the field report.
 #
 # The wrapper resolves all crystal roots and the active status-alias sets
 # (canonical "done"/"superseded" plus any aliases that map to them), passing
@@ -25,6 +32,8 @@ set -u
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/config-read.sh" 2>/dev/null || true
 # shellcheck disable=SC1091
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/crystal-path.sh" 2>/dev/null || true
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/gate-guard.sh" 2>/dev/null || true
 
 if command -v vdm_is_enabled >/dev/null 2>&1; then
   vdm_is_enabled "crystal" || exit 0
@@ -70,10 +79,52 @@ done_csv=$(gate_values_for "done")
 superseded_csv=$(gate_values_for "superseded")
 
 simulator="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/crystal-completion-guard.py"
-[ -f "$simulator" ] || exit 0
 
-CRYSTAL_ROOTS="$roots_colon" \
-CRYSTAL_GATE_DONE="$done_csv" \
-CRYSTAL_GATE_SUPERSEDED="$superseded_csv" \
-  python3 "$simulator"
-exit $?
+# The payload is consumed by whoever reads stdin first, so capture it here and
+# hand a copy to the checker. The copy is also what the prefilter below reads.
+payload=$(cat)
+
+# Dependency-free scope prefilter. Answers "is this call one this gate is
+# responsible for?" using nothing but grep, so the answer is available exactly
+# when the checker is not. Deliberately approximate and narrow: all three
+# conditions must hold, which keeps a machine without python3 from having every
+# write blocked while still covering the one shape the gate exists to catch —
+# a workitem going terminal.
+guard_in_scope() {
+  printf '%s' "$payload" | grep -qE '"tool_name"[[:space:]]*:[[:space:]]*"(Write|Edit|MultiEdit)"' 2>/dev/null || return 1
+  printf '%s' "$payload" | grep -qE 'workitem\.md|/tasks/' 2>/dev/null || return 1
+  printf '%s' "$payload" | grep -qE 'status:[[:space:]]*"?(done|superseded)' 2>/dev/null || return 1
+  return 0
+}
+
+guard_unverified() {
+  guard_in_scope || exit 0
+  if command -v vdm_gate_unverified >/dev/null 2>&1; then
+    vdm_gate_unverified "crystal-completion-guard" "$1" \
+      "a workitem is being written with a terminal status — whether open \`- [ ]\` obligations remain was never checked" \
+      "install python3 — the checker is a python script — and write again, or" \
+      "sweep the file by hand: every \`- [ ]\` must be resolved via one of the five paths (crystal-cut DL #9) before status:done"
+  else
+    printf '\n[crystal-completion-guard] NOT CHECKED — %s\n  A workitem is going terminal and the gate could not run. Blocking.\n\n' "$1" >&2
+  fi
+  exit 2
+}
+
+if ! command -v python3 >/dev/null 2>&1; then
+  guard_unverified "python3 is not on PATH"
+fi
+[ -f "$simulator" ] || guard_unverified "checker not found at $simulator"
+
+printf '%s' "$payload" \
+  | CRYSTAL_ROOTS="$roots_colon" \
+    CRYSTAL_GATE_DONE="$done_csv" \
+    CRYSTAL_GATE_SUPERSEDED="$superseded_csv" \
+    python3 "$simulator"
+rc=$?
+
+# The checker returns 0 (allow) or 2 (block) and nothing else. Any other code
+# means it did not reach a verdict — a crash, an import error, a killed process.
+case "$rc" in
+  0|2) exit "$rc" ;;
+  *)   guard_unverified "the checker exited $rc without reaching a verdict" ;;
+esac

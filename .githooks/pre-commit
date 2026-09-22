@@ -2,7 +2,7 @@
 # Local pre-commit hook. Activated by:
 #     git config core.hooksPath .githooks
 #
-# Runs six independent gates. Each fails fast — failure in any gate blocks
+# Runs seven independent gates. Each fails fast — failure in any gate blocks
 # the commit:
 #   1. lib-sync       — plugins/{vdm,vdm-git}/lib/ must stay byte-identical
 #                       (caught by scripts/check-lib-sync.sh)
@@ -25,6 +25,11 @@
 #                       which asserts the harness does not write into the
 #                       commit that is running it. Conditional (~15s) — fires
 #                       only when a gate or a harness is staged.
+#   7. hook fail-closed — changing a blocking hook the PLUGINS ship (or the
+#                       shared lib/gate-guard.sh) re-runs
+#                       tests/hook-fail-closed.test.sh: it strips python3 from
+#                       PATH and asserts the hook blocks an in-scope call while
+#                       staying silent on an out-of-scope one. Conditional (~5s).
 
 set -eu
 
@@ -83,4 +88,19 @@ if printf '%s\n' "$staged" | grep -qE '^(scripts/check-.*\.sh|plugins/vdm/script
   # tests/) followed that variable home and dropped eight test files from
   # commit 7d80c73. Cheap — the probe runs the harness setup only.
   bash tests/gates-harness-isolation.test.sh
+fi
+
+# Gate 7 — the user-time hooks' fail-closed red tests. Same principle as gate 6,
+# different subject: gate 6 covers the gates OF THIS REPO, this one covers the
+# BLOCKING HOOKS THE PLUGINS SHIP. It builds symlink PATH farms without python3
+# (and with a python3 that crashes) and asserts each hook blocks an in-scope
+# call while staying silent on an out-of-scope one.
+#
+# Both directions are the gate. "Blocks when it cannot check" without "silent
+# when it is not our call" is a hook that blocks everything on a machine
+# without python3 — which gets the plugin uninstalled, i.e. the same as not
+# existing. ~5s, so it is conditional on touching a hook or the shared helper.
+if printf '%s\n' "$staged" | grep -qE '^(plugins/vdm/scripts/(crystal-completion-guard|orphan-guard-hook|crystal-lint)\.(sh|py)|plugins/vdm-git/scripts/git-guard-hook\.(sh|py)|plugins/(vdm|vdm-git)/lib/gate-guard\.sh|tests/hook-fail-closed\.test\.sh)$'; then
+  echo "gates: a blocking hook changed — re-running the fail-closed red tests (~5s)…"
+  bash tests/hook-fail-closed.test.sh
 fi

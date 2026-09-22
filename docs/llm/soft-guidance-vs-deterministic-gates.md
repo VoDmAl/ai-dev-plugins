@@ -262,6 +262,33 @@ Rule for reading such counts: a gate is wired when the chain **resolves**,
 never when its file exists. (Details: `vdx → docs/tasks/vdm-gates-wiring-axis/workitem.md`,
 DL #7–#10; the brief that asked for the axis: `docs/tasks/git-guard-explicit-file-list/workitem.md`.)
 
+**Letting a gate report success when it could not run.** The neighbour of the
+entry above, one level lower: not "was the gate wired?" but "did the wired gate
+actually execute?". A hook blocks on exit 2 and on nothing else, so a missing
+interpreter (127), a crash (1) and a clean verdict (0) all read as *allow*.
+Measured here 2026-09-21 with `python3` stripped from PATH: all four blocking
+hooks the plugins ship were off, and every one of them looked healthy —
+`crystal-completion-guard` 127, `crystal-lint` 0, `orphan-guard` 0,
+`git-guard` 127. The same defect arrived independently from three other
+repositories through the meetings relay, where a `|| true` swallowed a linter's
+exit code.
+
+The rule: **a reminder may fail open, a gate may not.** "The check failed" and
+"the check did not run" are different events, and only the first one is what
+`exit 0` means. Two details decide whether the fix works:
+
+- *Ask what the answer means, not what the machine has.* Testing `command -v
+  python3` covers the machine without it and misses the one whose `python3` is
+  present and broken — the parser returns nothing, the hook reads that as "not
+  my business", and the gate is off again one level down. A field that MUST be
+  present in the payload (`tool_name`) coming back empty covers both.
+- *Block only inside your own scope, and decide that scope without
+  dependencies* — a `grep` over the raw payload, whose answer is available
+  exactly when nothing else is. Skip this and the fix becomes "block every
+  write on a machine without python3", which gets the plugin uninstalled: the
+  same as not existing. Both directions are the red test
+  (`tests/hook-fail-closed.test.sh`).
+
 **Tying enforcement to a single harness.** A `PostToolUse` hook works in
 Claude Code; it's silent in Qwen Code. A pre-commit hook works in any
 contributor's shell regardless of harness. Layer the gates: pre-commit catches

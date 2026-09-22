@@ -467,6 +467,8 @@ If you forget, a SessionStart hook in `.claude/settings.json` prints a one-line 
 | skill-paths | `scripts/check-skill-paths.sh` | unconditionally — user-time files must not reference `plugins/X/<subdir>/` (use `${CLAUDE_PLUGIN_ROOT}/...` instead) |
 | crystal | `scripts/check-crystal-completion.sh` | any `docs/tasks/**/workitem.md` (or flat `docs/tasks/*.md`) is staged with frontmatter `status: done` and unchecked `- [ ]` items remain |
 | crystal-canon | `plugins/vdm/scripts/crystal-lint.sh --staged` | any staged workitem whose shape does not match the canon derived from `templates/workitem-template.md` (non-terminal tier only) |
+| gate red-tests | `tests/gates.test.sh` + `tests/gates-harness-isolation.test.sh` | a gate script or the harness itself is staged (~15s) |
+| hook fail-closed | `tests/hook-fail-closed.test.sh` | a blocking hook the plugins ship, or `lib/gate-guard.sh`, is staged (~5s) |
 
 All three can be run manually:
 
@@ -480,6 +482,7 @@ bash tests/gates.test.sh                   # red-tests all of the above (~15s)
 bash tests/intercom.test.sh                # agent directory + name resolution, against a scratch store
 bash tests/crystal-capture-reminder.test.sh # capture reminder: throttle before scan (proven via a find shim), capture-exclude
 bash tests/gates-harness-isolation.test.sh # the gate harness must not write into the commit that runs it
+bash tests/hook-fail-closed.test.sh        # blocking hooks with python3 stripped from PATH: block in scope, silent out of it
 ```
 
 **lib-sync.** The two plugins ship duplicated copies of `lib/config-path.sh` and `lib/config-read.sh` (each plugin must be self-contained for independent installation). The check normalizes the cross-reference comments that name the opposite plugin (`plugins/vdm/lib` ↔ `plugins/vdm-git/lib`); everything else must match byte-for-byte. A GitHub Actions workflow running the same check on PRs is planned but not yet wired up (the file `.github/workflows/lib-sync.yml` was blocked by a local security hook during a prior commit).
