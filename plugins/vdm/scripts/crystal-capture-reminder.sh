@@ -86,7 +86,8 @@ sid="default"
 if [ "$mode" = "smart" ] && command -v _vdm_reminder_throttle_check >/dev/null 2>&1; then
   sid=$(printf '%s' "$payload" | _vdm_reminder_session_id 2>/dev/null || printf 'default')
   throttle=$(vdm_config_read "crystal" "capture-throttle" "600")
-  if _vdm_reminder_throttle_check "crystal-capture" "$throttle" "$sid"; then
+  turns=$(vdm_config_read "crystal" "capture-throttle-turns" "5")
+  if _vdm_reminder_throttle_check "crystal-capture" "$throttle" "$sid" "$turns"; then
     exit 0
   fi
 fi
@@ -109,6 +110,10 @@ active=$(printf '%s\n' "$all_items" | filter_status "in-progress" 2>/dev/null)
 # session is dormant and noise would be counterproductive. If both are
 # fresh, capture is already in flight — also no signal needed.
 fire="no"
+# Declared here, not inside the walk: `proactive` fires without walking, and
+# under `set -u` an unset variable in the render block would take the hook down
+# on exactly the path that has nothing to measure.
+newer_count=""
 if [ "$mode" = "proactive" ]; then
   fire="yes"
 else
@@ -185,9 +190,20 @@ else
   if [ -n "$newers" ]; then
     # eval is acceptable here: the prune string and the -newer clause are built
     # from path strings we constructed ourselves, not from external input.
-    newer=$(eval "find . \\( $prunes \\) -prune -o \\( $newers \\) -type f -print" 2>/dev/null | head -1)
+    #
+    # `head -21` rather than `head -1`: the hook already walks the tree, and
+    # throwing the answer away to print a verdict was the defect — a fixed
+    # sentence becomes furniture by the third time it is read, while a number
+    # that moves does not. The cap keeps the early exit that makes this
+    # affordable on an 80k-file vault; 20+ and 200 call for the same action, so
+    # the exact figure past the cap buys nothing.
+    newer=$(eval "find . \\( $prunes \\) -prune -o \\( $newers \\) -type f -print" 2>/dev/null | head -21)
     if [ -n "$newer" ]; then
       fire="yes"
+      newer_count=$(printf '%s\n' "$newer" | grep -c .)
+      if [ "$newer_count" -gt 20 ]; then
+        newer_count="20+"
+      fi
     fi
   fi
 fi
@@ -218,8 +234,45 @@ while IFS= read -r f; do
   fi
 done <<<"$active"
 
+# The measurement, not the verdict. Both numbers were already computed — the
+# file count by the walk above, the age by one stat of the workitem that has
+# been sitting untouched while the work happened.
+measure=""
+[ -n "$newer_count" ] && measure="${newer_count} file(s) changed"
+newest_wi=""
+while IFS= read -r f; do
+  [ -f "$f" ] || continue
+  if [ -z "$newest_wi" ] || [ "$f" -nt "$newest_wi" ]; then
+    newest_wi="$f"
+  fi
+done <<<"$active"
+if [ -n "$newest_wi" ]; then
+  if stat -f %m "$newest_wi" >/dev/null 2>&1; then
+    wi_mtime=$(stat -f %m "$newest_wi" 2>/dev/null || echo 0)
+  else
+    wi_mtime=$(stat -c %Y "$newest_wi" 2>/dev/null || echo 0)
+  fi
+  if [ "${wi_mtime:-0}" -gt 0 ]; then
+    age=$(( $(date +%s) - wi_mtime ))
+    [ "$age" -lt 0 ] && age=0
+    if [ "$age" -ge 86400 ]; then
+      age_txt="$((age / 86400))d $(((age % 86400) / 3600))h"
+    elif [ "$age" -ge 3600 ]; then
+      age_txt="$((age / 3600))h $(((age % 3600) / 60))m"
+    else
+      age_txt="$((age / 60))m"
+    fi
+    [ -n "$measure" ] && measure="${measure}, "
+    measure="${measure}workitem untouched for ${age_txt}"
+  fi
+fi
+
 ctx="[crystal] Active: ${slugs} — workitem.md = source of truth (chat decays under compaction)."
-ctx="${ctx}\\n📌 Work happened this segment without workitem capture. Before next compaction, mirror:"
+if [ -n "$measure" ]; then
+  ctx="${ctx}\\n📌 ${measure}. Before next compaction, mirror:"
+else
+  ctx="${ctx}\\n📌 Work happened this segment without workitem capture. Before next compaction, mirror:"
+fi
 ctx="${ctx}\\n  • Decision taken (chose X over Y, raised a threshold, deviated from plan, user-confirmed non-obvious choice)? → append to \`## Decision Log\`"
 ctx="${ctx}\\n  • Observation / ecosystem block / follow-up / implicit dep? → /vdm:crystal-bud"
 ctx="${ctx}\\n  • Resolved a Next-action item? → flip \`- [ ]\` → \`[x]\` in workitem.md"

@@ -49,8 +49,9 @@ case "$mode" in
     payload=$(cat 2>/dev/null || true)
     sid=$(printf '%s' "$payload" | _vdm_reminder_session_id 2>/dev/null || printf 'default')
     throttle=$(vdm_config_read "learn" "throttle" "600")
+    turns=$(vdm_config_read "learn" "throttle-turns" "5")
     if command -v _vdm_reminder_throttle_check >/dev/null 2>&1; then
-      if _vdm_reminder_throttle_check "learn" "$throttle" "$sid"; then
+      if _vdm_reminder_throttle_check "learn" "$throttle" "$sid" "$turns"; then
         exit 0
       fi
       _vdm_reminder_throttle_touch "learn" "$sid"
