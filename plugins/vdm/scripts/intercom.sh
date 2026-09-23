@@ -360,6 +360,12 @@ cmd_send() {
       --reply-to)       reply_to="${2:-}"; shift 2 ;;
       --reply-to=*)     reply_to="${1#--reply-to=}"; shift ;;
       --first-contact)  first_contact=1; shift ;;
+      # An unknown flag used to be shifted past in silence, so a typo
+      # (`--reply-too`) produced a letter with no chain and no complaint —
+      # the same shape as every other defect this suite hunts: silence that
+      # reads as success. Caught on the first real use of `--reply-to`, against
+      # an installed version that predated the flag.
+      -*)               _ic_die "send: unknown option '$1'. Usage: intercom send <target> <slug> [--title T] [--from-agent A] [--reply-to <ref>] [--to <identity>] [--first-contact]" ;;
       *)                shift ;;
     esac
   done

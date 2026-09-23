@@ -376,10 +376,33 @@ Sections may be partial — missing keys fall back to defaults. Missing sections
 
 | Mode | When the reminder fires |
 |------|-------------------------|
-| `proactive` | Every prompt, unconditionally |
+| `proactive` | Every prompt, unconditionally — no throttle |
+| `smart` | Working tree has changes **and** both throttle windows have elapsed |
 | `conditional` | Only when working tree has changes (modified, staged, or untracked) |
 | `quiet` | Same as `conditional` today; fase 3 will tighten further |
 | `silent` | Never (synonym for `enabled: false`) |
+
+### The throttle window has two axes
+
+`smart` reminders keep two windows, and an emit needs **both** to have elapsed:
+
+| Key | Unit | Default | What it prevents |
+|-----|------|---------|------------------|
+| `<section>.throttle` | seconds | 600 | repeating inside a short wall-clock window |
+| `<section>.throttle-turns` | prompts | 5 | repeating on consecutive prompts |
+
+(`crystal` uses `capture-throttle` / `capture-throttle-turns`.)
+
+The second axis was added in `vdm` 2.31.0 because the first one alone has a
+profile it fails on, and it is a common one: **a person who spends longer than
+the window thinking about each prompt clears it on every turn**, so the hook
+fires on every turn. Measured in the field before the fix — six hooks, 4326
+bytes on every single prompt; after — 7056 bytes across six prompts, a 3.7×
+reduction on the same profile.
+
+A value you have already set still means **seconds**; the turn budget is
+additive, and "stricter wins" is what makes it safe to add without touching
+anyone's configuration.
 
 ### Defaults
 
@@ -389,7 +412,7 @@ Sections may be partial — missing keys fall back to defaults. Missing sections
 | `changelog` | `conditional` | Nothing to changelog when tree is clean |
 | `docs-sync` | `conditional` | No diff → no docs to flag |
 | `distill` | `smart` | Fires only on real drift (a synthesis older than an input it covers), throttled to 30 min. Silent in a project with no synthesis tier — see [docs-distill](#docs-distill) |
-| `git-guard` | `proactive` | Safety reminder, should always be visible |
+| `git-guard` | `smart` | Was `proactive` with no throttle at all until `vdm-git` 2.14.0 — the only reminder in the suite built that way, and it spent 1601 bytes on **every** prompt in any dirty repository. The blocking `PreToolUse` guard is untouched; that is the part that actually stops a bad commit |
 
 ### Important note about `git-guard`
 
@@ -512,6 +535,7 @@ bash tests/intercom.test.sh                # agent directory + name resolution, 
 bash tests/crystal-capture-reminder.test.sh # capture reminder: throttle before scan (proven via a find shim), capture-exclude
 bash tests/gates-harness-isolation.test.sh # the gate harness must not write into the commit that runs it
 bash tests/hook-fail-closed.test.sh        # blocking hooks with python3 stripped from PATH: block in scope, silent out of it
+bash tests/reminder-throttle.test.sh       # the two-axis reminder window, and the hooks that print a measurement instead of a verdict
 ```
 
 **lib-sync.** The two plugins ship duplicated copies of `lib/config-path.sh` and `lib/config-read.sh` (each plugin must be self-contained for independent installation). The check normalizes the cross-reference comments that name the opposite plugin (`plugins/vdm/lib` ↔ `plugins/vdm-git/lib`); everything else must match byte-for-byte. A GitHub Actions workflow running the same check on PRs is planned but not yet wired up (the file `.github/workflows/lib-sync.yml` was blocked by a local security hook during a prior commit).

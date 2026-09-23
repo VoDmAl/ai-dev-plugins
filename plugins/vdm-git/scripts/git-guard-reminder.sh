@@ -3,8 +3,23 @@
 #   enabled=false       → never fires (note: PreToolUse blocking still applies)
 #   mode=silent         → never fires
 #   mode=conditional|quiet → fires only when tree has changes (commit could be near)
-#   mode=proactive      → fires every prompt (default — safety reminder)
-# Default (no config): enabled=true, mode=proactive.
+#   mode=smart          → fires when the tree has changes AND both throttle
+#                         windows have elapsed (default)
+#   mode=proactive      → fires every prompt, no throttle
+# Default (no config): enabled=true, mode=smart.
+#
+# Windows: git-guard.throttle (seconds, default 600) and
+# git-guard.throttle-turns (prompts, default 5). An emit needs BOTH elapsed —
+# see lib/reminder-throttle.sh for why there are two axes.
+#
+# Until 2.14.0 the default was `proactive` with no throttle at all, and this
+# was the ONLY reminder in the suite built that way. Measured in the field
+# (t23b-content, 2026-09-10): 1324 bytes of additionalContext on EVERY prompt
+# in any git repository, while its five siblings were spending 0 on a repeat
+# prompt. The asymmetry was never decided by anyone — it is what you get when a
+# hook is written before the shared pattern exists and nobody goes back. The
+# blocking PreToolUse guard is untouched: that is the part that actually stops
+# a bad commit, and it does not depend on this text having been read.
 #
 # Always exits silently outside a git work tree — non-git folders cannot
 # produce commits, so the reminder would only push the assistant toward
@@ -12,6 +27,8 @@
 
 # shellcheck disable=SC1091
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/config-read.sh"
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/reminder-throttle.sh" 2>/dev/null || true
 
 vdm_is_enabled "git-guard" || exit 0
 
@@ -20,7 +37,7 @@ vdm_is_enabled "git-guard" || exit 0
 # `[ -d .git ]` probing in every non-git working directory.
 git rev-parse --is-inside-work-tree &>/dev/null || exit 0
 
-mode=$(vdm_get_mode "git-guard" "proactive")
+mode=$(vdm_get_mode "git-guard" "smart")
 
 case "$mode" in
   silent)
@@ -29,6 +46,21 @@ case "$mode" in
   conditional|quiet)
     if [ -z "$(git status --porcelain 2>/dev/null)" ]; then
       exit 0
+    fi
+    ;;
+  smart)
+    if [ -z "$(git status --porcelain 2>/dev/null)" ]; then
+      exit 0
+    fi
+    payload=$(cat 2>/dev/null || true)
+    sid=$(printf '%s' "$payload" | _vdm_reminder_session_id 2>/dev/null || printf 'default')
+    throttle=$(vdm_config_read "git-guard" "throttle" "600")
+    turns=$(vdm_config_read "git-guard" "throttle-turns" "5")
+    if command -v _vdm_reminder_throttle_check >/dev/null 2>&1; then
+      if _vdm_reminder_throttle_check "git-guard" "$throttle" "$sid" "$turns"; then
+        exit 0
+      fi
+      _vdm_reminder_throttle_touch "git-guard" "$sid"
     fi
     ;;
   proactive|*)

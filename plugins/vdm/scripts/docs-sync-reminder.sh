@@ -48,8 +48,9 @@ fi
 if [ "$mode" = "smart" ]; then
   sid=$(printf '%s' "$payload" | _vdm_reminder_session_id 2>/dev/null || printf 'default')
   throttle=$(vdm_config_read "docs-sync" "throttle" "600")
+  turns=$(vdm_config_read "docs-sync" "throttle-turns" "5")
   if command -v _vdm_reminder_throttle_check >/dev/null 2>&1; then
-    if _vdm_reminder_throttle_check "docs-sync" "$throttle" "$sid"; then
+    if _vdm_reminder_throttle_check "docs-sync" "$throttle" "$sid" "$turns"; then
       exit 0
     fi
     _vdm_reminder_throttle_touch "docs-sync" "$sid"
@@ -118,10 +119,21 @@ if [ -n "$see_refs" ]; then
   context="${context}\n\n@see references found:\n${see_refs}"
 fi
 
-# Project documentation map
+# Project documentation map. Truncated like `changed_files` above — the
+# truncation was written for that block and never applied to this one, which is
+# the larger by far: measured 2026-09-10 in the field, the full list was 1018
+# of this hook's 1835 bytes (55%), while the section that actually answers the
+# question — `Potentially affected docs` — was 98 bytes (5%). The hook was
+# spending its budget printing its INPUT.
+#
+# It is also a property of the repository, not of the turn: identical on every
+# prompt of the session. A sample plus the count says the same thing.
 if [ -n "$md_files" ]; then
   md_count=$(echo "$md_files" | wc -l | tr -d ' ')
-  md_list=$(echo "$md_files" | tr '\n' ', ' | sed 's/,$//')
+  md_list=$(echo "$md_files" | head -10 | tr '\n' ', ' | sed 's/,$//')
+  if [ "$md_count" -gt 10 ]; then
+    md_list="${md_list}, … (+$((md_count - 10)))"
+  fi
   context="${context}\n\nProject docs (${md_count}): ${md_list}"
 else
   context="${context}\n\nNo .md documentation found in project."

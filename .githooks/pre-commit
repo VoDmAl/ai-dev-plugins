@@ -36,7 +36,9 @@
 #                       what is in scope when the project is reached through a
 #                       symlink), and the two vdm-comms suites, whose
 #                       fail-closed cases live with the rest of that plugin's
-#                       red tests. Conditional (~18s).
+#                       red tests, plus tests/reminder-throttle.test.sh (the
+#                       shared reminder window, five hooks across two plugins).
+#                       Conditional (~21s).
 
 set -eu
 
@@ -97,6 +99,7 @@ if printf '%s\n' "$staged" | grep -qE '^(scripts/check-.*\.sh|plugins/vdm/script
   # tests/) followed that variable home and dropped eight test files from
   # commit 7d80c73. Cheap — the probe runs the harness setup only.
   bash tests/gates-harness-isolation.test.sh
+  isolation_done=1
 fi
 
 # Same subject, wider trigger. The isolation harness asserts something about
@@ -107,8 +110,8 @@ fi
 # a fixture replaced 158 index entries of the pending commit with 9 fixture
 # paths. Nothing about those suites had changed — only who invoked them. Cheap
 # (~2s): the probe runs a harness setup, not a full suite.
-if printf '%s\n' "$staged" | grep -qE '^tests/.*\.test\.sh$' &&
-   ! printf '%s\n' "$staged" | grep -qE '^tests/gates(-harness-isolation)?\.test\.sh$'; then
+if [ -z "${isolation_done:-}" ] &&
+   printf '%s\n' "$staged" | grep -qE '^tests/.*\.test\.sh$'; then
   echo "gates: a test harness changed — re-checking git-session isolation (~2s)…"
   bash tests/gates-harness-isolation.test.sh
 fi
@@ -130,8 +133,8 @@ fi
 # hooks of its own, the gate went on passing without covering any of them — and
 # that silence is indistinguishable from a clean run. Breadth costs a few
 # seconds on a plugin edit; the enumeration cost coverage without saying so.
-if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|tests/(hook-fail-closed|symlink-scope|comms|comms-pending)\.test\.sh$)'; then
-  echo "gates: a plugin hook changed — re-running the blocking hooks' red tests (~18s)…"
+if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|tests/(hook-fail-closed|symlink-scope|comms|comms-pending|reminder-throttle)\.test\.sh$)'; then
+  echo "gates: a plugin hook changed — re-running the shipped hooks' red tests (~21s)…"
   bash tests/hook-fail-closed.test.sh
   # Same subject, second question: a hook that CAN run still has to agree with
   # its sibling on which files it is responsible for. Both engines, one fixture
@@ -141,4 +144,9 @@ if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|test
   # contract tests they share a fixture with.
   bash tests/comms.test.sh
   bash tests/comms-pending.test.sh
+  # The reminder hooks are shipped hooks too. They do not block, so they are not
+  # in the fail-closed suites above — but their window is the mechanism that
+  # decides whether a user reads them at all, and it is shared by five hooks
+  # across two plugins through a mirrored lib.
+  bash tests/reminder-throttle.test.sh
 fi
