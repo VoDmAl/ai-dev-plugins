@@ -167,6 +167,29 @@ def parse(fm_text):
     return data
 
 
+def scalar_keys(fm_text):
+    """Top-level `key: value` pairs of a frontmatter block, read line by line.
+
+    For callers that need one flag or two (`draft:`, `sent:`) from files that
+    are not meetings — letters, ticket drafts — whose frontmatter may carry
+    shapes `parse` refuses. Refusing the whole file there would drop exactly
+    the document the caller was looking for. A block value (a list, a nested
+    mapping) comes back as None, the same as an empty scalar.
+
+    The value is read on its own line and nowhere else. That is the point:
+    `^sent:\\s*\\S` looked like "a sent: with a value" and was not — `\\s`
+    crosses the newline, so an empty `sent:` followed by `url:` read as sent,
+    and a ticket draft 131 days old vanished from the list of unsent drafts.
+    """
+    out = {}
+    for line in fm_text.split("\n"):
+        m = _KEY_RE.match(line)
+        if not m or _indent_of(line) != 0:
+            continue
+        out[m.group("key")] = _scalar(m.group("rest"))
+    return out
+
+
 def read(path):
     """Read a file → (data, body). Missing frontmatter yields ({}, text)."""
     with open(path, encoding="utf-8") as fh:

@@ -34,10 +34,11 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 P="$REPO_ROOT/plugins/vdm-comms"
-LINT="$P/scripts/comms-lint.py"
+# Overridable so a change can be proved red against the previous version.
+LINT="${COMMS_LINT_BIN:-$P/scripts/comms-lint.py}"
 LINTSH="$P/scripts/comms-lint.sh"
 GUARD="$P/scripts/comms-draft-guard.sh"
-INDEX="$P/scripts/comms-index.py"
+INDEX="${COMMS_INDEX_BIN:-$P/scripts/comms-index.py}"
 
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); printf '  ✓ %s\n' "$1"; }
@@ -308,6 +309,320 @@ expect_says "GREEN: …and the rest stays English" "$REG" "| Date |"
 rm -f "$FX/.claude/vdm-plugins.json"
 
 echo ""
+echo "== pointers: every link is computed from the pointer's own directory =="
+
+# Field report 2026-09-23: `../../<meeting>` was written into every pointer.
+# From a one-segment track that is right; from `<root>/<a>/<b>/comms/` it lands
+# in `<root>/<a>/meetings/` — 87 of 87 pointers in one repository opened
+# nothing. Tracks of depth 1, 2 and 3, each link resolved on disk.
+mkdir -p "$FX/solo" "$FX/program/2026-2027/alpine-skills"
+mk_meeting "$PAST-deep" "type: meeting
+date: $PAST
+tracks:
+  - solo
+  - gaps/alpha
+  - program/2026-2027/alpine-skills" "index.md"
+OUT=$(cd "$FX" && python3 "$INDEX" --write --project-root "$FX" 2>&1)
+resolves() { # resolves <pointer> — every markdown link target in it exists
+  python3 - "$1" <<'PY'
+import os, re, sys
+p = sys.argv[1]; here = os.path.dirname(p)
+links = re.findall(r"\]\(([^)]+)\)", open(p, encoding="utf-8").read())
+sys.exit(0 if links and all(os.path.exists(os.path.normpath(os.path.join(here, l))) for l in links) else 1)
+PY
+}
+for t in solo gaps/alpha program/2026-2027/alpine-skills; do
+  if resolves "$FX/$t/comms/$PAST-deep-meeting.md"; then
+    ok "the pointer in $t/comms/ opens the meeting"
+  else
+    bad "the pointer in $t/comms/ opens the meeting" "$(grep -o '](.*)' "$FX/$t/comms/$PAST-deep-meeting.md" | head -2)"
+  fi
+done
+
+echo ""
+echo "== wikilink mode, registry columns, materials and topic anchors =="
+
+mkdir -p "$FX/people"
+printf '# Ivan\n' > "$FX/people/ivan-petrov.md"
+mkdir -p "$FX/.claude"
+cat > "$FX/.claude/vdm-plugins.json" <<'JSON'
+{
+  "comms": {
+    "link-style": "wikilink",
+    "registry-columns": ["date", "meeting", "people", "tracks", "topics", "materials"],
+    "series-columns": ["date", "meeting", "people"]
+  }
+}
+JSON
+mkdir -p "$FX/meetings/$PAST-rich"
+cat > "$FX/meetings/$PAST-rich/index.md" <<EOF
+---
+type: meeting
+date: $PAST
+series: plc
+people: [ivan-petrov, nobody-profiled]
+tracks: [gaps/alpha]
+topics:
+  - name: "First: the question"
+    track: gaps/alpha
+  - name: "A tail"
+    track: null
+    tail: true
+---
+
+# A rich meeting
+
+## Topic 1. First: the question
+
+> Track: [[../../gaps/alpha/index|alpha]]
+
+## Topic 2. A tail
+EOF
+printf 'agenda\n' > "$FX/meetings/$PAST-rich/agenda.md"
+printf 'Speaker 1: …\n' > "$FX/meetings/$PAST-rich/transcript.txt"
+printf '# alpha\n' > "$FX/gaps/alpha/index.md"
+printf -- '---\ntype: meeting-series\nslug: plc\n---\n\n<!-- meetings:start -->\n<!-- meetings:end -->\n' \
+  > "$FX/meetings/plc.md"
+printf '# Registry\n\n<!-- registry:start -->\n<!-- registry:end -->\n' > "$FX/meetings/INDEX.md"
+OUT=$(cd "$FX" && python3 "$INDEX" --write --project-root "$FX" 2>&1)
+REG=$(cat "$FX/meetings/INDEX.md")
+PTR=$(cat "$FX/gaps/alpha/comms/$PAST-rich-meeting.md")
+expect_says "WIKI: the meeting is a wikilink, pipe escaped inside the table" "$REG" "[[$PAST-rich/index\\|A rich meeting]]"
+expect_says "WIKI: a profiled person links to the profile" "$REG" "[[../people/ivan-petrov\\|ivan-petrov]]"
+expect_says "WIKI: …an unprofiled one stays plain text" "$REG" ", nobody-profiled |"
+expect_says "WIKI: a track links to its index" "$REG" "[[../gaps/alpha/index\\|alpha]]"
+expect_says "WIKI: topics count their tails" "$REG" "| 2 (+1 tail) |"
+expect_says "WIKI: materials list the agenda and the transcript" "$REG" "[[$PAST-rich/agenda\\|agenda]] · [[$PAST-rich/transcript.txt\\|transcript]]"
+expect_says "WIKI: the header follows the configured columns" "$REG" "| Date | Meeting | Participants | Tracks | Topics | Materials |"
+expect_says "WIKI: a series file takes its own columns" "$(cat "$FX/meetings/plc.md")" "| Date | Meeting | Participants |"
+expect_says "WIKI: the pointer links back with a wikilink, three levels up" "$PTR" "[[../../../meetings/$PAST-rich/index|index.md]]"
+expect_says "WIKI: the pointer lists the materials" "$PTR" "[[../../../meetings/$PAST-rich/transcript.txt|transcript]]"
+expect_says "WIKI: a topic links to its own heading, exactly as written" "$PTR" "[[../../../meetings/$PAST-rich/index#Topic 1. First: the question|First: the question]]"
+expect_not_says "WIKI: no markdown link is left in the pointer" "$PTR" "]("
+
+printf '{\n  "comms": {\n    "registry-columns": ["date", "nonsense"]\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
+OUT=$(cd "$FX" && python3 "$INDEX" --check --project-root "$FX" 2>&1)
+expect_says "an unknown column is named, not silently dropped" "$OUT" "unknown column(s) nonsense"
+rm -f "$FX/.claude/vdm-plugins.json"
+
+echo ""
+echo "== meeting-rules: a project's own conventions, off until named =="
+
+# Field report 2026-09-23: a deliberately broken agenda and series file — the
+# repository's own linter found nine errors, this one answered "ok". Every
+# rule below is theirs, so every rule sits behind a key. First: with no key,
+# the same broken files stay clean under the floor (the floor is not raised).
+mkdir -p "$FX/meetings/$FUTURE-broken"
+cat > "$FX/meetings/$FUTURE-broken/agenda.md" <<EOF
+---
+type: meeting
+date: $FUTURE
+gap: gaps/alpha
+meeting_date: $FUTURE
+people: [ivan-petrov, ghost-person]
+tracks: [gaps/alpha]
+topics:
+  - name: "One"
+    track: gaps/alpha
+    must: true
+    owner: ivan-petrov
+  - name: "Two"
+    track: gaps/alpha
+    must: true
+    owner: ghost-person
+  - name: "Three"
+    track: gaps/alpha
+    must: true
+  - name: "Tail"
+    track: null
+    tail: true
+---
+
+# A broken agenda
+
+## Topic 1. One
+
+> Track: [[../../gaps/alpha/index|alpha]]
+
+## Topic 2. Two
+
+plain prose where the track line should be
+
+## Topic 3. Three
+
+> Track: somewhere unnamed
+
+## Topic 4. Tail
+
+> Track: tail — nobody's yet
+EOF
+printf -- '---\ntype: meeting-series\nslug: board\n---\n\n# not the board\n' > "$FX/meetings/wrongslug.md"
+printf -- '---\ntype: meeting-series\n---\n\n# no slug at all\n' > "$FX/meetings/noslug.md"
+
+rm -f "$FX/.claude/vdm-plugins.json"
+run_lint "$FX/meetings/$FUTURE-broken/agenda.md"; rc=$?
+expect_exit "GREEN: without meeting-rules the broken agenda passes the floor" 0 "$rc"
+run_lint "$FX/meetings/noslug.md"; rc=$?
+expect_exit "GREEN: a series file without slug passes the floor" 0 "$rc"
+run_lint "$FX/meetings/wrongslug.md"; rc=$?
+expect_exit "RED (floor): a slug that disagrees with the file name ⇒ exit 1" 1 "$rc"
+expect_says "RED (floor): …names both" "$OUT" "disagrees with the file name wrongslug.md"
+
+cat > "$FX/.claude/vdm-plugins.json" <<'JSON'
+{
+  "comms": {
+    "topic-sections": true,
+    "people-dir": "people",
+    "meeting-rules": {
+      "forbidden-keys": ["gap", "gaps", "sent", "draft", "meeting_date"],
+      "people-profiles": true,
+      "topic-owner": ["agenda"],
+      "tail-owner": true,
+      "max-must": 2,
+      "topic-track-line": "> Track:",
+      "series-slug": true,
+      "covered-bool": true,
+      "unique-topics": true,
+      "required-keys": ["series", "tracks"]
+    }
+  }
+}
+JSON
+run_lint "$FX/meetings/$FUTURE-broken/agenda.md"; rc=$?
+expect_exit "RED: the broken agenda fails once the rules are named" 1 "$rc"
+expect_says "rule 1: a retired key" "$OUT" "\`gap:\` is a retired key"
+expect_says "rule 1: …each of them" "$OUT" "\`meeting_date:\` is a retired key"
+expect_says "rule 2: a person without a profile" "$OUT" "no profile people/ghost-person.md"
+expect_says "rule 2: …a topic owner without one" "$OUT" "owner ghost-person has no profile"
+expect_says "rule 3: an agenda topic without an owner" "$OUT" "topic 3 «Three» has no \`owner\`"
+expect_says "rule 4: a tail without an owner" "$OUT" "topic 4 «Tail» is a tail (no track) with no \`owner\`"
+expect_says "rule 5: three must-topics where two are allowed" "$OUT" "3 topics are \`must: true\` — at most 2"
+expect_says "rule 6: a section that does not open with the track line" "$OUT" "under «## Topic 2. Two» the first line is not «> Track: …»"
+expect_says "rule 6: a track line naming no track and no tail" "$OUT" "«## Topic 3. Three»: the «> Track:» line names neither"
+expect_not_says "rule 6: a linked track line passes" "$OUT" "Topic 1. One»"
+expect_not_says "rule 6: the word tail passes" "$OUT" "Topic 4. Tail»:"
+expect_says "rule 9: a required key that is absent" "$OUT" "no \`series:\`"
+expect_not_says "rule 9: a required key that is present is not reported" "$OUT" "no \`tracks:\`"
+run_lint "$FX/meetings/noslug.md"; rc=$?
+expect_exit "rule 7: series-slug asks every series file for a slug" 1 "$rc"
+
+mkdir -p "$FX/meetings/$PAST-record"
+cat > "$FX/meetings/$PAST-record/index.md" <<EOF
+---
+type: meeting
+date: $PAST
+series: null
+tracks: [gaps/alpha]
+topics:
+  - name: "Same"
+    track: gaps/alpha
+    covered: partially
+  - name: "Same"
+    track: gaps/alpha
+    covered: true
+---
+
+# A record
+
+## Topic 1. Same
+
+> Track: [[../../gaps/alpha/index|alpha]]
+
+## Topic 2. Same
+
+> Track: [[../../gaps/alpha/index|alpha]]
+EOF
+run_lint "$FX/meetings/$PAST-record/index.md"; rc=$?
+expect_exit "rule 8: covered and repeated names are warnings — no block" 0 "$rc"
+expect_says "rule 8: covered that is not a bool" "$OUT" "\`covered: partially\` is neither true nor false"
+expect_says "rule 8: a repeated topic name" "$OUT" "topic name «Same» repeats"
+
+mkdir -p "$FX/meetings/$FUTURE-imported"
+cat > "$FX/meetings/$FUTURE-imported/agenda.md" <<EOF
+---
+type: meeting
+date: $FUTURE
+series: null
+migrated_from: [gaps/alpha/comms/old-notes.md]
+people: [ghost-person]
+tracks: [gaps/alpha]
+topics:
+  - name: "Imported"
+    track: null
+    tail: true
+    must: true
+---
+
+# imported as it was
+EOF
+run_lint "$FX/meetings/$FUTURE-imported/agenda.md"; rc=$?
+expect_exit "migrated_from: an imported record is not failed for predating the rules" 0 "$rc"
+expect_says "migrated_from: …the reference rules still say what is missing" "$OUT" "no profile people/ghost-person.md"
+rm -f "$FX/.claude/vdm-plugins.json"
+
+echo ""
+echo "== outgoing letters: what to attach is a checklist the sender can click =="
+
+# Field report 2026-09-23: a draft said "attached", listed the file in
+# frontmatter and as a path in backticks in the header — and the person sending
+# it by hand never saw either. The shape below is that draft's.
+mkdir -p "$FX/gaps/alpha/comms/attachments"
+LETTER="$FX/gaps/alpha/comms/2026-09-23-reply-out.md"
+cat > "$LETTER" <<'EOF'
+---
+draft: true
+attachments:
+  - attachments/summary.pdf
+---
+
+> 📎 attach when sending: `attachments/summary.pdf`
+
+The summary is attached.
+EOF
+run_lint "$LETTER"; rc=$?
+expect_exit "RED: attachments in frontmatter and a path in backticks ⇒ exit 1" 1 "$rc"
+expect_says "RED: …says where the sender actually looks" "$OUT" "reads the body, not the frontmatter"
+
+cat > "$LETTER" <<'EOF'
+---
+draft: true
+attachments:
+  - attachments/summary.pdf
+---
+
+## 📎 Attach before sending
+
+- [ ] [Summary of the survey.pdf](attachments/summary.pdf) — the numbers; the recipient is new to the thread, so earlier attachments do not carry over
+
+The summary is attached.
+EOF
+run_lint "$LETTER"; rc=$?
+expect_exit "RED: a checklist item linking a file that is not there ⇒ exit 1" 1 "$rc"
+expect_says "RED: …names the missing file" "$OUT" "attachments/summary.pdf, which does not exist"
+printf '%%PDF-1.7\n' > "$FX/gaps/alpha/comms/attachments/summary.pdf"
+run_lint "$LETTER"; rc=$?
+expect_exit "GREEN: one linked checkbox per existing file ⇒ exit 0" 0 "$rc"
+
+sed -i.bak 's|^- \[ \] \[Summary of the survey.pdf\](attachments/summary.pdf)|- [ ] `attachments/summary.pdf`|' "$LETTER"
+rm -f "$LETTER.bak"
+run_lint "$LETTER"; rc=$?
+expect_exit "RED: an item that is a path in backticks, not a link ⇒ exit 1" 1 "$rc"
+expect_says "RED: …and says why" "$OUT" "is not a link to the file"
+
+printf -- '---\nsent: 2026-09-20\nattachments:\n  - attachments/gone.pdf\n---\n\nSent long ago.\n' > "$LETTER"
+run_lint "$LETTER"; rc=$?
+expect_exit "GREEN: a letter that went out is history — not checked" 0 "$rc"
+printf -- '---\ndraft: true\n---\n\nNothing attached here.\n' > "$LETTER"
+run_lint "$LETTER"; rc=$?
+expect_exit "GREEN: a draft that attaches nothing is never asked about attachments" 0 "$rc"
+
+printf -- '---\ndraft: true\nattachments: [attachments/summary.pdf]\n---\n\nAttached.\n' > "$LETTER"
+OUT=$(payload Write "$LETTER" "x" | (cd "$FX" && bash "$LINTSH" --hook) 2>&1); rc=$?
+expect_exit "HOOK: a letter written without its checklist comes back as feedback (exit 2)" 2 "$rc"
+expect_says "HOOK: …headed as a letter, not a meeting" "$OUT" "this outgoing letter does not meet the contract"
+rm -f "$LETTER"
+
+echo ""
 echo "== fail-closed: the two blocking hooks with python3 stripped from PATH =="
 
 FARM="$TMP/bin-nopy"
@@ -330,6 +645,13 @@ out_payload=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-new-out.md" "$SENT"
 OUT=$(printf '%s' "$out_payload" | env -i HOME="$HOME" LC_ALL=C PATH="$FARM" \
       bash -c "bash '$GUARD'" 2>&1); rc=$?
 expect_exit "RED: draft guard without python3 ⇒ exit 2" 2 "$rc"
+
+printf -- '---\ndraft: true\n---\n' > "$FX/gaps/alpha/comms/2026-09-23-farm-out.md"
+letter_payload=$(payload Write "$FX/gaps/alpha/comms/2026-09-23-farm-out.md" "x")
+OUT=$(printf '%s' "$letter_payload" | env -i HOME="$HOME" LC_ALL=C PATH="$FARM" \
+      bash -c "bash '$LINTSH' --hook" 2>&1); rc=$?
+expect_exit "RED: an outgoing letter written without python3 ⇒ NOT CHECKED, exit 2" 2 "$rc"
+rm -f "$FX/gaps/alpha/comms/2026-09-23-farm-out.md"
 
 src_payload=$(payload Write "$FX/gaps/alpha/notes.md" "ordinary text")
 OUT=$(printf '%s' "$src_payload" | env -i HOME="$HOME" LC_ALL=C PATH="$FARM" \

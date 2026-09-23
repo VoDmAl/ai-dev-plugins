@@ -473,6 +473,22 @@ breakage is not part of it either. It also refuses when it cannot read the
 index at all: an empty file list from a failed command is the exact shape of a
 check that silently did not run.
 
+What both surfaces do **not** read:
+
+- **A file git treats as binary** — `-` in `git diff --numstat`, the same verdict
+  that makes `git diff` print "Binary files differ". In a PDF or an image the
+  bytes `EF BF BD` are data, and a gate that blocks a legitimate attachment
+  trains everyone to go around it. A file that git reads as text but the project
+  knows is not: mark it `binary` in `.gitattributes`, and git and this check
+  agree by construction.
+
+And what they do read, including the two cases they once missed:
+
+- **A renamed file** — renames are split into delete + add, so a file moved and
+  damaged in the same commit is read under its new name.
+- **From any directory** — the helper reads the index's paths from the top of the
+  work tree; run from a subdirectory it used to find no file and pass in silence.
+
 ### Activating in a downstream project
 
 Same shape as the crystal backup above — resolve the installed path, and say so

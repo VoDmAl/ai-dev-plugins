@@ -53,6 +53,7 @@ unchecked.
 | each track in `tracks:` resolves as `<track>/` **or** `<track>.md` | error |
 | a track's first segment is a configured root (when configured) | error |
 | `topics[].track` is one of this meeting's `tracks:` | error |
+| a series file's `slug:`, when present, disagrees with its file name | error |
 | `type:` on a role file is not `meeting` | warning |
 | a declared series has no `<meetings-dir>/<series>.md` yet | warning |
 | a topic has neither a track nor `tail: true` | warning |
@@ -87,6 +88,30 @@ tree, so a violation comes back within one tool call. Treat that feedback as
 the contract speaking, not as noise — and fix the file rather than working
 around it.
 
+## A project's own rules — `comms.meeting-rules`
+
+Above the floor, a repository can name its own conventions, and the linter then
+enforces them. Each rule is **off until named**; none of them is part of the
+floor, because none of them was shared by all three field repositories.
+
+| Key | Value | What it enforces |
+|-----|-------|------------------|
+| `forbidden-keys` | list of keys | a retired key (`gap`, `sent`, …) in a meeting file or a topic is an error |
+| `people-profiles` | `true` | every `people`, `absent` and `topics[].owner` has `<people-dir>/<slug>.md` |
+| `topic-owner` | list of roles, e.g. `["agenda"]` | every topic in those role files names an `owner` |
+| `tail-owner` | `true` | a topic with no track names an `owner` — who holds it on their side |
+| `max-must` | a number | an agenda carries at most that many `must: true` topics |
+| `topic-track-line` | a prefix, e.g. `"> Track:"` | the first line under each `## Topic N.` heading starts with it and carries a link or the word *tail* / *хвост* |
+| `series-slug` | `true` | every series file carries `slug:` (a slug that disagrees with the file name is an error regardless) |
+| `covered-bool` | `true` | a record's `covered:` is `true` or `false` — a warning |
+| `unique-topics` | `true` | a topic name does not repeat within a meeting — a warning |
+| `required-keys` | list of keys | keys that must be present; `null` and `[]` count as present |
+
+A file carrying `migrated_from` was imported as it was: the authoring rules
+(`topic-owner`, `max-must`, `topic-track-line`) skip it, and `people-profiles` /
+`tail-owner` only warn. Failing a record for predating a convention reports
+history as a defect.
+
 ## Configuration
 
 `.claude/vdm-plugins.json` (or `.qwen/vdm-plugins.json`) → `comms`:
@@ -110,7 +135,9 @@ around it.
 | `track-roots` | allowed FIRST segment of a track path. Empty (default) accepts any. **Not a path template**: depth is unbounded and case is preserved, because real tracks run one to three segments deep and some contain capitals. |
 | `series` | declared series slugs. Empty (default) disables the membership check. |
 | `topic-sections` | also check that the body has one topic section per topic — `## Topic N. <name>` or `## Тема N. <name>`. Default `false`: body conventions differ between projects. |
+| `meeting-rules` | the project's own conventions, off until named — see the section above. |
 | `labels` | wording of the files the GENERATOR writes into your repository: `"en"` (default), `"ru"`, or an object overriding individual keys, merged over English. |
+| `link-style`, `registry-columns`, `series-columns` | how the generated layer writes links and which columns it writes — see `/vdm-comms:index`. |
 | `enabled` | `false` switches the whole plugin off. |
 
 Fill `track-roots` and `series` from what the repository actually contains. The
@@ -132,6 +159,49 @@ had grown two more: nineteen letters sat outside the guard, and nothing said
 so — a narrowed guard looks exactly like a quiet one.
 
 Editing an existing letter is never blocked.
+
+### Attaching files to an outgoing letter
+
+A letter that goes out with attachments lists them **in its body, before the
+letter text**, as a section of checkboxes — one per file, each a link to the file
+itself:
+
+```markdown
+## 📎 Attach before sending
+
+- [ ] [The name the file goes out under.pdf](attachments/<file>) — what it is, why the recipient needs it, and why now
+```
+
+- one `- [ ]` per file; the link is relative to the letter and clickable;
+- the line says what the file is and why it goes **now** — e.g. «the recipient is
+  new to the thread, and attachments of the earlier letter do not carry over to a
+  reply»;
+- the letter text itself says the file is attached;
+- the heading is in the project's language (`## 📎 Приложить при отправке`); the
+  📎 is what marks the section;
+- when you report the finished draft in chat, give the same files as `file://`
+  links, so they open in one click.
+
+**Why not the frontmatter, and why not a path in backticks.** A letter is sent by
+a person, by hand, looking at the file in their editor. The frontmatter is the
+machine layer — nobody reads it while sending. A path in backticks does not
+click and blends into the header. Both were tried on a live letter, and the
+attachment got lost while the text already said "attached". `attachments:` in
+the frontmatter is fine as data; it does not replace the section.
+
+The linter holds this for a letter not yet sent (`*/comms/*-out.md` without
+`sent:`), once the letter itself says it attaches something: `attachments:` in
+the frontmatter without a `📎` section, a section without checkboxes, an item
+that is not a link, or a link to a file that does not exist next to the letter —
+each comes back as feedback right after the write. A letter that attaches
+nothing is never asked about attachments.
+
+### Writing to a colleague who helps voluntarily
+
+Someone from a neighbouring team who helps because they want to is asked, not
+assigned: «your experience would help a lot here», «could you please…» — not
+«this is your task from here», not «this is your field». Do not tell them where
+their zone is; they chose to step into it.
 
 ## Onboarding a repository that already has meetings
 
