@@ -536,6 +536,7 @@ bash tests/crystal-capture-reminder.test.sh # capture reminder: throttle before 
 bash tests/gates-harness-isolation.test.sh # the gate harness must not write into the commit that runs it
 bash tests/hook-fail-closed.test.sh        # blocking hooks with python3 stripped from PATH: block in scope, silent out of it
 bash tests/reminder-throttle.test.sh       # the two-axis reminder window, and the hooks that print a measurement instead of a verdict
+bash tests/reminders-dispatch.test.sh      # the six vdm reminders composed into one ranked section; deadline, crash, plugin-cache silence
 ```
 
 **lib-sync.** The two plugins ship duplicated copies of `lib/config-path.sh` and `lib/config-read.sh` (each plugin must be self-contained for independent installation). The check normalizes the cross-reference comments that name the opposite plugin (`plugins/vdm/lib` ↔ `plugins/vdm-git/lib`); everything else must match byte-for-byte. A GitHub Actions workflow running the same check on PRs is planned but not yet wired up (the file `.github/workflows/lib-sync.yml` was blocked by a local security hook during a prior commit).
@@ -567,7 +568,7 @@ The harness materializes the **working tree** (not `git clone` of HEAD — pre-c
 |------------|--------|--------------|
 | SessionStart | `crystal-hydrate.sh` | Lists active in-progress workitems so the assistant Reads them before continuing |
 | SessionStart | `intercom-identity-check.sh` | Registers this repo in the intercom agent directory and nags until its human names + description are present; otherwise prints who you are, pending mail, and any unclaimed inbox addressed to one of your names (v2.21.0) |
-| UserPromptSubmit | `docs-sync-reminder.sh`, `docs-distill-reminder.sh`, `learn-reminder.sh`, `changelog-reminder.sh`, `crystal-capture-reminder.sh`, `intercom-reminder.sh` | Per-prompt nudges (see Configuration section above). `docs-distill-reminder` is the synthesis drift signal — it delegates the actual scan to `distill-scan.sh` |
+| UserPromptSubmit | `reminders.sh` → `docs-sync-reminder.sh`, `docs-distill-reminder.sh`, `learn-reminder.sh`, `changelog-reminder.sh`, `crystal-capture-reminder.sh`, `intercom-reminder.sh` | Per-prompt nudges (see Configuration section above), composed into **one** section by the dispatcher: silence if none speaks, a lone reminder unchanged, otherwise a header, the reminders that measured something this turn in order of consequence, and the standing habits (`changelog`, `learn`) folded into one line. Children run in parallel under a 25 s deadline, so a slow one costs only itself. Silent inside a plugin cache directory. `docs-distill-reminder` is the synthesis drift signal — it delegates the actual scan to `distill-scan.sh` |
 | PreToolUse (Write/Edit/MultiEdit) | `crystal-completion-guard.sh` | Blocks status:in-progress → status:done while `- [ ]` items remain |
 | PostToolUse (Write/Edit/MultiEdit) | `orphan-guard-hook.sh` | Catches new `docs/llm/*.md` without a discovery hook |
 | PostToolUse (Write/Edit/MultiEdit) | `crystal-lint.sh --hook` | Catches a workitem written in a non-canonical shape (v2.16.0) |

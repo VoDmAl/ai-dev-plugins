@@ -66,4 +66,8 @@ id_esc=$(printf '%s' "$id" | sed 's/\\/\\\\/g; s/"/\\"/g')
 
 msg="[intercom] 📬 ${count} pending message(s) for \`${id_esc}\`.\n- Review: /vdm:intercom check\n- Pick up: /vdm:intercom pickup <slug>  (add --grow to promote into a workitem)"
 
-printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "UserPromptSubmit",\n    "additionalContext": "%s"\n  }\n}\n' "$msg"
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/reminder-emit.sh" 2>/dev/null \
+  || _vdm_reminder_emit() { printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "UserPromptSubmit",\n    "additionalContext": "%s"\n  }\n}\n' "$4"; }
+_vdm_reminder_emit intercom 1 \
+  "📬 intercom: ${count} pending → /vdm:intercom check" "$msg"

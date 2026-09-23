@@ -277,5 +277,9 @@ ctx="${ctx}\\n  • Decision taken (chose X over Y, raised a threshold, deviated
 ctx="${ctx}\\n  • Observation / ecosystem block / follow-up / implicit dep? → /vdm:crystal-bud"
 ctx="${ctx}\\n  • Resolved a Next-action item? → flip \`- [ ]\` → \`[x]\` in workitem.md"
 
-printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "UserPromptSubmit",\n    "additionalContext": "%s"\n  }\n}\n' "$ctx"
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/reminder-emit.sh" 2>/dev/null \
+  || _vdm_reminder_emit() { printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "UserPromptSubmit",\n    "additionalContext": "%s"\n  }\n}\n' "$4"; }
+_vdm_reminder_emit crystal-capture 1 \
+  "📌 crystal ${slugs}: ${measure:-work without capture} → Decision Log / crystal-bud" "$ctx"
 exit 0

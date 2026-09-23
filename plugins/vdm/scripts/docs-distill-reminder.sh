@@ -87,5 +87,9 @@ ctx="${ctx}${body}"
 ctx="${ctx}\\nСинтез не дописывают — его ПЕРЕСОБИРАЮТ. Фрагменты копятся сами; сводное «как оно устроено сейчас» — нет."
 ctx="${ctx}\\n→ /vdm:docs-distill — пересобрать и обновить \`observed:\`. Упрётесь в незадокументированную фичу → сначала /vdm:docs-sync."
 
-printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "UserPromptSubmit",\n    "additionalContext": "%s"\n  }\n}\n' "$ctx"
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/reminder-emit.sh" 2>/dev/null \
+  || _vdm_reminder_emit() { printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "UserPromptSubmit",\n    "additionalContext": "%s"\n  }\n}\n' "$4"; }
+_vdm_reminder_emit docs-distill 1 \
+  "docs-distill: a synthesis is behind its inputs → /vdm:docs-distill" "$ctx"
 exit 0

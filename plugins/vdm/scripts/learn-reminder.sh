@@ -61,11 +61,9 @@ case "$mode" in
     ;;
 esac
 
-cat <<'EOF'
-{
-  "hookSpecificOutput": {
-    "hookEventName": "UserPromptSubmit",
-    "additionalContext": "[learn] 💡 After resolving issues or discovering patterns:\n- Found solution after struggling? → /vdm:learn to capture the journey\n- Discovered effective pattern? → /vdm:learn to preserve it\n- Made a mistake worth preventing? → /vdm:learn for safety rules\n\nAssistant: PROACTIVELY invoke /vdm:learn when these situations occur."
-  }
-}
-EOF
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/reminder-emit.sh" 2>/dev/null \
+  || _vdm_reminder_emit() { printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "UserPromptSubmit",\n    "additionalContext": "%s"\n  }\n}\n' "$4"; }
+_vdm_reminder_emit learn 2 \
+  "learn — struggled, found a pattern, or a mistake worth preventing? → /vdm:learn, proactively" \
+  "[learn] 💡 After resolving issues or discovering patterns:\n- Found solution after struggling? → /vdm:learn to capture the journey\n- Discovered effective pattern? → /vdm:learn to preserve it\n- Made a mistake worth preventing? → /vdm:learn for safety rules\n\nAssistant: PROACTIVELY invoke /vdm:learn when these situations occur."
