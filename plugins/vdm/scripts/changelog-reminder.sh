@@ -54,11 +54,9 @@ case "$mode" in
     ;;
 esac
 
-cat <<'EOF'
-{
-  "hookSpecificOutput": {
-    "hookEventName": "UserPromptSubmit",
-    "additionalContext": "[changelog] 📋 After completing significant work:\n- Feature/bug/arch change? → Update PROJECT_CHANGELOG.md\n- Keep entries compact: title + 1-2 sentences + refs\n- Link to docs/tasks/, docs/llm/, .serena/memories/ for details\n\nNo PROJECT_CHANGELOG.md? Run /vdm:changelog to create."
-  }
-}
-EOF
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/reminder-emit.sh" 2>/dev/null \
+  || _vdm_reminder_emit() { printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "UserPromptSubmit",\n    "additionalContext": "%s"\n  }\n}\n' "$4"; }
+_vdm_reminder_emit changelog 2 \
+  "changelog — significant change done? → PROJECT_CHANGELOG.md (/vdm:changelog creates it)" \
+  "[changelog] 📋 After completing significant work:\n- Feature/bug/arch change? → Update PROJECT_CHANGELOG.md\n- Keep entries compact: title + 1-2 sentences + refs\n- Link to docs/tasks/, docs/llm/, .serena/memories/ for details\n\nNo PROJECT_CHANGELOG.md? Run /vdm:changelog to create."

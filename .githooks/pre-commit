@@ -37,8 +37,9 @@
 #                       symlink), and the two vdm-comms suites, whose
 #                       fail-closed cases live with the rest of that plugin's
 #                       red tests, plus tests/reminder-throttle.test.sh (the
-#                       shared reminder window, five hooks across two plugins).
-#                       Conditional (~21s).
+#                       shared reminder window, five hooks across two plugins)
+#                       and tests/reminders-dispatch.test.sh (the one section
+#                       the vdm reminders are composed into). Conditional (~30s).
 
 set -eu
 
@@ -133,8 +134,8 @@ fi
 # hooks of its own, the gate went on passing without covering any of them — and
 # that silence is indistinguishable from a clean run. Breadth costs a few
 # seconds on a plugin edit; the enumeration cost coverage without saying so.
-if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|tests/(hook-fail-closed|symlink-scope|comms|comms-pending|reminder-throttle)\.test\.sh$)'; then
-  echo "gates: a plugin hook changed — re-running the shipped hooks' red tests (~21s)…"
+if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|tests/(hook-fail-closed|symlink-scope|comms|comms-pending|reminder-throttle|reminders-dispatch)\.test\.sh$)'; then
+  echo "gates: a plugin hook changed — re-running the shipped hooks' red tests (~30s)…"
   bash tests/hook-fail-closed.test.sh
   # Same subject, second question: a hook that CAN run still has to agree with
   # its sibling on which files it is responsible for. Both engines, one fixture
@@ -149,4 +150,5 @@ if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|test
   # decides whether a user reads them at all, and it is shared by five hooks
   # across two plugins through a mirrored lib.
   bash tests/reminder-throttle.test.sh
+  bash tests/reminders-dispatch.test.sh
 fi

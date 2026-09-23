@@ -149,5 +149,9 @@ fi
 context="${context}\n\nBEFORE completing user-facing changes: verify listed docs reflect current behavior."
 context="${context}\nFor deep analysis with relevance scoring → run /vdm:docs-sync"
 
-# Output JSON
-printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "UserPromptSubmit",\n    "additionalContext": "%s"\n  }\n}\n' "$context"
+# Output
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/reminder-emit.sh" 2>/dev/null \
+  || _vdm_reminder_emit() { printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "UserPromptSubmit",\n    "additionalContext": "%s"\n  }\n}\n' "$4"; }
+_vdm_reminder_emit docs-sync 1 \
+  "docs-sync: user-facing change → verify affected docs (/vdm:docs-sync)" "$context"
