@@ -29,6 +29,17 @@
 # blob (never the working tree — the staged content is what would be committed),
 # and blocks on any match.
 #
+# A file git itself treats as binary (`-` in `--numstat`) is not read: in a PDF
+# or an image the bytes EF BF BD are data, not a decoded letter, and a gate that
+# blocks a legitimate attachment is one that gets `--no-verify` as a habit. The
+# verdict is git's own — the same one `git diff` prints as "Binary files differ"
+# — so a project that needs a text-looking file skipped marks it `binary` in
+# `.gitattributes`, and git and this check agree by construction.
+#
+# Renames are split with `--no-renames`: a `git mv` shows up as R, and a filter
+# of `ACM` without it drops the destination — a file moved and damaged in the
+# same commit went through unread.
+#
 # Exit: 0 clean / 1 corruption found.
 
 set -u
@@ -63,13 +74,19 @@ list=$(mktemp 2>/dev/null) || {
 }
 trap 'rm -f "$list"' EXIT
 
-if ! git diff --cached -z --name-only --diff-filter=ACM > "$list" 2>/dev/null; then
+if ! git diff --cached -z --numstat --no-renames --diff-filter=ACM > "$list" 2>/dev/null; then
   echo "fffd-precommit-check: could not read the index — refusing rather than passing" >&2
   exit 1
 fi
 
+# Each entry is `<added>\t<deleted>\t<path>`; a binary file has `-` for both.
 corrupt=()
-while IFS= read -r -d '' f; do
+while IFS= read -r -d '' entry; do
+  [ -n "$entry" ] || continue
+  case "$entry" in
+    -$'\t'-$'\t'*) continue ;;
+  esac
+  f="${entry#*$'\t'*$'\t'}"
   [ -n "$f" ] || continue
   if git show ":$f" 2>/dev/null | LC_ALL=C grep -q $'\xef\xbf\xbd' 2>/dev/null; then
     corrupt+=("$f")

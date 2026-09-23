@@ -30,8 +30,16 @@ comparison, and this tool is that comparison.
 (`**[[../../people/ivan-petrov|Petrov]]**` — a person is always written this
 way, so the summary groups by *person* rather than by how the sentence
 declined their name), an emphasised name from `comms.owners`
-(`**risk model**`, `` `limeflow` ``, `**legal**`), or "we"/"мы" for something
-on our side.
+(`**risk model**`, `` `limeflow` ``, `**agent limeflow**`, `**legal**`), or
+"we"/"мы" for something on our side (`**We (platform team)**` — the parenthesis
+qualifies, it does not rename).
+
+**The owner opens the item.** A person linked further into the head is the one
+being told, asked or written to — «Tell [[…|Petrov]] that the check passed»,
+«Ask [[…|Petrov]] about TLS», «Second letter to [[…|Petrov]]: …» — and the ball
+is ours. Put the owner first, or the summary will file the item under whoever
+the sentence mentions. Flags before the owner (`🔴`, `🆕`, a date marker) are
+stepped over.
 
 **Date.** `⏰` plus an ISO date. It is a **review date, not the counterparty's
 deadline**: the day we come back to this if nothing has happened. Say what we
@@ -59,6 +67,11 @@ The same ordering is why the owner is mandatory in a waiting section and
 defaults to "us" in an action section — an action section has already said whose
 ball it is, and repeating it on every line is noise.
 
+`--owner` reads the same way: **people first, then the names in `comms.owners`
+in the order listed, then us, then items nobody owns.** A name that stands for
+our own side — the maintainer's — goes last in `owners`, and lands right before
+"us".
+
 ## Configure before using
 
 Nothing runs until the project says where its open items live. There is no
@@ -74,9 +87,10 @@ sensible default: three repositories keep them in three different shapes.
       "waiting": ["Ожидаем"],
       "action": ["Наши действия", "Требует действий"]
     },
-    "owners": ["Dmitry", "risk model", "legal", "limeflow"],
+    "owners": ["risk model", "legal", "limeflow", "Dmitry"],
     "people-dir": "people",
-    "pending-draft-days": 3
+    "pending-draft-days": 3,
+    "pending-transcript-days": 45
   }
 }
 ```
@@ -85,9 +99,16 @@ sensible default: three repositories keep them in three different shapes.
 |---|---|
 | `pending-paths` | globs, relative to the repository root. Empty = the whole pending half stays silent |
 | `pending-sections` | headings, matched by **prefix**, so `Ожидаем` covers `## Ожидаем ответы` |
-| `owners` | the names that count as owners; also the order groups appear in |
+| `owners` | the names that count as owners; also the order groups appear in (your own name last) |
 | `people-dir` | where profiles live, for the wikilink form (default `people`) |
-| `pending-draft-days` | age at which an unsent `*/comms/*-out.md` is reported; `0` switches it off |
+| `pending-draft-days` | age at which an unsent draft is reported — any `*/comms/*.md` whose frontmatter says `draft: true` and carries no `sent:` value; `0` switches it off |
+| `pending-transcript-days` | window for "held, no transcript yet": a meeting in the last N days (today's excluded) with no `transcript*` file beside it and no `transcript:` in its `index.md`. Default `0` — off |
+
+Once `pending-paths` is set, the **queue of every declared series**
+(`<meetings-dir>/<series>.md` for each name in `comms.series`) is read too — a
+promise made at a meeting waits there for the next one. It comes from the
+declared list, not a glob: `meetings/*.md` would also match the directory's
+README, whose prose explains the marker.
 
 `owners` is a whitelist for a measured reason: across 304 live items a bold
 fragment was the **subject** at least as often as the owner
@@ -102,6 +123,11 @@ half over capitalisation.
 * **Anywhere else** in a `pending-paths` file, only a line that already carries
   a marker is an item at all, and the only violation available is a broken
   marker.
+* **A table row carrying a marker** is an item too — a queue of topics is a
+  table, and its promise sits in a cell (`| 2 | the status of X | … | our
+  promise, ⏰ 22.09 |`). It is never a strict one: a table has no checkbox and no
+  head for an owner. Its date is read from the marker's own cell, not from the
+  next column's.
 
 That is the suite's standing law — soft until named, binding once named —
 applied to a heading. Declaring `## Ожидаем ответы` is the act that makes
@@ -127,7 +153,8 @@ a session.
 ## The two hooks
 
 **Session start** prints one line when something is overdue, falls due within a
-week, or was written and never sent — and nothing at all otherwise. A dated item
+week, was written and never sent, or was held without a transcript (when that
+window is on) — and nothing at all otherwise. A dated item
 becomes overdue by the calendar turning, not by anyone writing a file, so there
 is no tool call to hang it on; session start is the only moment available and
 also the right one.

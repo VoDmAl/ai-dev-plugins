@@ -37,8 +37,9 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
 
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PREP="$REPO_ROOT/plugins/vdm-git/bin/git-guard-prepare"
-CHECK="$REPO_ROOT/plugins/vdm-git/scripts/fffd-precommit-check.sh"
+# Overridable so a change can be proved red against the previous version.
+PREP="${FFFD_PREP_BIN:-$REPO_ROOT/plugins/vdm-git/bin/git-guard-prepare}"
+CHECK="${FFFD_CHECK_BIN:-$REPO_ROOT/plugins/vdm-git/scripts/fffd-precommit-check.sh}"
 
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); printf '  ✓ %s\n' "$1"; }
@@ -135,6 +136,82 @@ expect_exit "GREEN: nothing staged ⇒ exit 0" 0 "$rc"
 
 out=$(cd "$TMP" && bash "$CHECK" 2>&1); rc=$?
 expect_exit "RED: outside a repository it refuses rather than passing" 1 "$rc"
+
+echo ""
+echo "== binary files and renames (field report 2026-09-23) =="
+
+# A PDF in a correspondence folder carried EF BF BD as data. Re-adding it would
+# have blocked the commit on both surfaces. The verdict "binary" is git's own —
+# `-` in --numstat — so the fixture is binary the way git decides: a NUL byte.
+binary_blob() { printf '%%PDF-1.7\n\000\001\002 stream \xef\xbf\xbd data \000\n'; }
+
+d=$(new_repo binprep); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+binary_blob > flows.pdf
+git add flows.pdf
+out=$("$PREP" "[*] attach the flows" 2>&1); rc=$?
+expect_exit "GREEN (prepare): a binary file carrying EF BF BD is not corruption" 0 "$rc"
+
+printf 'plain text that git would diff \xef\xbf\xbd\n' > table.dat
+printf '*.dat binary\n' > .gitattributes
+git add .gitattributes table.dat
+out=$("$PREP" "[*] data" 2>&1); rc=$?
+expect_exit "GREEN (prepare): a file the project marked binary is skipped" 0 "$rc"
+
+corrupt_text > note.md
+git add note.md
+out=$("$PREP" "[*] note" 2>&1); rc=$?
+expect_exit "RED (prepare): a text file beside them is still read" 1 "$rc"
+expect_says "RED (prepare): …and named" "$out" "note.md"
+expect_not_says "RED (prepare): …the binary one is not" "$out" "flows.pdf"
+
+d=$(new_repo binhook); cd "$d" || exit 1
+binary_blob > flows.pdf
+git add flows.pdf
+out=$(bash "$CHECK" 2>&1); rc=$?
+expect_exit "GREEN (pre-commit): a binary blob carrying EF BF BD passes" 0 "$rc"
+corrupt_text > note.md
+git add note.md
+out=$(bash "$CHECK" 2>&1); rc=$?
+expect_exit "RED (pre-commit): a text blob beside it still blocks" 1 "$rc"
+expect_not_says "RED (pre-commit): …and the binary one is not named" "$out" "flows.pdf"
+
+# `git mv` is detected as a rename (R), and a filter of ACM dropped it: a file
+# moved and damaged in one commit went through the pre-commit surface unread.
+d=$(new_repo rename); cd "$d" || exit 1
+# Long enough that one damaged line keeps the similarity above git's 50%
+# threshold — a one-line file becomes delete + add, is read either way, and
+# proves nothing (the first version of this test passed on the broken check).
+for i in $(seq 1 20); do printf 'Строка текста номер %s\n' "$i"; done > old.md
+git add old.md
+git commit -qm old
+git mv old.md new.md
+corrupt_text >> new.md
+git add new.md
+out=$(bash "$CHECK" 2>&1); rc=$?
+expect_exit "RED (pre-commit): a renamed file damaged in the same commit is read" 1 "$rc"
+expect_says "RED (pre-commit): …under its new name" "$out" "new.md"
+
+# Found while fixing the above (2026-09-23): the helper read the index's
+# top-relative paths from the caller's cwd. Run from a subdirectory, `sub/x.md`
+# became `sub/sub/x.md`, no file was found, and both checks passed in silence.
+d=$(new_repo subdir); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+mkdir -p sub
+corrupt_text > sub/broken.md
+git add sub/broken.md
+out=$(cd sub && "$PREP" "[*] from below" 2>&1); rc=$?
+expect_exit "RED (prepare): run from a subdirectory, U+FFFD is still found" 1 "$rc"
+expect_says "RED (prepare): …and named from the top" "$out" "sub/broken.md"
+
+printf 'Проверка текста\n' > sub/broken.md
+git add sub/broken.md
+printf 'и ещё строка\n' >> sub/broken.md        # working tree now differs from the index
+out=$(cd sub && "$PREP" "[*] from below" 2>&1); rc=$?
+expect_exit "RED (prepare): run from a subdirectory, an index/worktree divergence is still found" 1 "$rc"
+git add sub/broken.md
+out=$(cd sub && "$PREP" "[*] from below" -- broken.md 2>&1); rc=$?
+expect_exit "GREEN (prepare): explicit paths stay relative to where the caller stands" 0 "$rc"
 
 printf '\nfffd: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

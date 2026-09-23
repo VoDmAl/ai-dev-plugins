@@ -14,11 +14,16 @@ Config lives in `.claude/vdm-plugins.json` (or `.qwen/…`) under `comms`:
     track-roots       allowed first segment of a track path  (default: any)
     series            declared series slugs                  (default: no check)
     topic-sections    also check the body's topic sections   (default false)
+    link-style        markdown | wikilink, for generated links (default markdown)
+    registry-columns  INDEX.md columns, in order             (default date, meeting, series, tracks)
+    series-columns    a series file's columns, in order      (default date, meeting)
+    meeting-rules     opt-in authoring rules for the linter  (default: none — see comms-lint.py)
     pending-paths     globs of files holding pending items   (default: none -> off)
     pending-sections  {"waiting": [...], "action": [...]}    (default: none)
     owners            accepted owner names, in report order  (default: none)
     people-dir        directory of people profiles           (default "people")
     pending-draft-days unsent-draft age threshold, 0 = off   (default 3)
+    pending-transcript-days  window for "held, no transcript", 0 = off (default 0)
     enabled           false switches the whole plugin off    (default true)
 
 Only what genuinely differed between the three field repositories is
@@ -39,6 +44,14 @@ DEFAULTS = {
     "series": [],
     "topic-sections": False,
     "labels": "en",
+    # The generated layer. Empty column lists mean the defaults written in
+    # comms-index.py, so a project names only what it wants different.
+    "link-style": "markdown",
+    "registry-columns": [],
+    "series-columns": [],
+    # Opt-in authoring rules for the meetings linter — a project's own
+    # conventions, named in its own config. Empty = the floor only.
+    "meeting-rules": {},
     # The pending half. `pending-paths` defaults to nothing on purpose: where a
     # repository keeps its open obligations is the one thing that cannot be
     # guessed — the three field repositories put them in `gaps|org|incidents/
@@ -50,6 +63,9 @@ DEFAULTS = {
     "owners": [],
     "people-dir": "people",
     "pending-draft-days": 3,
+    # Off by default: a repository that keeps no transcripts would be told
+    # about every meeting it holds, for a reason it never chose.
+    "pending-transcript-days": 0,
 }
 
 # Wording for the files the generator writes INTO THE PROJECT. It is the one
@@ -67,10 +83,19 @@ LABELS = {
         "col-meeting": "Meeting",
         "col-series": "Series",
         "col-tracks": "Tracks",
+        "col-people": "Participants",
+        "col-topics": "Topics",
+        "col-materials": "Materials",
+        "topics-tails": "%(n)d (+%(tails)d tail)",
+        "material-transcript": "transcript",
         "registry-empty": "no meetings yet",
         "series-empty": "no meetings in this series yet",
-        "pointer-line": "Meeting %(date)s — [%(source)s](%(link)s)",
+        # %(ref)s is the link, already written in `link-style`. The older form
+        # `[%(source)s](%(link)s)` still works in an override: %(link)s stays
+        # the bare relative path.
+        "pointer-line": "Meeting %(date)s — %(ref)s",
         "pointer-record": "record",
+        "pointer-materials": "Materials: %(list)s",
         "pointer-topics": "Topics on this track:",
     },
     "ru": {
@@ -78,10 +103,16 @@ LABELS = {
         "col-meeting": "Встреча",
         "col-series": "Серия",
         "col-tracks": "Треки",
+        "col-people": "Участники",
+        "col-topics": "Тем",
+        "col-materials": "Материалы",
+        "topics-tails": "%(n)d (+%(tails)d хвост)",
+        "material-transcript": "транскрипт",
         "registry-empty": "встреч пока нет",
         "series-empty": "встреч серии пока нет",
-        "pointer-line": "Встреча %(date)s — [%(source)s](%(link)s)",
+        "pointer-line": "Встреча %(date)s — %(ref)s",
         "pointer-record": "протокол",
+        "pointer-materials": "Материалы: %(list)s",
         "pointer-topics": "Темы этого трека:",
     },
 }

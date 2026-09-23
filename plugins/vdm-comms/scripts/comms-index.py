@@ -28,6 +28,17 @@ Insertion points are explicit markers, so nothing is guessed:
 A file without its markers is reported, never rewritten — where the table goes
 is the project's call.
 
+Every link is computed from the directory of the file it is written INTO.
+The first version wrote `../../<meeting>` into every pointer, which is right for
+a one-segment track and wrong for every deeper one: from `<root>/<x>/comms/` it
+lands in `<root>/meetings/`, and in a note vault a click on it creates an empty
+file there. A repository whose tracks all sit two segments deep had all 87 of
+its pointers broken that way.
+
+`comms.link-style` picks the syntax: `markdown` (default) or `wikilink`, for a
+repository kept as a note vault, where a code span or a markdown link is not an
+edge of the graph.
+
 Exit: 0 in sync / 1 drift (with --check) or wrote something (with --write).
 """
 from __future__ import annotations
@@ -43,7 +54,10 @@ import comms_config as cfgmod  # noqa: E402
 import comms_frontmatter as fm  # noqa: E402
 
 DIR_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-([^/]+)$")
+ROLE_RE = re.compile(r"^(index|prep|agenda|pitch(-v\d+)?)\.md$")
+TOPIC_HEAD_RE = re.compile(r"^##\s+((?:Тема|Topic)\s+\d+\.\s*(.+?))\s*$", re.M)
 SOURCE_ORDER = ("index.md", "agenda.md", "prep.md")
+ROLE_ORDER = {"index.md": 0, "agenda.md": 1, "prep.md": 2}
 GENERATED_BY = "vdm-comms"
 
 REGISTRY_START = "<!-- registry:start -->"
@@ -52,6 +66,11 @@ SERIES_START = "<!-- meetings:start -->"
 SERIES_END = "<!-- meetings:end -->"
 
 SKIP_DIRS = ("node_modules", "vendor", "__pycache__", "attachments", "_import")
+
+COLUMNS = ("date", "meeting", "series", "people", "tracks", "topics", "materials")
+REGISTRY_COLUMNS = ("date", "meeting", "series", "tracks")
+SERIES_COLUMNS = ("date", "meeting")
+LINK_STYLES = ("markdown", "wikilink")
 
 
 class Meeting:
@@ -64,6 +83,7 @@ class Meeting:
         self.slug = m.group(2) if m else dir_name
         self.source = None
         self.data = {}
+        self.body = ""
         self.title = self.slug
         for leaf in SOURCE_ORDER:
             path = os.path.join(root, meetings_dir, dir_name, leaf)
@@ -73,6 +93,7 @@ class Meeting:
                     self.data, body = fm.read(path)
                 except (fm.FrontmatterError, OSError):
                     self.data, body = {}, ""
+                self.body = body or ""
                 self.title = self._title(body)
                 break
 
@@ -90,29 +111,108 @@ class Meeting:
         return "%s/%s" % (self.meetings_dir, self.dir_name)
 
     @property
-    def rel_source(self):
-        return "%s/%s" % (self.rel_dir, self.source or "")
+    def abs_dir(self):
+        return os.path.join(self.root, self.meetings_dir, self.dir_name)
+
+    @property
+    def abs_source(self):
+        return os.path.join(self.abs_dir, self.source) if self.source else None
+
+    def _list(self, key):
+        raw = self.data.get(key) or []
+        if isinstance(raw, str):
+            raw = [raw]
+        return [str(x) for x in raw if x]
 
     @property
     def tracks(self):
-        raw = self.data.get("tracks") or []
-        if isinstance(raw, str):
-            raw = [raw]
-        return [str(t) for t in raw if t]
+        return self._list("tracks")
+
+    @property
+    def people(self):
+        return self._list("people")
 
     @property
     def series(self):
         s = self.data.get("series")
         return str(s) if s else ""
 
+    @property
+    def topics(self):
+        return [t for t in (self.data.get("topics") or []) if isinstance(t, dict)]
+
     def topics_for(self, track):
         out = []
-        for topic in self.data.get("topics") or []:
-            if isinstance(topic, dict) and str(topic.get("track") or "") == track:
+        for topic in self.topics:
+            if str(topic.get("track") or "") == track:
                 name = str(topic.get("name") or "").strip()
                 if name:
                     out.append(name)
         return out
+
+    def topic_heading(self, name):
+        """The body's own heading for a topic, or None. An anchor has to name
+        the heading exactly as written, so it is read, never composed — a
+        composed `Topic 3. …` in a repository that writes `Тема 3. …` is a
+        link that opens the file and silently misses the section."""
+        for m in TOPIC_HEAD_RE.finditer(self.body):
+            if m.group(2).strip() == name:
+                return m.group(1).strip()
+        return None
+
+    def materials(self):
+        """The other role files and the transcripts, in a stable order."""
+        try:
+            leaves = sorted(os.listdir(self.abs_dir))
+        except OSError:
+            return []
+        roles = sorted((leaf for leaf in leaves if ROLE_RE.match(leaf) and leaf != self.source),
+                       key=lambda leaf: (ROLE_ORDER.get(leaf, 3), leaf))
+        transcripts = [leaf for leaf in leaves if leaf.startswith("transcript")]
+        return roles + transcripts
+
+
+class Writer:
+    """How links are written into ONE generated file: from its directory, in
+    the configured style. A link's target is always an absolute path until the
+    last moment, and becomes relative to `here` only here — there is no other
+    place a relative path is made, so there is no other place to get it wrong.
+    """
+
+    def __init__(self, here, style):
+        self.here = here
+        self.style = style
+
+    def rel(self, path):
+        return os.path.relpath(path, self.here).replace(os.sep, "/")
+
+    def link(self, path, text, table=False, anchor=None):
+        target = self.rel(path)
+        if table:
+            text = text.replace("|", "\\|")
+        if self.style == "wikilink":
+            if target.endswith(".md"):
+                target = target[:-3]
+            if anchor:
+                target += "#" + anchor
+            return "[[%s%s%s]]" % (target, "\\|" if table else "|", text)
+        return "[%s](%s)" % (text, target.replace(" ", "%20"))
+
+
+def link_style(cfg):
+    style = str(cfg.get("link-style") or "markdown")
+    return style if style in LINK_STYLES else "markdown"
+
+
+def columns(cfg, key, default, notes):
+    raw = cfg.get(key)
+    if not isinstance(raw, list) or not raw:
+        return list(default)
+    unknown = [c for c in raw if c not in COLUMNS]
+    if unknown:
+        notes.append("comms.%s: unknown column(s) %s — known: %s"
+                     % (key, ", ".join(map(str, unknown)), ", ".join(COLUMNS)))
+    return [c for c in raw if c in COLUMNS] or list(default)
 
 
 def collect(root, meetings_dir):
@@ -130,28 +230,87 @@ def collect(root, meetings_dir):
     return meetings
 
 
-def registry_table(meetings, lab):
-    rows = ["| %s | %s | %s | %s |" % (lab["col-date"], lab["col-meeting"],
-                                       lab["col-series"], lab["col-tracks"]),
-            "|---|---|---|---|"]
+# --------------------------------------------------------------------------- #
+# cells
+# --------------------------------------------------------------------------- #
+
+def _material_label(leaf, lab):
+    if leaf.startswith("transcript"):
+        return lab["material-transcript"]
+    return leaf[:-3] if leaf.endswith(".md") else leaf
+
+
+def _track_cell(w, root, track):
+    """Markdown keeps the code span it always had. In a vault every mention is
+    an edge of the graph, so a track becomes a link to its `index.md` — or to
+    `<track>.md` when the track is a file — and stays plain text when there is
+    nothing to open."""
+    if w.style != "wikilink":
+        return "`%s`" % track
+    short = track.split("/", 1)[1] if "/" in track else track
+    base = os.path.join(root, track)
+    if os.path.isdir(base):
+        index = os.path.join(base, "index.md")
+        return w.link(index, short, table=True) if os.path.isfile(index) else short
+    if os.path.isfile(base + ".md"):
+        return w.link(base + ".md", short, table=True)
+    return short
+
+
+def _person_cell(w, root, cfg, slug):
+    profile = os.path.join(root, str(cfg.get("people-dir") or "people").strip("/"), slug + ".md")
+    return w.link(profile, slug, table=True) if os.path.isfile(profile) else slug
+
+
+def _cell(col, w, root, cfg, lab, m):
+    if col == "date":
+        return m.date
+    if col == "meeting":
+        if m.abs_source:
+            return w.link(m.abs_source, m.title, table=True)
+        return m.title.replace("|", "\\|")
+    if col == "series":
+        if not m.series:
+            return "—"
+        spath = os.path.join(root, m.meetings_dir, "%s.md" % m.series)
+        if w.style == "wikilink" and os.path.isfile(spath):
+            return w.link(spath, m.series, table=True)
+        return m.series
+    if col == "people":
+        return ", ".join(_person_cell(w, root, cfg, p) for p in m.people) or "—"
+    if col == "tracks":
+        return ", ".join(_track_cell(w, root, t) for t in m.tracks) or "—"
+    if col == "topics":
+        n = len(m.topics)
+        tails = sum(1 for t in m.topics if t.get("tail") is True or not t.get("track"))
+        return lab["topics-tails"] % {"n": n, "tails": tails} if tails else str(n)
+    if col == "materials":
+        return " · ".join(w.link(os.path.join(m.abs_dir, leaf), _material_label(leaf, lab), table=True)
+                          for leaf in m.materials()) or "—"
+    return "—"
+
+
+def _table(meetings, cols, w, root, cfg, lab, empty):
+    rows = ["| %s |" % " | ".join(lab["col-%s" % c] for c in cols),
+            "|%s|" % "|".join("---" for _ in cols)]
     for m in sorted(meetings, key=lambda x: x.date, reverse=True):
-        link = "[%s](%s/%s)" % (m.title.replace("|", "\\|"), m.dir_name, m.source or "")
-        tracks = ", ".join("`%s`" % t for t in m.tracks) or "—"
-        rows.append("| %s | %s | %s | %s |" % (m.date, link, m.series or "—", tracks))
+        rows.append("| %s |" % " | ".join(_cell(c, w, root, cfg, lab, m) for c in cols))
     if len(rows) == 2:
-        rows.append("| — | %s | — | — |" % lab["registry-empty"])
+        filler = ["—"] * len(cols)
+        filler[min(1, len(cols) - 1)] = empty
+        rows.append("| %s |" % " | ".join(filler))
     return "\n".join(rows)
 
 
-def series_table(meetings, series, lab):
-    rows = ["| %s | %s |" % (lab["col-date"], lab["col-meeting"]), "|---|---|"]
+def registry_table(root, meetings_dir, meetings, cfg, lab, cols):
+    w = Writer(os.path.join(root, meetings_dir), link_style(cfg))
+    return _table(meetings, cols, w, root, cfg, lab, lab["registry-empty"])
+
+
+def series_table(root, meetings_dir, meetings, series, cfg, lab, cols):
+    w = Writer(os.path.join(root, meetings_dir), link_style(cfg))
     picked = [m for m in meetings if m.series == series]
-    for m in sorted(picked, key=lambda x: x.date, reverse=True):
-        rows.append("| %s | [%s](%s/%s) |"
-                    % (m.date, m.title.replace("|", "\\|"), m.dir_name, m.source or ""))
-    if len(rows) == 2:
-        rows.append("| — | %s |" % lab["series-empty"])
-    return "\n".join(rows)
+    return _table(picked, cols, w, root, cfg, lab, lab["series-empty"])
 
 
 def replace_between(text, start, end, payload):
@@ -170,7 +329,10 @@ def pointer_path(root, track, meeting):
     return os.path.join(root, track, "comms", "%s-%s-meeting.md" % (meeting.date, meeting.slug))
 
 
-def pointer_body(meeting, track, lab):
+def pointer_body(root, meeting, track, cfg, lab):
+    w = Writer(os.path.join(root, track, "comms"), link_style(cfg))
+    source_text = meeting.source or lab["pointer-record"]
+    target = meeting.abs_source or meeting.abs_dir
     lines = [
         "---",
         "type: meeting-link",
@@ -181,17 +343,31 @@ def pointer_body(meeting, track, lab):
         "",
         "# %s" % meeting.title,
         "",
+        # `link` stays the bare relative path and `source` its text, so a
+        # project that overrode `pointer-line` in the old `[%(source)s](%(link)s)`
+        # form keeps working; `ref` is the link already written in the style.
         lab["pointer-line"] % {"date": meeting.date,
-                               "source": meeting.source or lab["pointer-record"],
-                               "link": "../../%s" % meeting.rel_source},
+                               "source": source_text,
+                               "link": w.rel(target),
+                               "ref": w.link(target, source_text)},
         "",
     ]
+    materials = meeting.materials()
+    if materials:
+        lines.append(lab["pointer-materials"] % {
+            "list": " · ".join(w.link(os.path.join(meeting.abs_dir, leaf), _material_label(leaf, lab))
+                               for leaf in materials)})
+        lines.append("")
     topics = meeting.topics_for(track)
     if topics:
         lines.append(lab["pointer-topics"])
         lines.append("")
-        for t in topics:
-            lines.append("- %s" % t)
+        for name in topics:
+            # An anchor only where it can land: a wikilink to a heading the
+            # body really has. Markdown anchors are renderer-specific slugs,
+            # and a guessed one is a link that silently misses its section.
+            heading = meeting.topic_heading(name) if w.style == "wikilink" and meeting.abs_source else None
+            lines.append("- %s" % (w.link(meeting.abs_source, name, anchor=heading) if heading else name))
         lines.append("")
     lines.append("<!-- generated by %s — edits here are overwritten -->" % GENERATED_BY)
     lines.append("")
@@ -202,14 +378,19 @@ def is_directory_track(root, track):
     return os.path.isdir(os.path.join(root, track))
 
 
-def plan(root, meetings_dir, meetings, lab):
+def plan(root, meetings_dir, meetings, cfg, lab):
     """Return (actions, notes). Each action is (kind, path, payload)."""
     actions = []
     notes = []
+    reg_cols = columns(cfg, "registry-columns", REGISTRY_COLUMNS, notes)
+    ser_cols = columns(cfg, "series-columns", SERIES_COLUMNS, notes)
+    if str(cfg.get("link-style") or "markdown") not in LINK_STYLES:
+        notes.append("comms.link-style: %r is not one of %s — markdown is used"
+                     % (cfg.get("link-style"), ", ".join(LINK_STYLES)))
 
     # 1. Registry.
     index_path = os.path.join(root, meetings_dir, "INDEX.md")
-    table = registry_table(meetings, lab)
+    table = registry_table(root, meetings_dir, meetings, cfg, lab, reg_cols)
     if os.path.isfile(index_path):
         with open(index_path, encoding="utf-8") as fh:
             current = fh.read()
@@ -232,7 +413,8 @@ def plan(root, meetings_dir, meetings, lab):
         with open(spath, encoding="utf-8") as fh:
             current = fh.read()
         new, status = replace_between(current, SERIES_START, SERIES_END,
-                                      series_table(meetings, series, lab))
+                                      series_table(root, meetings_dir, meetings, series,
+                                                   cfg, lab, ser_cols))
         if status == "missing-markers":
             notes.append("%s/%s.md has no %s / %s markers — add them to get the meeting "
                          "list generated" % (meetings_dir, series, SERIES_START, SERIES_END))
@@ -249,7 +431,7 @@ def plan(root, meetings_dir, meetings, lab):
                              % (track, m.rel_dir))
                 continue
             p = pointer_path(root, track, m)
-            wanted[p] = pointer_body(m, track, lab)
+            wanted[p] = pointer_body(root, m, track, cfg, lab)
 
     for p, body in sorted(wanted.items()):
         if os.path.isfile(p):
@@ -310,7 +492,7 @@ def main(argv):
         return 0
 
     meetings = collect(root, meetings_dir)
-    actions, notes = plan(root, meetings_dir, meetings, cfgmod.labels(cfg))
+    actions, notes = plan(root, meetings_dir, meetings, cfg, cfgmod.labels(cfg))
 
     if args.write:
         for kind, path, payload in actions:

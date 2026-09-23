@@ -49,6 +49,12 @@ bad() { FAIL=$((FAIL+1)); printf '  ✗ %s\n' "$1"; [ -n "${2:-}" ] && printf ' 
 expect_exit() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "expected exit $2, got $3"; fi; }
 expect_says() { case "$2" in *"$3"*) ok "$1" ;; *) bad "$1" "output did not mention: $3" ;; esac; }
 expect_not_says() { case "$2" in *"$3"*) bad "$1" "output should NOT mention: $3" ;; *) ok "$1" ;; esac; }
+expect_before() { # expect_before <desc> <haystack> <first> <second> — both present, in that order
+  local rest="${2#*"$3"}"
+  if [ "$rest" = "$2" ]; then bad "$1" "output did not mention: $3"; return; fi
+  case "$2" in *"$4"*) ;; *) bad "$1" "output did not mention: $4"; return ;; esac
+  case "$rest" in *"$4"*) ok "$1" ;; *) bad "$1" "'$4' comes before '$3'" ;; esac
+}
 
 TMP=$(mktemp -d 2>/dev/null || mktemp -d -t pendtest)
 cleanup() { rm -rf "$TMP"; }
@@ -228,8 +234,15 @@ expect_says "a declared name in the emphasis is found" "$OUT" '"owner": "risk mo
 expect_says "a bold SUBJECT is not an owner" "$OUT" '"owner_kind": "missing"'
 
 run --owner
-expect_says "'us' is the first group" "$OUT" "## us ("
-expect_says "a declared owner gets its own group" "$OUT" "## limeflow ("
+# The other side first, ours last (field report 2026-09-23: the maintainer asked
+# for counterparty items on top "so that not everything hangs on me"). This
+# assertion used to read `expect_says "## us ("` under the name "'us' is the
+# first group" — it checked presence, never order, and would have passed with
+# the groups in any sequence.
+expect_before "a person comes before the declared owners" "$OUT" "## Петров (" "## risk model ("
+expect_before "the declared owners come in config order" "$OUT" "## risk model (" "## limeflow ("
+expect_before "…and all of them before us" "$OUT" "## limeflow (" "## us ("
+expect_before "us comes before the items nobody owns" "$OUT" "## us (" "## (no owner) ("
 expect_says "the two declensions land in one person group" "$OUT" "## Петров ("
 
 run --json
@@ -269,6 +282,149 @@ expect_says "…and says what" "$OUT" "overdue"
 OUT=$(cd "$FX" && COMMS_TODAY=2020-01-01 python3 "$PEND" --brief --project-root "$FX" 2>&1); rc=$?
 expect_exit "--brief is silent when nothing is due yet" 0 "$rc"
 expect_not_says "…and prints nothing at all" "$OUT" "pending"
+
+echo ""
+echo "== field report 2026-09-23: the first repository to switch its own tools off =="
+
+# Every shape below is the structure of a live line from that repository, with
+# invented people and tracks. The config gains the two things it did not have:
+# a declared series, and a transcript window.
+python3 - "$FX/.claude/vdm-plugins.json" <<'PY'
+import json, sys
+p = sys.argv[1]; d = json.load(open(p))
+d["comms"]["series"] = ["plc"]
+d["comms"]["pending-transcript-days"] = 45
+json.dump(d, open(p, "w"), ensure_ascii=False, indent=2)
+PY
+
+mkdir -p "$FX/tracks/gamma" "$FX/meetings"
+cat > "$FX/tracks/gamma/index.md" <<'EOF'
+# gamma
+
+## Ожидаем ответы
+
+- [ ] **🆕 [[../../people/ivan-petrov\|Петров]] (security)** — an opinion on the QR login ⏰ 2026-09-30
+- [ ] **Мы (platform team)**: switch the fallback trigger off ⏰ 2026-09-30
+- [ ] **agent limeflow** — estimate the frontend work ⏰ 2026-09-30
+
+## Наши действия
+
+- [ ] Tell [[../../people/olga-sidorova\|Сидоровой]] that the check passed ⏰ 2026-09-30
+- [ ] ⚠️ Ask [[../../people/ivan-petrov|Петрова]] about TLS on the bind ⏰ 2026-09-30
+- [ ] ⏰ If [[../../people/olga-sidorova|Сидорова]] comes back with a signal, raise it at the regular
+- [ ] Second letter to [[../../people/ivan-petrov\|Петрову]]: service account and groups ⏰ 2026-09-30
+- ⏰ **limeflow** — we raised it at the last синк 27.08 and still wait for the answer to come back
+
+## Chronology
+
+| Date | What | Note |
+|---|---|---|
+| 2026-09-01 | pitch | a promise in a log table ⏰ after: the reply lands |
+EOF
+
+# A series queue is a table, and the series is declared in config.
+cat > "$FX/meetings/plc.md" <<'EOF'
+---
+type: meeting-series
+slug: plc
+---
+
+## Topic queue
+
+| # | Topic | Their owner | Format | Queued | Postponed |
+|---|---|---|---|---|---|
+| 1 | a queued topic | [[../people/ivan-petrov\|Ivan]] | our promise, ⏰ 20.09 | 08.09.2026 | — |
+| 2 | another queued topic | — | ⏰ our action: write to the ticket | 01.09.2026 | — |
+| 3 | a topic with no marker | — | discuss | 01.09.2026 | — |
+EOF
+
+# The directory's README explains the marker in a bullet. It is not a series,
+# so it is not read — the reason series come from the declared list, not a glob.
+cat > "$FX/meetings/README.md" <<'EOF'
+# meetings
+
+- `index.md` — an obligation that came out of a topic carries a ⏰ review date
+EOF
+
+# Letters. Only the first four are unsent drafts.
+lt() { printf -- '---\n%s\n---\n\n# letter\n' "$2" > "$FX/tracks/alpha/comms/$1"; }
+lt 2026-09-01-ticket-task.md  $'draft: true\nfiled:\nsent:\nurl:\n\ntype: jira'
+lt 2026-09-02-spec-draft.md   $'draft: true\ntype: jira'
+lt 2026-09-03-emptysent-out.md $'draft: true\nsent:\nurl: '
+lt 2026-09-05-nullsent-out.md $'draft: true\nsent: null'
+lt 2026-09-04-reply-in.md     $'type: letter\nsent: 2026-09-04'
+lt 2026-09-06-filed-task.md   $'filed: KEY-2\nsent: 2026-09-06'
+
+# Meetings for the transcript window (TODAY is 2026-09-22, the window 45 days).
+mm() { mkdir -p "$FX/meetings/$1"; printf -- '---\ntype: meeting\ndate: %s\n%s---\n\n# m\n' "${1:0:10}" "$2" \
+         > "$FX/meetings/$1/index.md"; }
+mm 2026-09-10-plc ""
+mm 2026-09-15-plc ""; printf 'Speaker 1: …\n' > "$FX/meetings/2026-09-15-plc/transcript.txt"
+mm 2026-09-12-board $'transcript: https://recordings.example.invalid/42\n'
+mm 2026-07-01-plc ""
+mm 2026-09-22-plc ""
+
+run --json
+json_check "a person opening the emphasis is the owner, a flag inside it notwithstanding" \
+  "[i for i in items if 'QR login' in i['text']][0]['owner'] == 'Петров'"
+json_check "«**We (…)**» is us — the parenthesis qualifies, it does not rename" \
+  "[i for i in items if 'fallback trigger' in i['text']][0]['owner'] == 'us'"
+json_check "«**agent <declared name>**» is that name" \
+  "[i for i in items if 'frontend work' in i['text']][0]['owner'] == 'limeflow'"
+json_check "«Tell <person> that…» — the person is told, the ball is ours" \
+  "[i for i in items if 'check passed' in i['text']][0]['owner'] == 'us'"
+json_check "«⚠️ Ask <person> about…» — ours" \
+  "[i for i in items if 'TLS on the bind' in i['text']][0]['owner'] == 'us'"
+json_check "«⏰ If <person> comes back…» — ours" \
+  "[i for i in items if 'comes back with a signal' in i['text']][0]['owner'] == 'us'"
+json_check "«Second letter to <person>: …» — ours" \
+  "[i for i in items if 'service account and groups' in i['text']][0]['owner'] == 'us'"
+json_check "«синк 27.08» is when a meeting was, not a promise — no date" \
+  "[i for i in items if 'синк' in i['text']][0]['due'] is None"
+json_check "a series-queue row is an item, dated from its own cell" \
+  "[i for i in items if 'a queued topic' in i['text']][0]['due'] == '2026-09-20'"
+json_check "…a row whose marker cell has no date is undated — the next cell's date is not borrowed" \
+  "[i for i in items if 'another queued topic' in i['text']][0]['due'] is None"
+json_check "a table row is never strict" \
+  "all(not i['strict'] for i in items if i['line'].startswith('|'))"
+json_check "a table row in a track file carrying a marker is an item too" \
+  "[i for i in items if 'a promise in a log table' in i['text']][0]['date_kind'] == 'event'"
+json_check "a row with no marker is not" \
+  "not [i for i in items if 'a topic with no marker' in i['text']]"
+json_check "the meetings README, not a declared series, is not read" \
+  "not [i for i in items if 'review date' in i['text']]"
+
+run --all
+expect_says "a *-task.md draft is written-and-never-sent" "$OUT" "2026-09-01-ticket-task.md"
+expect_says "a *-draft.md draft too" "$OUT" "2026-09-02-spec-draft.md"
+expect_says "an empty sent: followed by url: is NOT a send" "$OUT" "2026-09-03-emptysent-out.md"
+expect_says "sent: null is not a send either" "$OUT" "2026-09-05-nullsent-out.md"
+expect_not_says "an inbound letter's sent: is its date, not a draft" "$OUT" "reply-in.md"
+expect_not_says "a filed ticket is not a draft" "$OUT" "filed-task.md"
+expect_says "a held meeting with no transcript is reported" "$OUT" "meetings/2026-09-10-plc"
+expect_not_says "…not one with transcript.txt beside it" "$OUT" "meetings/2026-09-15-plc"
+expect_not_says "…not one whose index.md names its transcript" "$OUT" "meetings/2026-09-12-board"
+expect_not_says "…not one older than the window" "$OUT" "meetings/2026-07-01-plc"
+expect_not_says "…not today's — its transcript arriving later today is normal" "$OUT" "meetings/2026-09-22-plc"
+
+rc=0; run --brief || rc=$?
+expect_says "the session-start line names the missing transcript" "$OUT" "without a transcript"
+
+rc=0; run --lint meetings/plc.md 2>/dev/null || rc=$?
+expect_exit "a series queue with a well-formed marker passes the lint" 0 "$rc"
+printf '| 4 | a broken one | — | ⏰ 2026-13-45 | 01.09.2026 | — |\n' >> "$FX/meetings/plc.md"
+rc=0; run --lint "$FX/meetings/plc.md" || rc=$?
+expect_exit "a broken marker in a series queue is a violation" 1 "$rc"
+expect_says "…named as broken" "$OUT" "broken date marker"
+
+python3 - "$FX/.claude/vdm-plugins.json" <<'PY'
+import json, sys
+p = sys.argv[1]; d = json.load(open(p))
+d["comms"].pop("pending-transcript-days", None)
+json.dump(d, open(p, "w"), ensure_ascii=False, indent=2)
+PY
+run --all
+expect_not_says "without pending-transcript-days the transcript signal is off" "$OUT" "no transcript"
 
 echo ""
 echo "== unconfigured: the whole half stays silent =="

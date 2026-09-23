@@ -25,7 +25,7 @@
     {
       "name": "vdm-git",
       "description": "Git safety plugin: blocks commit/push until user confirms, ships `git-guard-prepare` helper for file-based commit hand-off, enforces commit message format, crystal-completion backup gate, U+FFFD corruption guard on both commit surfaces.",
-      "version": "2.14.0",
+      "version": "2.14.1",
       "author": {
         "name": "Dmitry Vorobyev"
       },
@@ -38,8 +38,8 @@
     },
     {
       "name": "vdm-comms",
-      "description": "Meetings and correspondence discipline for repositories that keep them as files: a configurable contract linter for meetings/<date>-<slug>/ and series files (the contract is a floor distilled from three repositories — a track may resolve as a directory or a single file, index.md is owed only after the meeting has happened), a drift signal for the generated registry and per-track meeting pointers, and a PreToolUse guard that refuses to create an outgoing letter already claiming to have been sent. The wording of everything it writes into the project is configurable (comms.labels), defaulting to English. python3 stdlib only — the frontmatter reader is vendored.",
-      "version": "0.3.0",
+      "description": "Meetings and correspondence discipline for repositories that keep them as files: a configurable contract linter for meetings/<date>-<slug>/ and series files (the contract is a floor distilled from three repositories — a track may resolve as a directory or a single file, index.md is owed only after the meeting has happened), with a project's own conventions switched on by name (comms.meeting-rules); a drift signal for the generated registry and per-track meeting pointers, written as markdown or Obsidian wikilinks with participant, topic and material columns; a PreToolUse guard that refuses to create an outgoing letter already claiming to have been sent, and a linted attachment checklist the sender can click; and a pending-item summary — who owes what by when, series queues, unsent drafts, meetings without a transcript. The wording of everything it writes into the project is configurable (comms.labels), defaulting to English. python3 stdlib only — the frontmatter reader is vendored.",
+      "version": "0.4.0",
       "author": {
         "name": "Dmitry Vorobyev"
       },

@@ -8,10 +8,12 @@ files. One home for a tool three repositories had each copied and drifted.
 | Piece | Kind | When |
 |-------|------|------|
 | meeting contract linter | `PostToolUse` hook + CLI | after any write into the meetings tree |
+| a project's own meeting rules | same linter, `comms.meeting-rules` | only the rules the project named |
+| attachment checklist of a letter | same linter | after a write to an unsent `*/comms/*-out.md` that attaches something |
 | pending-item linter | `PostToolUse` hook + CLI | after a write into a `pending-paths` file — **new lines only** |
 | outgoing-draft guard | `PreToolUse` hook | when creating `*/comms/*-out.md` |
 | generated-layer drift signal | `SessionStart` hook | once per session, and only when something is behind |
-| overdue signal | `SessionStart` hook | once per session, and only when something is due |
+| overdue signal | `SessionStart` hook | once per session, and only when something is due, unsent or untranscribed |
 | `/vdm-comms:meetings` | skill | the contract, configuration, onboarding |
 | `/vdm-comms:index` | skill | rebuild the registry, series lists and track pointers |
 | `/vdm-comms:pending` | skill | who owes what, to whom, and by when |
@@ -26,7 +28,8 @@ meetings/
     prep.md  agenda.md  index.md    role files — under contract
     transcript.md, handout.md       raw material — left alone
 <track>/comms/
-  <date>-<slug>-out.md              a letter; `draft: true` until a person sends it
+  <date>-<slug>-out.md              a letter; `draft: true` until a person sends it;
+                                    files to attach listed as `## 📎 …` checkboxes
   <date>-<slug>-meeting.md          generated pointer back to a meeting
 <any file in pending-paths>
   - [ ] **<owner>** — <what> ⏰ 2026-09-26        an obligation that can fire
@@ -50,15 +53,27 @@ is reported.
     "series": ["weekly", "steering"],
     "topic-sections": false,
     "labels": "en",
+    "meeting-rules": { "max-must": 2, "people-profiles": true },
+
+    "link-style": "markdown",
+    "registry-columns": ["date", "meeting", "series", "tracks"],
+    "series-columns": ["date", "meeting"],
 
     "pending-paths": ["projects/*/index.md", "docs/tasks/*/*.md"],
     "pending-sections": { "waiting": ["Waiting on"], "action": ["Our actions"] },
-    "owners": ["Dmitry", "risk model", "legal"],
+    "owners": ["risk model", "legal", "Dmitry"],
     "people-dir": "people",
-    "pending-draft-days": 3
+    "pending-draft-days": 3,
+    "pending-transcript-days": 0
   }
 }
 ```
+
+`meeting-rules` is where a project names its own conventions above the floor —
+the full list is in `/vdm-comms:meetings`. `link-style: wikilink` makes every
+generated link an Obsidian `[[…]]`, for a repository kept as a note vault; the
+column lists add participants, topic counts and materials to the tables — see
+`/vdm-comms:index`.
 
 Only what genuinely differed between the three field repositories is
 configurable. `track-roots` is a list of allowed **first segments**, not a path

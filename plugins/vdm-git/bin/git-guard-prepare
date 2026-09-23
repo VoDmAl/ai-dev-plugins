@@ -378,6 +378,27 @@ if [ ${#paths[@]} -eq 0 ]; then
   exit 1
 fi
 
+# What the listed paths are relative to. A snapshot of the index names paths
+# from the top of the work tree whatever the caller's cwd; explicit paths are
+# the caller's own and name them from where the caller stands. Every check
+# below reads from this base. Reading snapshot paths from the cwd instead was a
+# silent hole: run from a subdirectory, `sub/x.md` resolved to `sub/sub/x.md`,
+# the U+FFFD check found no file and passed, and so did the check below.
+if [ ${#explicit_paths[@]} -gt 0 ]; then
+  path_base=$(pwd)
+  relative_flag=(--relative)
+else
+  path_base="$repo_root"
+  relative_flag=()
+fi
+
+path_file() {
+  case "$1" in
+    /*) printf '%s' "$1" ;;
+    *)  printf '%s/%s' "$path_base" "$1" ;;
+  esac
+}
+
 # ------------------------------------------------- index vs worktree check
 #
 # `git commit -- <paths>` takes the working-tree content of those paths. If it
@@ -388,7 +409,7 @@ fi
 divergent=()
 while IFS= read -r -d '' p; do
   divergent+=("$p")
-done < <(git diff --name-only -z --no-renames -- "${paths[@]}")
+done < <(git -C "$path_base" diff --name-only -z --no-renames -- "${paths[@]}")
 
 if [ ${#divergent[@]} -gt 0 ]; then
   {
@@ -429,11 +450,34 @@ fi
 # The check is the grep's exit status, so a broken `git diff` cannot turn an
 # empty file list into a clean verdict — the paths come from the array already
 # validated above.
+#
+# A file git itself treats as binary (`-` in `--numstat`) is skipped: in a PDF
+# the bytes EF BF BD are data, and blocking the attachment teaches the habit of
+# going around the gate. If that lookup fails, the list stays empty and every
+# file is read — a broken lookup costs a false alarm, never a missed one.
+
+binary=()
+while IFS= read -r -d '' entry; do
+  case "$entry" in
+    -$'\t'-$'\t'*) binary+=("${entry#-$'\t'-$'\t'}") ;;
+  esac
+done < <(git -C "$path_base" diff --cached --numstat -z --no-renames \
+           ${relative_flag[@]+"${relative_flag[@]}"} -- "${paths[@]}" 2>/dev/null || true)
+
+is_binary() {
+  local b
+  for b in ${binary[@]+"${binary[@]}"}; do
+    [ "$b" = "$1" ] && return 0
+  done
+  return 1
+}
 
 corrupt=()
 for p in "${paths[@]}"; do
-  [ -f "$p" ] || continue
-  if LC_ALL=C grep -q $'\xef\xbf\xbd' "$p" 2>/dev/null; then
+  f=$(path_file "$p")
+  [ -f "$f" ] || continue
+  is_binary "$p" && continue
+  if LC_ALL=C grep -q $'\xef\xbf\xbd' "$f" 2>/dev/null; then
     corrupt+=("$p")
   fi
 done
@@ -443,7 +487,7 @@ if [ ${#corrupt[@]} -gt 0 ]; then
     echo "git-guard-prepare: U+FFFD (replacement character) in:"
     for p in "${corrupt[@]}"; do
       echo "                     $p"
-      LC_ALL=C grep -n $'\xef\xbf\xbd' "$p" 2>/dev/null | head -3 | sed 's/^/                       /'
+      LC_ALL=C grep -n $'\xef\xbf\xbd' "$(path_file "$p")" 2>/dev/null | head -3 | sed 's/^/                       /'
     done
     echo
     echo "  That character is what a truncated multi-byte codepoint decodes to —"

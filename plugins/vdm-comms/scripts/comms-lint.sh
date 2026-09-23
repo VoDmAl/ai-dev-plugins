@@ -42,10 +42,11 @@ payload=$(cat)
 # Dependency-free scope prefilter. `meetings` is the default directory name and
 # the one all three field repositories use; a project that renames it via
 # `comms.meetings-dir` and also has no python3 gets no feedback rather than a
-# wrong one — the rename cannot be read without a parser.
+# wrong one — the rename cannot be read without a parser. An outgoing letter
+# (`*/comms/*-out.md`) is in scope too: its attachment checklist is checked here.
 lint_in_scope() {
   printf '%s' "$payload" | grep -qE '"tool_name"[[:space:]]*:[[:space:]]*"(Write|Edit|MultiEdit)"' 2>/dev/null || return 1
-  printf '%s' "$payload" | grep -qE '/meetings/' 2>/dev/null || return 1
+  printf '%s' "$payload" | grep -qE '/meetings/|/comms/[^"]*-out\.md' 2>/dev/null || return 1
   return 0
 }
 
@@ -118,7 +119,10 @@ esac
 # yet) whose resolution is a judgement call, not a defect.
 if [ "$rc" -eq 1 ]; then
   {
-    printf '🚫 comms-lint: this file does not meet the meetings contract:\n'
+    case "$file_path" in
+      */comms/*-out.md) printf '🚫 comms-lint: this outgoing letter does not meet the contract:\n' ;;
+      *)                printf '🚫 comms-lint: this file does not meet the meetings contract:\n' ;;
+    esac
     printf '%s\n' "$out"
     printf '\n'
     printf 'The contract is a FLOOR — extra keys and extra sections are never\n'
