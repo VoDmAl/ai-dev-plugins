@@ -1,5 +1,5 @@
 {
-  "description": "VDM core hooks - documentation sync, synthesis-layer drift signal (docs-distill), knowledge capture, changelog reminders, intercom inbox reminder + session-start identity check (agent directory), orphan-guard for docs/llm/, and crystal-* workitem discipline (hydrate / capture-reminder / completion-guard / stop-reminder / canon lint).",
+  "description": "VDM core hooks - documentation sync, synthesis-layer drift signal (docs-distill), knowledge capture + the cross-project rules layer (~/.claude/vdm/rules.md, loaded at session start), changelog reminders, intercom inbox reminder + session-start identity check (agent directory), orphan-guard for docs/llm/, and crystal-* workitem discipline (hydrate / capture-reminder / completion-guard / stop-reminder / canon lint).",
   "hooks": {
     "SessionStart": [
       {
@@ -12,6 +12,11 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/intercom-identity-check.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/shared-rules.sh",
             "timeout": 5
           }
         ]

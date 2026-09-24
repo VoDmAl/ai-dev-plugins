@@ -39,7 +39,9 @@
 #                       red tests, plus tests/reminder-throttle.test.sh (the
 #                       shared reminder window, five hooks across two plugins)
 #                       and tests/reminders-dispatch.test.sh (the one section
-#                       the vdm reminders are composed into). Conditional (~30s).
+#                       the vdm reminders are composed into), plus
+#                       tests/shared-rules.test.sh (the cross-project rules
+#                       layer loaded at session start). Conditional (~30s).
 #   8. helper red-tests — changing a shipped helper under any plugin's bin/
 #                       re-runs tests/<helper>.test.sh, and refuses a helper
 #                       that has none. Conditional (~10s per helper).
@@ -137,7 +139,7 @@ fi
 # hooks of its own, the gate went on passing without covering any of them — and
 # that silence is indistinguishable from a clean run. Breadth costs a few
 # seconds on a plugin edit; the enumeration cost coverage without saying so.
-if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|tests/(hook-fail-closed|symlink-scope|comms|comms-pending|reminder-throttle|reminders-dispatch)\.test\.sh$)'; then
+if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|tests/(hook-fail-closed|symlink-scope|comms|comms-pending|reminder-throttle|reminders-dispatch|shared-rules)\.test\.sh$)'; then
   echo "gates: a plugin hook changed — re-running the shipped hooks' red tests (~30s)…"
   bash tests/hook-fail-closed.test.sh
   # Same subject, second question: a hook that CAN run still has to agree with
@@ -154,6 +156,10 @@ if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|test
   # across two plugins through a mirrored lib.
   bash tests/reminder-throttle.test.sh
   bash tests/reminders-dispatch.test.sh
+  # The cross-project rules layer is a shipped SessionStart hook: it must reach
+  # a session in any directory, say so when it cannot load, and never cut a
+  # letter in half at its size ceiling.
+  bash tests/shared-rules.test.sh
 fi
 
 # Gate 8 — the shipped helpers' red tests. `plugins/*/bin/` is put on the
