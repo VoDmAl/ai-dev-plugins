@@ -2,7 +2,7 @@
 title: "vdm-comms на первом переключении: ссылки указателей, пропавшие черновики, владельцы, правила линтера, wikilink"
 slug: vdm-comms-gag-onboarding
 description: "Довести vdm-comms до переключения global-auth-gap: 4 дефекта, 3 сигнала, 9 правил линтера, wikilink"
-status: in-progress
+status: done
 session-type: prd-work
 created: 2026-09-23
 last-updated: 2026-09-23
@@ -44,9 +44,12 @@ relates-to:
 
 ## Текущая модель
 
-**Где стоим:** всё из обоих брифов сделано — `vdm-comms` 0.4.0, `vdm-git` 2.14.1; приёмка §4
-прогнана на копии их дерева до ответа. Открыто одно: ответ `global-auth-gap` и архив второго
-брифа — после коммита и пуша.
+**Где стоим:** всё из обоих брифов сделано и отгружено — `vdm-comms` 0.4.0, `vdm-git` 2.14.1
+(2717e22, запушено 2026-09-23). Приёмка §4 прогнана до ответа дважды: утром на копии их дерева
+и вечером на свежей копии закоммиченным кодом, с построчной сверкой против их `pending.py`.
+Ответ ушёл: два письма в интерком и сообщение в живую сессию (доставлено после подтверждения
+её пользователем); оба брифа в архиве. Дальше —
+их приёмка на своём дереве; открытых обязательств в кристалле нет.
 
 Воспроизведено 2026-09-23 на копии их рабочего дерева (rsync без `.git`, свежий `git init`),
 `COMMS_TODAY=2026-09-23`, их конфиг `comms` без изменений; «после» — тот же прогон на новом коде:
@@ -379,13 +382,16 @@ HEAD, после этого 63/63.
 - [x] версии (`vdm-comms` 0.4.0, `vdm-git` 2.14.1), каталог, `PROJECT_CHANGELOG.md`,
       пересборка `docs/model/suite.md` (дрейф сработал на файлы `vdm-git` и `vdm-comms`) — все
       вместе, после коммита `reminder-hierarchy` (b6de4a0): см. Sidetrack #6
-- [ ] ответ `global-auth-gap` (интерком + живая сессия), архив обоих брифов
+- [x] ответ `global-auth-gap`: интерком `vdm-comms-0-4-0-onboarding-reply` (ключи конфига,
+      переметка указателей, построчный разбор отличий от `pending.py` на свежей копии) и
+      `comms-attachments-checklist-reply`, сообщение в живую сессию; оба брифа в архиве
 
 ## References
 
 - Бриф: `~/.claude/vdm/intercom/ai-dev-plugins/_done/vdm-comms-gag-onboarding-findings.md`
   (после `pickup`) — пересказан, не скопирован (DL #1).
-- Второй бриф: `~/.claude/vdm/intercom/ai-dev-plugins/comms-outgoing-attachments-checklist.md`.
+- Второй бриф: `~/.claude/vdm/intercom/ai-dev-plugins/_done/comms-outgoing-attachments-checklist.md`
+  (после `pickup`).
 - Исходники, с которыми сверяемся: `~/AI Projects/global-auth-gap/.claude/hooks/lint-meetings.py`,
   `…/pending.py`; их контракт — `~/AI Projects/global-auth-gap/meetings/README.md`.
 - Их учёт — кристалл `open-loops-visibility` в `global-auth-gap/docs/tasks/`.
