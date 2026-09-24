@@ -15,6 +15,7 @@
 #   intercom send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--body FILE] [--to ID] [--first-contact]
 #   intercom claim <inbox> [--force]      move an unclaimed inbox addressed to one of your names home
 #   intercom pickup <slug> [--grow]       archive a message (or promote with --grow)
+#   intercom sent                         your letters still unpicked in other inboxes (aka: outbox)
 #
 # Routing is by CANONICAL IDENTITY (git remote slug), never directory basename
 # (DL #4). The store lives outside all repos (DL #1). See skills/intercom/SKILL.md.
@@ -606,6 +607,60 @@ cmd_send() {
   else
     printf '    → now write the brief body into that file (replace the placeholder comment).\n'
   fi
+
+  # Delivery is not receipt: a letter in an inbox is read only when somebody
+  # runs `check`. If the recipient has a session alive on this machine right
+  # now, say so and hand over the pointer — the assistant sends it; nothing here
+  # writes to another session. With a scaffold the pointer must wait for the
+  # body, or the recipient reads a placeholder.
+  local live
+  live="$(intercom_live_sessions "$canon")"
+  if [ -n "$live" ]; then
+    printf '    📣 live session(s) of `%s` on this machine: %s\n' "$canon" \
+      "$(printf '%s\n' "$live" | awk -F '\t' '{ printf "%s%s (%s)", (NR > 1 ? ", " : ""), $1, $2 }')"
+    if [ "$body_set" -eq 1 ]; then
+      printf '       → wake each now with your cross-session message tool (Claude Code: SendMessage).\n'
+    else
+      printf '       → once the body is written — not before, or they read a placeholder — wake each\n'
+      printf '         with your cross-session message tool (Claude Code: SendMessage).\n'
+    fi
+    printf '         It is a pointer; the inbox stays the truth. Text, first line self-contained:\n'
+    printf '         📬 intercom: `%s` from `%s` — %s. Read: /vdm:intercom check\n' "$slug" "$from" "$title"
+  fi
+}
+
+# `sent` — the sender's half of "delivery is not receipt": every letter this
+# agent wrote that is still lying in somebody's inbox, oldest first, and
+# whether its recipient has a session alive to be woken right now.
+cmd_sent() {
+  local id list n
+  id="$(intercom_identity)"
+  list="$(intercom_sent_list "$id")"
+  if [ -z "$list" ]; then
+    printf '📤 intercom: nothing from `%s` is waiting — every letter it sent has been picked up.\n' "$id"
+    return 0
+  fi
+  n="$(printf '%s\n' "$list" | wc -l | tr -d ' ')"
+  printf '📤 intercom: %s letter(s) from `%s` not picked up yet (oldest first):\n\n' "$n" "$id"
+  local age inbox slug title file live seen="" cache=""
+  while IFS=$'\t' read -r age inbox slug title file; do
+    [ -n "$inbox" ] || continue
+    # One lookup per recipient, not per letter — bash 3.2 has no maps, so a
+    # plain "<inbox>=<live>" list stands in for one.
+    case "$seen" in
+      *"|$inbox|"*) live="$(printf '%s\n' "$cache" | awk -F '=' -v k="$inbox" '$1 == k { sub(/^[^=]*=/, ""); print; exit }')" ;;
+      *) live="$(intercom_live_sessions "$inbox" | cut -f1 | paste -sd ',' - | sed 's/,/, /g')"
+         seen="${seen}|$inbox|"; cache="${cache}${inbox}=${live}
+" ;;
+    esac
+    printf '  • %sd  %s/%s — %s\n' "$age" "$inbox" "$slug" "$title"
+    if [ -n "$live" ]; then
+      printf '      live now: %s → wake with SendMessage: 📬 intercom: `%s` from `%s` — %s. Read: /vdm:intercom check\n' \
+        "$live" "$slug" "$id" "$title"
+    else
+      printf '      no live session — it waits for their next `check`\n'
+    fi
+  done <<<"$list"
 }
 
 cmd_claim() {
@@ -714,6 +769,20 @@ cmd_pickup() {
   fi
   mv "$msg" "$dest" 2>/dev/null || _ic_die "pickup: failed to archive $msg"
   printf '✅ intercom: archived → %s\n' "$dest"
+
+  # The receipt: the sender otherwise learns "received" only by auditing the
+  # store by hand. Offered only while the sender has a live session to tell.
+  local sender live
+  sender="$(intercom_fm_field "$dest" from)"
+  if [ -n "$sender" ] && [ "$sender" != "$id" ]; then
+    live="$(intercom_live_sessions "$sender")"
+    if [ -n "$live" ]; then
+      printf '    📣 the sender `%s` has a live session on this machine: %s\n' "$sender" \
+        "$(printf '%s\n' "$live" | awk -F '\t' '{ printf "%s%s (%s)", (NR > 1 ? ", " : ""), $1, $2 }')"
+      printf '       → send a receipt with your cross-session message tool (Claude Code: SendMessage):\n'
+      printf '         ✅ intercom: `%s` picked up by `%s`.\n' "$slug" "$id"
+    fi
+  fi
 }
 
 sub="${1:-}"; [ $# -gt 0 ] && shift
@@ -731,6 +800,7 @@ case "$sub" in
   send)                       cmd_send "$@" ;;
   claim)                      cmd_claim "$@" ;;
   pickup)                     cmd_pickup "$@" ;;
+  sent|outbox)                cmd_sent "$@" ;;
   chain)                      cmd_chain "$@" ;;
   ""|-h|--help|help)
     cat <<'HELP'
@@ -762,6 +832,8 @@ intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
   intercom claim <inbox> [--force]      move an unclaimed inbox that was addressed to one of
                                         your names into your own inbox
   intercom pickup <slug> [--grow]       archive a message (or promote with --grow)
+  intercom sent                         your letters still unpicked in other inboxes, with age
+                                        and the recipient's live sessions (aka: outbox)
 HELP
     ;;
   *) _ic_die "unknown subcommand '$sub' (try: identity|whoami|store|register|names|describe|unregister|directory|resolve|check|send|claim|pickup)" ;;

@@ -32,7 +32,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # against. The script resolves its library and its template relative to itself,
 # so one variable swaps the whole implementation.
 IC="${INTERCOM_BIN:-$REPO_ROOT/plugins/vdm/scripts/intercom.sh}"
-HOOK="$REPO_ROOT/plugins/vdm/scripts/intercom-identity-check.sh"
+HOOK="${INTERCOM_HOOK:-$REPO_ROOT/plugins/vdm/scripts/intercom-identity-check.sh}"
 
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); printf '  ✓ %s\n' "$1"; }
@@ -644,6 +644,110 @@ out="$( cd "$TMP/hop-a" && bounded bash "$IC" names add --for 2>&1 )"; rc=$?
 if [ "$rc" -ne 0 ] && [ "$rc" -ne 142 ]; then ok "names add --for (no value) refuses"; else bad "names add --for (no value) refuses" "rc=$rc"; fi
 out="$( cd "$TMP/hop-a" && bounded bash "$IC" describe --for 2>&1 )"; rc=$?
 if [ "$rc" -ne 0 ] && [ "$rc" -ne 142 ]; then ok "describe --for (no value) refuses"; else bad "describe --for (no value) refuses" "rc=$rc"; fi
+
+echo ""
+echo "== delivery is not receipt: live sessions, the sender's view, the receipt =="
+# Field case (space-hq → limeflow, 2026-09-14): a reply lay unread while the
+# recipient's session was alive and working; a brief beside it lay for three
+# days; the sender counted both as delivered. Measured on the whole store
+# 2026-09-24: ~110 letters unpicked, 20 of them from one sender, the oldest 19
+# days — and `check` shows only what came IN.
+
+unset CLAUDE_CODE_SESSION_ID CLAUDE_CONFIG_DIR 2>/dev/null || true
+SESS="$HOME/.claude/sessions"; mkdir -p "$SESS"
+# Unix socket paths are capped near 104 bytes on macOS — keep them short.
+SOCKS="$(mktemp -d /tmp/icsock.XXXXXX)"
+sleep 300 & LIVE_PID=$!; disown "$LIVE_PID" 2>/dev/null || true   # no "Terminated" line at exit
+sh -c 'exit 0' & DEAD_PID=$!; wait "$DEAD_PID" 2>/dev/null
+trap 'kill "$LIVE_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
+mksock() { python3 -c 'import socket,sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$1"; }
+mksession() {  # mksession <file> <pid> <cwd> <name> <status> <socket> [<sessionId>]
+  jq -n --argjson pid "$2" --arg cwd "$3" --arg name "$4" --arg st "$5" --arg sock "$6" --arg sid "${7:-sid-$4}" \
+    '{pid:$pid, sessionId:$sid, cwd:$cwd, name:$name, kind:"interactive", status:$st,
+      messagingSocketPath:$sock, peerProtocol:1}' > "$SESS/$1"
+}
+mksock "$SOCKS/a.sock"; mksock "$SOCKS/b.sock"; mksock "$SOCKS/c.sock"
+mkdir -p "$TMP/hop-b/sub" "$TMP/hop-b-2"
+mksession live-b.json   "$LIVE_PID" "$TMP/hop-b"     hop-b-11        idle "$SOCKS/b.sock"
+mksession busy-b.json   "$LIVE_PID" "$TMP/hop-b/sub" hop-b-22        busy "$SOCKS/b.sock"
+mksession dead-b.json   "$DEAD_PID" "$TMP/hop-b"     hop-b-dead      idle "$SOCKS/b.sock"
+mksession nosock-b.json "$LIVE_PID" "$TMP/hop-b"     hop-b-nosock    idle "$SOCKS/missing.sock"
+mksession "4825.sync-conflict-20260914-163252-N223K43.json" "$LIVE_PID" "$TMP/hop-b" hop-b-conflict idle "$SOCKS/b.sock"
+mksession self-b.json   "$LIVE_PID" "$TMP/hop-b"     hop-b-self      idle "$SOCKS/b.sock" self-sid
+mksession sib.json      "$LIVE_PID" "$TMP/hop-b-2"   hop-b2-sibling  idle "$SOCKS/c.sock"
+mksession live-a.json   "$LIVE_PID" "$TMP/hop-a"     hop-a-33        idle "$SOCKS/a.sock"
+
+printf 'The body.\n' > "$B/live.md"
+out="$( cd "$TMP/hop-a" && CLAUDE_CODE_SESSION_ID=self-sid bash "$IC" send hop-b body-live --title "Wake up" --body "$B/live.md" 2>&1 )"; rc=$?
+eq "send still succeeds with live sessions around" "$rc" "0"
+says "a live session of the recipient is named" "$out" "hop-b-11 (idle)"
+says "…a busy one too — a pointer queues, it does not interrupt" "$out" "hop-b-22 (busy)"
+says "…and the tool that wakes it" "$out" "SendMessage"
+says "the pointer's first line names the slug and the sender" "$out" '📬 intercom: `body-live` from `hop-a` — Wake up'
+says_not "a dead pid is not a live session" "$out" "hop-b-dead"
+says_not "a session without its socket is not live" "$out" "hop-b-nosock"
+says_not "a sync-conflict copy from another machine is not live" "$out" "hop-b-conflict"
+says_not "the caller's own session is never woken" "$out" "hop-b-self"
+says_not "a sibling directory sharing the prefix is someone else" "$out" "hop-b2-sibling"
+
+out="$( cd "$TMP/hop-a" && bash "$IC" send hop-b body-scaffold --title "Later" 2>&1 )"
+says "a scaffold is woken only after its body is written" "$out" "once the body is written"
+
+out="$( cd "$TMP/hop-a" && bash "$IC" send hop-c body-nolive --body "$B/live.md" 2>&1 )"
+says_not "no live session of the recipient ⇒ no wake line, as before" "$out" "SendMessage"
+
+mv "$SESS" "$SESS.off"
+out="$( cd "$TMP/hop-a" && bash "$IC" send hop-b body-nosess --body "$B/live.md" 2>&1 )"; rc=$?
+eq "a harness that keeps no session files ⇒ send works as before" "$rc" "0"
+says_not "…and says nothing about waking" "$out" "SendMessage"
+mv "$SESS.off" "$SESS"
+
+# A session opened in a separate repo NESTED inside another belongs to the
+# inner one: the longest registered checkout wins.
+mkrepo "$TMP/hop-b/nested" "git@example.com:acme/nested.git"
+( cd "$TMP/hop-b/nested" && bash "$IC" register --name "nested" --describe "a repo inside hop-b" >/dev/null 2>&1 )
+mksession nested.json "$LIVE_PID" "$TMP/hop-b/nested" nested-44 idle "$SOCKS/c.sock"
+out="$( cd "$TMP/hop-a" && bash "$IC" send hop-b body-nest --body "$B/live.md" 2>&1 )"
+says_not "a session in a nested repo is not the outer repo's" "$out" "nested-44"
+out="$( cd "$TMP/hop-a" && bash "$IC" send nested body-nest2 --body "$B/live.md" 2>&1 )"
+says "…it is the nested repo's" "$out" "nested-44"
+rm -f "$SESS/nested.json"
+
+echo "-- the receipt"
+out="$( cd "$TMP/hop-b" && bash "$IC" pickup body-live 2>&1 )"
+says "pickup offers a receipt to the sender's live session" "$out" "hop-a-33"
+says "…with a text that names the letter and who took it" "$out" '✅ intercom: `body-live` picked up by `hop-b`'
+( cd "$TMP/hop-c" && bash "$IC" send hop-b from-c --body "$B/live.md" >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-b" && bash "$IC" pickup from-c 2>&1 )"
+says_not "a sender with no live session gets no receipt line" "$out" "SendMessage"
+
+echo "-- the sender's view"
+# A letter from hop-a written two weeks ago, still lying in hop-c's inbox.
+mkdir -p "$VDM_INTERCOM_ROOT/hop-c"
+printf -- '---\nintercom: v1\nfrom: hop-a\nto: hop-c\ncreated: 2026-09-10T08:00:00Z\nslug: old-one\nstatus: new\n---\n\n# An old one\n' \
+  > "$VDM_INTERCOM_ROOT/hop-c/old-one.md"
+# A note to self is counted by check, not by sent.
+mkdir -p "$VDM_INTERCOM_ROOT/hop-a"
+printf -- '---\nfrom: hop-a\ncreated: 2026-09-01T08:00:00Z\n---\n\n# Note to self\n' > "$VDM_INTERCOM_ROOT/hop-a/self-note.md"
+out="$( cd "$TMP/hop-a" && VDM_INTERCOM_TODAY=2026-09-24 bash "$IC" sent 2>&1 )"
+says "sent lists a letter still lying in someone's inbox" "$out" "hop-c/old-one"
+says "…with its age in days" "$out" "14d  hop-c/old-one"
+says "…whatever its status value says (new is not picked up)" "$out" "An old one"
+says "…and a recipient who can be woken now" "$(printf '%s\n' "$out" | grep 'live now:' | head -1)" "hop-b-11"
+says "…or that nobody can be" "$out" "no live session"
+says_not "a picked-up letter is not listed" "$out" "hop-b/body-live"
+says_not "a note to self is not listed" "$out" "self-note"
+first="$(printf '%s\n' "$out" | grep -m1 '•')"
+says "oldest first" "$first" "old-one"
+out="$( cd "$TMP/hop-b" && bash "$IC" outbox 2>&1 )"
+says "outbox is the same command" "$out" "📤 intercom"
+
+echo "-- session start, the sender's side"
+out="$( cd "$TMP/hop-a" && printf '{}' | VDM_INTERCOM_TODAY=2026-09-24 bash "$HOOK" )"
+says "session start counts letters unpicked for 3+ days" "$out" "1 of your letters lie unpicked for 3+ days"
+says "…and names the oldest" "$out" "14d, hop-c/old-one"
+out="$( cd "$TMP/hop-a" && printf '{}' | VDM_INTERCOM_TODAY=2026-09-11 bash "$HOOK" )"
+says_not "a letter younger than three days is not shouted about" "$out" "unpicked for 3+ days"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

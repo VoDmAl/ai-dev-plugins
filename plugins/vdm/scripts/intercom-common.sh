@@ -959,3 +959,146 @@ intercom_registry_ids() {
     basename "$rf" .json
   done | sort
 }
+
+# ---------------------------------------------------------------------------
+# Delivery is not receipt.
+#
+# `send` writes a file and the sender's side is done; whether the recipient ever
+# reads it is invisible to both. Field case (space-hq → limeflow, 2026-09-14):
+# a reply lay unread while the recipient's session was alive and working next
+# to it, and a brief beside it lay for three days. Measured on the whole store
+# 2026-09-24: about 110 letters unpicked, 20 of them ours, the oldest 19 days —
+# and `check` shows only what came IN, so no sender saw any of it.
+#
+# Two halves, both read from files that already exist — nothing new is stored:
+#   - the live sessions of an agent on this machine (so the assistant can wake
+#     one with its cross-session message tool; the inbox stays the truth);
+#   - the letters an agent wrote that are still in someone's inbox.
+# @see docs/tasks/intercom-live-delivery/workitem.md
+# ---------------------------------------------------------------------------
+
+# _intercom_realpath <dir> — the physical path, or the input when it is gone.
+# The registry records `git rev-parse --show-toplevel` (physical); a session's
+# cwd is whatever the user started in (logical). Compared raw, /var and
+# /private/var would never match.
+_intercom_realpath() { (cd "$1" 2>/dev/null && pwd -P) || printf '%s' "$1"; }
+
+# intercom_live_sessions <identity> — "name<TAB>status" for every LIVE session
+# of that agent on this machine, other than the caller's own.
+#
+# Live means all of: the file is not a sync conflict (settings synced from
+# another machine carry sessions whose pids mean nothing here), its socket
+# exists (/tmp is never synced), and its pid answers `kill -0`. A session file
+# alone proves nothing — on the machine this was written on, 4 of the files in
+# sessions/ were conflict copies from other devices.
+#
+# Belongs to the agent whose registered checkout is the LONGEST one containing
+# the session's cwd. By path, not by session name: the name is derived and two
+# clones can share it. Longest, because a session in a sub-directory belongs to
+# the repo around it (measured: a live session sat in space-hq/tracks/<track>),
+# while a separate repo nested inside another is its own agent. Silent, and
+# harmless, wherever the harness keeps no such files.
+intercom_live_sessions() {
+  local id="$1" dir regdir
+  command -v jq >/dev/null 2>&1 || return 0
+  dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"
+  regdir="$(intercom_registry_dir)"
+  [ -d "$dir" ] && [ -d "$regdir" ] || return 0
+
+  # Every agent's checkouts, as physical paths: "<path><TAB><identity>".
+  local owners
+  owners="$(jq -r '.identity as $i | (.paths // [])[] | [., $i] | @tsv' "$regdir"/*.json 2>/dev/null \
+    | while IFS=$'\t' read -r p who; do
+        [ -n "$p" ] && printf '%s\t%s\n' "$(_intercom_realpath "$p")" "$who"
+      done)"
+  [ -n "$owners" ] || return 0
+
+  local f pid cwd name status sock sid rcwd best best_len p who
+  for f in "$dir"/*.json; do
+    [ -f "$f" ] || continue
+    case "$(basename "$f")" in *.sync-conflict-*) continue ;; esac
+    # Unit separator, not TAB: TAB is whitespace to `read`, so an empty field
+    # (a session with no status yet) would collapse and shift every column after it.
+    IFS=$'\037' read -r pid cwd name status sock sid < <(
+      jq -r '[(.pid // "" | tostring), (.cwd // ""), (.name // ""), (.status // ""),
+              (.messagingSocketPath // ""), (.sessionId // "")] | join("\u001f")' "$f" 2>/dev/null
+    ) || continue
+    [ -n "$pid" ] && [ -n "$name" ] && [ -n "$cwd" ] || continue
+    case "$pid" in *[!0-9]*) continue ;; esac
+    [ -n "$sock" ] && [ -S "$sock" ] || continue
+    kill -0 "$pid" 2>/dev/null || continue
+    if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] && [ "$sid" = "$CLAUDE_CODE_SESSION_ID" ]; then
+      continue
+    fi
+    rcwd="$(_intercom_realpath "$cwd")"
+    best=""; best_len=0
+    while IFS=$'\t' read -r p who; do
+      [ -n "$p" ] || continue
+      case "$rcwd/" in
+        "$p/"*) [ "${#p}" -gt "$best_len" ] && { best="$who"; best_len="${#p}"; } ;;
+      esac
+    done <<<"$owners"
+    [ "$best" = "$id" ] && printf '%s\t%s\n' "$name" "${status:-?}"
+  done
+  return 0
+}
+
+# _intercom_today — today's date, YYYY-MM-DD (UTC). VDM_INTERCOM_TODAY pins it
+# for tests, the same way the comms tools pin theirs.
+_intercom_today() {
+  if [ -n "${VDM_INTERCOM_TODAY:-}" ]; then printf '%s' "$VDM_INTERCOM_TODAY"; return; fi
+  date -u +%Y-%m-%d
+}
+
+# intercom_sent_list <identity> — every letter that identity wrote which is
+# still in someone else's inbox, oldest first:
+#   "<age-days><TAB><inbox><TAB><slug><TAB><title><TAB><file>"
+#
+# "Unpicked" is where the file lies, not what its `status:` says: `pickup` is the
+# only thing that moves a letter into `_done/`, while the status value is
+# written by different versions and different hands (`pending` and `new` both
+# occur). The sender's own inbox is skipped — a note to self is already counted
+# by `check`. Age is in whole calendar days, from the envelope's `created:`.
+#
+# One awk pass over every inbox: this runs at session start, and a field-per-
+# process version took 0.9 s on a store of ~110 letters.
+intercom_sent_list() {
+  local me="$1" root d f
+  root="$(intercom_store_root)"
+  [ -d "$root" ] || return 0
+  local files=()
+  for d in "$root"/*/; do
+    d="${d%/}"
+    case "$(basename "$d")" in _*|"$me") continue ;; esac
+    for f in "$d"/*.md; do
+      [ -f "$f" ] && files+=("$f")
+    done
+  done
+  [ ${#files[@]} -gt 0 ] || return 0
+  awk -v me="$me" -v today="$(_intercom_today)" '
+    function days(s,   y, m, d, era, yoe, doy) {
+      if (s !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/) return -1
+      y = substr(s, 1, 4) + 0; m = substr(s, 6, 2) + 0; d = substr(s, 9, 2) + 0
+      y -= (m <= 2)
+      era = int(y / 400); yoe = y - era * 400
+      doy = int((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5) + d - 1
+      return era * 146097 + yoe * 365 + int(yoe / 4) - int(yoe / 100) + doy
+    }
+    function strip(v) { gsub(/^[ \t]+|[ \t]+$/, "", v); gsub(/^"|"$/, "", v); return v }
+    function flush(   n, parts, inbox, slug, c, t, age) {
+      if (file == "" || from != me) return
+      n = split(file, parts, "/"); inbox = parts[n - 1]; slug = parts[n]; sub(/\.md$/, "", slug)
+      c = days(created); t = days(today)
+      age = (c < 0 || t < 0) ? 0 : t - c
+      if (age < 0) age = 0
+      if (title == "") title = slug     # never empty: an empty field collapses under read
+      printf "%d\t%s\t%s\t%s\t%s\n", age, inbox, slug, title, file
+    }
+    FNR == 1 { flush(); file = FILENAME; from = ""; created = ""; title = ""; infm = ($0 == "---"); next }
+    infm && $0 == "---" { infm = 0; next }
+    infm && /^from:/    { from = strip(substr($0, 6)); next }
+    infm && /^created:/ { created = strip(substr($0, 9)); next }
+    !infm && title == "" && /^# / { title = substr($0, 3) }
+    END { flush() }
+  ' "${files[@]}" | sort -t "$(printf '\t')" -k1,1nr
+}

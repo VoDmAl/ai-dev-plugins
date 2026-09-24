@@ -305,7 +305,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/intercom.sh <subcommand> [args]
 | `send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--body FILE] [--to ID] [--first-contact]` | Scaffold an envelope message addressed to `<to>` (identity, alias or name) and print its path. Unknown / ambiguous target = **hard stop** with suggestions and the next command. `--to <identity>` delivers there and records `<to>` as that agent's name (the resend after the user said whom they meant). `--reply-to <ref>` records which letter this one continues (§ The relay form). `--body <file>` makes the file the letter's body, byte for byte (§ Sending a message). `--first-contact` creates a fresh inbox for a recipient that has never registered. |
 | `chain <slug>` | The relay chain behind a letter — every link it continues, and where each one lives right now. |
 | `claim <inbox> [--force]` | Move an unclaimed inbox (no registered agent) whose name matches one of your names/aliases into your own inbox; `to:` is rewritten to your identity, `to_input` stays as the trace, the name is recorded. `--force` for an orphan that matches none of your names. |
-| `pickup <slug> [--grow]` | Archive a message to `_done/` (or, with `--grow`, hand it to `/vdm:crystal-grow`). |
+| `pickup <slug> [--grow]` | Archive a message to `_done/` (or, with `--grow`, hand it to `/vdm:crystal-grow`). When the sender has a live session on this machine, prints the receipt to send it (§ Delivery is not receipt). |
+| `sent` (aka `outbox`) | Every letter **you** wrote that still lies unpicked in someone's inbox, oldest first, with its age and whether the recipient has a live session to wake now. |
 
 ### Sending a message
 
@@ -400,6 +401,43 @@ pending messages:
      `/vdm:crystal-grow <slug>`, seed the workitem from the message body, and
      archive with `intercom.sh pickup <slug>` once grown. Use this for a brief
      that defines real ongoing work.
+
+### Delivery is not receipt
+
+A letter in an inbox is read only when somebody runs `check`. Field case
+(space-hq → limeflow, 2026-09-14): a reply lay unread while the recipient's
+session was alive and working next to it; a brief beside it lay three days; the
+sender counted both as delivered. Measured on the whole store 2026-09-24: about
+110 letters unpicked, 20 from one sender, the oldest 19 days — and nobody saw
+it, because `check` shows only what came in.
+
+So three things happen on top of the inbox, and none of them replaces it:
+
+- **`send` names the recipient's live sessions on this machine** — sessions of
+  the harness whose working directory lies inside one of the recipient's
+  registered checkouts, with a live process and socket. When it prints
+  `📣 live session(s) of …`, **wake each one in the same turn** with your
+  cross-session message tool (Claude Code: `SendMessage`), using the text it
+  printed. That text is a **pointer**: its first line names the slug and the
+  sender, and it ends with how to read the letter. Never paste the brief into
+  it — the inbox stays the truth. After a scaffolding `send`, wake only once the
+  body is written; with `--body` the letter is complete and you wake at once.
+  Wake busy sessions too: the message queues until their next tool round, it
+  does not interrupt.
+- **`pickup` offers a receipt**: when the sender has a live session, it prints
+  `✅ intercom: <slug> picked up by <you>` — send it the same way.
+- **`sent` shows your side**: every letter you wrote that is still unpicked,
+  its age, and who can be woken right now. The session-start line adds
+  `📤 N of your letters lie unpicked for 3+ days` when there are any. A
+  recipient with no live session can only be reached by their next `check` —
+  or by the user, who can be told.
+
+A harness without cross-session messages, or a machine where the recipient has
+no live session, behaves exactly as before: nothing is printed and nothing is
+required. Live sessions are read from the harness's own session files
+(`${CLAUDE_CONFIG_DIR:-~/.claude}/sessions/`); a copy synced from another
+machine, a dead process or a missing socket never counts as live, and your own
+session is never listed.
 
 ## Configuration Sub-commands
 
