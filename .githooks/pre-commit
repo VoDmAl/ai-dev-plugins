@@ -2,7 +2,7 @@
 # Local pre-commit hook. Activated by:
 #     git config core.hooksPath .githooks
 #
-# Runs seven independent gates. Each fails fast — failure in any gate blocks
+# Runs eight independent gates. Each fails fast — failure in any gate blocks
 # the commit:
 #   1. lib-sync       — every lib file carried by two or more plugins must stay
 #                       byte-identical (caught by scripts/check-lib-sync.sh)
@@ -40,6 +40,9 @@
 #                       shared reminder window, five hooks across two plugins)
 #                       and tests/reminders-dispatch.test.sh (the one section
 #                       the vdm reminders are composed into). Conditional (~30s).
+#   8. helper red-tests — changing a shipped helper under any plugin's bin/
+#                       re-runs tests/<helper>.test.sh, and refuses a helper
+#                       that has none. Conditional (~10s per helper).
 
 set -eu
 
@@ -152,3 +155,26 @@ if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|test
   bash tests/reminder-throttle.test.sh
   bash tests/reminders-dispatch.test.sh
 fi
+
+# Gate 8 — the shipped helpers' red tests. `plugins/*/bin/` is put on the
+# assistant's PATH in every user project, and until 2026-09-24 nothing re-ran a
+# helper's suite: gate 7 is keyed to hooks, and `bin/` is not a hook. Found while
+# changing git-guard-prepare, whose suite ran only when somebody remembered to
+# run it.
+#
+# Keyed by name, not by a list, for gate 7's reason: `bin/<name>` owns
+# `tests/<name>.test.sh`. A staged helper without one is refused — an
+# enumeration would go quiet on the first helper nobody added to it. A deleted
+# helper, or a suite that belongs to no helper, is not this gate's business.
+for h in $(printf '%s\n' "$staged" \
+             | sed -nE -e 's#^plugins/[^/]+/bin/([^/]+)$#\1#p' \
+                       -e 's#^tests/([^/]+)\.test\.sh$#\1#p' \
+             | sort -u); do
+  compgen -G "plugins/*/bin/$h" >/dev/null || continue
+  if [ ! -f "tests/$h.test.sh" ]; then
+    echo "gates: shipped helper '$h' has no red-test suite — expected tests/$h.test.sh" >&2
+    exit 1
+  fi
+  echo "gates: shipped helper '$h' changed — re-running its red tests (~10s)…"
+  bash "tests/$h.test.sh"
+done

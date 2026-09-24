@@ -117,7 +117,7 @@ When the assistant has finished work that warrants a commit — implementation d
 
        printf '%s\n\n%s\n' "[+] Add foo helper" "Why: needed for X." | git-guard-prepare -
 
-   **Preparing again kills the earlier line.** Each prep gets its own message file and deletes the previous one, so a superseded command fails instead of committing a message that has since been revised (see [Superseding a prepared line](#superseding-a-prepared-line)). When the helper reports `a prepared command for this branch was never run`, say so on hand-off: the user still has the dead line in their scrollback.
+   **Preparing again kills the earlier line — yours, not a neighbour's.** Each prep gets its own message file and deletes the previous one of the same session, so a superseded command fails instead of committing a message that has since been revised (see [Superseding a prepared line](#superseding-a-prepared-line)). When the helper reports `a prepared command for this branch was never run`, say so on hand-off: the user still has the dead line in their scrollback.
 
 4. **Hand off to the user.** Your end-of-work message should contain:
    - what was staged (file list);
@@ -125,7 +125,7 @@ When the assistant has finished work that warrants a commit — implementation d
    - **the commit message itself** as a quoted preview, so the user can review it without opening the file;
    - the one-line command from step 3, **as inline code** (single backticks) on its own line — never inside a fenced code block, never inside a heredoc.
 
-   Write the full path verbatim — never abbreviate it with `…` or `/var/folders/<hash>/T/...` in your narration. On macOS the temp path is long (`/var/folders/<id>/T/<repo>-<branch>-commit-<token>.txt`) and that is fine; the user copies the command line, they don't retype it.
+   Write the full path verbatim — never abbreviate it with `…` or `/var/folders/<hash>/T/...` in your narration. On macOS the temp path is long (`/var/folders/<id>/T/vdm-git-<uid>/<session>/<repo>-<branch>-commit-<token>.txt`) and that is fine; the user copies the command line, they don't retype it.
 
    Example:
 
@@ -209,9 +209,19 @@ wherever the helper runs, with nothing to install. Anyone who wants the report
 immediately rather than at the next prep can call `--verify-last` from their own
 `post-commit` hook.
 
-The check fails open — a rebase, an amend, an unrelated commit, an unreadable
-sidecar all produce silence. A detector that fires on ordinary git usage gets
-ignored, and an ignored detector is worse than none.
+The prep's commit is found by its **message**, among the commits made on top of
+the HEAD it was prepared against — not by "HEAD moved by one". So a neighbouring
+session's commit landing in between neither hides yours from the audit nor gets
+audited against your intent, and it does not make your unrun line look consumed.
+
+The check fails open — an amend, a rebase onto something else, a reset, an
+unreadable sidecar all produce silence. A detector that fires on ordinary git
+usage gets ignored, and an ignored detector is worse than none.
+
+Called by name, `--verify-last` states which of three things happened, on
+stdout: `✓ <sha> matches what was prepared`, `nothing to verify` (with why — not
+committed yet, history rewritten, nothing on record), or the mismatch report on
+stderr. Silence would read the same for all three.
 
 ### Superseding a prepared line
 
@@ -236,9 +246,19 @@ What this asks of you:
 - Prepare **once per turn** and wait. Preparing twice before the user has run
   anything is what produces two lines side by side in the first place.
 
-Known boundary: two sessions on the same repo *and* branch annul each other's
-pending line, last prep wins. The loser's line then fails loudly rather than
-committing something stale — the better direction to fail in, but real.
+**The unit is a session, not the branch.** Trios live under
+`${TMPDIR}/vdm-git-<uid>/<session>/` when the harness names its session
+(`CLAUDE_CODE_SESSION_ID`), so two sessions on one repo and branch never touch
+each other's lines. Until vdm-git 2.15.0 the unit was the branch. Field report
+(`www.t23b.org`, 2026-09-12, three sessions on trunk as a standing practice):
+session B's prep deleted A's pending line three times in an hour; A's user found
+out from git's `could not read log file` after pasting, and the "never run"
+warning went to B, who had nothing to do with it.
+
+Without a session id — a human running the helper at a terminal, or a harness
+that exports none — the scope falls back to the repo and branch, as before. Not
+`$PPID`: the helper's parent is the shell of one tool call, a new one each time,
+so every prep would become its own scope and superseding would silently stop.
 
 ### Amending
 
@@ -253,8 +273,9 @@ Name the paths, every time:
     git commit --amend -F <path> -- <path1> <path2>
 
 The helper has no `--amend` mode: the detector deliberately ignores amends
-(HEAD's parent relation breaks), so an amend is prepared like any other commit
-and `--amend` is added to the emitted line by hand.
+(the commit the prep was made against is no longer in history), so an amend is
+prepared like any other commit and `--amend` is added to the emitted line by
+hand.
 
 ### Forbidden command shapes
 
@@ -280,6 +301,9 @@ If `git-guard-prepare` is not on the PATH (older install / alternate harness), r
     rm -f "$base"*.txt "$base"*.paths      # any earlier line is superseded — kill it
     path="${base}-$(date +%s)-$$.txt"      # a name that is never issued twice
 
+This is the per-branch scope: in parallel sessions on one branch it kills a
+neighbour's pending line too, so tell the user which line is current.
+
 Use the Write tool to put the message at `$path` (not a heredoc). Then build the
 pathspec yourself — the fallback owes the same guarantee as the helper:
 
@@ -295,7 +319,7 @@ Reconcile with `git add` / `git checkout --` first.
 
 - **Untracked files from other tickets**: list under "not staged (other tickets)" and exclude from `git add`. Never bundle multiple tickets into one commit unless the user explicitly asks.
 - **Detector output on the next prep**: read it before handing anything off. It means the previous commit is not what was prepared.
-- **Multiple commits in one session**: each prep gets its own message file, never a name already issued, and **deletes the previous prep's files** — a superseded line fails instead of committing a stale message (see [Superseding a prepared line](#superseding-a-prepared-line)). The `.paths` and `.meta` companions always share the message file's stem, so two preps cannot cross their pairs. What this costs you: prepare one commit per turn and wait, because the second prep kills the first line whether or not the user has run it.
+- **Multiple commits in one session**: each prep gets its own message file, never a name already issued, and **deletes the previous prep's files** of this session — a superseded line fails instead of committing a stale message (see [Superseding a prepared line](#superseding-a-prepared-line)). The `.paths` and `.meta` companions always share the message file's stem, so two preps cannot cross their pairs. What this costs you: prepare one commit per turn and wait, because the second prep kills the first line whether or not the user has run it.
 - **Batch commits (multiple separate commits queued from one task)**: prepare each commit *sequentially in your own turn* — `git add <files>` → `git-guard-prepare "<subject>"` → present message preview + `git commit -F <path> -- <paths>` line → wait for the user. Do **not** bundle the sequence into a numbered shell script for the user (`git add ...` / `git-guard-prepare ...` / `# commit` lines stacked together) — `git-guard-prepare` is an assistant-PATH helper, the user's shell does not see it. Only the per-commit `git commit -F <path> -- <paths>` line crosses to the user's shell.
 - **No type-check available locally** (corepack/yarn not set up, missing deps): take the cheapest verification path (linter, single-file `tsc`, one test file) and report what couldn't be verified, rather than skipping verification silently.
 - **Pre-commit hook fails after the user runs your command**: do not retry blindly and do not suggest `--no-verify`. Investigate, fix, re-stage, prepare a fresh message file, hand off again.

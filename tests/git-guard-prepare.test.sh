@@ -32,6 +32,11 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE \
       GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION 2>/dev/null || true
 
+# The helper scopes its files by the harness's session id. This suite is run
+# from inside a live session as often as from a terminal, so the variable is
+# cleared here and set only by the tests that are about sessions — otherwise
+# every other assertion would silently test whichever scope the runner is in.
+unset CLAUDE_CODE_SESSION_ID 2>/dev/null || true
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PREP="$REPO_ROOT/plugins/vdm-git/bin/git-guard-prepare"
@@ -470,18 +475,37 @@ printf 'n\n' > n.txt; git add n.txt
 out=$("$PREP" "[*] next" 2>&1 >/dev/null)
 expect_silent "exact match ⇒ detector silent" "$out"
 
-# FALSE POSITIVE 2: HEAD moved by something that is not this prep's commit
-# (amend, rebase, an unrelated commit). Not the detector's business.
+# FALSE POSITIVE 2: HEAD moved by a commit that is not this prep's. The detector
+# has nothing to accuse. What the unrelated commit must NOT do any more is hide
+# that this prep's own line never ran: until 2026-09-24 a moved HEAD read as
+# "consumed", so a neighbour's commit swept the earlier line away in silence and
+# nobody was told it was void.
 d=$(new_repo detect_unrelated); cd "$d" || exit 1
 export TMPDIR="$d/tmp"
 printf 'x\n' > a.txt
 git add a.txt
 "$PREP" "[*] declares a.txt" > /dev/null
 printf 'z\n' > z.txt; git add z.txt
-git commit -qm "a completely different commit"   # different message
+git commit -qm "a completely different commit" -- z.txt   # a.txt stays staged
 printf 'n\n' > n.txt; git add n.txt
 out=$("$PREP" "[*] next" 2>&1 >/dev/null)
-expect_silent "unrelated commit ⇒ detector silent" "$out"
+expect_not_says "unrelated commit ⇒ no accusation" "$out" "does not match what was prepared"
+expect_says "unrelated commit ⇒ the earlier, never-run line is still declared void" "$out" "never run"
+
+# FALSE POSITIVE 2b: an amend rewrites the commit the prep produced. The record
+# can no longer be matched to anything in history, and that is silence — not an
+# accusation, and not a claim that the line never ran.
+d=$(new_repo detect_amend); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'x\n' > a.txt; git add a.txt
+cmd=$("$PREP" "[*] amended later")
+run_emitted "$cmd" >/dev/null 2>&1
+printf 'y\n' > b.txt; git add b.txt
+cmd=$("$PREP" "[*] amended later" 2>/dev/null)
+eval "${cmd/git commit /git commit --amend }" >/dev/null 2>&1
+printf 'n\n' > n.txt; git add n.txt
+out=$("$PREP" "[*] next" 2>&1 >/dev/null)
+expect_silent "amended commit ⇒ detector silent" "$out"
 
 # FALSE POSITIVE 3: nothing committed yet — the prep is still pending. The
 # detector must not accuse a commit that never happened. The supersession notice
@@ -541,6 +565,159 @@ git commit -qm "[*] quoted"
 printf 'n\n' > n.txt; git add n.txt
 out=$("$PREP" "[*] next" 2>&1 >/dev/null)
 expect_not_says "detector does not print octal escapes" "$out" '\3'
+
+printf '\n=== parallel sessions on one branch ===\n'
+# Field case (www.t23b.org, 2026-09-12; again here 2026-09-24): two sessions on
+# the same repo and branch, one TMPDIR. Session B's prep deleted session A's
+# pending trio, so A's user pasted a line that died on "could not read log
+# file" — twice in one hour — and only B's session was told anything, which is
+# the wrong human. The unit a prep supersedes is one session's line of prepared
+# commits, not everything on the branch.
+
+as_a() { CLAUDE_CODE_SESSION_ID=sess-A "$@"; }
+as_b() { CLAUDE_CODE_SESSION_ID=sess-B "$@"; }
+
+d=$(new_repo two_sessions); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'a\n' > a.txt; git add a.txt
+line_a=$(as_a "$PREP" "[*] from A")
+printf 'b\n' > b.txt; git add b.txt
+out_b=$(as_b "$PREP" "[*] from B" -- b.txt 2>&1 >/dev/null)
+if [ -e "$(msg_path "$line_a")" ]; then
+  ok "a neighbour's prep leaves this session's message file alone"
+else
+  bad "a neighbour's prep leaves this session's message file alone" "$(msg_path "$line_a") was deleted"
+fi
+expect_not_says "the neighbour is not told that our line is void" "$out_b" "never run"
+run_emitted "$line_a" >/dev/null 2>&1; rc=$?
+expect_exit "this session's line still runs after a neighbour's prep" 0 "$rc"
+expect_eq "… and commits this session's message" "[*] from A" "$(git log -1 --format=%s)"
+expect_eq "… and only this session's path" "a.txt" "$(git show --name-only --format= HEAD)"
+
+# Scoping must not cost the half of the contract it was not aimed at: within
+# one session, preparing again still kills the earlier line, loudly.
+d=$(new_repo same_session); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'a\n' > a.txt; git add a.txt
+first=$(as_a "$PREP" "[*] first")
+out=$(as_a "$PREP" "[*] second" 2>&1 >/dev/null)
+if [ -e "$(msg_path "$first")" ]; then
+  bad "within one session the superseded message file is still deleted" "$(msg_path "$first") survived"
+else
+  ok "within one session the superseded message file is still deleted"
+fi
+expect_says "within one session the earlier line is still declared void" "$out" "never run"
+
+# A neighbour COMMITTING (not preparing) moves HEAD. That says nothing about our
+# line, which is still unrun — and the next prep of ours has to say so.
+d=$(new_repo neighbour_commit); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'a\n' > a.txt; git add a.txt
+first=$(as_a "$PREP" "[*] ours" -- a.txt)
+printf 'b\n' > b.txt; git add b.txt
+git commit -qm "[*] the neighbour's" -- b.txt
+out=$(as_a "$PREP" "[*] ours, reworded" -- a.txt 2>&1 >/dev/null)
+expect_says "a neighbour's commit does not hide that our line never ran" "$out" "never run"
+
+# The detector finds OUR commit even with a neighbour's landed in between —
+# prep at H0, neighbour commits H1, ours becomes H2 on top of H1. Comparing
+# against "HEAD's parent == the prep's HEAD" lost exactly this case.
+d=$(new_repo neighbour_between); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'mine\n' > mine.txt; git add mine.txt
+as_a "$PREP" "[*] only mine" > /dev/null          # declares: mine.txt
+printf 'b\n' > b.txt; git add b.txt
+git commit -qm "[*] the neighbour's" -- b.txt       # H1
+printf 'theirs\n' > theirs.txt; git add theirs.txt
+git commit -qm "[*] only mine"                      # bare form — sweeps theirs.txt
+printf 'n\n' > n.txt; git add n.txt
+out=$(as_a "$PREP" "[*] next" 2>&1 >/dev/null)
+expect_says "a neighbour's commit in between does not hide a swept-in path" "$out" "theirs.txt"
+expect_says "… and it is labelled SWEPT IN" "$out" "SWEPT IN"
+expect_not_says "… and the neighbour's own path is not blamed on us" "$out" "      b.txt"
+
+# … and stays silent when our commit is clean. The neighbour's commit is not
+# ours and must not be audited against our intent.
+d=$(new_repo neighbour_clean); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'a\n' > a.txt; git add a.txt
+line=$(as_a "$PREP" "[*] ours" -- a.txt)
+printf 'b\n' > b.txt; git add b.txt
+git commit -qm "[*] the neighbour's" -- b.txt
+run_emitted "$line" >/dev/null 2>&1
+printf 'n\n' > n.txt; git add n.txt
+out=$(as_a "$PREP" "[*] next" -- n.txt 2>&1 >/dev/null)
+expect_silent "our clean commit on top of a neighbour's ⇒ silent" "$out"
+
+# A human at a terminal, or a harness that exports no session id, keeps the
+# per-branch scope. Neither scope reaches into the other.
+d=$(new_repo scopes_apart); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'a\n' > a.txt; printf 'b\n' > b.txt; git add a.txt b.txt
+line_s=$(as_a "$PREP" "[*] session" -- a.txt)
+out=$("$PREP" "[*] terminal" -- b.txt 2>&1 >/dev/null)
+if [ -e "$(msg_path "$line_s")" ]; then
+  ok "a prep without a session id leaves a session's line alone"
+else
+  bad "a prep without a session id leaves a session's line alone" "$(msg_path "$line_s") was deleted"
+fi
+expect_not_says "… and says nothing about it" "$out" "never run"
+line_t=$("$PREP" "[*] terminal again" -- b.txt 2>/dev/null)
+as_b "$PREP" "[*] other session" -- a.txt >/dev/null 2>&1
+if [ -e "$(msg_path "$line_t")" ]; then
+  ok "a session's prep leaves the terminal's line alone"
+else
+  bad "a session's prep leaves the terminal's line alone" "$(msg_path "$line_t") was deleted"
+fi
+
+# The one-trio invariant holds inside a session's scope exactly as it does in
+# the per-branch one — and the trio lands in that scope, not beside it.
+d=$(new_repo session_one_trio); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+i=1
+while [ $i -le 4 ]; do
+  printf '%s\n' "$i" > "f$i.txt"; git add "f$i.txt"
+  as_a "$PREP" "[*] prep $i" >/dev/null 2>&1
+  i=$((i+1))
+done
+expect_eq "one message file survives four preps in a session" "1" \
+  "$(find "$TMPDIR" -name '*.txt' -type f | grep -c .)"
+expect_eq "… and it lives in the session's own directory" "1" \
+  "$(find "$TMPDIR" -path '*/sess-A/*.txt' -type f | grep -c .)"
+
+# The session id comes from the environment and ends up in a path. Whatever it
+# contains, the files stay under TMPDIR.
+d=$(new_repo hostile_session); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'a\n' > a.txt; git add a.txt
+line=$(CLAUDE_CODE_SESSION_ID='../../x y' "$PREP" "[*] odd id")
+case "$(msg_path "$line")" in
+  "$TMPDIR"/*/*..*|*/../*) bad "an odd session id cannot lead out of TMPDIR" "$(msg_path "$line")" ;;
+  "$TMPDIR"/*)             ok  "an odd session id cannot lead out of TMPDIR" ;;
+  *)                       bad "an odd session id cannot lead out of TMPDIR" "$(msg_path "$line")" ;;
+esac
+
+printf '\n=== --verify-last says which of three things happened ===\n'
+# Called by hand or from a post-commit hook, silence is ambiguous: it reads the
+# same whether the commit matched, whether there was nothing of ours to check,
+# and whether the check never ran. The mismatch report already exists; the two
+# other outcomes are stated on stdout, so `>/dev/null` still quiets a hook.
+
+d=$(new_repo verify_outcomes); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+out=$(as_a "$PREP" --verify-last 2>/dev/null)
+expect_says "nothing on record ⇒ says there is nothing to verify" "$out" "nothing to verify"
+printf 'a\n' > a.txt; git add a.txt
+line=$(as_a "$PREP" "[*] verify me")
+out=$(as_a "$PREP" --verify-last 2>/dev/null)
+expect_says "prepared, not yet run ⇒ says so" "$out" "not been committed yet"
+printf 'b\n' > b.txt; git add b.txt
+git commit -qm "[*] the neighbour's" -- b.txt
+out=$(as_a "$PREP" --verify-last 2>/dev/null)
+expect_says "a neighbour's commit on HEAD ⇒ still not ours, still pending" "$out" "not been committed yet"
+run_emitted "$line" >/dev/null 2>&1
+out=$(as_a "$PREP" --verify-last 2>/dev/null)
+expect_says "our clean commit ⇒ says it matches" "$out" "matches"
 
 printf '\n=== documentation agreement ===\n'
 # The emitted form is described in three places that reach the assistant. When

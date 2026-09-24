@@ -49,14 +49,18 @@
 #   `post-commit` hook is a check that never runs. Living inside the helper,
 #   it runs wherever the helper runs, with nothing to install.
 #
-# Side effects — one trio of sidecars per prep, and only ever one:
-#     ${TMPDIR:-/tmp}/<repo>-<branch>-commit-<token>.txt     the message
-#     ${TMPDIR:-/tmp}/<repo>-<branch>-commit-<token>.paths   NUL-separated intent
-#     ${TMPDIR:-/tmp}/<repo>-<branch>-commit-<token>.meta    the HEAD prepped against
+# Side effects — one trio of sidecars per prep, and only ever one per scope:
+#     <scope>/<repo>-<branch>-commit-<token>.txt     the message
+#     <scope>/<repo>-<branch>-commit-<token>.paths   NUL-separated intent
+#     <scope>/<repo>-<branch>-commit-<token>.meta    the HEAD prepped against
+#
+#   <scope> is ${TMPDIR:-/tmp}/vdm-git-<uid>/<session> when the harness names its
+#   session (CLAUDE_CODE_SESSION_ID), and ${TMPDIR:-/tmp} itself otherwise — a
+#   human at a terminal, or a harness that exports no session id.
 #
 #   `<token>` is minted per prep and never reused, and every prep first DELETES
-#   the trio of any earlier prep for the same repo and branch. Both halves are
-#   load-bearing; neither alone closes the class:
+#   the trio of any earlier prep in the same scope for the same repo and branch.
+#   Both halves are load-bearing; neither alone closes the class:
 #
 #     - Reusable names let a line still sitting in the terminal scrollback be
 #       re-pointed at a newer message. It stays runnable and commits the wrong
@@ -69,11 +73,21 @@
 #   With both, a superseded line dies on `No such file or directory`. A visible
 #   failure beats a quiet commit nobody re-reads.
 #
-#   The cost is named rather than hidden: two sessions on the same repo AND
-#   branch annul each other's pending line, last prep wins. The loser's line
-#   then fails loudly instead of committing something stale — the better
-#   direction to fail in, but a real behaviour change from the -2/-3 suffix
-#   scheme this replaced.
+#   Why the scope is a session and not the branch. Until 2026-09-24 it was the
+#   branch, and the cost was named in this header: two sessions on one repo and
+#   branch annul each other's pending line. Field case (www.t23b.org, 2026-09-12)
+#   showed what that costs where parallel sessions on trunk are the norm rather
+#   than an edge: session B's prep deleted A's pending line three times in an
+#   hour, A's user found out from git's `could not read log file` after pasting,
+#   and the "never run" warning went to B — the one human with nothing to do.
+#   A line lives in ONE session's scrollback, so that session is the unit that
+#   supersedes it. Within a session nothing changed.
+#
+#   Why not $PPID as the fallback id. The helper's parent is the shell of one
+#   tool call, and every call gets a fresh one — measured: the same session saw
+#   a different $PPID on each call. Keying on it would make every prep its own
+#   scope, and superseding would silently stop. Without a session id the old
+#   per-branch scope is the honest fallback.
 #
 # Exit codes:
 #   0 success
@@ -98,33 +112,87 @@ PATHSPEC_INLINE_MAX=${GIT_GUARD_PATHSPEC_INLINE_MAX:-20}
 # line that still runs — the whole defect this file now guards against.
 rm_trio() { rm -f "$1.txt" "$1.paths" "$1.meta"; }
 
-# sweep_superseded <tmpdir> <base> <head>
+# session_scope <tmpdir> — the directory this caller's trios live in.
+#
+# The id is sanitised the way the branch is: it comes from the environment and
+# ends up in a path, so nothing in it may climb out of TMPDIR. The uid keeps
+# users apart on a shared /tmp, where a directory made by one user cannot be
+# written by another.
+session_scope() {
+  local tmpdir="$1" session
+  session=$(printf '%s' "${CLAUDE_CODE_SESSION_ID:-}" \
+    | sed -e 's|[^A-Za-z0-9_-]|-|g' -e 's|-\{2,\}|-|g' -e 's|^-||' -e 's|-$||' \
+    | cut -c1-64)
+  if [ -n "$session" ]; then
+    printf '%s/vdm-git-%s/%s' "$tmpdir" "$(id -u)" "$session"
+  else
+    printf '%s' "$tmpdir"
+  fi
+}
+
+# norm_msg — the form in which a prepared message and a commit message are
+# compared. `git commit -F` cleans a message up (trailing whitespace, leading
+# and repeated blank lines), so both sides get the same treatment.
+norm_msg() { sed -e 's/[[:space:]]*$//' | cat -s | sed -e '/./,$!d'; }
+
+# prep_state <stem> <head> — what became of one prep. Prints one of:
+#   pending         no commit carries its message yet: the line is unrun
+#   consumed <sha>  <sha> is the commit its line produced
+#   unknown         cannot say — the record is incomplete, or history was
+#                   rewritten since (amend, rebase onto something else, reset)
+#
+# "HEAD moved" is NOT "consumed". It used to be, and in a single session that
+# was nearly true; with a neighbour committing on the same branch it is false
+# both ways: a neighbour's commit made an unrun line look consumed (swept
+# without a word), and our own commit landing on top of the neighbour's was not
+# recognised as ours (never audited). So the prep's own commit is found by its
+# message, among the commits made on top of the prep's HEAD.
+prep_state() {
+  local stem="$1" head="$2" recorded want rec sha body
+  if [ ! -f "$stem.meta" ] || [ ! -f "$stem.txt" ] || [ ! -f "$stem.paths" ]; then
+    echo unknown; return 0
+  fi
+  recorded=$(cat "$stem.meta" 2>/dev/null || echo "")
+  [ "$recorded" = "$head" ] && { echo pending; return 0; }
+  [ -n "$recorded" ] || { echo unknown; return 0; }
+  git merge-base --is-ancestor "$recorded" HEAD 2>/dev/null || { echo unknown; return 0; }
+
+  want=$(norm_msg < "$stem.txt")
+  while IFS= read -r -d '' rec; do
+    sha=${rec%%$'\n'*}
+    body=${rec#*$'\n'}
+    if [ "$(printf '%s' "$body" | norm_msg)" = "$want" ]; then
+      echo "consumed $sha"; return 0
+    fi
+  done < <(git log -z --ancestry-path --max-count=200 --format='%H%n%B' \
+             "$recorded..HEAD" 2>/dev/null || true)
+  echo pending
+}
+
+# sweep_superseded <dir> <base> <head>
 #
 # Every prep begins by clearing the field. Whatever sidecars survived the audit
 # belong to preps this one replaces, and each surviving `.txt` is a runnable
 # command carrying a message that is no longer the current one.
 #
-# A prep whose recorded HEAD is still the current HEAD was demonstrably never
-# committed, so its line is outstanding in somebody's scrollback and the caller
-# has to be told. One whose `.meta` is gone was already audited by verify_last —
-# or predates this scheme entirely, which is how a machine accumulated nineteen
-# live message files — and is swept without comment.
+# A prep still `pending` was never committed, so its line is outstanding in
+# this session's scrollback and the caller has to be told. Anything else was
+# already audited by verify_last, cannot be traced, or predates this scheme
+# entirely — which is how a machine accumulated nineteen live message files —
+# and is swept without comment.
 sweep_superseded() {
-  local tmpdir="$1" base="$2" head="$3"
-  local f stem recorded pending=0
+  local dir="$1" base="$2" head="$3"
+  local f stem pending=0
 
-  for f in "$tmpdir/$base"*.txt; do
+  for f in "$dir/$base"*.txt; do
     [ -f "$f" ] || continue
     stem="${f%.txt}"
-    if [ -f "$stem.meta" ]; then
-      recorded=$(cat "$stem.meta" 2>/dev/null || echo "")
-      [ "$recorded" = "$head" ] && pending=$((pending + 1))
-    fi
+    [ "$(prep_state "$stem" "$head")" = pending ] && pending=$((pending + 1))
     rm_trio "$stem"
   done
 
   # Leftover from the pre-token scheme, which kept one shared sentinel per base.
-  rm -f "$tmpdir/.$base.head"
+  rm -f "$dir/.$base.head"
 
   [ "$pending" -eq 0 ] && return 0
   {
@@ -157,13 +225,17 @@ mint_stem() {
 
 # ---------------------------------------------------------------- detector
 #
-# verify_last <tmpdir> <base>
+# verify_last <dir> <base>
 #
 # Each prep leaves three sidecars: `<name>.txt` (the message), `<name>.paths`
 # (NUL-separated intended paths) and `<name>.meta` (the HEAD it was prepared
-# against). If HEAD has since moved by exactly one commit whose message equals
-# that prep's message, the commit came from that prep — so compare what it
-# actually touched against what was intended.
+# against). If a commit made on top of that HEAD carries the prep's message, the
+# commit came from that prep (prep_state) — so compare what it actually touched
+# against what was intended. A neighbour's commit in between is neither mistaken
+# for ours nor allowed to hide ours.
+#
+# Leaves counts behind for --verify-last's summary: verify_clean,
+# verify_dirty, verify_pending, verify_unknown, and the last audited sha.
 #
 # Two directions, and they are not symmetric:
 #   EXTRA   — in the commit, never named. Always wrong. Something else wrote to
@@ -176,40 +248,37 @@ mint_stem() {
 # Fail-open everywhere: an unreadable sidecar, a rebase, a squash, anything
 # unexpected — say nothing. A detector that cries wolf on ordinary git usage
 # gets ignored, and then it is worse than absent.
+verify_clean=0 verify_dirty=0 verify_pending=0 verify_unknown=0 verify_sha=""
+
 verify_last() {
-  local tmpdir="$1" base="$2"
-  local meta txt pathsf recorded head parent msg found=0
+  local dir="$1" base="$2"
+  local meta stem state sha head
 
-  head=$(git rev-parse --verify HEAD 2>/dev/null) || return 0
-  parent=$(git rev-parse --verify "HEAD^" 2>/dev/null || echo "")
+  head=$(git rev-parse --verify HEAD 2>/dev/null || echo "")
 
-  for meta in "$tmpdir/$base"*.meta; do
+  for meta in "$dir/$base"*.meta; do
     [ -f "$meta" ] || continue
-    txt="${meta%.meta}.txt"
-    pathsf="${meta%.meta}.paths"
-    [ -f "$txt" ] && [ -f "$pathsf" ] || continue
-
-    recorded=$(cat "$meta" 2>/dev/null || echo "")
-    [ -n "$recorded" ] || continue
-
-    # Still unconsumed — HEAD has not moved since this prep. Leave it alone.
-    [ "$recorded" = "$head" ] && continue
-
-    # Only audit a commit sitting directly on top of the recorded HEAD. Rebase,
-    # amend, squash and cherry-pick all break that relation and are not this
-    # detector's business.
-    [ "$recorded" = "$parent" ] || { rm_trio "${meta%.meta}"; continue; }
-
-    msg=$(git log -1 --format=%B 2>/dev/null || echo "")
-    # Compare trimmed: git normalises trailing newlines in commit messages.
-    if [ "$(printf '%s' "$msg" | sed -e 's/[[:space:]]*$//')" \
-       != "$(printf '%s' "$(cat "$txt")" | sed -e 's/[[:space:]]*$//')" ]; then
-      rm_trio "${meta%.meta}"; continue
-    fi
-
-    found=1
-    _verify_one "$pathsf" "$parent" "$head"
-    rm_trio "${meta%.meta}"
+    stem="${meta%.meta}"
+    state=$(prep_state "$stem" "$head")
+    case "$state" in
+      pending)
+        # Its line has not run. Leave it for the sweep, which says so.
+        verify_pending=$((verify_pending + 1)) ;;
+      consumed\ *)
+        sha=${state#consumed }
+        verify_sha=$sha
+        if _verify_one "$stem.paths" "$sha^" "$sha"; then
+          verify_clean=$((verify_clean + 1))
+        else
+          verify_dirty=$((verify_dirty + 1))
+        fi
+        rm_trio "$stem" ;;
+      *)
+        # Amend, rebase onto something else, reset, a half-written record — not
+        # this detector's business. Drop the record so it is not re-examined.
+        verify_unknown=$((verify_unknown + 1))
+        rm_trio "$stem" ;;
+    esac
   done
   return 0
 }
@@ -239,7 +308,7 @@ _verify_one() {
   [ ${#extra[@]} -eq 0 ] && [ ${#missing[@]} -eq 0 ] && return 0
 
   {
-    echo "git-guard-prepare: ⚠ the previous commit does not match what was prepared."
+    echo "git-guard-prepare: ⚠ the commit made from the previous prepared command does not match what was prepared."
     echo "                   commit $(git rev-parse --short "$head")"
     if [ ${#extra[@]} -gt 0 ]; then
       echo
@@ -260,6 +329,7 @@ _verify_one() {
     echo "  Something changed the index or the tree between prepare and commit."
     echo "  Check the commit before building on it: git show --stat $(git rev-parse --short "$head")"
   } >&2
+  return 1
 }
 
 usage() {
@@ -273,6 +343,9 @@ single-line `git commit -F <path> -- <paths>` command for the user to run.
 
 Preparing again supersedes the previous command: its message file is deleted,
 so the earlier line fails instead of committing a message that has moved on.
+The scope is this session (CLAUDE_CODE_SESSION_ID) on this repo and branch;
+without a session id, the repo and branch. A neighbouring session's line is
+never touched.
 
 Paths come from the explicit `--` list when given, otherwise from a snapshot
 of the index at prep time. Exits 1 if the index is empty, or if the working
@@ -305,7 +378,26 @@ if [ "$1" = "--verify-last" ]; then
     | sed -e 's|[^A-Za-z0-9_-]|-|g' -e 's|-\{2,\}|-|g' -e 's|^-||' -e 's|-$||')
   [ -z "$vr_branch" ] && vr_branch=detached
   vr_tmp="${TMPDIR:-/tmp}"; vr_tmp="${vr_tmp%/}"
-  verify_last "$vr_tmp" "$(basename "$vr_root")-${vr_branch}-commit"
+  verify_last "$(session_scope "$vr_tmp")" "$(basename "$vr_root")-${vr_branch}-commit"
+
+  # Asked for by name, so every outcome is stated — silence would read the same
+  # whether the commit matched, whether nothing of ours was there to check, and
+  # whether the check never ran. A mismatch has already been reported on stderr;
+  # the rest goes to stdout, so a post-commit hook can still `>/dev/null` it.
+  if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then vr_scope="this session"; else vr_scope="this branch"; fi
+  if [ "$verify_dirty" -gt 0 ]; then
+    :
+  elif [ "$verify_clean" -gt 0 ]; then
+    echo "git-guard-prepare: ✓ $(git rev-parse --short "$verify_sha") matches what was prepared."
+  elif [ "$verify_pending" -gt 0 ]; then
+    echo "git-guard-prepare: nothing to verify — the prepared command has not been committed yet"
+    echo "                   (no commit since the prep carries its message)."
+  elif [ "$verify_unknown" -gt 0 ]; then
+    echo "git-guard-prepare: nothing to verify — history was rewritten since the prep"
+    echo "                   (amend, rebase or reset), so its commit cannot be traced."
+  else
+    echo "git-guard-prepare: nothing to verify — no prepared command on record for $vr_scope."
+  fi
   exit 0
 fi
 
@@ -505,6 +597,11 @@ fi
 
 tmpdir="${TMPDIR:-/tmp}"
 tmpdir="${tmpdir%/}"
+scope=$(session_scope "$tmpdir")
+if ! mkdir -p "$scope" 2>/dev/null; then
+  echo "git-guard-prepare: cannot create $scope" >&2
+  exit 1
+fi
 
 base="${repo_name}-${branch_safe}-commit"
 
@@ -517,13 +614,13 @@ head_sha=$(git rev-parse --verify HEAD 2>/dev/null || echo "")
 # Before preparing anything: did the PREVIOUS prep produce the commit it said
 # it would? This is the moment someone is paying attention to commits, which is
 # why the check lives here rather than in a git hook nobody installs.
-verify_last "$tmpdir" "$base" || true
+verify_last "$scope" "$base" || true
 
 # Then clear the field. Anything the audit left behind belongs to a prep this
 # one supersedes, and a superseded message file is a runnable command line.
-sweep_superseded "$tmpdir" "$base" "$head_sha"
+sweep_superseded "$scope" "$base" "$head_sha"
 
-stem=$(mint_stem "$tmpdir" "$base")
+stem=$(mint_stem "$scope" "$base")
 path="${stem}.txt"
 paths_file="${stem}.paths"
 
