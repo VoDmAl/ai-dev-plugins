@@ -250,5 +250,40 @@ says "the capture reminder reports HOW MANY files changed" "$out" "file(s) chang
 says "…and how long the workitem has sat untouched"        "$out" "workitem untouched for"
 says_not "…instead of the fixed verdict it used to print"  "$out" "Work happened this segment"
 
+printf '\ndocs-sync discovery, run the way a hook runs it (stock PATH)\n'
+# Field report (cc-ga-plugins, 2026-09-23) plus what reproducing it turned up.
+# Run under PATH=/usr/bin:/bin on purpose: a session shell may wrap grep in
+# something that understands -P, and then the dead @see section looks alive.
+DS="$TMP/ds"; mkdir -p "$DS/docs" "$DS/src" "$DS/.venv/pkg"
+( cd "$DS" && git init -q . && printf '.venv/\n' > .gitignore ) >/dev/null 2>&1
+i=0; while [ "$i" -lt 35 ]; do printf '# guide %s\n' "$i" > "$DS/docs/guide-$(printf %02d "$i").md"; i=$((i + 1)); done
+printf '# late guide\nhow the ledger_sync worker retries\n' > "$DS/docs/zz-ledger.md"
+i=0; while [ "$i" -lt 50 ]; do printf '# vendored\n' > "$DS/.venv/pkg/README-$i.md"; i=$((i + 1)); done
+printf 'x=1\n' > "$DS/src/ledger_sync.py"
+( cd "$DS" && git add -A >/dev/null 2>&1 && git -c user.email=t@e.invalid -c user.name=t commit -qm fx >/dev/null 2>&1 )
+printf '# @see docs/guide-07.md\ny=2\n' >> "$DS/src/ledger_sync.py"
+rm -rf "$TMPDIR/vdm-reminder-throttle"
+out=$( cd "$DS" && printf '{"session_id":"ds1"}' | env -i HOME="$HOME" PATH=/usr/bin:/bin TMPDIR="$TMPDIR" bash "$DOCSSYNC" 2>/dev/null )
+ctx=$(printf '%s' "$out" | python3 -c "import json,sys; print(json.load(sys.stdin)['hookSpecificOutput']['additionalContext'])" 2>/dev/null)
+[ -n "$ctx" ] && ok "the hook output is valid JSON" || bad "the hook output is valid JSON" "$out"
+says "RED: an @see in a changed file is reported under the stock grep" "$ctx" "src/ledger_sync.py: docs/guide-07.md"
+says "RED: the doc count is the real total, not a ceiling of 30" "$ctx" "Project docs (36)"
+# Not marked RED, on purpose. The old list was the first thirty files in the
+# order `find` returned them, so whether it showed a vendored README or missed
+# docs/zz-ledger.md depended on the filesystem — no fixture makes that fail
+# deterministically. The deterministic red for the same root cause is the
+# count above: 30 for what is really 36.
+says_not "an ignored .venv does not count as documentation" "$ctx" "README-"
+says "a relevant doc is found wherever it sorts" "$ctx" "docs/zz-ledger.md"
+grep -q '^export GIT_OPTIONAL_LOCKS=0' "$DOCSSYNC" && ok "git reads take no optional index lock" \
+  || bad "git reads take no optional index lock" "GIT_OPTIONAL_LOCKS=0 not exported"
+
+NG="$TMP/nogit"; mkdir -p "$NG/docs" "$NG/.venv/pkg"
+printf '# a\n' > "$NG/docs/a.md"; printf '# vendored\n' > "$NG/.venv/pkg/README.md"
+out=$( cd "$NG" && printf '{"session_id":"ds2"}' | env -i HOME="$HOME" PATH=/usr/bin:/bin TMPDIR="$TMPDIR" \
+       bash -c "mkdir -p .claude && printf '{\"docs-sync\":{\"mode\":\"proactive\"}}' > .claude/vdm-plugins.json && bash '$DOCSSYNC'" 2>/dev/null )
+says "outside git: the project's own doc is listed" "$out" "docs/a.md"
+says_not "outside git: a .venv is pruned, not walked" "$out" ".venv"
+
 printf '\nreminder-throttle: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
