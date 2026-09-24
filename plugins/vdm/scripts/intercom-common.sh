@@ -419,14 +419,28 @@ intercom_remote_mismatch() {
 # thing a directory must never contain).
 # ---------------------------------------------------------------------------
 
+# _intercom_need_value <flag> <args-left> — a value flag must have a value.
+#
+# Every option parser here used to read `--x) v="${2:-}"; shift 2`. With the
+# flag as the LAST argument, `shift 2` has one argument to shift, shifts none,
+# returns non-zero — and the loop sees the same flag again, forever. Measured
+# 2026-09-24: `send <to> <slug> --title` hung until killed. A typo must not
+# freeze the caller's shell; it gets a refusal naming the flag.
+_intercom_need_value() {
+  [ "$2" -ge 2 ] && return 0
+  printf 'intercom: %s needs a value.\n' "$1" >&2
+  return 1
+}
+
 intercom_register() {
   command -v jq >/dev/null 2>&1 || return 0
   local same_project=0 implicit=0 desc="" names=() n
   while [ $# -gt 0 ]; do
     case "$1" in
-      --name)          n="$(_intercom_norm_name "${2:-}")"; [ -n "$n" ] && names+=("$n"); shift 2 ;;
+      --name)          _intercom_need_value "$1" $# || return 2
+                       n="$(_intercom_norm_name "$2")"; [ -n "$n" ] && names+=("$n"); shift 2 ;;
       --name=*)        n="$(_intercom_norm_name "${1#--name=}")"; [ -n "$n" ] && names+=("$n"); shift ;;
-      --describe)      desc="${2:-}"; shift 2 ;;
+      --describe)      _intercom_need_value "$1" $# || return 2; desc="$2"; shift 2 ;;
       --describe=*)    desc="${1#--describe=}"; shift ;;
       --same-project)  same_project=1; shift ;;
       --implicit)      implicit=1; shift ;;
@@ -583,7 +597,7 @@ intercom_names_edit() {
   local id="" names=() n
   while [ $# -gt 0 ]; do
     case "$1" in
-      --for)   id="$(_intercom_fold "${2:-}")"; shift 2 ;;
+      --for)   _intercom_need_value "$1" $# || return 2; id="$(_intercom_fold "$2")"; shift 2 ;;
       --for=*) id="$(_intercom_fold "${1#--for=}")"; shift ;;
       *)       n="$(_intercom_norm_name "$1")"; [ -n "$n" ] && names+=("$n"); shift ;;
     esac
@@ -710,7 +724,7 @@ intercom_describe_edit() {
   local id="" desc=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --for)   id="$(_intercom_fold "${2:-}")"; shift 2 ;;
+      --for)   _intercom_need_value "$1" $# || return 2; id="$(_intercom_fold "$2")"; shift 2 ;;
       --for=*) id="$(_intercom_fold "${1#--for=}")"; shift ;;
       *)       [ -z "$desc" ] && desc="$1"; shift ;;
     esac

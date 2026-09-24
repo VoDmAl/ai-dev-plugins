@@ -302,7 +302,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/intercom.sh <subcommand> [args]
 | `directory [-v]` (aka `who`, `list`, `agents`) | Every registered agent: identity, names + aliases, description, pending count; `⚠ unnamed` where the human part is missing; plus inboxes that exist with no registered agent (unclaimed first-contact sends). `-v` adds remotes and paths. |
 | `resolve <name>` | Print the canonical identity `<name>` addresses; on failure list the nearest agents (exit 2 unknown, 3 ambiguous). |
 | `check [--count]` | List (or count) pending messages for this repo; also registers it. |
-| `send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--to ID] [--first-contact]` | Scaffold an envelope message addressed to `<to>` (identity, alias or name) and print its path. Unknown / ambiguous target = **hard stop** with suggestions and the next command. `--to <identity>` delivers there and records `<to>` as that agent's name (the resend after the user said whom they meant). `--reply-to <ref>` records which letter this one continues (§ The relay form). `--first-contact` creates a fresh inbox for a recipient that has never registered. |
+| `send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--body FILE] [--to ID] [--first-contact]` | Scaffold an envelope message addressed to `<to>` (identity, alias or name) and print its path. Unknown / ambiguous target = **hard stop** with suggestions and the next command. `--to <identity>` delivers there and records `<to>` as that agent's name (the resend after the user said whom they meant). `--reply-to <ref>` records which letter this one continues (§ The relay form). `--body <file>` makes the file the letter's body, byte for byte (§ Sending a message). `--first-contact` creates a fresh inbox for a recipient that has never registered. |
 | `chain <slug>` | The relay chain behind a letter — every link it continues, and where each one lives right now. |
 | `claim <inbox> [--force]` | Move an unclaimed inbox (no registered agent) whose name matches one of your names/aliases into your own inbox; `to:` is rewritten to your identity, `to_input` stays as the trace, the name is recorded. `--force` for an orphan that matches none of your names. |
 | `pickup <slug> [--grow]` | Archive a message to `_done/` (or, with `--grow`, hand it to `/vdm:crystal-grow`). |
@@ -320,6 +320,19 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/intercom.sh <subcommand> [args]
    **not** touch `from`/`to`; they are resolved.
 3. Report the path to the user. **Do not commit anything** — the store is
    outside all repos.
+
+**The body already exists as a file?** — typically because the project keeps a
+copy of every outgoing letter and audits against it. Then send it with
+`--body <file>` instead of step 2: the letter's body is that file byte for byte,
+the placeholder is gone, and `send` compares the written body against the file
+before it reports success. Do not splice a file into the placeholder by hand:
+that needs to know where the template's comment begins and ends, and a slip in
+it is a divergence between "sent" and "kept" that neither side rereads.
+
+An empty or unreadable file, or one that still holds the template placeholder,
+is refused **and nothing is written** — a letter with no body looks sent. The
+title still comes from `--title`; the body is taken as written, with no token
+substitution. Works with `--reply-to`.
 
 If `send` refuses with *no agent is registered as "<target>"*, follow the
 refusal text (§ The negative scenario, step by step): resend with
