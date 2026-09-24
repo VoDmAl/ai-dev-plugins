@@ -8,7 +8,7 @@ license: MIT
 
 ## Purpose
 
-Systematically capture and preserve project knowledge for future LLM sessions. Automatically detects scenario type and routes through appropriate analysis before integrating knowledge across multiple storage locations.
+Systematically capture and preserve knowledge for future LLM sessions — project knowledge in the project, and lessons about the assistant's own conduct in the machine-wide cross-project layer (`~/.claude/vdm/rules.md`). Automatically detects scenario type and routes through appropriate analysis before integrating knowledge across multiple storage locations.
 
 **Integration with docs-sync**: This skill complements `/vdm:docs-sync` — while docs-sync focuses on `docs/features/` (user-facing), learn focuses on `docs/llm/` (technical/LLM-facing) and cross-cutting knowledge preservation.
 
@@ -142,6 +142,60 @@ The skill analyzes input to determine the best processing route:
 
 **CRITICAL PRINCIPLE**: Keep CLAUDE.md lean — but not only for safety rules.
 
+**First question, before any project address: is this lesson about the project,
+or about the assistant?** Every address below is inside one project. A lesson
+about how the assistant handles sources, evidence or the user, filed there, is
+learned again in the next project — and the user ends up catching the same
+failure once per project they work in.
+
+### → Cross-project rules (`~/.claude/vdm/rules.md`)
+
+One file for the whole machine, outside every repository. The vdm plugin loads
+it into **every** session at start, whatever the project (hook
+`shared-rules.sh`). Nothing to install, nothing to import.
+
+**Criteria** (ALL apply):
+- it is about the assistant's own conduct — how it treats a source, a claim, a
+  piece of evidence, the user, a message — not about this project's subject,
+  code or tools;
+- it would be equally true in any project the user works in;
+- the user said it applies everywhere ("в общее место", "везде", "в каждой
+  области") **or** the same failure has now been caught in a second project.
+
+**Not here**: anything naming this project's files, people, tools or
+conventions; a rule that only one project needs; safety rules for one
+codebase. Those go to the project's CLAUDE.md or `docs/llm/`, as below.
+
+**How to write it**:
+1. Read the file first. Extend an existing rule rather than adding a
+   near-duplicate.
+2. State the rule so it holds across domains, then show it in each — people,
+   code, tickets, agents, vendors — the way a table of "claim → what confirms
+   it" does. A rule written only for the case that triggered it will not be
+   recognised in the next domain.
+3. End with one origin line: project, date, the case in a sentence.
+4. Keep the whole file under **8 KB**. It rides in every session's context, and
+   the hook truncates beyond that (and says so).
+5. Do not copy the rule into the project's CLAUDE.md. If the project already
+   carries a local copy, point it at the shared file — in **this** project only;
+   other projects are not yours to edit.
+
+**Format**:
+```markdown
+## <Rule, stated as a fact about how to work>
+
+<The rule in two or three sentences.>
+
+| Domain | The trap | What settles it |
+|---|---|---|
+
+Origin: <project>, <YYYY-MM-DD> — <the case in one sentence>.
+```
+
+Harness note: the layer arrives through a plugin hook. A harness that runs no
+plugin hooks (Qwen Code loads only the skills) does not get it; there, read the
+file at the start of work.
+
 ### → CLAUDE.md Rules
 
 **Criteria** (ANY applies):
@@ -215,6 +269,10 @@ docs/llm/ exists?
 ### Routing Decision Tree
 
 ```
+Is this about the ASSISTANT'S OWN CONDUCT, true in any project (see criteria)?
+├─ YES → ~/.claude/vdm/rules.md (cross-project layer) — and nothing in this project
+└─ NO ↓
+
 Is this a SAFETY-CRITICAL rule that prevents disasters?
 ├─ YES → CLAUDE.md (brief rule) + docs/llm/ (details, create dir if needed)
 └─ NO
