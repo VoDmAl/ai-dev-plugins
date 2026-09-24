@@ -39,6 +39,7 @@ LINT="${COMMS_LINT_BIN:-$P/scripts/comms-lint.py}"
 LINTSH="$P/scripts/comms-lint.sh"
 GUARD="$P/scripts/comms-draft-guard.sh"
 INDEX="${COMMS_INDEX_BIN:-$P/scripts/comms-index.py}"
+INDEXCHECK="${COMMS_INDEX_CHECK_SH:-$P/scripts/comms-index-check.sh}"
 
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); printf '  ✓ %s\n' "$1"; }
@@ -661,6 +662,125 @@ expect_exit "GREEN: same broken env, a file outside meetings/ ⇒ exit 0" 0 "$rc
 OUT=$(printf '%s' "$src_payload" | env -i HOME="$HOME" LC_ALL=C PATH="$FARM" \
       bash -c "bash '$GUARD'" 2>&1); rc=$?
 expect_exit "GREEN: same broken env, a file outside comms/ ⇒ exit 0" 0 "$rc"
+
+echo ""
+echo "== frontmatter: valid YAML is read, not refused =="
+# Field case, 2026-09-23 (t23b-program): `goal: |` — a block scalar — in 92
+# files, because that repository's rule is that a goal has two halves on two
+# lines. The reader stopped at the first continuation line; the hook turned
+# that into a blocked write. 0.4.0 hid it for outgoing letters by reading them
+# leniently, and the report stopped reproducing — while role files, series
+# files and incoming letters kept failing. These cases are those survivors.
+
+BS='goal: |
+  На сейчас: первая половина.
+  На будущее: вторая половина.'
+mk_meeting "$FUTURE-bs" "type: meeting
+date: $FUTURE
+$BS
+tracks: [gaps/alpha]" agenda.md
+run_lint "$FX/meetings/$FUTURE-bs/agenda.md"; rc=$?
+expect_exit "RED: a role file with a block-scalar goal is read ⇒ exit 0" 0 "$rc"
+expect_not_says "…and never says 'cannot read line'" "$OUT" "cannot read line"
+
+printf -- '---\ntype: meeting-series\n%s\n---\n\n# series\n' "$BS" > "$FX/meetings/bsseries.md"
+run_lint "$FX/meetings/bsseries.md"; rc=$?
+expect_exit "RED: a series file with a block scalar ⇒ exit 0" 0 "$rc"
+
+mkdir -p "$FX/meetings/$FUTURE-bs/comms"
+printf -- '---\ntype: comms\n%s\n---\n\n# incoming\n' "$BS" > "$FX/meetings/$FUTURE-bs/comms/$FUTURE-x-in.md"
+run_lint "$FX/meetings/$FUTURE-bs/comms/$FUTURE-x-in.md"; rc=$?
+expect_exit "RED: an incoming letter in a meeting dir with a block scalar ⇒ exit 0" 0 "$rc"
+
+mk_meeting "$FUTURE-bstopic" "type: meeting
+date: $FUTURE
+tracks: [gaps/alpha]
+topics:
+  - name: Первая
+    note: |
+      строка один
+      строка два
+    track: gaps/alpha" agenda.md
+run_lint "$FX/meetings/$FUTURE-bstopic/agenda.md"; rc=$?
+expect_exit "RED: a block scalar INSIDE a topic item, siblings still read ⇒ exit 0" 0 "$rc"
+
+mk_meeting "$FUTURE-plainml" "type: meeting
+date: $FUTURE
+goal: first half
+  second half
+tracks: [gaps/alpha]" agenda.md
+run_lint "$FX/meetings/$FUTURE-plainml/agenda.md"; rc=$?
+expect_exit "a value continued without a block header is still refused" 1 "$rc"
+expect_says "…and the refusal names the shape and the fix" "$OUT" "needs a block scalar"
+
+echo ""
+echo "== frontmatter: a comment is never a value =="
+# `sent: false  # not yet` used to come back as the string "false" — every caller
+# reads a non-empty `sent` as SENT, so an unsent letter left the unsent list.
+
+mkdir -p "$FX/gaps/alpha/comms"
+cat > "$FX/gaps/alpha/comms/2026-09-20-cmt-out.md" <<'EOF'
+---
+sent: false   # not yet
+attachments: [plan.pdf]
+---
+
+# a letter whose attachment was never listed in the body
+EOF
+OUT=$(cd "$FX" && COMMS_TODAY="$TODAY" python3 "$LINT" --project-root "$FX" "$FX/gaps/alpha/comms/2026-09-20-cmt-out.md" 2>&1); rc=$?
+expect_exit "RED: 'sent: false  # comment' is NOT sent — the letter is checked ⇒ exit 1" 1 "$rc"
+expect_says "…and its real defect is reported" "$OUT" "no \`## 📎"
+
+mk_meeting "$FUTURE-cmt" "type: meeting
+date: $FUTURE
+tracks: [gaps/alpha]   # the one track
+series: null           # not a series meeting" agenda.md
+run_lint "$FX/meetings/$FUTURE-cmt/agenda.md"; rc=$?
+expect_exit "RED: a flow list and a null followed by comments are read as such ⇒ exit 0" 0 "$rc"
+
+echo ""
+echo "== skipped is said, not implied =="
+# Field case, 2026-09-23: a letter outside the contract gave empty output, and
+# 88 files with a broken goal read as having passed.
+
+run_skip() { OUT=$(cd "$FX" && COMMS_TODAY="$TODAY" python3 "$LINT" --project-root "$FX" "$@" 2>&1); return $?; }
+printf '# notes\n' > "$FX/gaps/alpha/notes.md"
+run_skip "$FX/gaps/alpha/notes.md"; rc=$?
+expect_says "RED: a file outside the contract, named explicitly ⇒ 'skipped'" "$OUT" "skipped (not under the meetings contract"
+expect_exit "…with exit 0 — skipping is not a failure" 0 "$rc"
+
+printf -- '---\ndraft: true\n---\n\n# a letter that attaches nothing\n' > "$FX/gaps/alpha/comms/2026-09-20-plain-out.md"
+run_skip "$FX/gaps/alpha/comms/2026-09-20-plain-out.md"
+expect_says "RED: a letter with nothing to check ⇒ 'skipped', not 'ok'" "$OUT" "skipped (a letter that attaches nothing"
+expect_not_says "…and never 'ok'" "$OUT" ": ok"
+
+printf -- '---\nsent: 2026-09-20\n---\n\n# gone\n' > "$FX/gaps/alpha/comms/2026-09-20-gone-out.md"
+run_skip "$FX/gaps/alpha/comms/2026-09-20-gone-out.md"
+expect_says "a sent letter ⇒ 'skipped (… already sent …)'" "$OUT" "already sent"
+
+run_skip "$FX/meetings/$FUTURE-bs/agenda.md"
+expect_says "GREEN: a file that WAS checked still says ok" "$OUT" "agenda.md: ok"
+
+OUT=$(cd "$FX" && COMMS_TODAY="$TODAY" python3 "$LINT" --quiet --project-root "$FX" "$FX/gaps/alpha/notes.md" 2>&1)
+expect_not_says "GREEN: under --quiet (the hook) a skip prints nothing" "$OUT" "skipped"
+
+echo ""
+echo "== counterparts under people-profiles =="
+mkdir -p "$FX/people"; printf '# known\n' > "$FX/people/known-person.md"
+printf -- '---\ntype: meeting-series\ncounterparts: [known-person, nobody-yet]\n---\n\n# s\n' > "$FX/meetings/cpseries.md"
+printf '{\n  "comms": {\n    "meeting-rules": {"people-profiles": true}\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
+run_skip "$FX/meetings/cpseries.md"; rc=$?
+expect_says "RED: a counterpart with no profile is named" "$OUT" "\`counterparts\`: no profile people/nobody-yet.md"
+expect_not_says "…the one with a profile is not" "$OUT" "known-person.md"
+expect_exit "…as a warning — the verdict of the tool it replaced ⇒ exit 0" 0 "$rc"
+rm -f "$FX/.claude/vdm-plugins.json"
+run_skip "$FX/meetings/cpseries.md"
+expect_not_says "GREEN: without the rule, nothing about profiles" "$OUT" "no profile"
+
+echo ""
+echo "== session start names what is behind =="
+OUT=$(cd "$FX" && CLAUDE_PROJECT_DIR="$FX" COMMS_TODAY="$TODAY" bash "$INDEXCHECK" </dev/null 2>&1)
+expect_says "RED: the signal lists a stale path, not only a count" "$OUT" "        update "
 
 printf '\ncomms: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

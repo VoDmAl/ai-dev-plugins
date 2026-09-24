@@ -20,6 +20,10 @@ series frontmatter:
     key:                  block sequences of mappings
       - name: x
         track: y
+    key: |                block scalars — literal `|` and folded `>`, with the
+      line one              chomping indicators `-` / `+` and an explicit
+      line two              indentation digit; at the top level, inside a
+                            nested mapping and inside a sequence item alike
 
 Anything outside that subset is reported rather than guessed at: a parser that
 silently returns half a document is the same failure mode as a gate that
@@ -31,6 +35,9 @@ import re
 
 _KEY_RE = re.compile(r"^(?P<indent>[ \t]*)(?P<key>[A-Za-z_][A-Za-z0-9_.-]*):(?P<rest>.*)$")
 _ITEM_RE = re.compile(r"^(?P<indent>[ \t]*)-(?P<rest>.*)$")
+# `|`, `>`, optionally with a chomping indicator and an indentation digit in
+# either order (`|-`, `>+`, `|2`, `|2-`, `|-2`), optionally followed by a comment.
+_BLOCK_RE = re.compile(r"^(?P<style>[|>])(?P<a>[+-]?)(?P<digit>[1-9]?)(?P<b>[+-]?)\s*(?:#.*)?$")
 
 
 class FrontmatterError(Exception):
@@ -50,8 +57,35 @@ def split_frontmatter(text):
     raise FrontmatterError("frontmatter opened with `---` but never closed")
 
 
+def _uncomment(rest):
+    """`key:   # a note` has no value — the note is a comment, and a comment is
+    never data. Found on a live file: `epic:   # MCP does not return the epic`
+    read back as the epic being "# MCP does not return the epic"."""
+    return "" if rest.strip().startswith("#") else rest
+
+
+def _strip_trailing_comment(s):
+    """Drop ` # …` after a value. A fully quoted string keeps its `#` — it is
+    content — and so does a `#` glued to text (`https://x/#anchor`)."""
+    s = s.strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in "'\"":
+        return s
+    if s.startswith("["):
+        close = s.rfind("]")
+        if close != -1 and (not s[close + 1:].strip() or s[close + 1:].strip().startswith("#")):
+            return s[: close + 1]
+    m = re.search(r"\s+#", s)
+    return s[: m.start()].rstrip() if m else s
+
+
 def _scalar(raw):
-    s = raw.strip()
+    # The comment goes BEFORE anything is recognised. The old order checked
+    # null / true / false first and cut the comment last, so `sent: false  # not
+    # yet` came back as the string "false" — which every caller reads as "a
+    # value is present", i.e. as SENT: the draft vanished from the unsent list.
+    # Live in two repositories' meeting templates, from where it spreads into
+    # every new meeting.
+    s = _strip_trailing_comment(_uncomment(raw))
     if s == "" or s in ("null", "~", "Null", "NULL"):
         return None
     if len(s) >= 2 and s[0] == s[-1] and s[0] in "'\"":
@@ -60,13 +94,16 @@ def _scalar(raw):
         return True
     if s in ("false", "False", "FALSE"):
         return False
-    # Strip a trailing comment only when it is clearly one (preceded by space).
-    m = re.search(r"\s+#", s)
-    if m:
-        s = s[: m.start()].rstrip()
-    if len(s) >= 2 and s[0] == s[-1] and s[0] in "'\"":
-        return s[1:-1]
     return s
+
+
+def _value(raw):
+    """A flow list or a scalar — the flow list recognised after its comment is
+    gone, so `people: []  # none yet` is an empty list and not the string "[]"."""
+    s = _strip_trailing_comment(_uncomment(raw))
+    if s.startswith("[") and s.endswith("]"):
+        return _flow_seq(s)
+    return _scalar(s)
 
 
 def _flow_seq(raw):
@@ -80,12 +117,97 @@ def _indent_of(line):
     return len(line) - len(line.lstrip(" \t"))
 
 
+def _block_header(rest):
+    """The block-scalar header in `rest`, or None."""
+    m = _BLOCK_RE.match(rest.strip())
+    if not m or (m.group("a") and m.group("b")):
+        return None
+    return m
+
+
+def _read_block(lines, i, parent_indent, header):
+    """Read a block scalar whose header sits on line i-1 at `parent_indent`.
+    Returns (value, next_i).
+
+    Field case, 2026-09-23: a repository whose own rule is that a letter's goal
+    has two halves, each on its own line, writes `goal: |` in 92 files. This
+    reader stopped on the first continuation line with "cannot read line N", the
+    hook turned that into a blocked write, and the only way out was to squeeze
+    two sentences into one quoted line — the linter dictating a worse document.
+    A block scalar is ordinary YAML; reading it is the whole fix."""
+    style = header.group("style")
+    chomp = header.group("a") or header.group("b")
+    digit = header.group("digit")
+    n = len(lines)
+    block_indent = parent_indent + int(digit) if digit else None
+    raw = []
+    while i < n:
+        line = lines[i]
+        if not line.strip():
+            raw.append("")
+            i += 1
+            continue
+        ind = _indent_of(line)
+        if block_indent is None:
+            if ind <= parent_indent:
+                break
+            block_indent = ind
+        if ind < block_indent:
+            break
+        raw.append(line[block_indent:])
+        i += 1
+    # Blank lines after the last content line belong to the chomping decision,
+    # not to the text; and they may be the separator before the next key.
+    trailing = 0
+    while raw and raw[-1] == "":
+        raw.pop()
+        trailing += 1
+    if style == "|":
+        text = "\n".join(raw)
+    else:
+        # Folded: lines of one paragraph join with a space, a blank line is a
+        # line break. More-indented lines keep their own line, as in YAML.
+        out, para = [], []
+        for ln in raw:
+            if ln == "":
+                if para:
+                    out.append(" ".join(para))
+                    para = []
+                out.append("")
+            elif ln[:1] in (" ", "\t"):
+                if para:
+                    out.append(" ".join(para))
+                    para = []
+                out.append(ln)
+            else:
+                para.append(ln)
+        if para:
+            out.append(" ".join(para))
+        text = "\n".join(out).replace("\n\n", "\n")
+    if chomp == "-" or not raw:
+        return text, i
+    if chomp == "+":
+        return text + "\n" * (trailing + 1), i
+    return text + "\n", i
+
+
+def _continuation_error(lines, i, key):
+    """A value spread over several lines without a block header. Name the shape
+    rather than the line: "cannot read line N" told the reader nothing about
+    what to write instead."""
+    return FrontmatterError(
+        "cannot read line %d: `%s:` continues on the next line — a value over "
+        "several lines needs a block scalar (`%s: |`) or one quoted line"
+        % (i + 1, key, key))
+
+
 def parse(fm_text):
     """Parse frontmatter text into a dict. Raises FrontmatterError."""
     data = {}
     lines = [ln for ln in fm_text.split("\n")]
     i = 0
     n = len(lines)
+    last_scalar = None
     while i < n:
         line = lines[i]
         if not line.strip() or line.lstrip().startswith("#"):
@@ -93,15 +215,23 @@ def parse(fm_text):
             continue
         m = _KEY_RE.match(line)
         if not m or _indent_of(line) != 0:
+            if last_scalar is not None and _indent_of(line) > 0:
+                raise _continuation_error(lines, i, last_scalar)
             raise FrontmatterError("cannot read line %d: %r" % (i + 1, line))
         key = m.group("key")
-        rest = m.group("rest")
-        if rest.strip().startswith("[") and rest.strip().endswith("]"):
-            data[key] = _flow_seq(rest)
+        rest = _uncomment(m.group("rest"))
+        last_scalar = None
+        if _strip_trailing_comment(rest).startswith("[") and _strip_trailing_comment(rest).endswith("]"):
+            data[key] = _value(rest)
             i += 1
+            continue
+        header = _block_header(rest)
+        if header:
+            data[key], i = _read_block(lines, i + 1, 0, header)
             continue
         if rest.strip():
             data[key] = _scalar(rest)
+            last_scalar = key
             i += 1
             continue
         # Block value: a sequence, a nested mapping, or nothing.
@@ -131,8 +261,15 @@ def parse(fm_text):
                     # `- key: value` → a mapping item; collect its siblings.
                     entry = {}
                     k = fm_.group("key")
-                    entry[k] = _scalar(fm_.group("rest"))
-                    i += 1
+                    # The first key of an item sits after "- ", so its block
+                    # content is indented past the dash.
+                    key_col = item_indent + (len(nxt) - len(nxt.lstrip(" \t-")) - item_indent)
+                    hdr = _block_header(fm_.group("rest"))
+                    if hdr:
+                        entry[k], i = _read_block(lines, i + 1, key_col, hdr)
+                    else:
+                        entry[k] = _scalar(fm_.group("rest"))
+                        i += 1
                     while i < n:
                         cont = lines[i]
                         if not cont.strip():
@@ -145,6 +282,11 @@ def parse(fm_text):
                             raise FrontmatterError(
                                 "cannot read line %d inside `%s`: %r" % (i + 1, key, cont)
                             )
+                        hdr = _block_header(cm.group("rest"))
+                        if hdr:
+                            entry[cm.group("key")], i = _read_block(
+                                lines, i + 1, _indent_of(cont), hdr)
+                            continue
                         entry[cm.group("key")] = _scalar(cm.group("rest"))
                         i += 1
                     items.append(entry)
@@ -154,10 +296,53 @@ def parse(fm_text):
                 continue
             km = _KEY_RE.match(nxt)
             if km:
-                mapping[km.group("key")] = _scalar(km.group("rest"))
+                hdr = _block_header(km.group("rest"))
+                if hdr:
+                    mapping[km.group("key")], i = _read_block(lines, i + 1, _indent_of(nxt), hdr)
+                    continue
+                raw_v = _strip_trailing_comment(_uncomment(km.group("rest")))
+                if raw_v.startswith("[") and raw_v.endswith("]"):
+                    mapping[km.group("key")] = _flow_seq(raw_v)
+                    i += 1
+                    continue
+                if raw_v:
+                    mapping[km.group("key")] = _scalar(raw_v)
+                    i += 1
+                    continue
+                # An empty nested value may open a list of scalars — one level of
+                # `key → list`, which is what live people profiles carry
+                # (`identity:` → `git:` → `- "Name <mail>"`). Items may sit deeper
+                # than the key or level with it; both are YAML.
+                sub_indent = _indent_of(nxt)
+                j, sub_items = i + 1, []
+                while j < n:
+                    ln = lines[j]
+                    if not ln.strip() or ln.lstrip().startswith("#"):
+                        j += 1
+                        continue
+                    ind = _indent_of(ln)
+                    im2 = _ITEM_RE.match(ln)
+                    if ind < sub_indent or not im2 or (ind == sub_indent and not im2):
+                        break
+                    if _KEY_RE.match(im2.group("rest").strip()):
+                        break  # a list of mappings here: outside the subset, refused below
+                    sub_items.append(_scalar(im2.group("rest")))
+                    j += 1
+                if sub_items:
+                    mapping[km.group("key")] = sub_items
+                    i = j
+                    continue
+                mapping[km.group("key")] = None
                 i += 1
                 continue
             raise FrontmatterError("cannot read line %d inside `%s`: %r" % (i + 1, key, nxt))
+        if items and mapping:
+            # `links:` → `blocks:` → `- X`: a mapping whose values are lists.
+            # Outside the subset; the old code folded both into one list and
+            # returned it as if that were the document.
+            raise FrontmatterError(
+                "`%s:` is a mapping whose values are lists or mappings — outside what this "
+                "reader supports; write the inner lists in flow form (`blocks: [X, Y]`)" % key)
         if items:
             data[key] = items
         elif mapping:

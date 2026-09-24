@@ -83,6 +83,24 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh path/to/meetings/2026-09-21-x/agenda
 ${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh --all
 ```
 
+Every file named gets one of three answers, and they mean different things:
+
+| Answer | Meaning |
+|---|---|
+| `✖` / `⚠` | checked, and something is wrong (an error fails the run, a warning does not) |
+| `ok` | checked against a rule, and clean |
+| `skipped (<why>)` | **nothing on this file was under a rule** — a letter already sent, a letter that attaches nothing, raw material, a file outside the meetings tree |
+
+Read `skipped` as "not looked at", never as "passed". The distinction exists
+because a letter linted by hand used to come back empty — and 88 letters with a
+broken field were taken for checked.
+
+**Frontmatter is read as YAML**, including multi-line values written as block
+scalars (`goal: |` / `goal: >`, with `-` / `+`), and `key: value  # comment`
+reads the value, never the comment. A value that simply continues on the next
+line without `|` is refused with a message that says so — write it as a block
+scalar or on one quoted line.
+
 A `PostToolUse` hook runs the same linter after every write into the meetings
 tree, so a violation comes back within one tool call. Treat that feedback as
 the contract speaking, not as noise — and fix the file rather than working
@@ -97,7 +115,7 @@ floor, because none of them was shared by all three field repositories.
 | Key | Value | What it enforces |
 |-----|-------|------------------|
 | `forbidden-keys` | list of keys | a retired key (`gap`, `sent`, …) in a meeting file or a topic is an error |
-| `people-profiles` | `true` | every `people`, `absent` and `topics[].owner` has `<people-dir>/<slug>.md` |
+| `people-profiles` | `true` | every `people`, `absent` and `topics[].owner` has `<people-dir>/<slug>.md`; a series file's `counterparts` too — as a **warning**, the verdict of the linter this one replaced |
 | `topic-owner` | list of roles, e.g. `["agenda"]` | every topic in those role files names an `owner` |
 | `tail-owner` | `true` | a topic with no track names an `owner` — who holds it on their side |
 | `max-must` | a number | an agenda carries at most that many `must: true` topics |

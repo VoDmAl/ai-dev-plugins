@@ -50,7 +50,12 @@ behind=$(printf '%s\n' "$out" | grep -cE '^  (update|remove) ' 2>/dev/null || tr
 [ -z "$behind" ] && behind=0
 [ "$behind" -gt 0 ] || exit 0
 
-printf '[comms] %s generated artefact(s) are behind the meetings — registry, series lists or track pointers.\n' "$behind"
+printf '[comms] %s generated artefact(s) are behind the meetings — registry, series lists or track pointers:\n' "$behind"
+# The first few by name. A count alone arrived every session and said nothing
+# about WHAT was behind — reported from the field, where "21 artefacts" stood
+# unchanged for days because nobody could tell from it whether it mattered.
+printf '%s\n' "$out" | grep -E '^  (update|remove) ' | head -3 | sed 's/^  /        /'
+[ "$behind" -gt 3 ] && printf '        … and %s more\n' "$((behind - 3))"
 printf '        Rebuild with /vdm-comms:index (it prints what it changed), or inspect first:\n'
 printf '        ${CLAUDE_PLUGIN_ROOT}/scripts/comms-index.py --check\n'
 exit 0

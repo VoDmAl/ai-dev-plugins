@@ -40,7 +40,8 @@ Above the floor sit a project's OWN conventions, which the plugin enforces
 only when the project names them — `comms.meeting-rules`:
 
     forbidden-keys    [keys]   frontmatter keys a meeting file must not carry
-    people-profiles   true     every people / absent / topics[].owner has a profile
+    people-profiles   true     every people / absent / topics[].owner has a profile;
+                               a series file's counterparts too (warning)
     topic-owner       [roles]  every topic in these role files names an owner
     tail-owner        true     a topic with no track names an owner
     max-must          N        an agenda carries at most N `must: true` topics
@@ -94,16 +95,27 @@ track_exists = cfgmod.track_exists
 project_root_of = cfgmod.project_root_of
 
 class Report:
+    """A verdict on one file. `skipped` is the third outcome besides "failed" and
+    "passed": nothing on this file was under a rule. It exists because printing
+    `ok` — or nothing — for a file that was never checked is the same answer as
+    for a file that was checked and clean, and a reader cannot tell them apart.
+    Field case, 2026-09-23: 88 letters with a multi-line goal read as having
+    passed, when the linter had not looked at them at all."""
+
     def __init__(self, path):
         self.path = path
         self.errors = []
         self.warnings = []
+        self.skipped = None
 
     def error(self, msg):
         self.errors.append(msg)
 
     def warn(self, msg):
         self.warnings.append(msg)
+
+    def skip(self, reason):
+        self.skipped = reason
 
     @property
     def clean(self):
@@ -162,6 +174,8 @@ def lint_file(path, cfg, project_root):
     if not data:
         if is_role:
             rep.error("no frontmatter — a role file (%s) is under contract" % leaf)
+        else:
+            rep.skip("no frontmatter and not a role file — raw material is not under contract")
         return rep
 
     if is_role or ftype == "meeting":
@@ -172,11 +186,13 @@ def lint_file(path, cfg, project_root):
         return rep
 
     if ftype == "meeting-series":
-        _lint_series(rep, data, rel, meetings_dir, rules_of(cfg))
+        _lint_series(rep, data, rel, meetings_dir, rules_of(cfg), cfg, project_root)
         return rep
 
     # index / readme / generated pointers own their own shape; an unknown type
     # on a non-role file is a project's own class, not a violation.
+    rep.skip("not a role file, and `type: %s` carries no contract here — only its "
+             "frontmatter was read" % (ftype if ftype is not None else "—"))
     return rep
 
 
@@ -207,7 +223,8 @@ def _lint_letter(rep, path):
     except fm.FrontmatterError:
         return rep
     if fm.scalar_keys(fm_text).get("sent") not in (None, "", False):
-        return rep  # it went out; the record is history
+        rep.skip("a letter already sent — the record is history")
+        return rep
     try:
         attachments = fm.parse(fm_text).get("attachments") if fm_text.strip() else None
     except fm.FrontmatterError:
@@ -234,6 +251,8 @@ def _lint_letter(rep, path):
                   "why now` per file, before the letter text" % len(declared))
         return rep
     if not has_section:
+        rep.skip("a letter that attaches nothing — the 📎 checklist is the only rule "
+                 "for letters")
         return rep
     if not items:
         rep.error("the 📎 section has no `- [ ]` items — one checkbox per file to attach")
@@ -269,7 +288,7 @@ def _str_list(value):
     return []
 
 
-def _lint_series(rep, data, rel, meetings_dir, rules):
+def _lint_series(rep, data, rel, meetings_dir, rules, cfg, project_root):
     parts = rel.split(os.sep)
     if len(parts) != 2:
         rep.error("a series file belongs at %s/<series>.md" % meetings_dir)
@@ -280,6 +299,19 @@ def _lint_series(rep, data, rel, meetings_dir, rules):
     elif slug is None and rules.get("series-slug"):
         rep.error("no `slug:` — comms.meeting-rules.series-slug asks every series file to "
                   "carry one (= %s)" % name)
+    # The people a series meets live in its `counterparts:`; a name there with no
+    # profile is the same gap as in a meeting's `people:`. A WARNING, not an
+    # error: that is what the tool this plugin replaced said, and the switch was
+    # accepted file for file on the number of warnings — turning it into an error
+    # would change the verdict without anything in the field asking for it.
+    if rules.get("people-profiles"):
+        pdir = str(cfg.get("people-dir") or "people").strip("/")
+        values = data.get("counterparts")
+        values = [values] if isinstance(values, str) else values
+        for v in values if isinstance(values, list) else []:
+            slug_v = str(v).strip() if v is not None else ""
+            if slug_v and not os.path.isfile(os.path.join(project_root, pdir, slug_v + ".md")):
+                rep.warn("`counterparts`: no profile %s/%s.md" % (pdir, slug_v))
     # The BODY of a series file is never checked — see the module docstring.
 
 
@@ -529,6 +561,7 @@ def print_contract():
     print("# opt-in, comms.meeting-rules — a project's own conventions, off until named")
     print("rule\tforbidden-keys [keys]\terror: a retired key in a meeting file or a topic")
     print("rule\tpeople-profiles true\terror: people / absent / topics[].owner without <people-dir>/<slug>.md")
+    print("rule\tpeople-profiles true\twarning: a series file's counterparts without <people-dir>/<slug>.md")
     print("rule\ttopic-owner [roles]\terror: a topic without owner in these role files")
     print("rule\ttail-owner true\terror: a topic with no track and no owner")
     print("rule\tmax-must N\terror: more than N `must: true` topics in agenda.md")
@@ -581,9 +614,14 @@ def main(argv):
         if not os.path.isfile(path):
             continue
         rep = lint_file(path, cfg, root)
-        if rep is None:
-            continue
         rel = os.path.relpath(os.path.abspath(path), root)
+        if rep is None:
+            # Named on the command line and outside the meetings tree: say so.
+            # An empty answer here read as "checked, clean" in the field.
+            if not args.quiet:
+                print("%s: skipped (not under the meetings contract — outside %s/ and "
+                      "not an outgoing letter)" % (rel, cfg["meetings-dir"]))
+            continue
         for msg in rep.errors:
             print("✖ %s: %s" % (rel, msg))
         for msg in rep.warnings:
@@ -591,7 +629,10 @@ def main(argv):
         if rep.errors:
             failures += 1
         elif not rep.warnings and not args.quiet:
-            print("%s: ok" % rel)
+            if rep.skipped:
+                print("%s: skipped (%s)" % (rel, rep.skipped))
+            else:
+                print("%s: ok" % rel)
     return 1 if failures else 0
 
 
