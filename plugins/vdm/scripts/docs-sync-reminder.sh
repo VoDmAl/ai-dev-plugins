@@ -6,7 +6,8 @@
 #   mode=conditional|quiet  → fires only when working tree has changes (no throttle)
 #   mode=smart              → fires when tree dirty AND throttle window elapsed (default)
 #   mode=proactive          → fires every prompt, even on a clean tree (skinny payload, no throttle)
-# Budget: must complete within 5s timeout.
+# Budget: runs under scripts/reminders.sh, whose deadline (25 s) replaced the
+# 5 s per-hook timeout in vdm 2.32.0. Still meant to take well under a second.
 #
 # Throttle window: docs-sync.throttle (seconds), default 600 (10 min). Per-session
 # state under ${TMPDIR:-/tmp}/vdm-reminder-throttle/docs-sync-<session_id>.
@@ -30,11 +31,19 @@ payload=$(cat 2>/dev/null || true)
 
 # --- Discovery Phase ---
 
+# Every git call below is a read. None of them may take the OPTIONAL index lock
+# that `git status` grabs to refresh stat info: on a machine where several
+# sessions work in one repository, a reminder that contends for `index.lock`
+# with a real commit is a reminder that can make that commit fail.
+export GIT_OPTIONAL_LOCKS=0
+in_git=0
+git rev-parse --is-inside-work-tree &>/dev/null && in_git=1
+
 # 1. Changed files — modified, staged, and untracked. We use porcelain status
 # so newly created files (which `git diff` ignores) also surface in reminders.
 # Strip the 2-char status code and any rename arrow ("old -> new" → "new").
 changed_files=""
-if git rev-parse --is-inside-work-tree &>/dev/null; then
+if [ "$in_git" = 1 ]; then
   changed_files=$(git status --porcelain 2>/dev/null | sed -E 's/^.{2} //;s/^.* -> //')
 fi
 
@@ -57,21 +66,34 @@ if [ "$mode" = "smart" ]; then
   fi
 fi
 
-# 2. Find all .md files in project (exclude node_modules, vendor, .git)
-md_files=$(find . -name "*.md" \
-  -not -path "./.git/*" \
-  -not -path "./node_modules/*" \
-  -not -path "./vendor/*" \
-  -not -path "./.claude/*" \
-  -not -path "./.serena/*" \
-  2>/dev/null | head -30 | sed 's|^\./||' | sort)
+# 2. The project's .md files. In a git work tree, git already knows them —
+# tracked plus untracked-but-not-ignored — without walking the tree and while
+# honouring .gitignore. The old `find . | head -30` did neither: it walked every
+# ignored .venv / target / Pods, and it capped the list at the first thirty in
+# directory order, so "Project docs (30)" was a ceiling rather than a count and
+# which thirty depended on the filesystem. Measured on a 60k-file fixture: the
+# count said 30 for 640 files, and four of the project's own guides were missing.
+# Outside git, `find` with the heavy directories pruned — never descended into.
+if [ "$in_git" = 1 ]; then
+  md_files=$(git ls-files -co --exclude-standard -- '*.md' 2>/dev/null \
+             | grep -vE '^(\.claude|\.serena)/' | sort)
+else
+  md_files=$(find . \( -name .git -o -name node_modules -o -name vendor -o -name .claude \
+               -o -name .serena -o -name .venv -o -name venv -o -name target -o -name dist \
+               -o -name build -o -name Pods -o -name __pycache__ \) -prune \
+             -o -type f -name '*.md' -print 2>/dev/null | head -2000 | sed 's|^\./||' | sort)
+fi
 
 # 3. Extract @see references from changed files
 see_refs=""
 if [ -n "$changed_files" ]; then
   while IFS= read -r f; do
     if [ -f "$f" ]; then
-      refs=$(grep -oP '@see\s+\K\S+' "$f" 2>/dev/null | grep -i '\.md' | head -5)
+      # `grep -P` is not portable: the stock macOS grep has no -P, and with
+      # 2>/dev/null the refusal read as "no @see found" — this section never
+      # appeared on a Mac. sed -E is in every base system.
+      refs=$(sed -nE 's/.*@see[[:space:]]+([^[:space:]]+).*/\1/p' "$f" 2>/dev/null \
+             | grep -i '\.md' | head -5 | tr '\n' ',' | sed 's/,$//; s/,/, /g')
       if [ -n "$refs" ]; then
         see_refs="${see_refs}${f}: ${refs}\n"
       fi
@@ -93,8 +115,13 @@ relevant_docs=""
 if [ -n "$keywords" ] && [ -n "$md_files" ]; then
   # Build grep pattern from top keywords (max 5 to stay fast)
   pattern=$(echo "$keywords" | tr ',' '\n' | head -5 | sed 's/^ *//' | tr '\n' '|' | sed 's/|$//')
-  if [ -n "$pattern" ]; then
-    relevant_docs=$(echo "$md_files" | while IFS= read -r md; do
+  if [ -n "$pattern" ] && [ "$in_git" = 1 ]; then
+    # One process over every doc, instead of one grep per file over the first
+    # thirty the filesystem happened to return.
+    relevant_docs=$(git grep --untracked -l -i -E -e "$pattern" -- '*.md' \
+                      ':(exclude).claude' ':(exclude).serena' 2>/dev/null | head -10)
+  elif [ -n "$pattern" ]; then
+    relevant_docs=$(echo "$md_files" | head -500 | while IFS= read -r md; do
       if [ -f "$md" ] && grep -qilE "$pattern" "$md" 2>/dev/null; then
         echo "$md"
       fi
@@ -116,7 +143,7 @@ fi
 
 # @see references
 if [ -n "$see_refs" ]; then
-  context="${context}\n\n@see references found:\n${see_refs}"
+  context="${context}\n\n@see references found:\n${see_refs%\\n}"
 fi
 
 # Project documentation map. Truncated like `changed_files` above — the
