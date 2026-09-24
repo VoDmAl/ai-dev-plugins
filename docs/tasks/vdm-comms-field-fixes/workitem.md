@@ -2,7 +2,7 @@
 title: "vdm-comms 0.4.1: блочный скаляр во frontmatter, молчание вместо «пропущено», counterparts без профиля"
 slug: vdm-comms-field-fixes
 description: "Три полевых отчёта против vdm-comms: t23b-program (goal: |, тихий пропуск), global-auth-gap (counterparts)"
-status: in-progress
+status: done
 session-type: prd-work
 created: 2026-09-24
 last-updated: 2026-09-24
@@ -12,6 +12,9 @@ relates-to:
 ---
 
 # vdm-comms 0.4.1: блочный скаляр во frontmatter, молчание вместо «пропущено», counterparts без профиля
+
+> **Отгружено 2026-09-24:** `ac35ba6`, запушено вместе с `6442b2b` (`vdm` 2.32.1 — побочный
+> `docs-sync`, см. `PROJECT_CHANGELOG.md`). Ответы отправлены, оба письма в архиве.
 
 ## Назначение
 
@@ -147,7 +150,11 @@ relates-to:
       файла с `goal: |` читаются, ошибок и предупреждений на трёх деревьях столько же, сколько было
 - [x] Версия 0.4.1, каталог, `PROJECT_CHANGELOG.md`, `docs/model/suite.md` по дрейфу
 - [x] см. Sidetrack #1 — остаточные расхождения парсера с YAML: вне потребляемых ключей, сверка сохранена
-- [ ] Ответ `t23b-program` и `global-auth-gap` через `--reply-to`; архив обоих писем
+- [x] Ответы через `--reply-to`: `t23b-program` → `comms-lint-goal-block-scalar-fixed` (с
+      находкой: их `templates/comms.md` делал каждое новое письмо «отправленным»; и невалидный
+      frontmatter в `totin-chip.md`), `global-auth-gap` → `vdm-comms-0-4-1-acceptance-reply`;
+      оба письма в `_done/`. Версию в письмах не утверждал как установленную — на момент
+      отправки автообновление ещё не пришло (`vdm-comms` 0.4.0 на машине)
 
 ## References
 
