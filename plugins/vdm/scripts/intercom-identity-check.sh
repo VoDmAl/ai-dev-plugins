@@ -123,6 +123,19 @@ Before other work, register the names this project really goes by. A default der
 Verify with /vdm:intercom whoami. This notice repeats every session until the registration is complete (opt out: /vdm:intercom identity-check off)."
 fi
 
+# Delivery is not receipt, from the sender's side. A letter this agent wrote
+# that has sat unpicked for three days is a promise nobody is keeping, and
+# `check` shows only what came in. Three days, because that is how long the
+# field case lay unseen (@see docs/tasks/intercom-live-delivery/workitem.md, DL #4);
+# `/vdm:intercom sent` lists everything, without a threshold.
+old_sent="$(intercom_sent_list "$id" 2>/dev/null | awk -F '\t' '$1 >= 3')"
+if [ -n "$old_sent" ]; then
+  n_old="$(printf '%s\n' "$old_sent" | wc -l | tr -d ' ')"
+  oldest="$(printf '%s\n' "$old_sent" | head -1 | awk -F '\t' '{ printf "%sd, %s/%s", $1, $2, $3 }')"
+  msg="${msg}
+📤 ${n_old} of your letters lie unpicked for 3+ days (oldest: ${oldest}) — delivered is not received. See who can be woken now: /vdm:intercom sent"
+fi
+
 # A brief that was filed into a crystal but never archived reads as pending to
 # every later session — indistinguishable from one nobody has looked at. The
 # signal names the slug and the command, and it goes out the moment `pickup`
