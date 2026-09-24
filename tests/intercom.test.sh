@@ -548,5 +548,102 @@ says "a letter that starts a chain says so" "$out" "starts the chain"
 out="$( cd "$TMP/hop-a" && bash "$IC" chain no-such-letter 2>&1 )"; rc=$?
 eq "chain on an unknown slug refuses" "$rc" "2"
 
+echo ""
+echo "== body from a file: what was sent is byte-for-byte what was kept =="
+# Field request (global-auth-risk-model, 2026-09-24): a sender keeps a copy of
+# every outgoing letter in its repo, and its owner audits conclusions against
+# that copy. With no way to hand `send` a body, the copy was spliced in by a
+# script that had to know where the template's placeholder begins and ends —
+# two manual steps, and an error in either is a divergence nobody sees, because
+# the recipient never reads the copy and the sender never rereads the letter.
+
+B="$TMP/bodies"; mkdir -p "$B"
+# Characters that a substitution pass would eat, and tokens the template uses.
+printf '## What we need\n\n- keep `&`, `\\` and `$HOME` as written\n- {{TITLE}} and {{SLUG}} stay literal\n\nLast line, no newline at the end' > "$B/plain.md"
+
+out="$( cd "$TMP/hop-a" && bash "$IC" send hop-b body-plain --title "From a file" --body "$B/plain.md" 2>&1 )"; rc=$?
+eq "--body sends" "$rc" "0"
+L="$VDM_INTERCOM_ROOT/hop-b/body-plain.md"
+if tail -c "$(wc -c < "$B/plain.md")" "$L" | cmp -s - "$B/plain.md"; then
+  ok "the letter ends with the file's bytes, exactly — no newline added, nothing substituted"
+else
+  bad "the letter ends with the file's bytes, exactly" "$(tail -c 200 "$L")"
+fi
+says_not "no placeholder is left behind" "$(cat "$L")" "Write the brief below"
+eq "the envelope is still the template's" "$(sed -n '2p' "$L")" "intercom: v1"
+says "the title is still the letter's heading" "$(cat "$L")" "# From a file"
+says "the sender is told the body was checked" "$out" "identical"
+says_not "…and is not told to go and write it" "$out" "now write the brief body"
+
+( cd "$TMP/hop-a" && bash "$IC" send hop-b body-eq --body="$B/plain.md" >/dev/null 2>&1 )
+[ -f "$VDM_INTERCOM_ROOT/hop-b/body-eq.md" ] && ok "--body=<file> works too" || bad "--body=<file> sent nothing"
+
+out="$( cd "$TMP/hop-c" && bash "$IC" send hop-a body-reply --reply-to hop-c/relay-two --body "$B/plain.md" 2>&1 )"; rc=$?
+eq "--body works together with --reply-to" "$rc" "0"
+eq "…the reference is in the envelope" \
+   "$(grep '^reply-to:' "$VDM_INTERCOM_ROOT/hop-a/body-reply.md")" "reply-to: hop-c/relay-two"
+if tail -c "$(wc -c < "$B/plain.md")" "$VDM_INTERCOM_ROOT/hop-a/body-reply.md" | cmp -s - "$B/plain.md"; then
+  ok "…and the body is the file"
+else
+  bad "…and the body is the file"
+fi
+
+# Every refusal must leave NO letter: a letter with a placeholder for a body
+# looks sent, and that is the failure the request exists to remove.
+refuses() {  # refuses <desc> <slug> <expect-in-output> <send args…>
+  local desc="$1" slug="$2" want="$3"; shift 3
+  local o r
+  o="$( cd "$TMP/hop-a" && bash "$IC" send hop-b "$slug" "$@" 2>&1 )"; r=$?
+  if [ "$r" -ne 0 ] && [ ! -e "$VDM_INTERCOM_ROOT/hop-b/$slug.md" ]; then
+    ok "$desc — refused, no letter written"
+  else
+    bad "$desc — refused, no letter written" "rc=$r, letter exists: $([ -e "$VDM_INTERCOM_ROOT/hop-b/$slug.md" ] && echo yes || echo no)"
+  fi
+  says "$desc — says why" "$o" "$want"
+}
+: > "$B/empty.md"
+printf '  \n\n\t\n' > "$B/blank.md"
+printf '# Draft\n\n<!-- Write the brief below. Replace this comment -->\n' > "$B/unfilled.md"
+refuses "a missing file"                  body-missing  "cannot read"  --body "$B/nope.md"
+refuses "an empty file"                   body-empty    "empty"        --body "$B/empty.md"
+refuses "a whitespace-only file"          body-blank    "empty"        --body "$B/blank.md"
+refuses "a file still holding the placeholder" body-unfilled "placeholder" --body "$B/unfilled.md"
+refuses "--body with no path"             body-nopath   "--body"       --body
+refuses "a directory"                     body-dir      "cannot read"  --body "$B"
+
+# A relative path is the sender's, read from where the sender stands.
+mkdir -p "$TMP/hop-a/docs/comms"
+cp "$B/plain.md" "$TMP/hop-a/docs/comms/out.md"
+( cd "$TMP/hop-a" && bash "$IC" send hop-b body-rel --body docs/comms/out.md >/dev/null 2>&1 )
+if [ -f "$VDM_INTERCOM_ROOT/hop-b/body-rel.md" ] && \
+   tail -c "$(wc -c < "$B/plain.md")" "$VDM_INTERCOM_ROOT/hop-b/body-rel.md" | cmp -s - "$B/plain.md"; then
+  ok "a relative --body path is read from the sender's directory"
+else
+  bad "a relative --body path is read from the sender's directory"
+fi
+ls -a "$VDM_INTERCOM_ROOT/hop-b" | grep -q '\.render\.' \
+  && bad "no half-rendered file is left in the inbox" "$(ls -a "$VDM_INTERCOM_ROOT/hop-b")" \
+  || ok "no half-rendered file is left in the inbox"
+
+echo ""
+echo "== a value flag at the end of the line refuses instead of hanging =="
+# `--x) v="${2:-}"; shift 2` with the flag as the last argument shifts nothing,
+# and the loop sees the same flag forever. Found 2026-09-24 while adding --body:
+# `send <to> <slug> --title` hung until killed. Each call runs under an alarm;
+# exit 142 is the alarm, i.e. the hang.
+bounded() { perl -e 'alarm 10; exec @ARGV' "$@"; }
+for flag in --title --from-agent --reply-to --to --body; do
+  out="$( cd "$TMP/hop-a" && bounded bash "$IC" send hop-b dangling "$flag" 2>&1 )"; rc=$?
+  if [ "$rc" -ne 0 ] && [ "$rc" -ne 142 ]; then ok "send … $flag (no value) refuses"; else bad "send … $flag (no value) refuses" "rc=$rc"; fi
+  says "…and names $flag" "$out" "$flag needs a value"
+done
+[ ! -e "$VDM_INTERCOM_ROOT/hop-b/dangling.md" ] && ok "…and none of them wrote a letter" || bad "a dangling flag wrote a letter"
+out="$( cd "$TMP/hop-a" && bounded bash "$IC" register --name 2>&1 )"; rc=$?
+if [ "$rc" -ne 0 ] && [ "$rc" -ne 142 ]; then ok "register --name (no value) refuses"; else bad "register --name (no value) refuses" "rc=$rc"; fi
+out="$( cd "$TMP/hop-a" && bounded bash "$IC" names add --for 2>&1 )"; rc=$?
+if [ "$rc" -ne 0 ] && [ "$rc" -ne 142 ]; then ok "names add --for (no value) refuses"; else bad "names add --for (no value) refuses" "rc=$rc"; fi
+out="$( cd "$TMP/hop-a" && bounded bash "$IC" describe --for 2>&1 )"; rc=$?
+if [ "$rc" -ne 0 ] && [ "$rc" -ne 142 ]; then ok "describe --for (no value) refuses"; else bad "describe --for (no value) refuses" "rc=$rc"; fi
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -12,7 +12,7 @@
 #   intercom resolve <name>               which agent does <name> address?
 #   intercom check [--count]              list (or count) pending messages
 #   intercom chain <slug>                 the relay chain behind a letter, and where each link lives
-#   intercom send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--to ID] [--first-contact]
+#   intercom send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--body FILE] [--to ID] [--first-contact]
 #   intercom claim <inbox> [--force]      move an unclaimed inbox addressed to one of your names home
 #   intercom pickup <slug> [--grow]       archive a message (or promote with --grow)
 #
@@ -345,31 +345,71 @@ cmd_chain() {
   _ic_print_chain "$prev" "   "
 }
 
+# The first line of the template's placeholder comment. The one place that
+# knows it — a sender using --body never has to.
+_IC_PLACEHOLDER_MARK='<!-- Write the brief below.'
+
+# _ic_splice_body <rendered> <body-file> — replace the placeholder comment in
+# <rendered> with the file's bytes, then prove it: the slice of the result where
+# the body went must compare equal to the file. The body never passes through
+# the token substitution above, so `{{TITLE}}`, `&` or `\` in it stay as written.
+_ic_splice_body() {
+  local rendered="$1" body="$2" start end offset len out="$1.body"
+  start="$(grep -n -m1 -F "$_IC_PLACEHOLDER_MARK" "$rendered" | cut -d: -f1)"
+  if [ -z "$start" ]; then
+    printf 'intercom: send: the letter template has no placeholder to put the body in — not sending.\n' >&2
+    return 1
+  fi
+  end="$(awk -v s="$start" 'NR >= s && /-->/ { print NR; exit }' "$rendered")"
+  if [ -z "$end" ]; then
+    printf 'intercom: send: the template placeholder is never closed — not sending.\n' >&2
+    return 1
+  fi
+  head -n $((start - 1)) "$rendered" > "$out"
+  offset="$(wc -c < "$out" | tr -d ' ')"
+  cat "$body" >> "$out"
+  tail -n +$((end + 1)) "$rendered" >> "$out"
+  len="$(wc -c < "$body" | tr -d ' ')"
+  if ! tail -c +$((offset + 1)) "$out" | head -c "$len" | cmp -s - "$body"; then
+    rm -f "$out"
+    printf 'intercom: send: the written body differs from %s — not sending.\n' "$body" >&2
+    return 1
+  fi
+  mv -f "$out" "$rendered"
+}
+
 cmd_send() {
   local to="" slug="" title="" from_agent="" first_contact=0 deliver_to="" reply_to=""
+  local body_file="" body_set=0
   to="${1:-}"; [ $# -gt 0 ] && shift
   slug="${1:-}"; [ $# -gt 0 ] && shift
   while [ $# -gt 0 ]; do
     case "$1" in
-      --title)          title="${2:-}"; shift 2 ;;
+      --title|--from-agent|--to|--reply-to|--body)
+                        _intercom_need_value "$1" $# || exit 2 ;;
+    esac
+    case "$1" in
+      --title)          title="$2"; shift 2 ;;
       --title=*)        title="${1#--title=}"; shift ;;
-      --from-agent)     from_agent="${2:-}"; shift 2 ;;
+      --from-agent)     from_agent="$2"; shift 2 ;;
       --from-agent=*)   from_agent="${1#--from-agent=}"; shift ;;
-      --to)             deliver_to="${2:-}"; shift 2 ;;
+      --to)             deliver_to="$2"; shift 2 ;;
       --to=*)           deliver_to="${1#--to=}"; shift ;;
-      --reply-to)       reply_to="${2:-}"; shift 2 ;;
+      --reply-to)       reply_to="$2"; shift 2 ;;
       --reply-to=*)     reply_to="${1#--reply-to=}"; shift ;;
+      --body)           body_file="$2"; body_set=1; shift 2 ;;
+      --body=*)         body_file="${1#--body=}"; body_set=1; shift ;;
       --first-contact)  first_contact=1; shift ;;
       # An unknown flag used to be shifted past in silence, so a typo
       # (`--reply-too`) produced a letter with no chain and no complaint —
       # the same shape as every other defect this suite hunts: silence that
       # reads as success. Caught on the first real use of `--reply-to`, against
       # an installed version that predated the flag.
-      -*)               _ic_die "send: unknown option '$1'. Usage: intercom send <target> <slug> [--title T] [--from-agent A] [--reply-to <ref>] [--to <identity>] [--first-contact]" ;;
+      -*)               _ic_die "send: unknown option '$1'. Usage: intercom send <target> <slug> [--title T] [--from-agent A] [--reply-to <ref>] [--body <file>] [--to <identity>] [--first-contact]" ;;
       *)                shift ;;
     esac
   done
-  [ -n "$to" ]   || _ic_die "send: missing <target>. Usage: intercom send <target> <slug> [--title T] [--from-agent A] [--reply-to <ref>] [--to <identity>] [--first-contact]"
+  [ -n "$to" ]   || _ic_die "send: missing <target>. Usage: intercom send <target> <slug> [--title T] [--from-agent A] [--reply-to <ref>] [--body <file>] [--to <identity>] [--first-contact]"
   [ -n "$slug" ] || _ic_die "send: missing <slug>."
   slug="$(_ic_sanitize_slug "$slug")"
   [ -n "$slug" ] || _ic_die "send: slug is empty after sanitization."
@@ -456,6 +496,25 @@ cmd_send() {
     reply_title="$(grep -m1 "^# " "$reply_path" 2>/dev/null | sed "s/^# //")"
   fi
 
+  # --body: the letter's body IS this file, byte for byte. Field request
+  # (global-auth-risk-model, 2026-09-24): a sender keeps a copy of every letter
+  # in its repo and audits against it, and splicing the copy in by hand meant
+  # knowing where this template's placeholder begins and ends. Everything that
+  # would produce a letter that only LOOKS sent is refused before a byte is
+  # written — an empty body, an unreadable one, or one that is itself an
+  # unfilled scaffold.
+  if [ "$body_set" -eq 1 ]; then
+    [ -n "$body_file" ] || _ic_die "send: --body needs a file path." 2
+    if [ ! -f "$body_file" ] || [ ! -r "$body_file" ]; then
+      _ic_die "send: cannot read body file '$body_file' — not sending." 2
+    fi
+    grep -q '[^[:space:]]' "$body_file" 2>/dev/null \
+      || _ic_die "send: body file '$body_file' is empty — not sending (a letter without a body looks sent)." 2
+    if grep -qF "$_IC_PLACEHOLDER_MARK" "$body_file" 2>/dev/null; then
+      _ic_die "send: body file '$body_file' still holds the template placeholder — it is an unfilled scaffold, not a body. Not sending." 2
+    fi
+  fi
+
   from="$(intercom_identity)"
   created="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date +%Y-%m-%d)"
   [ -n "$title" ] || title="$slug"
@@ -467,6 +526,9 @@ cmd_send() {
     _ic_die "send: a pending message '$slug' already exists at $outfile (use a different slug, or have the recipient pick up the existing one first)."
   fi
   [ -f "$_INTERCOM_TEMPLATE" ] || _ic_die "send: template not found at $_INTERCOM_TEMPLATE"
+  # Rendered beside the letter and moved into place only when complete, so the
+  # recipient can never read a letter whose body is still the placeholder.
+  local render="$inbox/.$slug.md.render.$$"
 
   local from_agent_suffix=""
   [ -n "$from_agent" ] && from_agent_suffix=" ($from_agent)"
@@ -503,7 +565,12 @@ cmd_send() {
     line="${line//'{{SLUG}}'/$slug}"
     line="${line//'{{TITLE}}'/$title}"
     printf '%s\n' "$line"
-  done < "$_INTERCOM_TEMPLATE" > "$outfile"
+  done < "$_INTERCOM_TEMPLATE" > "$render"
+
+  if [ "$body_set" -eq 1 ]; then
+    _ic_splice_body "$render" "$body_file" || { rm -f "$render"; exit 1; }
+  fi
+  mv -f "$render" "$outfile" || { rm -f "$render"; _ic_die "send: cannot write $outfile"; }
 
   intercom_register --implicit 2>/dev/null   # so the recipient (or a reply) can resolve us by alias
 
@@ -533,7 +600,12 @@ cmd_send() {
     printf '        in their .claude/vdm-plugins.json, or resend to the correct slug. Once they register\n'
     printf '        a name that matches "%s", their session-start check offers `intercom claim %s`.\n' "$canon" "$canon"
   fi
-  printf '    → now write the brief body into that file (replace the placeholder comment).\n'
+  if [ "$body_set" -eq 1 ]; then
+    printf '    body: %s — %s bytes, identical to the file (compared after writing).\n' \
+      "$body_file" "$(wc -c < "$body_file" | tr -d ' ')"
+  else
+    printf '    → now write the brief body into that file (replace the placeholder comment).\n'
+  fi
 }
 
 cmd_claim() {
@@ -682,7 +754,7 @@ intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
   intercom resolve <name>               which agent does <name> address?
   intercom check [--count]              list (or count) pending messages for this repo
   intercom chain <slug>                 the relay chain behind a letter, and where each link lives
-  intercom send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--to ID] [--first-contact]
+  intercom send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--body FILE] [--to ID] [--first-contact]
                                         stage a message addressed to <to> (identity, alias
                                         or name); unknown target = hard stop with next steps.
                                         --to <identity>: deliver there and record <to> as
