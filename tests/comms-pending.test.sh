@@ -518,5 +518,34 @@ expect_exit "--print-contract exits 0" 0 "$rc"
 expect_says "…and names both markers" "$OUT" "(due: YYYY-MM-DD)"
 expect_says "…and the section rule" "$OUT" "inside a declared section"
 
+
+echo ""
+echo "== the next meeting of a series: announced, prepared or not =="
+# Field case, global-auth-gap 2026-09-23: the next regular was written down
+# nowhere, so "before the next regular" could not surface.
+SX="$TMP/series"; mkdir -p "$SX/.claude" "$SX/tracks/a" "$SX/meetings/2026-09-24-plc"
+( cd "$SX" && git init -q . ) >/dev/null 2>&1
+cat > "$SX/.claude/vdm-plugins.json" <<'JSON'
+{ "comms": { "pending-paths": ["tracks/*/index.md"],
+             "series": ["legal", "plc", "gone", "far", "silent"] } }
+JSON
+printf '# a\n' > "$SX/tracks/a/index.md"
+printf -- '---\ntype: meeting-series\nnext: 2026-09-23\n---\n# legal\n' > "$SX/meetings/legal.md"
+printf -- '---\ntype: meeting-series\nnext: 2026-09-24\n---\n# plc\n'   > "$SX/meetings/plc.md"
+printf -- '---\ntype: meeting\ndate: 2026-09-24\nseries: plc\n---\n# agenda\n' > "$SX/meetings/2026-09-24-plc/agenda.md"
+printf -- '---\ntype: meeting-series\nnext: 2026-09-10\n---\n# gone\n'  > "$SX/meetings/gone.md"
+printf -- '---\ntype: meeting-series\nnext: 2026-11-01\n---\n# far\n'   > "$SX/meetings/far.md"
+printf -- '---\ntype: meeting-series\n---\n# silent\n'                   > "$SX/meetings/silent.md"
+OUT=$(cd "$SX" && COMMS_TODAY=2026-09-22 python3 "$PEND" --project-root "$SX" 2>&1)
+expect_says "RED: a series meeting tomorrow with no agenda is reported" "$OUT" "2026-09-23 · legal · tomorrow · 🔴 no agenda yet"
+expect_says "…one with an agenda says where it is" "$OUT" "plc · in 2 days · prepared: meetings/2026-09-24-plc/agenda.md"
+expect_says "RED: a next: in the past is named — it says something false about the future" "$OUT" "2026-09-10 · gone"
+expect_not_says "a meeting beyond the week is not" "$OUT" "far"
+expect_not_says "a series with no next: says nothing" "$OUT" "silent"
+OUT=$(cd "$SX" && COMMS_TODAY=2026-09-22 python3 "$PEND" --brief --project-root "$SX" 2>&1)
+expect_says "RED: the session-start line names the unprepared series" "$OUT" "series meeting without an agenda: legal 2026-09-23"
+expect_not_says "…and not the prepared one" "$OUT" "plc 2026-09-24"
+expect_says "…and counts the stale next:" "$OUT" "1 series with a past \`next:\`"
+
 printf '\ncomms-pending: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

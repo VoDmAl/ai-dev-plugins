@@ -56,6 +56,27 @@ thing. Both are read; neither is converted. `⏰ after:` cannot be written as
 **Without a date an item is a note, not a hook.** Its place is a backlog file,
 not a section that promises to fire.
 
+## Promises made at a meeting
+
+They go into the `index.md` of the track they concern, not into the meeting record. The record
+links to them. The summary reads tracks and declared series, not records, so a dated line left
+in a record fires nowhere. The meetings linter reports it as an error while this summary is on
+(`/vdm-comms:meetings`).
+
+## The next meeting of a series
+
+Each declared series may carry `next: YYYY-MM-DD` in its frontmatter — the date of its next
+meeting, written by a person. The summary then shows:
+
+- **series meetings within 7 days**, and whether each already has an `agenda.md` or `prep.md`
+  in `<meetings-dir>/<that date>-*/`. A meeting tomorrow with no agenda is flagged 🔴 and named
+  in the session-start line — the same weight as an overdue item;
+- **a `next:` that has passed** — the field now says something false about the future; write
+  the following date.
+
+Nothing is computed from `cadence`: "as questions arise" was once read as "no more regulars",
+and that is exactly the promise this field exists to make explicit.
+
 ## Counterparty items first
 
 In a file that carries both, the section where **the ball is with them** comes

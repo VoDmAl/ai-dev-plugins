@@ -54,10 +54,27 @@ unchecked.
 | a track's first segment is a configured root (when configured) | error |
 | `topics[].track` is one of this meeting's `tracks:` | error |
 | a series file's `slug:`, when present, disagrees with its file name | error |
+| a series file's `next:`, when present, is not a date (`YYYY-MM-DD`) | error |
+| a role file holds a **dated promise** (`⏰` / `(due:)`) while the pending summary is on and does not read that file | error (warning on a `migrated_from` record) |
 | `type:` on a role file is not `meeting` | warning |
 | a declared series has no `<meetings-dir>/<series>.md` yet | warning |
 | a topic has neither a track nor `tail: true` | warning |
 | the body of a series file | never checked |
+
+**A dated promise does not live in a meeting record.** Promises made at a meeting — "we come
+back with questions before the next regular ⏰ 17.09" — belong in the `index.md` of the track
+they are about. The record keeps a link to that hook and nothing else. The reason is
+mechanical: once `comms.pending-paths` is set, the pending summary reads the tracks and the
+declared series, **not** the meeting records. A `- [ ] ⏰ …` left in a record surfaces nowhere.
+That is how a promise to a lawyer went unseen until the evening before the meeting it was
+due for, and why the next day 25 more such lines were found in the same repository. The
+linter names the line and the meeting's tracks. If a project really wants its records read,
+it adds them to `pending-paths`, and the rule steps aside for exactly those files.
+
+**A series names its next meeting.** `next: YYYY-MM-DD` in the series file's frontmatter —
+written by a person after each meeting, never computed from `cadence`. The pending summary
+turns it into "legal — tomorrow — no agenda yet" and, when the date has passed, into "write
+the next one". A series whose next meeting is written nowhere cannot be prepared for.
 
 Two of these carry more weight than their one line suggests:
 

@@ -702,6 +702,75 @@ def meetings_without_transcript(root, cfg, today):
     return out
 
 
+def _series_of_dir(dirpath):
+    """The `series:` a meeting directory declares in any of its role files."""
+    for leaf in ("agenda.md", "prep.md", "index.md"):
+        f = os.path.join(dirpath, leaf)
+        if not os.path.isfile(f):
+            continue
+        try:
+            with open(f, encoding="utf-8") as fh:
+                fm_text, _ = fmmod.split_frontmatter(fh.read(LETTER_READ_LIMIT))
+        except (OSError, UnicodeDecodeError, fmmod.FrontmatterError):
+            continue
+        v = fmmod.scalar_keys(fm_text).get("series")
+        if v:
+            return str(v).strip()
+    return None
+
+
+def series_upcoming(root, cfg, today):
+    """The next meeting of each declared series, from its `next:` — a date a
+    person writes, never computed from `cadence`.
+
+    Field case (global-auth-gap, 2026-09-23): the lawyer asked for questions
+    "before the next regular", and the next regular was written down nowhere —
+    `cadence: "as questions arise"` had been read as "no more regulars". A
+    meeting tomorrow with no agenda is a signal of the same weight as an
+    overdue item, and it cannot be given without the date.
+
+    Reported: a meeting within SOON_DAYS (with whether it has an agenda or a
+    prep yet), and a `next:` that has already passed — the field then says
+    something false about the future, which is worse than saying nothing."""
+    meetings_dir = str(cfg.get("meetings-dir") or "meetings")
+    out = []
+    for series in cfg.get("series") or []:
+        if not isinstance(series, str) or not series.strip():
+            continue
+        series = series.strip()
+        path = os.path.join(root, meetings_dir, series + ".md")
+        try:
+            with open(path, encoding="utf-8") as fh:
+                fm_text, _ = fmmod.split_frontmatter(fh.read(LETTER_READ_LIMIT))
+        except (OSError, UnicodeDecodeError, fmmod.FrontmatterError):
+            continue
+        raw = fmmod.scalar_keys(fm_text).get("next")
+        m = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", str(raw or "").strip())
+        d = _mkdate(*m.groups()) if m else None
+        if d is None:
+            continue  # absent, or not a date — the linter reports the latter
+        days = (d - today).days
+        if days > SOON_DAYS:
+            continue
+        prepared = None
+        for dirpath in sorted(glob.glob(os.path.join(root, meetings_dir, "%s-*" % d.isoformat()))):
+            if not os.path.isdir(dirpath):
+                continue
+            declared = _series_of_dir(dirpath)
+            slug = os.path.basename(dirpath)[11:]
+            if declared == series or (declared is None and series in slug):
+                for leaf in ("agenda.md", "prep.md"):
+                    if os.path.isfile(os.path.join(dirpath, leaf)):
+                        prepared = os.path.relpath(os.path.join(dirpath, leaf), root)
+                        break
+                if prepared:
+                    break
+        out.append({"series": series, "date": d.isoformat(), "days": days,
+                    "passed": days < 0, "prepared": prepared,
+                    "file": os.path.relpath(path, root)})
+    return sorted(out, key=lambda x: x["date"])
+
+
 def stale_sent_hints(root, items):
     """An item that says "send X" pointing at a letter that already carries
     `sent:`. Not a violation — the item may still owe something after the
@@ -834,6 +903,21 @@ def report(root, cfg, items, today, by_owner=False, show_all=False):
             age = "%3d d" % d["age"] if d["age"] is not None else "  ? d"
             print("  %s · %s" % (age, d["file"]))
         print()
+    upcoming = series_upcoming(root, cfg, today)
+    soon_series = [u for u in upcoming if not u["passed"]]
+    if soon_series:
+        print("## 📅 Series meetings within %d days (%d)" % (SOON_DAYS, len(soon_series)))
+        for u in soon_series:
+            when = "today" if u["days"] == 0 else "tomorrow" if u["days"] == 1 else "in %d days" % u["days"]
+            prep = "prepared: %s" % u["prepared"] if u["prepared"] else "🔴 no agenda yet"
+            print("  %s · %s · %s · %s" % (u["date"], u["series"], when, prep))
+        print()
+    passed = [u for u in upcoming if u["passed"]]
+    if passed:
+        print("## ⚠ `next:` has passed — write the following meeting's date (%d)" % len(passed))
+        for u in passed:
+            print("  %s · %s · %s" % (u["date"], u["series"], u["file"]))
+        print()
     untranscribed = meetings_without_transcript(root, cfg, today)
     if untranscribed:
         print("## 🎙 Held, no transcript yet — last %s days (%d)"
@@ -849,6 +933,9 @@ def brief(root, cfg, items, today):
     b = buckets(items, today)
     drafts = unsent_drafts(root, cfg, today)
     untranscribed = meetings_without_transcript(root, cfg, today)
+    upcoming = series_upcoming(root, cfg, today)
+    unprepared = [u for u in upcoming if not u["passed"] and not u["prepared"]]
+    passed = [u for u in upcoming if u["passed"]]
     parts = []
     if b["overdue"]:
         parts.append("%d overdue" % len(b["overdue"]))
@@ -858,6 +945,13 @@ def brief(root, cfg, items, today):
         parts.append("%d unsent draft(s)" % len(drafts))
     if untranscribed:
         parts.append("%d meeting(s) without a transcript" % len(untranscribed))
+    if unprepared:
+        # Named, not counted: which series is meeting without an agenda is the
+        # whole message, and there are rarely more than two.
+        parts.append("series meeting without an agenda: %s" % ", ".join(
+            "%s %s" % (u["series"], u["date"]) for u in unprepared[:3]))
+    if passed:
+        parts.append("%d series with a past `next:`" % len(passed))
     if not parts:
         return 0
     if b["event"]:
@@ -999,7 +1093,8 @@ def main(argv):
         print(json.dumps({"today": today.isoformat(), "items": items,
                           "drafts": unsent_drafts(root, cfg, today),
                           "meetings_without_transcript":
-                              meetings_without_transcript(root, cfg, today)},
+                              meetings_without_transcript(root, cfg, today),
+                          "series_upcoming": series_upcoming(root, cfg, today)},
                          ensure_ascii=False, indent=1))
         return 0
     if args.brief:

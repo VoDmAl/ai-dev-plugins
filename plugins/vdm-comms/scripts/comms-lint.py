@@ -304,6 +304,13 @@ def _lint_series(rep, data, rel, meetings_dir, rules, cfg, project_root):
     # error: that is what the tool this plugin replaced said, and the switch was
     # accepted file for file on the number of warnings — turning it into an error
     # would change the verdict without anything in the field asking for it.
+    # `next:` is the date of the series' next meeting, written by a person. A
+    # value that is not a date is a promise nothing can compare against — the
+    # same class as a broken `(due:)`.
+    nxt = data.get("next")
+    if nxt is not None and not DATE_RE.match(str(nxt).strip()):
+        rep.error("`next: %s` is not a date (YYYY-MM-DD) — the next meeting nothing can "
+                  "compare against is not announced anywhere" % nxt)
     if rules.get("people-profiles"):
         pdir = str(cfg.get("people-dir") or "people").strip("/")
         values = data.get("counterparts")
@@ -388,9 +395,70 @@ def _lint_meeting(rep, data, body, path, rel, kind, dir_name, leaf, cfg, project
                 rep.warn("topic %d has no track and is not marked `tail: true`" % idx)
 
     _lint_meeting_rules(rep, data, body, leaf, cfg, project_root)
+    _lint_hidden_promises(rep, data, path, cfg, project_root)
 
     if cfg.get("topic-sections") and not data.get("migrated_from"):
         _lint_topic_sections(rep, data, body)
+
+
+_PENDING = None
+
+
+def _pending():
+    """comms-pending, loaded once. Its file name has a hyphen, so it cannot be
+    imported by name; its definition of "an item" is the one this linter must
+    use, not a second copy of it."""
+    global _PENDING
+    if _PENDING is None:
+        import importlib.util
+        here = os.path.dirname(os.path.abspath(__file__))
+        spec = importlib.util.spec_from_file_location("comms_pending",
+                                                      os.path.join(here, "comms-pending.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _PENDING = mod
+    return _PENDING
+
+
+def _lint_hidden_promises(rep, data, path, cfg, project_root):
+    """A dated promise in a meeting record, in a project whose pending summary
+    does not read that record, fires nowhere.
+
+    Field case (global-auth-gap, 2026-09-23): `- [ ] ⏰ **Пересмотр 17.09**` sat in
+    the «Our actions» of a meeting record; the summary reads tracks, the record
+    was read by nobody, and the promise to a lawyer surfaced the evening before
+    the next meeting — by accident. Measured the day after: 25 such lines in 9
+    records of the same repository, every one of them invisible.
+
+    The rule is DERIVED, not added to the floor: it applies only where the
+    pending summary is on (`comms.pending-paths`) and only to files it does not
+    read. A repository without the summary loses nothing it had; a repository
+    that wants its records read adds them to `pending-paths`, and the rule
+    steps aside for exactly those files. "An item" is decided by the summary's
+    own scanner — two definitions of one word drift."""
+    if not cfg.get("pending-paths"):
+        return
+    try:
+        pm = _pending()
+        if pm.in_scope(project_root, cfg, path):
+            return
+        items = pm.scan_file(path, project_root, cfg, [], today(), pm.people_re(cfg))
+    except Exception as exc:  # noqa: BLE001
+        rep.warn("could not check for dated promises (%s)" % exc)
+        return
+    if not items:
+        return
+    homes = []
+    for t in _str_list(data.get("tracks"))[:3]:
+        t = t.strip().rstrip("/")
+        homes.append("%s.md" % t if os.path.isfile(os.path.join(project_root, t + ".md"))
+                     else "%s/index.md" % t)
+    where = ", ".join(homes) if homes else "the index.md of the track it belongs to"
+    soft = rep.warn if data.get("migrated_from") else rep.error
+    for it in items:
+        soft("line %d: a dated promise in a meeting record, and the pending summary does not "
+             "read meeting records — it fires nowhere. Move it to %s and leave a link here "
+             "(or add this file to comms.pending-paths)" % (it["line_no"], where))
 
 
 def _lint_meeting_rules(rep, data, body, leaf, cfg, project_root):

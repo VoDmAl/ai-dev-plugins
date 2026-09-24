@@ -782,5 +782,56 @@ echo "== session start names what is behind =="
 OUT=$(cd "$FX" && CLAUDE_PROJECT_DIR="$FX" COMMS_TODAY="$TODAY" bash "$INDEXCHECK" </dev/null 2>&1)
 expect_says "RED: the signal lists a stale path, not only a count" "$OUT" "        update "
 
+echo ""
+echo "== a dated promise in a meeting record fires nowhere — when the summary is on =="
+# Field case, global-auth-gap 2026-09-23: `- [ ] ⏰ **Пересмотр 17.09**` in a
+# meeting record's «Our actions»; the summary reads tracks, nobody read the
+# record, the promise to a lawyer surfaced by accident the evening before.
+
+mk_meeting "$PAST-legal" "type: meeting
+date: $PAST
+series: legal
+tracks: [gaps/alpha]" index.md
+cat >> "$FX/meetings/$PAST-legal/index.md" <<'EOF'
+
+## Наши действия
+
+- [ ] ⏰ **Пересмотр 17.09**: созвон должен состояться в течение недели
+- [x] ⏰ 2026-09-02 закрыто и оставлено в файле
+- [ ] ~~⏰ 2026-09-03 снято~~
+- обычный пункт без даты
+EOF
+run_lint "$FX/meetings/$PAST-legal/index.md"; rc=$?
+expect_exit "GREEN: without the pending summary the record is left alone" 0 "$rc"
+
+printf '{\n  "comms": {\n    "pending-paths": ["gaps/*/index.md"]\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
+run_skip "$FX/meetings/$PAST-legal/index.md"; rc=$?
+expect_exit "RED: summary on, record not read by it ⇒ exit 1" 1 "$rc"
+expect_says "…names the line" "$OUT" "line 14: a dated promise in a meeting record"
+expect_says "…and where it belongs: this meeting's track" "$OUT" "Move it to gaps/alpha/index.md"
+n=$(printf '%s' "$OUT" | grep -c "dated promise")
+expect_exit "…only the open one — closed, struck and undated lines are not promises" 1 "$n"
+
+printf '{\n  "comms": {\n    "pending-paths": ["gaps/*/index.md", "meetings/*/index.md"]\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
+run_skip "$FX/meetings/$PAST-legal/index.md"; rc=$?
+expect_exit "GREEN: records added to pending-paths ⇒ the rule steps aside" 0 "$rc"
+
+printf '{\n  "comms": {\n    "pending-paths": ["gaps/*/index.md"]\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
+sed -i.bak 's/^series: legal$/series: legal\nmigrated_from: old-notes/' "$FX/meetings/$PAST-legal/index.md" && rm -f "$FX/meetings/$PAST-legal/index.md.bak"
+run_skip "$FX/meetings/$PAST-legal/index.md"; rc=$?
+expect_exit "an imported record (migrated_from) is warned, not failed" 0 "$rc"
+expect_says "…but the promise is still named" "$OUT" "dated promise"
+rm -f "$FX/.claude/vdm-plugins.json"
+
+echo ""
+echo "== a series names its next meeting =="
+printf -- '---\ntype: meeting-series\nnext: soon\n---\n\n# s\n' > "$FX/meetings/nxbad.md"
+run_lint "$FX/meetings/nxbad.md"; rc=$?
+expect_exit "RED: a next: that is not a date ⇒ exit 1" 1 "$rc"
+expect_says "…and says so" "$OUT" "is not a date"
+printf -- '---\ntype: meeting-series\nnext: 2026-10-01\n---\n\n# s\n' > "$FX/meetings/nxgood.md"
+run_lint "$FX/meetings/nxgood.md"; rc=$?
+expect_exit "GREEN: a dated next: passes" 0 "$rc"
+
 printf '\ncomms: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
