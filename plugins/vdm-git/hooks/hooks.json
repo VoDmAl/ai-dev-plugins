@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-hook.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-hook.sh\"",
             "timeout": 5
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-reminder.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-reminder.sh\"",
             "timeout": 5
           }
         ]

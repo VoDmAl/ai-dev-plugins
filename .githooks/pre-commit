@@ -41,7 +41,10 @@
 #                       and tests/reminders-dispatch.test.sh (the one section
 #                       the vdm reminders are composed into), plus
 #                       tests/shared-rules.test.sh (the cross-project rules
-#                       layer loaded at session start). Conditional (~30s).
+#                       layer loaded at session start), plus
+#                       tests/hook-commands.test.sh (every hooks.json command
+#                       run through `/bin/sh -c` from a plugin root with a
+#                       space in it). Conditional (~35s).
 #   8. helper red-tests — changing a shipped helper under any plugin's bin/
 #                       re-runs tests/<helper>.test.sh, and refuses a helper
 #                       that has none. Conditional (~10s per helper).
@@ -139,8 +142,8 @@ fi
 # hooks of its own, the gate went on passing without covering any of them — and
 # that silence is indistinguishable from a clean run. Breadth costs a few
 # seconds on a plugin edit; the enumeration cost coverage without saying so.
-if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|tests/(hook-fail-closed|symlink-scope|comms|comms-pending|reminder-throttle|reminders-dispatch|shared-rules)\.test\.sh$)'; then
-  echo "gates: a plugin hook changed — re-running the shipped hooks' red tests (~30s)…"
+if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|tests/(hook-fail-closed|symlink-scope|comms|comms-pending|reminder-throttle|reminders-dispatch|shared-rules|hook-commands)\.test\.sh$)'; then
+  echo "gates: a plugin hook changed — re-running the shipped hooks' red tests (~35s)…"
   bash tests/hook-fail-closed.test.sh
   # Same subject, second question: a hook that CAN run still has to agree with
   # its sibling on which files it is responsible for. Both engines, one fixture
@@ -160,6 +163,12 @@ if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|test
   # a session in any directory, say so when it cannot load, and never cut a
   # letter in half at its size ceiling.
   bash tests/shared-rules.test.sh
+  # Every suite above runs a script directly, which bypasses the one parse that
+  # decides whether a hook starts at all: the harness hands the command STRING
+  # to `/bin/sh -c`. Unquoted, a plugin root with a space in it split there and
+  # every hook exited 127 — the blocking ones silently open (echelon,
+  # 2026-09-25). This runs the strings themselves.
+  bash tests/hook-commands.test.sh
 fi
 
 # Gate 8 — the shipped helpers' red tests. `plugins/*/bin/` is put on the

@@ -522,6 +522,7 @@ If you forget, a SessionStart hook in `.claude/settings.json` prints a one-line 
 | crystal-canon | `plugins/vdm/scripts/crystal-lint.sh --staged` | any staged workitem whose shape does not match the canon derived from `templates/workitem-template.md` (non-terminal tier only) |
 | gate red-tests | `tests/gates.test.sh` + `tests/gates-harness-isolation.test.sh` | a gate script or the harness itself is staged (~15s) |
 | hook fail-closed | `tests/hook-fail-closed.test.sh` | a blocking hook the plugins ship, or `lib/gate-guard.sh`, is staged (~5s) |
+| hook commands | `tests/hook-commands.test.sh` | same trigger — every `hooks.json` command run through `/bin/sh -c` from a plugin root with a space (~15s) |
 
 All three can be run manually:
 
@@ -538,6 +539,7 @@ bash tests/gates-harness-isolation.test.sh # the gate harness must not write int
 bash tests/hook-fail-closed.test.sh        # blocking hooks with python3 stripped from PATH: block in scope, silent out of it
 bash tests/reminder-throttle.test.sh       # the two-axis reminder window, and the hooks that print a measurement instead of a verdict
 bash tests/reminders-dispatch.test.sh      # the six vdm reminders composed into one ranked section; deadline, crash, plugin-cache silence
+bash tests/hook-commands.test.sh           # hooks.json commands as the harness runs them, from a plugin root with a space: start, agree with a plain root, still block
 ```
 
 **lib-sync.** The two plugins ship duplicated copies of `lib/config-path.sh` and `lib/config-read.sh` (each plugin must be self-contained for independent installation). The check normalizes the cross-reference comments that name the opposite plugin (`plugins/vdm/lib` ↔ `plugins/vdm-git/lib`); everything else must match byte-for-byte. A GitHub Actions workflow running the same check on PRs is planned but not yet wired up (the file `.github/workflows/lib-sync.yml` was blocked by a local security hook during a prior commit).

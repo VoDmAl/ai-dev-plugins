@@ -6,17 +6,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/crystal-hydrate.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-hydrate.sh\"",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/intercom-identity-check.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/intercom-identity-check.sh\"",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/shared-rules.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/shared-rules.sh\"",
             "timeout": 5
           }
         ]
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/reminders.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/reminders.sh\"",
             "timeout": 30
           }
         ]
@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/crystal-completion-guard.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-completion-guard.sh\"",
             "timeout": 5
           }
         ]
@@ -51,12 +51,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/orphan-guard-hook.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/orphan-guard-hook.sh\"",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh --hook",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh\" --hook",
             "timeout": 5
           }
         ]
@@ -67,7 +67,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/crystal-stop-reminder.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-stop-reminder.sh\"",
             "timeout": 5
           }
         ]
