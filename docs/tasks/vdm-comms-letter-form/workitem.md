@@ -2,7 +2,7 @@
 title: "vdm-comms: форма письма — объявленное исходящее, тема и черта, обязательства, исходные .eml"
 slug: vdm-comms-letter-form
 description: "Что считается исходящим, какую форму оно должно иметь и что не должно лежать рядом с письмом"
-status: in-progress
+status: done
 session-type: prd-prep
 created: 2026-09-25
 last-updated: 2026-09-25
@@ -251,7 +251,7 @@ frontmatter; (2) предупреждение по признаку (`draft:` и
 - [x] Скилл meetings: форма по каналу, «внешний адресат — объяви канал», куда класть письмо и
       вложения, почему `.eml` не храним, щель стража (DL #5)
 - [x] vdm-comms 0.6.0, marketplace, changelog, `suite.md` при дрейфе
-- [ ] Ответить отправителям: space-hq (три письма одним ответом), global-auth-gap
+- [x] Ответить отправителям: space-hq (три письма одним ответом), global-auth-gap — `space-hq/vdm-comms-letter-form-shipped`, `global-auth-gap/comms-no-raw-eml-shipped`, 2026-09-25
 
 ## References
 
