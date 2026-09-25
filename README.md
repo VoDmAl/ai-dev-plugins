@@ -521,14 +521,15 @@ If you forget, a SessionStart hook in `.claude/settings.json` prints a one-line 
 | crystal | `scripts/check-crystal-completion.sh` | any `docs/tasks/**/workitem.md` (or flat `docs/tasks/*.md`) is staged with frontmatter `status: done` and unchecked `- [ ]` items remain |
 | crystal-canon | `plugins/vdm/scripts/crystal-lint.sh --staged` | any staged workitem whose shape does not match the canon derived from `templates/workitem-template.md` (non-terminal tier only) |
 | gate red-tests | `tests/gates.test.sh` + `tests/gates-harness-isolation.test.sh` | a gate script or the harness itself is staged (~15s) |
-| harness asserts | `tests/harness-asserts.test.sh` | any test file is staged — every suite's `says_not` / `expect_not_says` is run against an empty haystack and must FAIL there: "does not mention X" is true of nothing, so a negative check on an output that came back empty passes whatever the code did (<1s) |
+| harness asserts | `tests/harness-asserts.test.sh` | any test file is staged — every suite's `says_not` / `expect_not_says` is run against an empty haystack and must FAIL there: "does not mention X" is true of nothing, so a negative check on an output that came back empty passes whatever the code did (~1s) |
 | hook fail-closed | `tests/hook-fail-closed.test.sh` | a blocking hook the plugins ship, or `lib/gate-guard.sh`, is staged (~5s) |
 | hook commands | `tests/hook-commands.test.sh` | same trigger — every `hooks.json` command run through `/bin/sh -c` from a plugin root with a space (~15s) |
 | write checks | `tests/crystal-lint.test.sh` + `tests/shell-syntax-check.test.sh` | same trigger — the suites of the two PostToolUse checks, which no gate ran before vdm 2.36.0 (~5s) |
 | snippet red-tests | `tests/githook-snippets.test.sh` | anything under a plugin's `skills/` is staged — the git-hook blocks a SKILL hands to a user's own pre-commit, read out of the SKILL and run against fake installs (~5s) |
 | shell-syntax | `plugins/vdm/scripts/shell-syntax-check.sh --staged` | unconditionally — every staged shell file must parse under the interpreter it will meet (the shebang's; for bash also the PATH one), read from the staged blob |
+| owned suites | `scripts/suites-for.sh` → `tests/<name>.test.sh`, plus `tests/suite-wiring.test.sh` | a staged file under a plugin's `scripts/`, `lib/` or `bin/` runs the suite it is named after (`intercom-common.sh` → `intercom`, `fffd-precommit-check.sh` → `fffd`), and a staged suite runs itself. `suite-wiring` runs on every commit (~1s) and fails if any suite under `tests/` has no trigger at all — until 2026-09-25, nine of twenty-one had none. Each suite runs once per commit, however many gates name it |
 
-All three can be run manually:
+All of them can be run manually:
 
 ```bash
 bash scripts/check-lib-sync.sh             # 0 = clean, 1 = drift report
@@ -539,6 +540,8 @@ bash plugins/vdm/scripts/crystal-lint.sh --staged   # 0 = clean, 1 = staged work
 bash plugins/vdm/scripts/shell-syntax-check.sh --staged   # 0 = clean, 1 = a staged script does not parse
 bash tests/gates.test.sh                   # red-tests all of the above (~15s)
 bash tests/harness-asserts.test.sh         # every suite's negative assertion fails on an empty haystack
+bash tests/suite-wiring.test.sh            # every suite under tests/ has a gate that runs it
+git diff --cached --name-only | bash scripts/suites-for.sh   # which suites own what you have staged
 bash tests/shell-syntax-check.test.sh      # the parse check after a write: the bash 3.2 incident, extglob, which interpreter
 bash tests/intercom.test.sh                # agent directory + name resolution, against a scratch store
 bash tests/crystal-capture-reminder.test.sh # capture reminder: throttle before scan (proven via a find shim), capture-exclude

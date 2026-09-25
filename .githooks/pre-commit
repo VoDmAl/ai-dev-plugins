@@ -2,7 +2,7 @@
 # Local pre-commit hook. Activated by:
 #     git config core.hooksPath .githooks
 #
-# Runs ten independent gates. Each fails fast — failure in any gate blocks
+# Runs eleven independent gates. Each fails fast — failure in any gate blocks
 # the commit:
 #   1. lib-sync       — every lib file carried by two or more plugins must stay
 #                       byte-identical (caught by scripts/check-lib-sync.sh)
@@ -27,7 +27,7 @@
 #                       only when a gate or a harness is staged. The isolation
 #                       half alone (~2s) also fires on ANY staged test file,
 #                       because its subject is every test file — and so does
-#                       tests/harness-asserts.test.sh (<1s), which runs every
+#                       tests/harness-asserts.test.sh (~1s), which runs every
 #                       suite's negative helper against an empty haystack and
 #                       requires it to fail there.
 #   7. hook fail-closed — changing anything under any plugin's scripts/, lib/
@@ -63,10 +63,39 @@
 #                       the PATH one). Reads the staged blob
 #                       (caught by plugins/vdm/scripts/shell-syntax-check.sh
 #                       --staged). Unconditional; one `-n` per staged script.
+#  11. owned suites   — a suite is named after what it tests: every staged file
+#                       under a plugin's scripts/, lib/ or bin/ runs the
+#                       tests/<name>.test.sh it is named after (scripts/
+#                       suites-for.sh), and tests/suite-wiring.test.sh proves on
+#                       every commit (~1s) that no suite is left without a
+#                       trigger. Each suite runs at most once per commit, however
+#                       many gates name it.
 
 set -eu
 
 staged=$(git diff --cached --name-only)
+
+# Every suite runs at most once per commit, whichever gate asks for it first —
+# gate 11 below can name a suite that gate 7 has already run.
+suites_ran=" "
+suite_ran() { case "$suites_ran" in *" $1 "*) return 0 ;; esac; return 1; }
+run_suite() {
+  suite_ran "$1" && return 0
+  suites_ran="$suites_ran$1 "
+  bash "tests/$1.test.sh"
+}
+# Same, for a suite that runs on EVERY commit: one line when it passes, its
+# full report only when it does not.
+run_suite_quiet() {
+  local out
+  suite_ran "$1" && return 0
+  suites_ran="$suites_ran$1 "
+  if ! out=$(bash "tests/$1.test.sh" 2>&1); then
+    printf '%s\n' "$out" >&2
+    return 1
+  fi
+  printf '%s\n' "$out" | tail -n 1
+}
 
 # Gate 1 — lib-sync: only relevant when a lib/ is staged. ANY plugin's — a
 # trigger that enumerates plugins stops firing the day one is added, and the
@@ -115,15 +144,14 @@ plugins/vdm/scripts/crystal-lint.sh --staged
 # cost is earned — you cannot change a gate without re-proving it still goes red.
 if printf '%s\n' "$staged" | grep -qE '^(scripts/check-.*\.sh|plugins/vdm/scripts/(check-doc-orphans|crystal-lint|shell-syntax-check)\.(sh|py)|tests/gates(-harness-isolation)?\.test\.sh|\.githooks/pre-commit)$'; then
   echo "gates: a gate changed — re-running its red tests (~15s)…"
-  bash tests/gates.test.sh
+  run_suite gates
   # The harness runs inside THIS commit. Prove it is not writing into it:
   # git exports GIT_INDEX_FILE to hooks, and for a pathspec commit that names
   # the temporary index holding the tree about to be committed. On 2026-09-04
   # the harness's `git add -A` (run in a clone deliberately built without
   # tests/) followed that variable home and dropped eight test files from
   # commit 7d80c73. Cheap — the probe runs the harness setup only.
-  bash tests/gates-harness-isolation.test.sh
-  isolation_done=1
+  run_suite gates-harness-isolation
 fi
 
 # Same subject, wider trigger. The isolation harness asserts something about
@@ -134,20 +162,20 @@ fi
 # a fixture replaced 158 index entries of the pending commit with 9 fixture
 # paths. Nothing about those suites had changed — only who invoked them. Cheap
 # (~2s): the probe runs a harness setup, not a full suite.
-if [ -z "${isolation_done:-}" ] &&
+if ! suite_ran gates-harness-isolation &&
    printf '%s\n' "$staged" | grep -qE '^tests/.*\.test\.sh$'; then
   echo "gates: a test harness changed — re-checking git-session isolation (~2s)…"
-  bash tests/gates-harness-isolation.test.sh
+  run_suite gates-harness-isolation
 fi
 
 # Same trigger, second property of every harness: its negative assertion must
 # fail on an empty haystack. "Does not mention X" is true of nothing, so a
 # check written against an output that came back empty passes whatever the
 # code did. On 2026-09-25 one such check stayed green over the defect it was
-# written for. Runs each suite's helper, not a grep of its text (<1s).
+# written for. Runs each suite's helper, not a grep of its text (~1s).
 if printf '%s\n' "$staged" | grep -qE '^tests/.*\.sh$'; then
-  echo "gates: a test harness changed — negative assertions must fail on nothing (<1s)…"
-  bash tests/harness-asserts.test.sh
+  echo "gates: a test harness changed — negative assertions must fail on nothing (~1s)…"
+  run_suite harness-asserts
 fi
 
 # Gate 7 — the user-time hooks' fail-closed red tests. Same principle as gate 6,
@@ -169,36 +197,36 @@ fi
 # seconds on a plugin edit; the enumeration cost coverage without saying so.
 if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|tests/(hook-fail-closed|symlink-scope|comms|comms-pending|reminder-throttle|reminders-dispatch|shared-rules|hook-commands|crystal-lint|shell-syntax-check)\.test\.sh$)'; then
   echo "gates: a plugin hook changed — re-running the shipped hooks' red tests (~40s)…"
-  bash tests/hook-fail-closed.test.sh
+  run_suite hook-fail-closed
   # Same subject, second question: a hook that CAN run still has to agree with
   # its sibling on which files it is responsible for. Both engines, one fixture
   # reached through a symlink — the shape that silently took files out of scope.
-  bash tests/symlink-scope.test.sh
+  run_suite symlink-scope
   # vdm-comms keeps its fail-closed cases inside its own suites, next to the
   # contract tests they share a fixture with.
-  bash tests/comms.test.sh
-  bash tests/comms-pending.test.sh
+  run_suite comms
+  run_suite comms-pending
   # The reminder hooks are shipped hooks too. They do not block, so they are not
   # in the fail-closed suites above — but their window is the mechanism that
   # decides whether a user reads them at all, and it is shared by five hooks
   # across two plugins through a mirrored lib.
-  bash tests/reminder-throttle.test.sh
-  bash tests/reminders-dispatch.test.sh
+  run_suite reminder-throttle
+  run_suite reminders-dispatch
   # The cross-project rules layer is a shipped SessionStart hook: it must reach
   # a session in any directory, say so when it cannot load, and never cut a
   # letter in half at its size ceiling.
-  bash tests/shared-rules.test.sh
+  run_suite shared-rules
   # Every suite above runs a script directly, which bypasses the one parse that
   # decides whether a hook starts at all: the harness hands the command STRING
   # to `/bin/sh -c`. Unquoted, a plugin root with a space in it split there and
   # every hook exited 127 — the blocking ones silently open (echelon,
   # 2026-09-25). This runs the strings themselves.
-  bash tests/hook-commands.test.sh
+  run_suite hook-commands
   # The two PostToolUse write checks, whose suites no gate ran until vdm 2.36.0:
   # crystal-lint's (the canon, and since then the sidetrack a change leaves
   # without a checkbox) and the shell parse check's.
-  bash tests/crystal-lint.test.sh
-  bash tests/shell-syntax-check.test.sh
+  run_suite crystal-lint
+  run_suite shell-syntax-check
 fi
 
 # Gate 8 — the shipped helpers' red tests. `plugins/*/bin/` is put on the
@@ -221,7 +249,7 @@ for h in $(printf '%s\n' "$staged" \
     exit 1
   fi
   echo "gates: shipped helper '$h' changed — re-running its red tests (~10s)…"
-  bash "tests/$h.test.sh"
+  run_suite "$h"
 done
 
 # Gate 9 — the snippets a SKILL hands to a user's shell. They run outside the
@@ -235,7 +263,7 @@ done
 # guessing, and a list would go quiet on the first new snippet.
 if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/skills/|tests/githook-snippets\.test\.sh$)'; then
   echo "gates: a SKILL changed — re-running the git-hook snippets' red tests (~5s)…"
-  bash tests/githook-snippets.test.sh
+  run_suite githook-snippets
 fi
 
 # Gate 10 — every staged shell file parses under the interpreter it will meet.
@@ -246,3 +274,21 @@ fi
 # can — so it looked fine everywhere except where it runs. Unconditional: the
 # script itself picks the staged shell files, and costs one `-n` per file.
 bash plugins/vdm/scripts/shell-syntax-check.sh --staged
+
+# Gate 11 — every suite runs when what it is named after changes, and none is
+# left without a trigger. Until 2026-09-25 nine of the twenty-one suites under
+# tests/ were run by no gate — crystal-lint's, crystal-path's, intercom's and
+# distill-scan's among them: complete, with red cases, and green only for
+# whoever remembered to run them. A list would go quiet on the next suite nobody
+# adds to it, so this is a rule — a suite is named after its subject — and the
+# rule lives once, in scripts/suites-for.sh. tests/suite-wiring.test.sh calls
+# the same rule to prove that every suite is reachable by it or by a run_suite
+# line above. It runs on every commit because what it guards breaks from either
+# side: a new suite, or a gate line taken away.
+run_suite_quiet suite-wiring
+for s in $(printf '%s\n' "$staged" | bash scripts/suites-for.sh); do
+  if ! suite_ran "$s"; then
+    echo "gates: tests/$s.test.sh owns a staged file — running it…"
+    run_suite "$s"
+  fi
+done
