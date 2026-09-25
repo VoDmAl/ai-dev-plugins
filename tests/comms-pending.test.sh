@@ -48,7 +48,8 @@ ok()  { PASS=$((PASS+1)); printf '  ✓ %s\n' "$1"; }
 bad() { FAIL=$((FAIL+1)); printf '  ✗ %s\n' "$1"; [ -n "${2:-}" ] && printf '      %s\n' "$2"; }
 expect_exit() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "expected exit $2, got $3"; fi; }
 expect_says() { case "$2" in *"$3"*) ok "$1" ;; *) bad "$1" "output did not mention: $3" ;; esac; }
-expect_not_says() { case "$2" in *"$3"*) bad "$1" "output should NOT mention: $3" ;; *) ok "$1" ;; esac; }
+expect_not_says() { [ -n "$2" ] || { bad "$1" "output is empty — absence proves nothing there; assert silence instead"; return; }; case "$2" in *"$3"*) bad "$1" "output should NOT mention: $3" ;; *) ok "$1" ;; esac; }
+expect_silent() { if [ -z "$2" ]; then ok "$1"; else bad "$1" "expected no output, got: $2"; fi; }
 expect_before() { # expect_before <desc> <haystack> <first> <second> — both present, in that order
   local rest="${2#*"$3"}"
   if [ "$rest" = "$2" ]; then bad "$1" "output did not mention: $3"; return; fi
@@ -281,7 +282,7 @@ expect_exit "--brief exits 1 when something is due" 1 "$rc"
 expect_says "…and says what" "$OUT" "overdue"
 OUT=$(cd "$FX" && COMMS_TODAY=2020-01-01 python3 "$PEND" --brief --project-root "$FX" 2>&1); rc=$?
 expect_exit "--brief is silent when nothing is due yet" 0 "$rc"
-expect_not_says "…and prints nothing at all" "$OUT" "pending"
+expect_silent "…and prints nothing at all" "$OUT"
 
 echo ""
 echo "== field report 2026-09-23: the first repository to switch its own tools off =="
@@ -432,12 +433,12 @@ echo "== unconfigured: the whole half stays silent =="
 mv "$FX/.claude/vdm-plugins.json" "$TMP/cfg.json"
 rc=0; run || rc=$?
 expect_exit "no pending-paths ⇒ exit 0" 0 "$rc"
-expect_not_says "…and no output" "$OUT" "Pending on"
+expect_silent "…and no output" "$OUT"
 rc=0; run --lint || rc=$?
 expect_exit "no pending-paths ⇒ --lint clean" 0 "$rc"
 OUT=$(cd "$FX" && COMMS_TODAY="$TODAY" bash "$CHECKSH" </dev/null 2>&1); rc=$?
 expect_exit "no pending-paths ⇒ the session-start hook is silent" 0 "$rc"
-expect_not_says "…and says nothing" "$OUT" "pending"
+expect_silent "…and says nothing" "$OUT"
 mv "$TMP/cfg.json" "$FX/.claude/vdm-plugins.json"
 
 echo ""
@@ -509,7 +510,7 @@ expect_exit "GREEN: same broken env, a write with nothing to guard ⇒ exit 0" 0
 OUT=$(printf '%s' "$IN_SCOPE" | env -i HOME="$HOME" LC_ALL=C PATH="$FARM" \
       CLAUDE_PROJECT_DIR="$FX" bash -c "bash '$CHECKSH'" 2>&1); rc=$?
 expect_exit "GREEN: the session-start reminder fails OPEN — exit 0" 0 "$rc"
-expect_not_says "…and says nothing at all" "$OUT" "pending"
+expect_silent "…and says nothing at all" "$OUT"
 
 echo ""
 echo "== the contract prints =="

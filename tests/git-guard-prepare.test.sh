@@ -56,6 +56,9 @@ expect_says() {
   esac
 }
 expect_not_says() {
+  # An empty haystack contains nothing, so absence there proves nothing
+  # (tests/harness-asserts.test.sh). Silence is asserted as silence.
+  [ -n "$2" ] || { bad "$1" "output is empty — absence proves nothing there; assert silence instead"; return; }
   case "$2" in
     *"$3"*) bad "$1" "output should NOT mention: $3" ;;
     *)      ok "$1" ;;
@@ -588,7 +591,7 @@ if [ -e "$(msg_path "$line_a")" ]; then
 else
   bad "a neighbour's prep leaves this session's message file alone" "$(msg_path "$line_a") was deleted"
 fi
-expect_not_says "the neighbour is not told that our line is void" "$out_b" "never run"
+expect_silent "the neighbour is told nothing — not that our line is void" "$out_b"
 run_emitted "$line_a" >/dev/null 2>&1; rc=$?
 expect_exit "this session's line still runs after a neighbour's prep" 0 "$rc"
 expect_eq "… and commits this session's message" "[*] from A" "$(git log -1 --format=%s)"
@@ -661,7 +664,7 @@ if [ -e "$(msg_path "$line_s")" ]; then
 else
   bad "a prep without a session id leaves a session's line alone" "$(msg_path "$line_s") was deleted"
 fi
-expect_not_says "… and says nothing about it" "$out" "never run"
+expect_silent "… and says nothing about it" "$out"
 line_t=$("$PREP" "[*] terminal again" -- b.txt 2>/dev/null)
 as_b "$PREP" "[*] other session" -- a.txt >/dev/null 2>&1
 if [ -e "$(msg_path "$line_t")" ]; then

@@ -46,7 +46,8 @@ ok()  { PASS=$((PASS+1)); printf '  ✓ %s\n' "$1"; }
 bad() { FAIL=$((FAIL+1)); printf '  ✗ %s\n' "$1"; [ -n "${2:-}" ] && printf '      %s\n' "$2"; }
 expect_exit() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "expected exit $2, got $3"; fi; }
 expect_says() { case "$2" in *"$3"*) ok "$1" ;; *) bad "$1" "output did not mention: $3" ;; esac; }
-expect_not_says() { case "$2" in *"$3"*) bad "$1" "output should NOT mention: $3" ;; *) ok "$1" ;; esac; }
+expect_not_says() { [ -n "$2" ] || { bad "$1" "output is empty — absence proves nothing there; assert silence instead"; return; }; case "$2" in *"$3"*) bad "$1" "output should NOT mention: $3" ;; *) ok "$1" ;; esac; }
+expect_silent() { if [ -z "$2" ]; then ok "$1"; else bad "$1" "expected no output, got: $2"; fi; }
 
 TMP=$(mktemp -d 2>/dev/null || mktemp -d -t commstest)
 cleanup() { rm -rf "$TMP"; }
@@ -140,7 +141,7 @@ echo "== scope: what is NOT under contract must stay silent =="
 printf '*Speaker 1:* …\n' > "$FX/meetings/$FUTURE-planning/transcript.md"
 run_lint "$FX/meetings/$FUTURE-planning/transcript.md"; rc=$?
 expect_exit "GREEN: raw transcript without frontmatter ⇒ exit 0" 0 "$rc"
-expect_not_says "GREEN: and says nothing about it" "$OUT" "frontmatter"
+expect_silent "GREEN: and says nothing about it" "$OUT"
 
 printf -- '---\ntype: meeting-handout\n---\n\n# раздатка\n' \
   > "$FX/meetings/$FUTURE-planning/handout.md"
@@ -681,7 +682,7 @@ $BS
 tracks: [gaps/alpha]" agenda.md
 run_lint "$FX/meetings/$FUTURE-bs/agenda.md"; rc=$?
 expect_exit "RED: a role file with a block-scalar goal is read ⇒ exit 0" 0 "$rc"
-expect_not_says "…and never says 'cannot read line'" "$OUT" "cannot read line"
+expect_silent "…and says nothing — no 'cannot read line'" "$OUT"
 
 printf -- '---\ntype: meeting-series\n%s\n---\n\n# series\n' "$BS" > "$FX/meetings/bsseries.md"
 run_lint "$FX/meetings/bsseries.md"; rc=$?
@@ -762,7 +763,7 @@ run_skip "$FX/meetings/$FUTURE-bs/agenda.md"
 expect_says "GREEN: a file that WAS checked still says ok" "$OUT" "agenda.md: ok"
 
 OUT=$(cd "$FX" && COMMS_TODAY="$TODAY" python3 "$LINT" --quiet --project-root "$FX" "$FX/gaps/alpha/notes.md" 2>&1)
-expect_not_says "GREEN: under --quiet (the hook) a skip prints nothing" "$OUT" "skipped"
+expect_silent "GREEN: under --quiet (the hook) a skip prints nothing" "$OUT"
 
 echo ""
 echo "== counterparts under people-profiles =="

@@ -86,10 +86,17 @@ expect_says() {
 }
 expect_not_says() {
   # expect_not_says <desc> <output> <needle>
+  # An empty haystack contains nothing, so absence there proves nothing
+  # (tests/harness-asserts.test.sh). Silence is asserted as silence.
+  [ -n "$2" ] || { bad "$1" "output is empty — absence proves nothing there; assert silence instead"; return; }
   case "$2" in
     *"$3"*) bad "$1" "output should NOT mention: $3" ;;
     *)      ok "$1" ;;
   esac
+}
+expect_silent() {
+  # expect_silent <desc> <output>
+  if [ -z "$2" ]; then ok "$1"; else bad "$1" "expected no output, got: $2"; fi
 }
 
 # ---------------------------------------------------------------------------
@@ -149,6 +156,8 @@ out=$(bash plugins/vdm/scripts/check-doc-orphans.sh 2>&1); rc=$?
 expect_exit "check-doc-orphans green on clean tree" 0 "$rc"
 out=$(bash plugins/vdm/scripts/crystal-lint.sh --staged 2>&1); rc=$?
 expect_exit "crystal-canon green on clean tree" 0 "$rc"
+out=$(bash plugins/vdm/scripts/shell-syntax-check.sh --staged 2>&1); rc=$?
+expect_exit "shell-syntax green on clean tree" 0 "$rc"
 
 if [ "$SETUP_ONLY" = yes ]; then
   printf '\ngates (--setup-only): %s passed, %s failed\n' "$PASS" "$FAIL"
@@ -614,6 +623,51 @@ git add -- "$canon_flat"
 out=$(bash plugins/vdm/scripts/crystal-lint.sh --staged 2>&1); rc=$?
 expect_exit "RED: flat legacy workitem is still in scope" 1 "$rc"
 expect_says "RED: names the flat file" "$out" "zz-flat"
+restore
+
+# ---------------------------------------------------------------------------
+echo ""
+echo "== shell-syntax (shell-syntax-check.sh --staged) =="
+# The second surface of the parse check. The PostToolUse hook sees only writes
+# made through the assistant; an IDE-direct edit reaches the commit untouched.
+# A universally broken script, not the bash-3.2 incident itself: this harness
+# must go red on a machine whose bash accepts the incident's construct too. The
+# interpreter-specific cases live in tests/shell-syntax-check.test.sh.
+# Fixture name minted at runtime, for the reason the crystal-canon block gives.
+sh_name="zz-parse-$$-$(od -An -N2 -tu2 </dev/urandom | tr -d ' ')"
+
+printf '#!/bin/bash\nif true; then\n  echo x\n' > "scripts/$sh_name.sh"
+git add "scripts/$sh_name.sh"
+out=$(bash plugins/vdm/scripts/shell-syntax-check.sh --staged 2>&1); rc=$?
+expect_exit "RED: a staged script that does not parse ⇒ exit 1" 1 "$rc"
+expect_says "RED: the interpreter's line names the repo path, not a scratch copy" "$out" "scripts/$sh_name.sh: line"
+# The gate reads the STAGED blob: a fix on disk that was never re-staged does
+# not travel with the commit.
+printf '#!/bin/bash\necho fixed\n' > "scripts/$sh_name.sh"
+out=$(bash plugins/vdm/scripts/shell-syntax-check.sh --staged 2>&1); rc=$?
+expect_exit "RED: an unstaged fix ⇒ still exit 1" 1 "$rc"
+git add "scripts/$sh_name.sh"
+out=$(bash plugins/vdm/scripts/shell-syntax-check.sh --staged 2>&1); rc=$?
+expect_exit "GREEN: the fix, staged ⇒ exit 0" 0 "$rc"
+expect_says "GREEN: …and it says what it checked" "$out" "1 staged shell file"
+restore
+
+# GREEN: a script that turns extglob on for itself — plain `bash -n` calls it
+# a syntax error, and a gate that fires on correct files gets switched off.
+printf '#!/bin/bash\nshopt -s extglob\ncase "$1" in +(a|b)) echo ab ;; esac\n' > "scripts/$sh_name.sh"
+git add "scripts/$sh_name.sh"
+out=$(bash plugins/vdm/scripts/shell-syntax-check.sh --staged 2>&1); rc=$?
+expect_exit "GREEN: extglob enabled by the script itself ⇒ exit 0" 0 "$rc"
+restore
+
+# GREEN: not shell, not this gate's business — markdown that would not parse,
+# and a python script named like one.
+printf 'if then ( ( (\n' > "docs/$sh_name.md"
+printf '#!/usr/bin/env python3\nprint("x")\n' > "scripts/$sh_name-py.sh"
+git add "docs/$sh_name.md" "scripts/$sh_name-py.sh"
+out=$(bash plugins/vdm/scripts/shell-syntax-check.sh --staged 2>&1); rc=$?
+expect_exit "GREEN: markdown and a python shebang are not parsed as shell ⇒ exit 0" 0 "$rc"
+expect_silent "GREEN: …and nothing is claimed as checked" "$out"
 restore
 
 # ---------------------------------------------------------------------------

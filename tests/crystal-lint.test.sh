@@ -50,6 +50,17 @@ expect_silent() {
   # expect_silent <desc> <output>
   if [ -z "$2" ]; then ok "$1"; else bad "$1" "expected no output, got: $2"; fi
 }
+expect_not_says() {
+  # expect_not_says <desc> <output> <needle>
+  # Needs output to look at: an empty haystack contains nothing, so the check
+  # would pass whatever the code did — including when it never ran. Silence is
+  # asserted with expect_silent.
+  if [ -z "$2" ]; then bad "$1" "output is empty — its absence proves nothing; assert silence with expect_silent"; return; fi
+  case "$2" in
+    *"$3"*) bad "$1" "output should NOT mention: $3" ;;
+    *)      ok "$1" ;;
+  esac
+}
 
 TMP=$(mktemp -d 2>/dev/null || mktemp -d -t crystallint)
 cleanup() { rm -rf "$TMP"; }
@@ -273,6 +284,89 @@ EOF
 OUT=$(run)
 expect_exit "legacy import is not a violation" 0 "$(run_rc)"
 expect_says "legacy warns against copying it"  "$OUT" "never infer"
+
+# ---------------------------------------------------------------------------
+printf '\nhook — an open sidetrack this change introduced must carry a checkbox\n'
+# ---------------------------------------------------------------------------
+# The rule is old (crystal-multi-root DL #14) and it is enforced at ONE moment,
+# the done-transition, by which time the reason is sessions old. Census of the
+# machine this suite is developed on, 2026-09-25: 276 open sidetracks without a
+# `- [ ] … Sidetrack #N` line, in 64 of 134 live workitems — 235 with no
+# checkbox at all, the rest with a marker the parser cannot see (a wrapped
+# continuation line, "Sidetracks #1 и #2", "побег #3"). Two of them were written
+# in this repo the same day. So the hook names an orphan at the write — but
+# only one this change introduced, measured against HEAD: the 276 are a
+# backlog the done gate owns, and a hook that recited them on every edit would
+# pull that backlog into unrelated sessions.
+HR="$TMP/hookrepo"
+mkdir -p "$HR/docs/tasks/orph"
+HR=$(cd "$HR" && pwd -P)
+HWI="$HR/docs/tasks/orph/workitem.md"
+( cd "$HR" && git init -q . && git config user.email t@t && git config user.name t \
+    && git config commit.gpgsign false ) >/dev/null 2>&1
+
+wi_cards() {
+  # wi_cards <next-actions (printf %b)> <N|status>... — a canonical workitem
+  # whose Sidetracks section holds one card per argument.
+  local next="$1" c; shift
+  {
+    printf -- '---\ntitle: "Orph"\nslug: orph\nstatus: in-progress\nsession-type: prd-work\n'
+    printf 'created: 2026-09-25\nlast-updated: 2026-09-25\n---\n\n# Orph\n\n'
+    printf '## Назначение\nx\n\n## Текущая модель\nx\n\n## Sidetracks\n\n'
+    for c in "$@"; do
+      printf '### #%s. Card %s\n\n**Status:** %s\n\n' "${c%%|*}" "${c%%|*}" "${c#*|}"
+    done
+    printf '## Next actions\n%b\n\n## References\nx\n' "$next"
+  } >"$HWI"
+}
+hook_lint() {
+  OUT=$(cd "$HR" && printf '{"tool_name":"Edit","tool_input":{"file_path":"%s"}}' "$HWI" \
+          | CLAUDE_PROJECT_DIR="$HR" bash "$LINT" --hook 2>&1 >/dev/null)
+  RC=$?
+}
+commit_wi() { ( cd "$HR" && git add -A && git commit -qm wi ) >/dev/null 2>&1; }
+
+wi_cards '- [ ] x' '1|open'
+hook_lint
+expect_exit "RED: a new workitem with an open card and no checkbox ⇒ exit 2" 2 "$RC"
+expect_says "…names the card"                  "$OUT" "#1. Card 1"
+expect_says "…and gives the line that fixes it" "$OUT" "- [ ] Sidetrack #1"
+
+wi_cards '- [ ] Sidetrack #1: close it' '1|open'
+hook_lint
+expect_exit "GREEN: the number on the checkbox line ⇒ exit 0" 0 "$RC"
+expect_silent "…and nothing is said" "$OUT"
+
+wi_cards '- [ ] Reply to the sender:\n  it covers Sidetrack #1' '1|open'
+hook_lint
+expect_exit "RED: the number on a wrapped continuation line is not seen ⇒ exit 2" 2 "$RC"
+expect_says "…and the message says why" "$OUT" "continuation line"
+
+wi_cards '- [ ] Sidetracks #1 и #2: reply' '1|open' '2|open'
+hook_lint
+expect_exit "RED: \"Sidetracks #1 и #2\" marks neither ⇒ exit 2" 2 "$RC"
+expect_says "…names the first" "$OUT" "#1. Card 1"
+expect_says "…and the second"  "$OUT" "#2. Card 2"
+
+wi_cards '- [ ] x' '1|resolved — shipped'
+hook_lint
+expect_exit "GREEN: a card that is not open owes nothing ⇒ exit 0" 0 "$RC"
+
+# The backlog stays with the done gate: an orphan already at HEAD is not
+# re-reported by an edit elsewhere in the file…
+wi_cards '- [ ] x' '1|open'
+commit_wi
+printf '\nan unrelated edit\n' >>"$HWI"
+hook_lint
+expect_exit "GREEN: an orphan committed before this change is not recited ⇒ exit 0" 0 "$RC"
+expect_silent "…silently" "$OUT"
+
+# …but a new one next to it is, and only the new one.
+wi_cards '- [ ] x' '1|open' '2|open'
+hook_lint
+expect_exit "RED: a second open card added next to a committed orphan ⇒ exit 2" 2 "$RC"
+expect_says     "…names the new card"            "$OUT" "#2. Card 2"
+expect_not_says "…and leaves the committed one alone" "$OUT" "#1. Card 1"
 
 # ---------------------------------------------------------------------------
 printf '\nSKILL.md ↔ template agreement\n'

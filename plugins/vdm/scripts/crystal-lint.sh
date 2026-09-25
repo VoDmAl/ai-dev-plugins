@@ -184,6 +184,39 @@ is_workitem_path() {
   esac
 }
 
+# orphans_at_head <workitem> — the orphan sidetracks of the version committed at
+# HEAD. Nothing for a file HEAD does not have (new, untracked) or outside git:
+# then every orphan in the file is one this change introduced.
+orphans_at_head() {
+  local f="$1" dir prefix top snap
+  dir=$(dirname "$f")
+  top=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || return 0
+  prefix=$(git -C "$dir" rev-parse --show-prefix 2>/dev/null) || return 0
+  snap=$(mktemp 2>/dev/null) || return 0
+  if git -C "$top" show "HEAD:${prefix}$(basename "$f")" >"$snap" 2>/dev/null; then
+    audit_sidetracks_without_markers "$snap"
+  fi
+  rm -f "$snap"
+}
+
+# only_new_orphans <now> <at-head> — the lines of <now> whose card number is not
+# an orphan at HEAD. Compared by number: a retitled card is the same card.
+only_new_orphans() {
+  local now="$1" was="$2" line n
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    n="${line%%.*}"
+    case "
+$was" in
+      *"
+$n."*) continue ;;
+    esac
+    printf '%s\n' "$line"
+  done <<EOF
+$now
+EOF
+}
+
 if [ "$mode" = "hook" ]; then
   payload=$(cat)
   [ -z "$payload" ] && exit 0
@@ -270,6 +303,26 @@ if cur is not None:
     0|1) ;;
     *)   lint_unverified "the linter exited $rc without reaching a verdict" ;;
   esac
+
+  # Open sidetracks without a checkbox — only the ones THIS change introduced.
+  # The rule is crystal-multi-root DL #14, and until now it was enforced at one
+  # moment only, the done-transition, when the reason is sessions old. Census of
+  # the machine this plugin is developed on (2026-09-25): 276 such orphans in 64
+  # of 134 live workitems, 235 of them with no checkbox at all and the rest with
+  # a marker the parser cannot see. Two were written in this repo that day and
+  # went into a commit. Measured against HEAD so that the backlog stays with the
+  # done gate: a hook that recited it on every edit would pull it into sessions
+  # that came for something else.
+  orphans_new=""
+  if command -v audit_sidetracks_without_markers >/dev/null 2>&1; then
+    orphans_now=$(audit_sidetracks_without_markers "$file_path")
+    if [ -n "$orphans_now" ]; then
+      orphans_new=$(only_new_orphans "$orphans_now" "$(orphans_at_head "$file_path")")
+    fi
+  fi
+
+  [ "$rc" -eq 0 ] && [ -z "$orphans_new" ] && exit 0
+
   if [ "$rc" -eq 1 ]; then
     printf '%s\n' "$out" >&2
     cat >&2 <<'EOF'
@@ -286,9 +339,29 @@ truth are the template and /vdm:crystal-grow.
 Canon is a FLOOR: extra sections and extra frontmatter keys are fine — only
 the missing ones above are the problem. Fix them before this turn ends.
 EOF
-    exit 2
   fi
-  exit 0
+  if [ -n "$orphans_new" ]; then
+    first_n=$(printf '%s\n' "$orphans_new" | head -n 1)
+    first_n="${first_n%%.*}"
+    first_n="${first_n#\#}"
+    {
+      printf '\n[crystal-lint] Open sidetracks this change introduced have no checkbox:\n'
+      printf '%s\n' "$orphans_new" | sed 's/^/  /'
+      cat <<EOF
+
+An open sidetrack is an obligation, and only a \`- [ ]\` line counts as one: the
+done-transition refuses the workitem while such a card has none, and by then
+the reason is sessions old. Give each card its own checkbox, with the number
+on the checkbox line itself:
+  - [ ] Sidetrack #${first_n}: <what closes it>
+Not seen: the number on a wrapped continuation line, "Sidetracks #1 и #2" (one
+checkbox per number), "побег #${first_n}". If a card is not actually open,
+change its **Status:** instead. Sidetracks committed before this change are
+left to the done gate.
+EOF
+    } >&2
+  fi
+  exit 2
 fi
 
 # --- --staged: the pre-commit surface -----------------------------------------

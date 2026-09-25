@@ -54,6 +54,9 @@ expect_says() {
   case "$2" in *"$3"*) ok "$1" ;; *) bad "$1" "output did not mention: $3" ;; esac
 }
 expect_not_says() {
+  # An empty haystack contains nothing, so absence there proves nothing
+  # (tests/harness-asserts.test.sh). Silence is asserted as silence.
+  [ -n "$2" ] || { bad "$1" "output is empty — absence proves nothing there; assert silence instead"; return; }
   case "$2" in *"$3"*) bad "$1" "output should NOT mention: $3" ;; *) ok "$1" ;; esac
 }
 expect_silent() {
@@ -101,8 +104,7 @@ printf '\n=== the noise ===\n'
 
 d=$(new_project plain '"packages/shallow/tasks"')
 err=$(resolve_err "$d")
-expect_not_says "no shopt complaint on a literal path" "$err" "invalid shell option"
-expect_silent "literal path resolves with a clean stderr" "$err"
+expect_silent "a literal path: no shopt complaint, a clean stderr" "$err"
 
 d=$(new_project autoscan)
 err=$(resolve_err "$d")
@@ -137,7 +139,7 @@ fi
 # A glob without `**` must never trigger the warning, whatever the shell.
 d=$(new_project nostar '"packages/shallow/tasks", "packages/deep/nested/tasks"')
 err=$(resolve_err "$d")
-expect_not_says "globs without ** produce no warning" "$err" "globstar"
+expect_silent "globs without ** produce no warning" "$err"
 out=$(resolve_out "$d")
 expect_says "explicit paths find the shallow root" "$out" "packages/shallow/tasks"
 expect_says "explicit paths find the deep root" "$out" "packages/deep/nested/tasks"

@@ -46,7 +46,7 @@ ok()  { PASS=$((PASS+1)); printf '  ✓ %s\n' "$1"; }
 bad() { FAIL=$((FAIL+1)); printf '  ✗ %s\n' "$1"; [ -n "${2:-}" ] && printf '      %s\n' "$2"; }
 expect_exit() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "expected exit $2, got $3"; fi; }
 expect_says() { case "$2" in *"$3"*) ok "$1" ;; *) bad "$1" "output did not mention: $3" ;; esac; }
-expect_not_says() { case "$2" in *"$3"*) bad "$1" "should NOT mention: $3" ;; *) ok "$1" ;; esac; }
+expect_not_says() { [ -n "$2" ] || { bad "$1" "output is empty — absence proves nothing there; assert silence instead"; return; }; case "$2" in *"$3"*) bad "$1" "should NOT mention: $3" ;; *) ok "$1" ;; esac; }
 
 TMP=$(mktemp -d 2>/dev/null || mktemp -d -t fffd)
 cleanup() { rm -rf "$TMP"; }

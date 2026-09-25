@@ -1,5 +1,5 @@
 {
-  "description": "VDM core hooks - documentation sync, synthesis-layer drift signal (docs-distill), knowledge capture + the cross-project rules layer (~/.claude/vdm/rules.md, loaded at session start), changelog reminders, intercom inbox reminder + session-start identity check (agent directory), orphan-guard for docs/llm/, and crystal-* workitem discipline (hydrate / capture-reminder / completion-guard / stop-reminder / canon lint).",
+  "description": "VDM core hooks - documentation sync, synthesis-layer drift signal (docs-distill), knowledge capture + the cross-project rules layer (~/.claude/vdm/rules.md, loaded at session start), changelog reminders, intercom inbox reminder + session-start identity check (agent directory), orphan-guard for docs/llm/, crystal-* workitem discipline (hydrate / capture-reminder / completion-guard / stop-reminder / canon + sidetrack-checkbox lint), and a parse check of every shell file written.",
   "hooks": {
     "SessionStart": [
       {
@@ -57,6 +57,11 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh\" --hook",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/shell-syntax-check.sh\" --hook",
             "timeout": 5
           }
         ]

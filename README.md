@@ -521,9 +521,12 @@ If you forget, a SessionStart hook in `.claude/settings.json` prints a one-line 
 | crystal | `scripts/check-crystal-completion.sh` | any `docs/tasks/**/workitem.md` (or flat `docs/tasks/*.md`) is staged with frontmatter `status: done` and unchecked `- [ ]` items remain |
 | crystal-canon | `plugins/vdm/scripts/crystal-lint.sh --staged` | any staged workitem whose shape does not match the canon derived from `templates/workitem-template.md` (non-terminal tier only) |
 | gate red-tests | `tests/gates.test.sh` + `tests/gates-harness-isolation.test.sh` | a gate script or the harness itself is staged (~15s) |
+| harness asserts | `tests/harness-asserts.test.sh` | any test file is staged — every suite's `says_not` / `expect_not_says` is run against an empty haystack and must FAIL there: "does not mention X" is true of nothing, so a negative check on an output that came back empty passes whatever the code did (<1s) |
 | hook fail-closed | `tests/hook-fail-closed.test.sh` | a blocking hook the plugins ship, or `lib/gate-guard.sh`, is staged (~5s) |
 | hook commands | `tests/hook-commands.test.sh` | same trigger — every `hooks.json` command run through `/bin/sh -c` from a plugin root with a space (~15s) |
+| write checks | `tests/crystal-lint.test.sh` + `tests/shell-syntax-check.test.sh` | same trigger — the suites of the two PostToolUse checks, which no gate ran before vdm 2.36.0 (~5s) |
 | snippet red-tests | `tests/githook-snippets.test.sh` | anything under a plugin's `skills/` is staged — the git-hook blocks a SKILL hands to a user's own pre-commit, read out of the SKILL and run against fake installs (~5s) |
+| shell-syntax | `plugins/vdm/scripts/shell-syntax-check.sh --staged` | unconditionally — every staged shell file must parse under the interpreter it will meet (the shebang's; for bash also the PATH one), read from the staged blob |
 
 All three can be run manually:
 
@@ -533,7 +536,10 @@ bash scripts/check-version-bump.sh         # 0 = bumped + in parity, 1 = drift
 bash scripts/check-skill-paths.sh          # 0 = clean, 1 = dev-path leak found
 bash scripts/check-crystal-completion.sh   # 0 = clean, 1 = workitem done with open items
 bash plugins/vdm/scripts/crystal-lint.sh --staged   # 0 = clean, 1 = staged workitem off-canon
+bash plugins/vdm/scripts/shell-syntax-check.sh --staged   # 0 = clean, 1 = a staged script does not parse
 bash tests/gates.test.sh                   # red-tests all of the above (~15s)
+bash tests/harness-asserts.test.sh         # every suite's negative assertion fails on an empty haystack
+bash tests/shell-syntax-check.test.sh      # the parse check after a write: the bash 3.2 incident, extglob, which interpreter
 bash tests/intercom.test.sh                # agent directory + name resolution, against a scratch store
 bash tests/crystal-capture-reminder.test.sh # capture reminder: throttle before scan (proven via a find shim), capture-exclude
 bash tests/gates-harness-isolation.test.sh # the gate harness must not write into the commit that runs it
@@ -578,7 +584,8 @@ The harness materializes the **working tree** (not `git clone` of HEAD — pre-c
 | UserPromptSubmit | `reminders.sh` → `docs-sync-reminder.sh`, `docs-distill-reminder.sh`, `learn-reminder.sh`, `changelog-reminder.sh`, `crystal-capture-reminder.sh`, `intercom-reminder.sh` | Per-prompt nudges (see Configuration section above), composed into **one** section by the dispatcher: silence if none speaks, a lone reminder unchanged, otherwise a header, the reminders that measured something this turn in order of consequence, and the standing habits (`changelog`, `learn`) folded into one line. Children run in parallel under a 25 s deadline, so a slow one costs only itself. Silent inside a plugin cache directory. `docs-distill-reminder` is the synthesis drift signal — it delegates the actual scan to `distill-scan.sh` |
 | PreToolUse (Write/Edit/MultiEdit) | `crystal-completion-guard.sh` | Blocks status:in-progress → status:done while `- [ ]` items remain |
 | PostToolUse (Write/Edit/MultiEdit) | `orphan-guard-hook.sh` | Catches new `docs/llm/*.md` without a discovery hook |
-| PostToolUse (Write/Edit/MultiEdit) | `crystal-lint.sh --hook` | Catches a workitem written in a non-canonical shape (v2.16.0) |
+| PostToolUse (Write/Edit/MultiEdit) | `crystal-lint.sh --hook` | Catches a workitem written in a non-canonical shape (v2.16.0), and an open sidetrack the change left without a `- [ ] … Sidetrack #N` line — only one the change introduced, measured against HEAD; older ones stay with the done gate (v2.36.0) |
+| PostToolUse (Write/Edit/MultiEdit) | `shell-syntax-check.sh --hook` | Catches a shell file that does not parse under the interpreter it will meet — the shebang's, and for bash also the PATH one — e.g. a bare `case` pattern inside `$( )`, which the stock macOS bash 3.2 rejects and bash 4+ accepts. Opt out per project with `"shell-syntax": {"enabled": false}` (v2.36.0) |
 | Stop | `crystal-stop-reminder.sh` | End-of-turn visibility for active workitems with open items |
 
 Orphan-guard detail: without a discovery hook (CLAUDE.md ref / source-code @see / `docs/features/` ref / sibling `docs/llm/` ref) it exits 2 with a remediation message — surfacing as actionable feedback the assistant must address before the turn ends.

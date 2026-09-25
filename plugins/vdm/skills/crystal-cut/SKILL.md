@@ -63,6 +63,13 @@ the obligation is invisible to the checkbox-counting `unchecked-items`
 gate — `crystal-cut` would silently pass over it. DL #14 declares the
 inline-marker requirement; this gate enforces it deterministically.
 
+It is the last of two moments. Since vdm 2.36.0 the `crystal-lint`
+PostToolUse hook names an orphan at the write that introduced it; what
+reaches this gate is the backlog from before that, or an edit made outside
+the assistant. On the machine this suite is developed on, the backlog was
+276 orphans in 64 of 134 live workitems when the write-time check shipped —
+expect to meet some here.
+
 Logic: scan every sidetrack card heading `### #N. <title>` followed at some
 point by `**Status:** open[ ...]`. For each, look for a matching marker
 line `- [ ] ... Sidetrack #N` anywhere in the body. Cards lacking a marker

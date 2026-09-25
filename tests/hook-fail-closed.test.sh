@@ -143,6 +143,8 @@ EOF
 
 printf '# orphan\n\nnothing links here\n' > "$FX/docs/llm/orphan.md"
 printf 'print("hi")\n' > "$FX/src/app.py"
+mkdir -p "$FX/scripts"
+printf '#!/bin/bash\nif true; then\n  echo hi\n' > "$FX/scripts/broken.sh"
 
 # --- payloads ----------------------------------------------------------------
 # Built with python3 from THIS shell (the farms' python3 is what is under test).
@@ -171,6 +173,9 @@ put("p-src.json", write(os.path.join(fx, "src/app.py"), "print('hi')\n"))
 put("p-llm.json", write(os.path.join(fx, "docs/llm/orphan.md"), "# orphan\n"))
 # out of scope for orphan-guard: ordinary markdown, no docs/llm, no covers:
 put("p-readme.json", write(os.path.join(fx, "README.md"), "# readme\n"))
+# in scope for shell-syntax: a shell script that does not parse (the source
+# file above is the out-of-scope case)
+put("p-sh.json", write(os.path.join(fx, "scripts/broken.sh"), "#!/bin/bash\nif true; then\n"))
 # in scope for git-guard
 put("p-commit.json", {"tool_name": "Bash", "tool_input": {"command": "git " + "commit -m x"}, "cwd": fx})
 # out of scope for git-guard
@@ -180,6 +185,7 @@ PY
 GUARD="$REPO_ROOT/plugins/vdm/scripts/crystal-completion-guard.sh"
 LINT="$REPO_ROOT/plugins/vdm/scripts/crystal-lint.sh"
 ORPHAN="$REPO_ROOT/plugins/vdm/scripts/orphan-guard-hook.sh"
+SHELLSYN="$REPO_ROOT/plugins/vdm/scripts/shell-syntax-check.sh"
 GITGUARD="$REPO_ROOT/plugins/vdm-git/scripts/git-guard-hook.sh"
 
 OUT=""
@@ -196,6 +202,8 @@ run full p-done.json "bash '$GUARD'"; expect_exit "completion-guard blocks a rea
 expect_says "  and names the crystal gate" "$OUT" "crystal-cut"
 run full p-inprogress.json "bash '$GUARD'"; expect_exit "completion-guard silent on a non-terminal write" 0 "$?"
 run full p-llm.json "bash '$ORPHAN'"; expect_exit "orphan-guard blocks a real orphan" 2 "$?"
+run full p-sh.json "bash '$SHELLSYN' --hook"; expect_exit "shell-syntax blocks a script that does not parse" 2 "$?"
+expect_says "  and it is the real verdict" "$OUT" "does not parse"
 run full p-commit.json "bash '$GITGUARD'"; expect_exit "git-guard blocks a commit" 2 "$?"
 run full p-ls.json "bash '$GITGUARD'"; expect_exit "git-guard allows an ordinary command" 0 "$?"
 
@@ -215,6 +223,12 @@ for e in nopy crashpy; do
   run "$e" p-llm.json "bash '$ORPHAN'"
   expect_exit "orphan-guard: docs/llm write ⇒ exit 2 (blocked either way)" 2 "$?"
 
+  # jq reads the payload where python3 is missing, so the verdict there is the
+  # real one; where python3 crashes the payload is unread and the answer is
+  # NOT CHECKED. Both block.
+  run "$e" p-sh.json "bash '$SHELLSYN' --hook"
+  expect_exit "shell-syntax: .sh write ⇒ exit 2 (blocked either way)" 2 "$?"
+
   run "$e" p-commit.json "bash '$GITGUARD'"
   expect_exit "git-guard: commit-shaped command ⇒ exit 2" 2 "$?"
   expect_says "git-guard: says NOT CHECKED" "$OUT" "NOT CHECKED"
@@ -233,6 +247,9 @@ for e in nopy crashpy; do
 
   run "$e" p-readme.json "bash '$ORPHAN'"
   expect_exit "orphan-guard: ordinary markdown ⇒ exit 0" 0 "$?"
+
+  run "$e" p-src.json "bash '$SHELLSYN' --hook"
+  expect_exit "shell-syntax: a python source write ⇒ exit 0" 0 "$?"
 
   run "$e" p-ls.json "bash '$GITGUARD'"
   expect_exit "git-guard: ordinary command ⇒ exit 0" 0 "$?"

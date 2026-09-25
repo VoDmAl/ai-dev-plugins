@@ -2,7 +2,7 @@
 # Local pre-commit hook. Activated by:
 #     git config core.hooksPath .githooks
 #
-# Runs nine independent gates. Each fails fast — failure in any gate blocks
+# Runs ten independent gates. Each fails fast — failure in any gate blocks
 # the commit:
 #   1. lib-sync       — every lib file carried by two or more plugins must stay
 #                       byte-identical (caught by scripts/check-lib-sync.sh)
@@ -26,7 +26,10 @@
 #                       commit that is running it. Conditional (~15s) — fires
 #                       only when a gate or a harness is staged. The isolation
 #                       half alone (~2s) also fires on ANY staged test file,
-#                       because its subject is every test file.
+#                       because its subject is every test file — and so does
+#                       tests/harness-asserts.test.sh (<1s), which runs every
+#                       suite's negative helper against an empty haystack and
+#                       requires it to fail there.
 #   7. hook fail-closed — changing anything under any plugin's scripts/, lib/
 #                       or hooks/ re-runs every suite that exercises a blocking
 #                       hook: tests/hook-fail-closed.test.sh (strips python3
@@ -44,7 +47,9 @@
 #                       layer loaded at session start), plus
 #                       tests/hook-commands.test.sh (every hooks.json command
 #                       run through `/bin/sh -c` from a plugin root with a
-#                       space in it). Conditional (~35s).
+#                       space in it), plus the suites of the two PostToolUse
+#                       write checks: tests/crystal-lint.test.sh and
+#                       tests/shell-syntax-check.test.sh. Conditional (~40s).
 #   8. helper red-tests — changing a shipped helper under any plugin's bin/
 #                       re-runs tests/<helper>.test.sh, and refuses a helper
 #                       that has none. Conditional (~10s per helper).
@@ -53,6 +58,11 @@
 #                       SKILL hands to a user's own pre-commit are read out of
 #                       the SKILL and run against fake installs. Conditional
 #                       (~5s).
+#  10. shell-syntax   — every staged shell file must parse under the
+#                       interpreter it will meet (its shebang's; for bash also
+#                       the PATH one). Reads the staged blob
+#                       (caught by plugins/vdm/scripts/shell-syntax-check.sh
+#                       --staged). Unconditional; one `-n` per staged script.
 
 set -eu
 
@@ -103,7 +113,7 @@ plugins/vdm/scripts/crystal-lint.sh --staged
 # Conditional, because the harness clones the repo and costs ~15s: it fires only
 # when a gate script or the harness itself is staged. That is exactly when the
 # cost is earned — you cannot change a gate without re-proving it still goes red.
-if printf '%s\n' "$staged" | grep -qE '^(scripts/check-.*\.sh|plugins/vdm/scripts/(check-doc-orphans|crystal-lint)\.(sh|py)|tests/gates(-harness-isolation)?\.test\.sh|\.githooks/pre-commit)$'; then
+if printf '%s\n' "$staged" | grep -qE '^(scripts/check-.*\.sh|plugins/vdm/scripts/(check-doc-orphans|crystal-lint|shell-syntax-check)\.(sh|py)|tests/gates(-harness-isolation)?\.test\.sh|\.githooks/pre-commit)$'; then
   echo "gates: a gate changed — re-running its red tests (~15s)…"
   bash tests/gates.test.sh
   # The harness runs inside THIS commit. Prove it is not writing into it:
@@ -130,6 +140,16 @@ if [ -z "${isolation_done:-}" ] &&
   bash tests/gates-harness-isolation.test.sh
 fi
 
+# Same trigger, second property of every harness: its negative assertion must
+# fail on an empty haystack. "Does not mention X" is true of nothing, so a
+# check written against an output that came back empty passes whatever the
+# code did. On 2026-09-25 one such check stayed green over the defect it was
+# written for. Runs each suite's helper, not a grep of its text (<1s).
+if printf '%s\n' "$staged" | grep -qE '^tests/.*\.sh$'; then
+  echo "gates: a test harness changed — negative assertions must fail on nothing (<1s)…"
+  bash tests/harness-asserts.test.sh
+fi
+
 # Gate 7 — the user-time hooks' fail-closed red tests. Same principle as gate 6,
 # different subject: gate 6 covers the gates OF THIS REPO, this one covers the
 # BLOCKING HOOKS THE PLUGINS SHIP. It builds symlink PATH farms without python3
@@ -147,8 +167,8 @@ fi
 # hooks of its own, the gate went on passing without covering any of them — and
 # that silence is indistinguishable from a clean run. Breadth costs a few
 # seconds on a plugin edit; the enumeration cost coverage without saying so.
-if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|tests/(hook-fail-closed|symlink-scope|comms|comms-pending|reminder-throttle|reminders-dispatch|shared-rules|hook-commands)\.test\.sh$)'; then
-  echo "gates: a plugin hook changed — re-running the shipped hooks' red tests (~35s)…"
+if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|tests/(hook-fail-closed|symlink-scope|comms|comms-pending|reminder-throttle|reminders-dispatch|shared-rules|hook-commands|crystal-lint|shell-syntax-check)\.test\.sh$)'; then
+  echo "gates: a plugin hook changed — re-running the shipped hooks' red tests (~40s)…"
   bash tests/hook-fail-closed.test.sh
   # Same subject, second question: a hook that CAN run still has to agree with
   # its sibling on which files it is responsible for. Both engines, one fixture
@@ -174,6 +194,11 @@ if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|test
   # every hook exited 127 — the blocking ones silently open (echelon,
   # 2026-09-25). This runs the strings themselves.
   bash tests/hook-commands.test.sh
+  # The two PostToolUse write checks, whose suites no gate ran until vdm 2.36.0:
+  # crystal-lint's (the canon, and since then the sidetrack a change leaves
+  # without a checkbox) and the shell parse check's.
+  bash tests/crystal-lint.test.sh
+  bash tests/shell-syntax-check.test.sh
 fi
 
 # Gate 8 — the shipped helpers' red tests. `plugins/*/bin/` is put on the
@@ -212,3 +237,12 @@ if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/skills/|tests/githook-sni
   echo "gates: a SKILL changed — re-running the git-hook snippets' red tests (~5s)…"
   bash tests/githook-snippets.test.sh
 fi
+
+# Gate 10 — every staged shell file parses under the interpreter it will meet.
+# The PostToolUse check catches the assistant's writes the moment they land;
+# this is the surface for everything else — an IDE edit, a patch applied by
+# hand. The incident behind both (2026-09-25): a bare `case` pattern inside
+# `$( )` that bash 3.2, the stock /bin/bash on macOS, cannot parse and bash 4+
+# can — so it looked fine everywhere except where it runs. Unconditional: the
+# script itself picks the staged shell files, and costs one `-n` per file.
+bash plugins/vdm/scripts/shell-syntax-check.sh --staged

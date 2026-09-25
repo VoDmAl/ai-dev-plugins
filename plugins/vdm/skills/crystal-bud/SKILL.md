@@ -196,12 +196,21 @@ Resolving a sidetrack later means flipping its inline marker `[ ]` → `[x]`
 **and** updating the sidetrack card's `**Status:**` line; the two must
 stay in sync.
 
-**Deterministic enforcement (shipped):** the orphan-sidetracks gate in
-`crystal-completion-guard.py` blocks the `done` transition whenever any
-`Status: open` card lacks its inline marker. Implementation in
-`lib/crystal-path.sh` as `audit_sidetracks_without_markers <workitem-path>`
-(bash) and mirrored in the python guard. See `crystal-cut/SKILL.md` →
-"Orphan-sidetracks gate" for the gate diagnostic and fix path.
+**Deterministic enforcement (shipped), at two moments:**
+
+- **At the write** (vdm 2.36.0): the `crystal-lint` PostToolUse hook reports
+  an open card the change left without its marker — measured against HEAD,
+  so older orphans are not recited on every edit. Write the marker in the
+  same edit as the card, or first: a card written a step ahead of its marker
+  is reported in between. The number sits on the checkbox line itself, one
+  number per checkbox — a wrapped continuation line, "Sidetracks #1 и #2" or
+  "побег #N" is not seen.
+- **At `done`**: the orphan-sidetracks gate in `crystal-completion-guard.py`
+  blocks the transition whenever any `Status: open` card lacks its inline
+  marker. Implementation in `lib/crystal-path.sh` as
+  `audit_sidetracks_without_markers <workitem-path>` (bash) and mirrored in
+  the python guard. See `crystal-cut/SKILL.md` → "Orphan-sidetracks gate" for
+  the gate diagnostic and fix path.
 
 ### Step 5: TaskCreate (DL #21)
 
