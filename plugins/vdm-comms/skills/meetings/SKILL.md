@@ -90,14 +90,14 @@ Two of these carry more weight than their one line suggests:
 Print the floor at any time:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh --print-contract
+"${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh" --print-contract
 ```
 
 Lint by hand — one file, or the whole tree:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh path/to/meetings/2026-09-21-x/agenda.md
-${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh --all
+"${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh" path/to/meetings/2026-09-21-x/agenda.md
+"${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh" --all
 ```
 
 Every file named gets one of three answers, and they mean different things:
@@ -240,7 +240,7 @@ their zone is; they chose to step into it.
 
 ## Onboarding a repository that already has meetings
 
-1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh --all` and read the output
+1. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh" --all` and read the output
    **before changing anything**. Expect warnings; they are the diff between
    this floor and the project's own habits.
 2. Fill in `comms.track-roots` and `comms.series` from what the repository

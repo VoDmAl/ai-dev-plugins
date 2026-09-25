@@ -202,7 +202,7 @@ if [ "$mode" = "hook" ]; then
     if command -v vdm_gate_unverified >/dev/null 2>&1; then
       vdm_gate_unverified "crystal-lint" "$1" \
         "a workitem was just written — whether it matches the canonical shape was never checked" \
-        "install python3 — the linter is a python script — then re-run: \${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh <file>" \
+        "install python3 — the linter is a python script — then re-run: \"\${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh\" <file>" \
         "or compare the file against templates/workitem-template.md by hand"
     else
       printf '\n[crystal-lint] NOT CHECKED — %s\n  A workitem was written and the canon check could not run.\n\n' "$1" >&2
@@ -276,7 +276,7 @@ if cur is not None:
 
 [crystal-lint] This file is a workitem, so it owes the canonical shape. The
 canon is derived from the template — print it with:
-  ${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh --print-canon
+  "${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh" --print-canon
 
 Do NOT infer a workitem's shape from a neighbouring file: a repo may hold
 files imported by /vdm:crystal-migrate from a pre-crystal era, and files

@@ -71,7 +71,7 @@ surface unresolved obligations the user may want to address during this
 docs-sync pass — separately from the documentation discovery itself.
 
 ```bash
-Bash(command="bash ${CLAUDE_PLUGIN_ROOT}/scripts/list-open-crystals.sh", ...)
+Bash(command='bash "${CLAUDE_PLUGIN_ROOT}/scripts/list-open-crystals.sh"', ...)
 ```
 
 Exit 0 always. Empty stdout → no active crystals and no drift, skip this
@@ -139,7 +139,7 @@ Synthesis docs belong here for a reason that is easy to miss: **the drift signal
 **Source of truth — the audit is a script, not a checklist.** The skill must shell out to it rather than re-derive the algorithm:
 
 ```bash
-Bash(command="bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-doc-orphans.sh", ...)
+Bash(command='bash "${CLAUDE_PLUGIN_ROOT}/scripts/check-doc-orphans.sh"', ...)
 ```
 
 Exit codes:
@@ -273,7 +273,7 @@ synthesis document declares in its `covers:` — that synthesis is now stale by
 construction:
 
 ```bash
-Bash(command="bash ${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh --drift", ...)
+Bash(command='bash "${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh" --drift', ...)
 ```
 
 Non-empty output ⇒ append to the Phase 3 report:

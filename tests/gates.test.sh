@@ -339,6 +339,45 @@ expect_exit "RED: install dir mentioned AFTER the path is still a leak" 1 "$rc"
 expect_says "RED: names the file" "$out" "docs-distill/SKILL.md"
 restore
 
+# Gate 3 of the script: an INVOCATION must quote the root. The assistant copies
+# it into a shell, and under an install path with a space the root splits
+# (echelon, 2026-09-25 — 29 such commands across the SKILL.md files). Three
+# shapes count as an invocation; each is proven red on its own.
+
+# RED: unquoted inside a fenced block.
+printf '\n```bash\n${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh --drift\n```\n' >> "$SKILL"
+out=$(bash scripts/check-skill-paths.sh 2>&1); rc=$?
+expect_exit "RED: unquoted root in a fenced command ⇒ exit 1" 1 "$rc"
+expect_says "RED: calls it unquoted" "$out" "unquoted \${CLAUDE_PLUGIN_ROOT}"
+expect_says "RED: names file and line" "$out" "docs-distill/SKILL.md:"
+restore
+
+# RED: a line that begins with the root — an indented code block has no fence.
+printf '\n    ${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh --list\n' >> "$SKILL"
+out=$(bash scripts/check-skill-paths.sh 2>&1); rc=$?
+expect_exit "RED: unquoted root opening a line ⇒ exit 1" 1 "$rc"
+restore
+
+# RED: an inline code span in which the path takes an argument.
+printf '\nThen run `${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh --drift` and read it.\n' >> "$SKILL"
+out=$(bash scripts/check-skill-paths.sh 2>&1); rc=$?
+expect_exit "RED: unquoted root in an inline command ⇒ exit 1" 1 "$rc"
+restore
+
+# GREEN: the same three, quoted — including the pseudo-call form the skills use.
+printf '\n```bash\n"${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh" --drift\nBash(command='"'"'bash "${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh" --list'"'"', ...)\n```\n    "${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh" --list\nThen run `"${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh" --drift`.\n' >> "$SKILL"
+out=$(bash scripts/check-skill-paths.sh 2>&1); rc=$?
+expect_exit "GREEN: quoted invocations are not flagged" 0 "$rc"
+restore
+
+# GREEN: a name in prose is not a command. It is read, or opened with a file
+# tool, and a space harms neither; quoting it would hand the file tool a path
+# with quotes in it. Without this the gate would demand the wrong fix.
+printf '\nScript: `${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh` — read the template at `${CLAUDE_PLUGIN_ROOT}/templates/synthesis-template.md`.\n' >> "$SKILL"
+out=$(bash scripts/check-skill-paths.sh 2>&1); rc=$?
+expect_exit "GREEN: a name-only span in prose is not flagged" 0 "$rc"
+restore
+
 # ---------------------------------------------------------------------------
 echo ""
 echo "== check-crystal-completion =="

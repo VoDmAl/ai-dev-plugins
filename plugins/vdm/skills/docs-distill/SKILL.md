@@ -71,9 +71,9 @@ If the question cannot be stated, there is no synthesis — there is a pile.
 **The scan is a script, not a checklist.** Never re-derive the algorithm:
 
 ```bash
-Bash(command="bash ${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh --list", ...)   # every synthesis doc
-Bash(command="bash ${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh --drift", ...)  # only the stale ones
-Bash(command="bash ${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh --drift-all", ...)  # …naming EVERY input
+Bash(command='bash "${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh" --list', ...)   # every synthesis doc
+Bash(command='bash "${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh" --drift', ...)  # only the stale ones
+Bash(command='bash "${CLAUDE_PLUGIN_ROOT}/scripts/distill-scan.sh" --drift-all', ...)  # …naming EVERY input
 ```
 
 Exit 0 always; empty stdout means nothing to report.

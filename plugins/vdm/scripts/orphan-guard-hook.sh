@@ -71,7 +71,7 @@ orphan_unverified() {
     vdm_gate_unverified "orphan-guard" "$1" \
       "a long-lived doc was just written — whether it has a discovery hook was never checked" \
       "install python3 or jq so the hook can read its payload, then write again, or" \
-      "run the audit by hand: \${CLAUDE_PLUGIN_ROOT}/scripts/check-doc-orphans.sh"
+      "run the audit by hand: \"\${CLAUDE_PLUGIN_ROOT}/scripts/check-doc-orphans.sh\""
   else
     printf '\n[orphan-guard] NOT CHECKED — %s\n  A long-lived doc was written and the orphan audit could not run.\n\n' "$1" >&2
   fi

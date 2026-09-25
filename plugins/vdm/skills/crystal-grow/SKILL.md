@@ -772,7 +772,7 @@ Two rules that bite during migration:
   still get honest dates):
 
   ```
-  ${CLAUDE_PLUGIN_ROOT}/scripts/crystal-dates.sh <file>   # → "<created>\t<last-updated>"
+  "${CLAUDE_PLUGIN_ROOT}/scripts/crystal-dates.sh" <file>   # → "<created>\t<last-updated>"
   ```
 
   (Under the hood: `git log --diff-filter=A --format=%as -- <file>` for created,
@@ -846,7 +846,7 @@ derives the canon from the template and asserts every item appears here.
 Print the live canon any time:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh --print-canon
+"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh" --print-canon
 ```
 
 Required H2 sections, in order:
@@ -908,7 +908,7 @@ neighbour, that does not make it evidence.
 Validate before handing off — the same check the `PostToolUse` hook runs:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh <root>/<slug>/workitem.md
+"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh" <root>/<slug>/workitem.md
 ```
 
 ### Step 4: Seed from shadow

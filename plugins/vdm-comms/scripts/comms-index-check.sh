@@ -57,5 +57,5 @@ printf '[comms] %s generated artefact(s) are behind the meetings — registry, s
 printf '%s\n' "$out" | grep -E '^  (update|remove) ' | head -3 | sed 's/^  /        /'
 [ "$behind" -gt 3 ] && printf '        … and %s more\n' "$((behind - 3))"
 printf '        Rebuild with /vdm-comms:index (it prints what it changed), or inspect first:\n'
-printf '        ${CLAUDE_PLUGIN_ROOT}/scripts/comms-index.py --check\n'
+printf '        "${CLAUDE_PLUGIN_ROOT}/scripts/comms-index.py" --check\n'
 exit 0

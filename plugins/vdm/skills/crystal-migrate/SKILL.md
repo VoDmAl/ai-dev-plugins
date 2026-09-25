@@ -73,7 +73,7 @@ When `/vdm:crystal-migrate [<dir>...]` is invoked:
 Run the scanner:
 
 ```
-${CLAUDE_PLUGIN_ROOT}/scripts/crystal-migrate-scan.sh [<dir>...]
+"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-migrate-scan.sh" [<dir>...]
 ```
 
 Target resolution (DL #9):
@@ -165,7 +165,7 @@ skill splits the problem by what it *can* know, and does **not** ship a blind
 rewriter.
 
 **Detect first (once).** Run
-`${CLAUDE_PLUGIN_ROOT}/scripts/crystal-refscan.sh detect` to see which link
+`"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-refscan.sh" detect` to see which link
 styles the project uses (frontmatter-graph / wikilink / mdlink) and which
 dominates prose. Record the result as a **link-integrity policy** decision in the
 `migration` crystal's Decision Log — this is how the skill respects conventions
@@ -174,7 +174,7 @@ it didn't know a priori (the answer to "we don't know how this project links").
 **Per rename, scan the blast radius.** For each renamed identifier (old slug AND
 old path) run:
 
-    ${CLAUDE_PLUGIN_ROOT}/scripts/crystal-refscan.sh find <old-id>
+    "${CLAUDE_PLUGIN_ROOT}/scripts/crystal-refscan.sh" find <old-id>
 
 It buckets every hit by syntax: `frontmatter` (graph keys) · `wikilink` ·
 `mdlink` · `plain`. Then apply the two tiers — **tiering is location-primary, not
@@ -211,7 +211,7 @@ them):
 
 1. **Read dates from the source file *before* moving** (DL #8) — the scan already
    did this; stamp `created:` / `last-updated:` from the scan row into the new
-   frontmatter. `${CLAUDE_PLUGIN_ROOT}/scripts/crystal-dates.sh <file>` re-derives
+   frontmatter. `"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-dates.sh" <file>` re-derives
    them on demand (git first-commit / last-touch, with a birthtime/mtime fallback
    for non-git projects — Sidetrack #3).
 2. **Move with history continuity.** In a git repo: `git mv <old> <new>` so blame
@@ -235,7 +235,7 @@ them):
    a violation list it would repeat forever.
 
    Drop the marker only when a file has been genuinely brought to canon —
-   verify with `${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh <file>` and remove
+   verify with `"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh" <file>` and remove
    `crystal-schema:` once it is silent.
 4. **References** → `<owner>/references/<name>.md` with a `reference-for:
    [[<owner>/workitem|<owner>]]` back-link (disambig wikilink form — bare
