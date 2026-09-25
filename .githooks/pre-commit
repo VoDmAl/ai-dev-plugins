@@ -2,7 +2,7 @@
 # Local pre-commit hook. Activated by:
 #     git config core.hooksPath .githooks
 #
-# Runs eight independent gates. Each fails fast — failure in any gate blocks
+# Runs nine independent gates. Each fails fast — failure in any gate blocks
 # the commit:
 #   1. lib-sync       — every lib file carried by two or more plugins must stay
 #                       byte-identical (caught by scripts/check-lib-sync.sh)
@@ -48,6 +48,11 @@
 #   8. helper red-tests — changing a shipped helper under any plugin's bin/
 #                       re-runs tests/<helper>.test.sh, and refuses a helper
 #                       that has none. Conditional (~10s per helper).
+#   9. snippet red-tests — changing any plugin's skills/ re-runs
+#                       tests/githook-snippets.test.sh: the git-hook blocks a
+#                       SKILL hands to a user's own pre-commit are read out of
+#                       the SKILL and run against fake installs. Conditional
+#                       (~5s).
 
 set -eu
 
@@ -193,3 +198,17 @@ for h in $(printf '%s\n' "$staged" \
   echo "gates: shipped helper '$h' changed — re-running its red tests (~10s)…"
   bash "tests/$h.test.sh"
 done
+
+# Gate 9 — the snippets a SKILL hands to a user's shell. They run outside the
+# harness, in the user's own `.githooks/pre-commit`, where nothing of this suite
+# looks at them again — and they find the plugin's install path by themselves.
+# Until vdm-git 2.15.2 that finding was a glob taking the first clone by name;
+# on the machine this suite is developed on it hit the live one of two clones by
+# alphabetical luck (2026-09-25). The suite reads the blocks out of the SKILL, so
+# what it runs is what a user pastes. Keyed to any plugin's skills/, not to the
+# one SKILL that carries snippets today: at ~5s there is nothing to save by
+# guessing, and a list would go quiet on the first new snippet.
+if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/skills/|tests/githook-snippets\.test\.sh$)'; then
+  echo "gates: a SKILL changed — re-running the git-hook snippets' red tests (~5s)…"
+  bash tests/githook-snippets.test.sh
+fi

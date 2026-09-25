@@ -419,26 +419,60 @@ unchecked items.
 ### Activating in a downstream project
 
 Add to your repo's `.githooks/pre-commit` (and activate the hooksPath once
-with `git config core.hooksPath .githooks`):
+with `git config core.hooksPath .githooks`). It takes two blocks: the
+resolver, pasted **once per hook file** and shared with the
+[U+FFFD guard](#ufffd-corruption-that-arrives-by-batch-write) below, and then
+the gate itself.
+
+```bash
+# vdm-git gate resolver — shared by the vdm-git gates; paste it once per hook.
+# Prints where vdm-git's <script> is: inside the marketplace checkout the
+# harness has REGISTERED (known_marketplaces.json → installLocation). That
+# checkout is unversioned, so the path survives plugin updates, and asking the
+# registry means an abandoned second clone of the same marketplace is never
+# picked — a glob over marketplaces/* returns clones by name, not by which one
+# is live. With no registry to ask it falls back to that glob, and refuses to
+# guess between two copies. On failure it prints nothing and says why on
+# stderr; it never fails the hook by itself, so it is safe under `set -e`.
+vdm_git_gate() {
+  vdm_rel="vdm-git/scripts/$1"; vdm_found=""
+  vdm_locs=$(for vdm_reg in "$HOME/.claude/plugins/known_marketplaces.json" \
+                            "$HOME/.qwen/plugins/known_marketplaces.json"; do
+      if [ -f "$vdm_reg" ]; then
+        { grep -o '"installLocation"[[:space:]]*:[[:space:]]*"[^"]*"' "$vdm_reg" || true; } |
+          sed 's/.*"\([^"]*\)"$/\1/'
+      fi
+    done) || true
+  if [ -n "$vdm_locs" ]; then
+    vdm_found=$(printf '%s\n' "$vdm_locs" | while IFS= read -r vdm_loc; do
+        if [ -x "$vdm_loc/plugins/$vdm_rel" ]; then printf '%s\n' "$vdm_loc/plugins/$vdm_rel"; fi
+      done) || true
+  else
+    vdm_found=$(for vdm_c in "$HOME"/.claude/plugins/marketplaces/*/plugins/"$vdm_rel" \
+                             "$HOME"/.qwen/plugins/marketplaces/*/plugins/"$vdm_rel"; do
+        if [ -x "$vdm_c" ]; then printf '%s\n' "$vdm_c"; fi
+      done) || true
+  fi
+  if [ -z "$vdm_found" ]; then
+    # Say so. A gate that cannot find itself must not look like a gate that
+    # found nothing to report.
+    echo "[vdm-git] $1 not found — is vdm-git installed?" >&2
+  elif [ "$(printf '%s\n' "$vdm_found" | grep -c .)" -gt 1 ]; then
+    echo "[vdm-git] several copies of $1 — not guessing which one is live:" >&2
+    printf '%s\n' "$vdm_found" | sed 's/^/  /' >&2
+  else
+    printf '%s\n' "$vdm_found"
+  fi
+}
+```
 
 ```bash
 # Crystal completion-discipline backup gate (from vdm-git plugin).
-# Resolves itself: the marketplace checkout carries an UNVERSIONED copy, so
-# the path survives plugin updates. CRYSTAL_PRECOMMIT_CHECK overrides it
-# (CI, a non-standard install, a fork).
-crystal_check="${CRYSTAL_PRECOMMIT_CHECK:-}"
-if [ -z "$crystal_check" ]; then
-  for c in "$HOME"/.claude/plugins/marketplaces/*/plugins/vdm-git/scripts/crystal-precommit-check.sh \
-           "$HOME"/.qwen/plugins/marketplaces/*/plugins/vdm-git/scripts/crystal-precommit-check.sh; do
-    [ -x "$c" ] && { crystal_check="$c"; break; }
-  done
-fi
+# Needs the resolver above. CRYSTAL_PRECOMMIT_CHECK overrides it (CI, a
+# non-standard install, a fork).
+crystal_check="${CRYSTAL_PRECOMMIT_CHECK:-$(vdm_git_gate crystal-precommit-check.sh)}"
 if [ -n "$crystal_check" ]; then
   "$crystal_check" || exit 1
-else
-  # Say so. A gate that cannot find itself must not look like a gate that
-  # found nothing to report.
-  echo "[crystal] pre-commit backup gate not found — vdm-git not installed?" >&2
 fi
 ```
 
@@ -454,12 +488,26 @@ Two consequences, both applied above: resolve the path instead of demanding it
 be pinned by hand (install drops from three steps to two), and **be loud when
 resolution fails** — an unresolvable gate is a broken gate, not a quiet one.
 
+**Why the registry, not the first clone a glob finds.** Up to vdm-git 2.15.1 the
+snippet took the first match of
+`~/.claude/plugins/marketplaces/*/plugins/vdm-git/scripts/…`. Observed
+2026-09-25 on the machine this suite is developed on: two clones of the same
+marketplace side by side — the live one, and an abandoned one six months stale
+(vdm 2.1.0) that the harness no longer referenced. A glob returns matches by
+name, and the live clone happened to sort first. With the names the other way
+round, every commit would have been checked by the stale copy, and nothing
+would have said so. The harness's own registry names the live checkout, so the
+resolver asks it first. The glob is only the fallback when there is no registry
+to ask, and there it refuses to guess between two copies — it names both, so
+the stale one can be removed.
+
 The unversioned marketplace path is stable across plugin updates, unlike
 `…/plugins/cache/<marketplace>/vdm-git/<version>/…`, whose version segment
-moves on every release. The glob covers both harness install roots
-(`.claude/`, `.qwen/`) and any marketplace name. The script itself still fails
-open on internal errors, so this hook entry is safe in a repo that has no
-crystal workitems yet.
+moves on every release. Both harness roots (`.claude/`, `.qwen/`) and any
+marketplace name are covered. The gate script itself still fails open on
+internal errors, so this hook entry is safe in a repo that has no crystal
+workitems yet. Both blocks are run exactly as written here by the upstream red
+tests: `cc-vdm-plugins → tests/githook-snippets.test.sh`.
 
 ### Why three layers (DL #7)
 
@@ -515,22 +563,16 @@ And what they do read, including the two cases they once missed:
 
 ### Activating in a downstream project
 
-Same shape as the crystal backup above — resolve the installed path, and say so
-when it is not found:
+Paste the resolver from the [crystal backup above](#activating-in-a-downstream-project)
+once per hook file — if the crystal gate is already in the hook, the resolver is
+too — and then:
 
 ```bash
-# U+FFFD guard (from vdm-git plugin).
-fffd_check="${FFFD_PRECOMMIT_CHECK:-}"
-if [ -z "$fffd_check" ]; then
-  for c in "$HOME"/.claude/plugins/marketplaces/*/plugins/vdm-git/scripts/fffd-precommit-check.sh \
-           "$HOME"/.qwen/plugins/marketplaces/*/plugins/vdm-git/scripts/fffd-precommit-check.sh; do
-    [ -x "$c" ] && { fffd_check="$c"; break; }
-  done
-fi
+# U+FFFD guard (from vdm-git plugin). Needs the resolver above.
+# FFFD_PRECOMMIT_CHECK overrides it.
+fffd_check="${FFFD_PRECOMMIT_CHECK:-$(vdm_git_gate fffd-precommit-check.sh)}"
 if [ -n "$fffd_check" ]; then
   "$fffd_check" || exit 1
-else
-  echo "[fffd] pre-commit guard not found — vdm-git not installed?" >&2
 fi
 ```
 

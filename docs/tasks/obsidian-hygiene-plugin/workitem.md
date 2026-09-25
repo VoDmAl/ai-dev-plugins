@@ -408,7 +408,11 @@ executor стоит: `"dataview"` в `.obsidian/community-plugins.json`), — и
 гигиены (DL #4) этой ловушки не имеет: он читает `installPath`. Брошенный клон — кандидат на
 удаление, но это машина пользователя, решать ему.
 
-**Status:** open
+**Status:** resolved 2026-09-25 — пользователь: «и чинить и удалять». `vdm-git` 2.15.2: резолвер
+`vdm_git_gate` берёт клон из `known_marketplaces.json`, glob — только без реестра и без угадывания
+между двумя копиями; `tests/githook-snippets.test.sh` (gate 9) красный на прежнем тексте. Брошенный
+клон перенесён в Корзину — всё его содержимое есть в истории репозитория. Старый сниппет остался в
+`command-center/.git/hooks/pre-commit`; с одним клоном на машине он снова однозначен.
 
 ## Next actions
 
@@ -418,8 +422,7 @@ executor стоит: `"dataview"` в `.obsidian/community-plugins.json`), — и
 - [x] ~~Спросить `executor` про Sidetrack #1 и Sidetrack #2~~ — cancelled: решено на
       нашей стороне, DL #4 и DL #5.
 - [x] Разобрать Sidetrack #4 и Sidetrack #5 до того, как инвентарь станет кодом — DL #6.
-- [ ] Sidetrack #7: чинить ли резолвер в `vdm-git` и убирать ли брошенный клон marketplace —
-      решает пользователь.
+- [x] Sidetrack #7: резолвер в `vdm-git` починен (2.15.2), брошенный клон marketplace убран.
 - [ ] Спроектировать резолв корня и конфиг: `--vault=` → `executor` → вверх до
       `.obsidian/`; ключ `obsidian-hygiene` в `.claude/vdm-plugins.json`; вложения — из
       `app.json` (DL #5).
