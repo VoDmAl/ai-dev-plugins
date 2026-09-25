@@ -5,7 +5,7 @@ description: "Довести профиль Obsidian до любого vault'а 
 status: dormant
 session-type: prd-prep
 created: 2026-09-08
-last-updated: 2026-09-21
+last-updated: 2026-09-25
 ---
 
 ## Назначение
@@ -55,9 +55,13 @@ vault'а и в чужих сессиях не обнаруживается ни�
 `/vdm-obsidian:profile`. Путь эталона — `~/.claude/vdm-plugins.json` →
 `obsidian-profile.reference`, дефолт `/Volumes/Working/executor` (DL #6).
 
-**Оба блокирующих вопроса закрыты; открытым остаётся один технический** — два из пяти
-pre-commit гейтов захардкожены на два плагина и третий их молча сузит (Sidetrack #6).
-Решить до первого коммита нового плагина.
+**Блокеров нет.** Оба HITL закрыты 2026-09-08 (DL #6, #7). Технический вопрос про два
+гейта, захардкоженных на два плагина (Sidetrack #6), снялся сам 2026-09-22: `790bc29`
+обобщил оба на `plugins/*/`, когда появился `vdm-comms`. Следующий шаг — скелет плагина.
+
+**Второй бриф разобран.** `obsidian-hygiene-plugin` 2026-09-25 стал кристаллом
+[[obsidian-hygiene-plugin/workitem|obsidian-hygiene-plugin]] (`draft`), и он ждёт
+именно этот скелет: гигиена встаёт в тот же `vdm-obsidian`.
 
 ## Decision Log
 
@@ -218,7 +222,9 @@ pre-commit гейта — Sidetrack #6.
 
 ### #3. Правила 9–11 из hygiene-брифа — предмет ЭТОГО кристалла, а не того
 
-**Status:** open
+**Status:** migrated → obsidian-hygiene-plugin, Sidetrack #4 (2026-09-25) — проверку
+выполняет разбор того брифа, а пресеты, которыми её закрывать, живут в vault'е отправителя,
+не в этом кристалле (DL #2).
 **Возникло в:** разбор двух брифов рядом.
 
 Инвентарь `obsidian-hygiene-plugin` перечисляет 11 правил на вынос. Три из них —
@@ -253,7 +259,10 @@ Navigator через `data.json`), №11 (никаких `index.base`) — не 
 
 ### #6. Два pre-commit гейта из пяти захардкожены на два плагина
 
-**Status:** open
+**Status:** resolved 2026-09-22 (замечено 2026-09-25) — оба гейта обобщены в `790bc29`
+вместе с появлением `vdm-comms`: `check-lib-sync.sh` сверяет каждый файл в `plugins/*/lib/`
+(строка 37), паттерн `check-skill-paths.sh` — `plugins/[A-Za-z0-9_-]+/` (строка 59).
+Третий плагин уже есть, и ни один гейт от него не сузился.
 **Возникло в:** проверка последствий DL #7 — что тянет за собой третий плагин.
 
 - `scripts/check-lib-sync.sh` (строки 10–11) держит ровно две переменные, `VDM_LIB` и
@@ -278,8 +287,8 @@ Navigator через `data.json`), №11 (никаких `index.base`) — не 
 
 - [x] **HITL #1.** Путь к эталону → глобальный конфиг с дефолтом (DL #6).
 - [x] **HITL #2.** Место → новый плагин `vdm-obsidian` (DL #7).
-- [ ] Решить судьбу двух гейтов, захардкоженных на два плагина (Sidetrack #6) — **до**
-      первого коммита `plugins/vdm-obsidian/`.
+- [x] Решить судьбу двух гейтов, захардкоженных на два плагина (Sidetrack #6) — **до**
+      первого коммита `plugins/vdm-obsidian/`. Снято: обобщены в `790bc29` (2026-09-22).
 - [ ] Скелет плагина: `plugins/vdm-obsidian/.claude-plugin/plugin.json` (0.1.0) + запись в
       `.claude-plugin/marketplace.json`.
 - [ ] Написать `skills/profile/SKILL.md`: `description` ловит **симптомы** на RU и EN, не слово «Obsidian».
@@ -313,7 +322,9 @@ Navigator через `data.json`), №11 (никаких `index.base`) — не 
 
 - Входящий бриф (заархивирован):
   `~/.claude/vdm/intercom/ai-dev-plugins/_done/obsidian-profile-skill.md`.
-  Второй, неразобранный и всё ещё `pending`: `../obsidian-hygiene-plugin.md`.
+  Второй бриф (`obsidian-hygiene-plugin`) разобран 2026-09-25 в кристалл
+  [[obsidian-hygiene-plugin/workitem|obsidian-hygiene-plugin]]; архив —
+  `_done/obsidian-hygiene-plugin.md`.
 - Инструмент: `/Volumes/Working/executor/projects/vault-profile/` — `README.md`
   (описание слоёв), `tasks/vault-profile/workitem.md` (решения и обоснования),
   `scripts/{check,apply,reference-drift,plugin-settings-diff}.mjs`, `presets/targets.json`.
