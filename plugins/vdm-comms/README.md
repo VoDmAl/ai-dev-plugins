@@ -12,6 +12,8 @@ files. One home for a tool three repositories had each copied and drifted.
 | attachment checklist of a letter | same linter | after a write to an unsent `*/comms/*-out.md` that attaches something |
 | pending-item linter | `PostToolUse` hook + CLI | after a write into a `pending-paths` file — **new lines only** |
 | outgoing-draft guard | `PreToolUse` hook | when creating `*/comms/*-out.md` |
+| form of an outgoing draft | the meeting linter | after a write to a `draft: true` letter — per `channel:`, from `comms.letter-form`; a declared draft outside `comms/` is named |
+| raw `.eml` guard | `PreToolUse` hook | a `Write`, or a `cp`/`mv`/`>`/… in Bash, that puts an `.eml` into `comms/` or the meetings tree |
 | generated-layer drift signal | `SessionStart` hook | once per session, and only when something is behind |
 | overdue signal | `SessionStart` hook | once per session, and only when something is due, unsent or untranscribed |
 | `/vdm-comms:meetings` | skill | the contract, configuration, onboarding |

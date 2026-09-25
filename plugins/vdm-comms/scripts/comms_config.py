@@ -24,6 +24,9 @@ Config lives in `.claude/vdm-plugins.json` (or `.qwen/…`) under `comms`:
     people-dir        directory of people profiles           (default "people")
     pending-draft-days unsent-draft age threshold, 0 = off   (default 3)
     pending-transcript-days  window for "held, no transcript", 0 = off (default 0)
+    letter-form       per channel: what an outgoing DRAFT must carry — `channel`,
+                      `subject`, `separator`; `*` applies to every draft; merged
+                      over the default key by key       (default {"email": ["subject"]})
     enabled           false switches the whole plugin off    (default true)
 
 Only what genuinely differed between the three field repositories is
@@ -66,6 +69,13 @@ DEFAULTS = {
     # Off by default: a repository that keeps no transcripts would be told
     # about every meeting it holds, for a reason it never chose.
     "pending-transcript-days": 0,
+    # What an outgoing DRAFT must carry, per channel (`channel:` in its
+    # frontmatter, normalised to its first word). The default is the one thing
+    # true of every email in every repository — it has a subject; a separator
+    # before the text to send is a project's own convention (space-hq keeps it,
+    # half of global-auth-gap's letters do not), so it is opted into, not
+    # imposed. `*` applies to every draft, including one with no channel yet.
+    "letter-form": {"email": ["subject"]},
 }
 
 # Wording for the files the generator writes INTO THE PROJECT. It is the one
@@ -176,6 +186,10 @@ def load(project_root):
     for key in DEFAULTS:
         if key in section and section[key] is not None:
             cfg[key] = section[key]
+    # letter-form is merged key by key: a project that adds `*` keeps the
+    # default's `email`, and one that wants no email rule says `"email": []`.
+    if isinstance(section.get("letter-form"), dict):
+        cfg["letter-form"] = dict(DEFAULTS["letter-form"], **section["letter-form"])
     cfg["enabled"] = section.get("enabled", True)
     return cfg, None
 

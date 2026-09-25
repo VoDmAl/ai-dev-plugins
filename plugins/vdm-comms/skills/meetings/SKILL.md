@@ -173,6 +173,7 @@ history as a defect.
 | `meeting-rules` | the project's own conventions, off until named — see the section above. |
 | `labels` | wording of the files the GENERATOR writes into your repository: `"en"` (default), `"ru"`, or an object overriding individual keys, merged over English. |
 | `link-style`, `registry-columns`, `series-columns` | how the generated layer writes links and which columns it writes — see `/vdm-comms:index`. |
+| `letter-form` | what an outgoing **draft** must carry, per channel — see *The form of a draft* below. Merged over the default key by key. Default `{"email": ["subject"]}`. |
 | `enabled` | `false` switches the whole plugin off. |
 
 Fill `track-roots` and `series` from what the repository actually contains. The
@@ -194,6 +195,71 @@ had grown two more: nineteen letters sat outside the guard, and nothing said
 so — a narrowed guard looks exactly like a quiet one.
 
 Editing an existing letter is never blocked.
+
+### The form of a draft, per channel
+
+A letter says which channel it goes out through — `channel:` in its frontmatter
+(`email`, `telegram`, `express`, `intercom`, `sms`, …). The channel decides the
+form: an email needs a subject line, a chat message does not. **When a text has an
+outside reader, declare its channel as you create the draft** — that is the one
+moment it is known, and without it no tool can tell a letter from a note.
+
+The value is read by its first word, lowercase: `SMS (to the parents)` is `sms`,
+`eXpress` is `express`. Write whatever note you need after the first word.
+
+What each channel requires is the project's own, in `comms.letter-form`:
+
+```json
+{ "comms": { "letter-form": { "*": ["channel", "separator"], "email": ["subject"] } } }
+```
+
+| Element | What the draft must have |
+|---|---|
+| `channel` | a `channel:` in the frontmatter |
+| `subject` | a `**Subject**: …` line (or `**Тема**:`) **on its own line**, between the `>` service header and the separator — not inside the `>` quote, where it is neither seen nor copied with the letter |
+| `separator` | a `---` line after the service header, and the text to send after it — everything below the line is pasted as it stands |
+
+`*` applies to every draft, including one that declares no channel yet; a
+channel's own list adds to it. The default is only `{"email": ["subject"]}` —
+the one thing true of every email in every repository. A separator is a
+project's convention and is opted into.
+
+Checked **only for drafts** (`draft: true`, no `sent:`). A letter already sent is
+history: fitting it to a form written later would falsify the record. Each
+missing element comes back as feedback right after the write.
+
+### Outgoing text outside comms/
+
+A file anywhere that declares `channel:` and `draft: true` is an outgoing draft
+by its own word, and its form is checked wherever it lives. But the draft guard
+and `pending` look only in `comms/`, so outside it the draft is not tracked —
+the linter says so at the write. Move the text to
+`<track>/comms/<date>-<slug>-out.md`, and keep the working notes where they were,
+with a link.
+
+### Incoming mail: the letter, not the .eml
+
+A letter that arrived goes into the repository as what was read, not as the raw
+mail file:
+
+- the text of the letter or the thread → `comms/<date>-<slug>-in.md`;
+- the attachments that matter → extracted from the `.eml` into
+  `comms/attachments/` — the documents and screenshots under discussion, not the
+  logos from signatures;
+- the `.eml` itself stays where it is (`~/Downloads`, the mail system). Read it
+  there — python's `email` module parses it.
+
+Why: the text is already in the `.md`; the `.eml` duplicates it in size (27 files,
+22 MB in one repository, synced to three devices), in CRLF noise, and in
+personal data from signatures that the `.md` never carried.
+
+A `PreToolUse` guard refuses a raw `.eml` into `comms/` or the meetings tree — a
+`Write`, and a `cp`/`mv`/`rsync`/`ditto`/`install`/`ln`/`scp`/`tee`,
+`curl -o`/`wget -O` or `>` in Bash, following `cd` along the chain. Removing one
+(`git rm`) is never blocked. Two limits, stated rather than hidden: it watches
+only the plugin's territory — an `.eml` fixture in a code repository is
+legitimate and is left alone, and so is one put anywhere else — and it reads a
+Bash command by name, so a script that writes the file itself is not seen.
 
 ### Attaching files to an outgoing letter
 

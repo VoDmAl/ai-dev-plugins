@@ -44,10 +44,21 @@ payload=$(cat)
 # `comms.meetings-dir` and also has no python3 gets no feedback rather than a
 # wrong one — the rename cannot be read without a parser. An outgoing letter
 # (`*/comms/*-out.md`) is in scope too: its attachment checklist is checked here.
+# So is any `.md` whose written content declares `channel:` — a letter by its
+# own word, wherever it lives (workitem vdm-comms-letter-form DL #2). Seen in the
+# raw payload as an escaped newline before the key, which needs no parser.
 lint_in_scope() {
   printf '%s' "$payload" | grep -qE '"tool_name"[[:space:]]*:[[:space:]]*"(Write|Edit|MultiEdit)"' 2>/dev/null || return 1
-  printf '%s' "$payload" | grep -qE '/meetings/|/comms/[^"]*-out\.md' 2>/dev/null || return 1
-  return 0
+  printf '%s' "$payload" | grep -qE '/meetings/|/comms/[^"]*-out\.md' 2>/dev/null && return 0
+  printf '%s' "$payload" | grep -qE '"file_path"[[:space:]]*:[[:space:]]*"[^"]*\.md"' 2>/dev/null || return 1
+  printf '%s' "$payload" | grep -qE '\\nchannel:[[:space:]]*[^[:space:]\\]' 2>/dev/null && return 0
+  # An Edit carries no frontmatter in its payload. When the path is already
+  # known (python3 missing, jq present), the file itself says whether it is a
+  # letter — PostToolUse runs after the write, so it is on disk.
+  if [ -n "${file_path:-}" ] && [ -f "$file_path" ]; then
+    head -n 40 "$file_path" 2>/dev/null | grep -qE '^channel:[[:space:]]*[^[:space:]]' && return 0
+  fi
+  return 1
 }
 
 lint_unverified() {
@@ -119,10 +130,12 @@ esac
 # yet) whose resolution is a judgement call, not a defect.
 if [ "$rc" -eq 1 ]; then
   {
-    case "$file_path" in
-      */comms/*-out.md) printf '🚫 comms-lint: this outgoing letter does not meet the contract:\n' ;;
-      *)                printf '🚫 comms-lint: this file does not meet the meetings contract:\n' ;;
-    esac
+    if case "$file_path" in */comms/*-out.md) true ;; *) false ;; esac ||
+       head -n 40 "$file_path" 2>/dev/null | grep -qE '^channel:[[:space:]]*[^[:space:]]'; then
+      printf '🚫 comms-lint: this outgoing letter does not meet the contract:\n'
+    else
+      printf '🚫 comms-lint: this file does not meet the meetings contract:\n'
+    fi
     printf '%s\n' "$out"
     printf '\n'
     printf 'The contract is a FLOOR — extra keys and extra sections are never\n'

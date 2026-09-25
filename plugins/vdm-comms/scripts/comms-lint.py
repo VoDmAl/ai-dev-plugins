@@ -88,7 +88,44 @@ CHECK_ITEM_RE = re.compile(r"^\s*[-*]\s+\[[ xX]\]\s+(.*)$")
 MD_LINK_RE = re.compile(r"\[([^\]]*)\]\(\s*<?([^)>]+?)>?\s*\)")
 WIKI_LINK_RE = re.compile(r"\[\[[^\]]+\]\]")
 
+# The form of an outgoing DRAFT, per channel (`comms.letter-form`).
+FORM_ELEMENTS = ("channel", "subject", "separator")
+CHANNEL_WORD_RE = re.compile(r"[^\W_][\w-]*")
+SUBJECT_RE = re.compile(r"^\*\*(Subject|Тема)\*\*:\s*\S")
+QUOTED_SUBJECT_RE = re.compile(r"^\s*>.*\*\*(Subject|Тема)\*\*:")
+SEPARATOR_RE = re.compile(r"^\s{0,3}(-{3,}|\*{3,}|_{3,})\s*$")
+
 KNOWN_TYPES = ("meeting", "meeting-series", "index", "readme", "meeting-link")
+
+def channel_of(value):
+    """The channel a letter declares, normalised to its first word, lowercase.
+
+    Measured 2026-09-25 across three repositories: `channel:` was already in 46
+    letters, written as free text — `SMS` and `sms`, `eXpress` and `express`,
+    `intercom (~/.claude/…/letter.md)`, a whole sentence about the thread. The
+    field is recognised as people write it rather than re-specified: its first
+    word is the channel, the rest is their note."""
+    if value in (None, "", False, True):
+        return None
+    m = CHANNEL_WORD_RE.search(str(value).strip().lower())
+    return m.group(0) if m else None
+
+
+def _declared_letter(path):
+    """(channel, is_draft) from a file's own frontmatter, or None when it
+    declares no channel. Read leniently: a shape the vendored reader does not
+    know is not a declaration."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            fm_text, _body = fm.split_frontmatter(fh.read())
+        keys = fm.scalar_keys(fm_text)
+    except (OSError, UnicodeDecodeError, fm.FrontmatterError):
+        return None
+    channel = channel_of(keys.get("channel"))
+    if channel is None:
+        return None
+    return channel, keys.get("draft") is True
+
 
 today = cfgmod.today
 track_exists = cfgmod.track_exists
@@ -139,10 +176,18 @@ def lint_file(path, cfg, project_root):
     rep = Report(path)
     meetings_dir = cfg["meetings-dir"]
     rel = os.path.relpath(os.path.abspath(path), project_root)
-    if LETTER_RE.search(rel.replace(os.sep, "/")):
-        return _lint_letter(rep, path)
+    rel_posix = rel.replace(os.sep, "/")
+    if LETTER_RE.search(rel_posix):
+        return _lint_letter(rep, path, cfg, outside=False)
     kind, dir_name, leaf = _classify(rel, meetings_dir)
     if kind is None:
+        # A file anywhere else is a letter when it SAYS so: `channel:` in its
+        # frontmatter. Recognising outgoing text by folder alone left a board
+        # post that lived a day outside comms/ invisible to every tool
+        # (space-hq, 2026-09-25).
+        if path.endswith(".md") and _declared_letter(path):
+            return _lint_letter(rep, path, cfg,
+                                outside=not re.search(r"(^|/)comms/", rel_posix))
         return None  # not ours
 
     try:
@@ -196,7 +241,57 @@ def lint_file(path, cfg, project_root):
     return rep
 
 
-def _lint_letter(rep, path):
+def _lint_letter_form(rep, keys, body, cfg):
+    """What a DRAFT owes for its channel, per `comms.letter-form`.
+
+    Only drafts: a letter already sent is history, and fitting it to a form
+    written later falsifies the record — the same reason crystal-lint leaves a
+    closed workitem alone. Measured 2026-09-25: of 413 outgoing letters in three
+    repositories, 12 were drafts; the rest predate any form.
+
+    Returns whether any element applied — a draft whose channel requires
+    nothing was not checked, and must not read as `ok`."""
+    form = cfg.get("letter-form") or {}
+    if not isinstance(form, dict):
+        rep.error("`comms.letter-form` must map a channel to a list of elements "
+                  "(%s)" % ", ".join(FORM_ELEMENTS))
+        return True
+    channel = channel_of(keys.get("channel"))
+    need = []
+    for key in ("*", channel):
+        elements = form.get(key) if key else None
+        if isinstance(elements, list):
+            need += [e for e in elements if e not in need]
+    unknown = [e for e in need if e not in FORM_ELEMENTS]
+    if unknown:
+        rep.error("`comms.letter-form` names %s — the known elements are %s"
+                  % (", ".join("`%s`" % u for u in unknown), ", ".join(FORM_ELEMENTS)))
+    lines = body.split("\n")
+    sep = next((i for i, line in enumerate(lines) if SEPARATOR_RE.match(line)), None)
+    head = lines if sep is None else lines[:sep]
+    if "channel" in need and channel is None:
+        rep.error("a draft with no `channel:` in its frontmatter — the channel decides the "
+                  "letter's form (an email needs a subject line); declare it: `channel: "
+                  "email`, `telegram`, …")
+    if "subject" in need and not any(SUBJECT_RE.match(line) for line in head):
+        if any(QUOTED_SUBJECT_RE.match(line) for line in head):
+            rep.error("`**Subject**:` is inside the `>` header — put it on a line of its "
+                      "own between the header and the separator, where it is seen and "
+                      "copied with the letter")
+        else:
+            rep.error("a `channel: %s` draft has no `**Subject**:` line — write it on a "
+                      "line of its own before the separator (`RE: <original subject>` "
+                      "when the letter answers a thread)" % channel)
+    if "separator" in need:
+        if sep is None:
+            rep.error("no `---` separator between the service header and the text to "
+                      "send — everything after it is pasted as it stands")
+        elif not "".join(lines[sep + 1:]).strip():
+            rep.error("nothing after the `---` separator — the text to send goes there")
+    return bool(need)
+
+
+def _lint_letter(rep, path, cfg, outside=False):
     """An outgoing letter that attaches files lists them where the person who
     sends it will look: a `📎` section in the body, one `- [ ]` per file, each a
     link to the file itself.
@@ -222,9 +317,24 @@ def _lint_letter(rep, path):
         fm_text, body = fm.split_frontmatter(text)
     except fm.FrontmatterError:
         return rep
-    if fm.scalar_keys(fm_text).get("sent") not in (None, "", False):
+    keys = fm.scalar_keys(fm_text)
+    if keys.get("sent") not in (None, "", False):
         rep.skip("a letter already sent — the record is history")
         return rep
+    is_draft = keys.get("draft") is True
+    checked = _lint_letter_form(rep, keys, body, cfg) if is_draft else False
+    if outside:
+        if not is_draft:
+            rep.skip("declares a channel but is not a draft — nothing to check")
+            return rep
+        # Recognised here, invisible elsewhere: the draft guard and `pending`
+        # look in comms/ only (walking every file's frontmatter at session
+        # start is the cost that was not taken — workitem DL #6). So the signal
+        # is given at the one moment it is free: now.
+        rep.error("an outgoing draft (`channel: %s`) outside comms/ — the draft guard "
+                  "and `pending` look only in comms/, so this letter is not tracked. "
+                  "Move it to `<track>/comms/<date>-<slug>-out.md`; keep the working "
+                  "notes here with a link to it" % channel_of(keys.get("channel")))
     try:
         attachments = fm.parse(fm_text).get("attachments") if fm_text.strip() else None
     except fm.FrontmatterError:
@@ -251,8 +361,10 @@ def _lint_letter(rep, path):
                   "why now` per file, before the letter text" % len(declared))
         return rep
     if not has_section:
-        rep.skip("a letter that attaches nothing — the 📎 checklist is the only rule "
-                 "for letters")
+        if not checked and not rep.errors:
+            rep.skip("a letter that attaches nothing, and no form is required for its "
+                     "channel (comms.letter-form) — the form and the 📎 checklist are the "
+                     "rules for letters")
         return rep
     if not items:
         rep.error("the 📎 section has no `- [ ]` items — one checkbox per file to attach")
@@ -643,6 +755,15 @@ def print_contract():
     print("letter\tattachments: in frontmatter without a `## 📎 …` section\terror")
     print("letter\ta 📎 section with no `- [ ]` items, or an item that is not a link\terror")
     print("letter\ta 📎 item linking a file that does not exist next to the letter\terror")
+    print("# outgoing drafts — `draft: true`, form per `channel:` (comms.letter-form)")
+    print("config\tletter-form\tdefault: {\"email\": [\"subject\"]}; `*` applies to every draft")
+    print("draft\tchannel: first word, lowercase — `SMS (to Anna)` is sms")
+    print("draft\tchannel element: no `channel:` in the frontmatter\terror")
+    print("draft\tsubject element: no `**Subject**:` line before the separator\terror")
+    print("draft\tsubject element: `**Subject**:` hidden inside the `>` header\terror")
+    print("draft\tseparator element: no `---`, or nothing after it\terror")
+    print("draft\t`channel:` + `draft: true` outside comms/ — not tracked there\terror")
+    print("never\ta letter already sent (`sent:`) — history is not refitted")
 
 
 def main(argv):

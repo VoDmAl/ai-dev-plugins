@@ -833,5 +833,165 @@ printf -- '---\ntype: meeting-series\nnext: 2026-10-01\n---\n\n# s\n' > "$FX/mee
 run_lint "$FX/meetings/nxgood.md"; rc=$?
 expect_exit "GREEN: a dated next: passes" 0 "$rc"
 
+echo ""
+echo "== the form of an outgoing draft, per channel (comms.letter-form) =="
+# Field case, 2026-09-25 (space-hq): an email draft with no subject line and the
+# channel "not chosen" passed the linter in silence. The form is a project's
+# own, so it is configured; the one default is what every email has — a subject.
+LF="$FX/gaps/alpha/comms/2026-09-25-form-out.md"
+
+printf -- '---\ndraft: true\nchannel: email\n---\n\n# → Anna\n\n> service header\n\n---\n\nHello.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "RED: an email draft with no subject line ⇒ exit 1" 1 "$rc"
+expect_says "…says what is missing" "$OUT" "no \`**Subject**:\` line"
+printf -- '---\ndraft: true\nchannel: email\n---\n\n# → Anna\n\n> service header\n\n**Subject**: Access for the pilot\n\n---\n\nHello.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "GREEN: the same draft with its subject line ⇒ exit 0 (the brief's acceptance)" 0 "$rc"
+expect_says "…and reads as checked, not skipped" "$OUT" ": ok"
+
+printf -- '---\ndraft: true\nchannel: email\n---\n\n> service header\n> **Subject**: hidden\n\n---\n\nHello.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "RED: a subject hidden inside the > header ⇒ exit 1" 1 "$rc"
+expect_says "…named as hidden, not as missing" "$OUT" "inside the \`>\` header"
+
+printf -- '---\ndraft: true\nchannel: "Email (to Anna, cc the team)"\n---\n\nHello.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "RED: free-text channel is read by its first word — 'Email (…)' is email" 1 "$rc"
+
+printf -- '---\ndraft: true\nchannel: telegram\n---\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "GREEN: a channel the default asks nothing of ⇒ exit 0" 0 "$rc"
+expect_says "…and says it was skipped, not ok" "$OUT" "skipped (a letter that attaches nothing"
+
+printf -- '---\nsent: 2026-09-20\nchannel: email\n---\n\nGone.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "GREEN: a sent email without a subject is history, not refitted" 0 "$rc"
+
+printf '{\n  "comms": {\n    "letter-form": {"*": ["channel", "separator"]}\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
+printf -- '---\ndraft: true\n---\n\n---\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "RED: '*' asks for a channel, the draft declares none ⇒ exit 1" 1 "$rc"
+expect_says "…says so" "$OUT" "no \`channel:\`"
+printf -- '---\ndraft: true\nchannel: telegram\n---\n\n> header\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "RED: '*' asks for the separator, there is none ⇒ exit 1" 1 "$rc"
+expect_says "…says so" "$OUT" "no \`---\` separator"
+printf -- '---\ndraft: true\nchannel: telegram\n---\n\n> header\n\n---\n\n   \n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "RED: a separator with nothing after it ⇒ exit 1" 1 "$rc"
+expect_says "…says so" "$OUT" "nothing after the \`---\` separator"
+printf -- '---\ndraft: true\nchannel: telegram\n---\n\n> header\n\n---\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "GREEN: channel and separator present ⇒ exit 0" 0 "$rc"
+printf -- '---\ndraft: true\nchannel: email\n---\n\n> header\n\n---\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "RED: a project's '*' is merged over the default — email still owes a subject" 1 "$rc"
+
+printf '{\n  "comms": {\n    "letter-form": {"email": ["subjekt"]}\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
+printf -- '---\ndraft: true\nchannel: email\n---\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "RED: an unknown element in the config ⇒ exit 1, not ignored" 1 "$rc"
+expect_says "…names it" "$OUT" "\`subjekt\`"
+rm -f "$FX/.claude/vdm-plugins.json" "$LF"
+
+echo ""
+echo "== an outgoing draft declared outside comms/ =="
+# Field case, 2026-09-25 (space-hq): a board post for two outside readers lived a
+# day in a working file of its track, and no tool saw it — every one of them
+# recognised outgoing text by the folder. `channel:` makes it a letter by its own
+# word; outside comms/ the draft guard and pending still cannot see it, so the
+# linter says so at the one moment it costs nothing.
+GR="$FX/gaps/alpha/grill.md"
+printf -- '---\ndraft: true\nchannel: board\n---\n\n> for the security team\n\n---\n\nText.\n' > "$GR"
+run_skip "$GR"; rc=$?
+expect_exit "RED: channel + draft outside comms/ ⇒ exit 1" 1 "$rc"
+expect_says "…names why it matters" "$OUT" "outside comms/"
+OUT=$(payload Write "$GR" "x" | (cd "$FX" && bash "$LINTSH" --hook) 2>&1); rc=$?
+expect_exit "HOOK: comes back as feedback at write time (exit 2)" 2 "$rc"
+expect_says "HOOK: …headed as a letter" "$OUT" "this outgoing letter does not meet the contract"
+printf -- '---\nchannel: board\n---\n\nPublished notes.\n' > "$GR"
+run_skip "$GR"; rc=$?
+expect_exit "GREEN: a channel without draft: true outside comms/ ⇒ exit 0" 0 "$rc"
+rm -f "$GR"
+
+# PostToolUse runs after the write, so the file is on disk — as it is here.
+printf -- '---\ndraft: true\nchannel: board\n---\n\nText.\n' > "$GR"
+gr_payload=$(payload Write "$GR" "$(cat "$GR")")
+OUT=$(printf '%s' "$gr_payload" | env -i HOME="$HOME" LC_ALL=C PATH="$FARM" \
+      bash -c "bash '$LINTSH' --hook" 2>&1); rc=$?
+expect_exit "RED: a declared letter written without python3 ⇒ NOT CHECKED, exit 2" 2 "$rc"
+expect_says "…it says NOT CHECKED" "$OUT" "NOT CHECKED"
+EML_GUARD="$P/scripts/comms-eml-guard.sh"
+# An Edit carries no frontmatter; the file on disk has to be the witness.
+ed_payload=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"Edit","tool_input":{"file_path":sys.argv[1],"old_string":"Text.","new_string":"More."}}))' "$GR")
+OUT=$(printf '%s' "$ed_payload" | env -i HOME="$HOME" LC_ALL=C PATH="$FARM" \
+      bash -c "bash '$LINTSH' --hook" 2>&1); rc=$?
+if [ -n "$JQ" ]; then
+  expect_exit "RED: an Edit of a declared letter without python3 ⇒ exit 2 (the file is read)" 2 "$rc"
+else
+  ok "SKIP: an Edit without python3 needs jq to learn the path — none on this machine"
+fi
+rm -f "$GR"
+
+echo ""
+echo "== the raw .eml stays out of comms/ and meetings/ =="
+# Owner's rule, 2026-09-25, for every project: the letter's text goes to
+# comms/*-in.md, the attachments that matter to comms/attachments/, the raw .eml
+# stays in the mail system. The files arrive by `cp` in Bash as often as by
+# Write, so both are read. Territory only (workitem DL #5): a mail-parser repo's
+# fixtures are legitimately .eml, and the plugin is installed everywhere.
+bash_payload() { # bash_payload <command> [cwd]
+  python3 - "$1" "${2:-$FX}" <<'PY'
+import json, sys
+print(json.dumps({"tool_name": "Bash", "tool_input": {"command": sys.argv[1]}, "cwd": sys.argv[2]}))
+PY
+}
+eml_run() { OUT=$(printf '%s' "$1" | (cd "$FX" && CLAUDE_PROJECT_DIR="$FX" bash "$EML_GUARD") 2>&1); return $?; }
+mkdir -p "$FX/gaps/alpha/comms/attachments" "$FX/tests/fixtures" "$FX/meetings/$PAST-mail"
+printf 'From: a\n\nbody\n' > "$TMP/letter.eml"
+
+eml_run "$(payload Write "$FX/gaps/alpha/comms/attachments/letter.eml" "raw")"; rc=$?
+expect_exit "RED: Write of an .eml into comms/attachments/ ⇒ exit 2" 2 "$rc"
+expect_says "…says what goes where instead" "$OUT" "comms/<date>-<slug>-in.md"
+eml_run "$(bash_payload "cp '$TMP/letter.eml' gaps/alpha/comms/attachments/")"; rc=$?
+expect_exit "RED: cp of an .eml into a comms/ directory ⇒ exit 2" 2 "$rc"
+expect_says "…names where it would have landed" "$OUT" "gaps/alpha/comms/attachments/letter.eml"
+eml_run "$(bash_payload "mv \"$TMP/letter.eml\" \"meetings/$PAST-mail/\"")"; rc=$?
+expect_exit "RED: mv of an .eml into the meetings tree ⇒ exit 2" 2 "$rc"
+eml_run "$(bash_payload "cd gaps/alpha && cp '$TMP/letter.eml' comms/")"; rc=$?
+expect_exit "RED: cd is followed along the chain ⇒ exit 2" 2 "$rc"
+eml_run "$(bash_payload "cat '$TMP/letter.eml' > gaps/alpha/comms/copy.eml")"; rc=$?
+expect_exit "RED: a > redirect into comms/ ⇒ exit 2" 2 "$rc"
+eml_run "$(bash_payload "curl -sS -o gaps/alpha/comms/attachments/x.eml https://example.org/x.eml")"; rc=$?
+expect_exit "RED: curl -o into comms/ ⇒ exit 2" 2 "$rc"
+eml_run "$(bash_payload "cp -t gaps/alpha/comms/attachments '$TMP/letter.eml'")"; rc=$?
+expect_exit "RED: cp -t <dir> form ⇒ exit 2" 2 "$rc"
+
+eml_run "$(bash_payload "python3 -c 'import email,sys; print(email.message_from_file(open(sys.argv[1])))' '$TMP/letter.eml'")"; rc=$?
+expect_exit "GREEN: reading an .eml where it lies ⇒ exit 0" 0 "$rc"
+eml_run "$(bash_payload "cp '$TMP/letter.eml' /tmp/")"; rc=$?
+expect_exit "GREEN: copying an .eml outside the project ⇒ exit 0" 0 "$rc"
+eml_run "$(bash_payload "cp '$TMP/letter.eml' tests/fixtures/")"; rc=$?
+expect_exit "GREEN: an .eml fixture outside comms/ and meetings/ ⇒ exit 0" 0 "$rc"
+eml_run "$(payload Write "$FX/tests/fixtures/sample.eml" "raw")"; rc=$?
+expect_exit "GREEN: Write of an .eml fixture ⇒ exit 0" 0 "$rc"
+eml_run "$(bash_payload "git rm gaps/alpha/comms/attachments/old.eml")"; rc=$?
+expect_exit "GREEN: removing an .eml — the cleanup — is never blocked" 0 "$rc"
+eml_run "$(payload Write "$FX/gaps/alpha/comms/2026-09-25-x-in.md" "the text of the letter")"; rc=$?
+expect_exit "GREEN: the letter's text as -in.md ⇒ exit 0" 0 "$rc"
+eml_run "$(bash_payload "cp '$TMP/letter.eml' 'gaps/alpha/comms/attachments/letter.eml")"; rc=$?
+expect_exit "RED: unbalanced quotes near comms/ ⇒ NOT CHECKED, exit 2" 2 "$rc"
+expect_says "…and says so" "$OUT" "NOT CHECKED"
+
+OUT=$(printf '%s' "$(payload Write "$FX/gaps/alpha/comms/attachments/letter.eml" "raw")" | \
+      env -i HOME="$HOME" LC_ALL=C PATH="$FARM" bash -c "cd '$FX' && bash '$EML_GUARD'" 2>&1); rc=$?
+expect_exit "RED: .eml into comms/ without python3 ⇒ NOT CHECKED, exit 2" 2 "$rc"
+OUT=$(printf '%s' "$(bash_payload "cp '$TMP/letter.eml' tests/fixtures/")" | \
+      env -i HOME="$HOME" LC_ALL=C PATH="$FARM" bash -c "cd '$FX' && bash '$EML_GUARD'" 2>&1); rc=$?
+expect_exit "GREEN: same broken env, an .eml nowhere near comms/ ⇒ exit 0" 0 "$rc"
+OUT=$(printf '%s' "$(bash_payload "ls -la")" | \
+      env -i HOME="$HOME" LC_ALL=C PATH="$FARM" bash -c "cd '$FX' && bash '$EML_GUARD'" 2>&1); rc=$?
+expect_exit "GREEN: same broken env, a call with no .eml at all ⇒ exit 0" 0 "$rc"
+
 printf '\ncomms: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
