@@ -292,6 +292,8 @@ Navigator через `data.json`), №11 (никаких `index.base`) — не 
 - [ ] Скелет плагина: `plugins/vdm-obsidian/.claude-plugin/plugin.json` (0.1.0) + запись в
       `.claude-plugin/marketplace.json`.
 - [ ] Написать `skills/profile/SKILL.md`: `description` ловит **симптомы** на RU и EN, не слово «Obsidian».
+- [ ] Sidetrack #5: назвать границу v1 — skill инертен на машине без эталона — в
+      `description` skill'а и в README, чтобы её не обнаруживали первым запуском.
 - [ ] Предусловие резолва цели: `<target>/.obsidian/` существует (DL #5); иначе спросить путь.
 - [ ] Предусловие эталона: путь существует и смонтирован; иначе — громкий отказ с причиной
       («том не смонтирован»), без попыток изобрести замену.
@@ -312,10 +314,10 @@ Navigator через `data.json`), №11 (никаких `index.base`) — не 
 - [ ] Приёмка, шаг 3: после согласия и `--apply` — `check` даёт exit 0.
 - [ ] Приёмка, шаг 4: при отсутствующем `/Volumes/Working` — внятное сообщение, не пустой
       вывод и не попытка обойтись своими силами.
-- [ ] Отправить постановку в `vdx`: сводный `--all` по реестру целей + индикатор
-      «N из 8 отстали» (DL #3), приложить Sidetrack #4.
-- [ ] Ответить `executor`: `intercom send executor obsidian-profile-skill-ready`,
-      включив сдвиг 13→19 (Sidetrack #1) и косметику (Sidetrack #2).
+- [ ] Отправить постановку в `vdx` (приложить Sidetrack #4): сводный `--all` по реестру
+      целей + индикатор «N из 8 отстали» (DL #3).
+- [ ] Ответить `executor` (Sidetrack #1, Sidetrack #2 — сдвиг 13→19 и косметика):
+      `intercom send executor obsidian-profile-skill-ready`.
 - [x] Заархивировать входящий бриф — сделано 2026-09-08, лежит в `_done/`.
 
 ## References
