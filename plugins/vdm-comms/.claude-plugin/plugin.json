@@ -1,6 +1,6 @@
 {
   "name": "vdm-comms",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Meetings and correspondence discipline: a configurable contract linter for meetings/<date>-<slug>/ and series files, with a project's own conventions switched on by name (comms.meeting-rules); a drift signal for the generated registry and per-track meeting pointers, written as markdown or Obsidian wikilinks; a draft guard that refuses to mark an unsent letter as sent, and an attachment checklist the sender can click; and a pending-item detector that reads both date markers (clock and (due:)), series queues and unsent drafts, and answers who owes what by when. The wording of everything written into the project is configurable (comms.labels), defaulting to English.",
   "author": {
     "name": "Dmitry Vorobyev"

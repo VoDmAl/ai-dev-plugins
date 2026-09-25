@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/comms-index-check.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/comms-index-check.sh\"",
             "timeout": 10
           }
         ]
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending-check.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending-check.sh\"",
             "timeout": 10
           }
         ]
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/comms-draft-guard.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/comms-draft-guard.sh\"",
             "timeout": 5
           }
         ]
@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh --hook",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh\" --hook",
             "timeout": 10
           }
         ]
@@ -49,7 +49,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh --hook",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh\" --hook",
             "timeout": 10
           }
         ]

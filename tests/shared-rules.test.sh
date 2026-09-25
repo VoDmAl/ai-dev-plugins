@@ -96,7 +96,7 @@ echo "== wiring =="
 hj="$REPO_ROOT/plugins/vdm/hooks/hooks.json"
 if command -v jq >/dev/null 2>&1; then
   eq "registered as a SessionStart hook" \
-     "$(jq -r '[.hooks.SessionStart[].hooks[].command | select(endswith("/scripts/shared-rules.sh"))] | length' "$hj")" "1"
+     "$(jq -r '[.hooks.SessionStart[].hooks[].command | select(contains("/scripts/shared-rules.sh"))] | length' "$hj")" "1"
 else
   says "registered as a SessionStart hook" "$(cat "$hj")" "scripts/shared-rules.sh"
 fi
