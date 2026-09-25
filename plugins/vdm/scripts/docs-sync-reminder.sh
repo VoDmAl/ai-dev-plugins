@@ -20,6 +20,13 @@
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/config-read.sh"
 # shellcheck disable=SC1091
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/reminder-throttle.sh" 2>/dev/null || true
+# Loaded up front, not at the output step: the paths below are DATA that goes
+# into a JSON string, and they are escaped as they are placed.
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/reminder-emit.sh" 2>/dev/null || {
+  _vdm_json_escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+  _vdm_reminder_emit() { printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "UserPromptSubmit",\n    "additionalContext": "%s"\n  }\n}\n' "$4"; }
+}
 
 vdm_is_enabled "docs-sync" || exit 0
 mode=$(vdm_get_mode "docs-sync" "smart")
@@ -41,10 +48,24 @@ git rev-parse --is-inside-work-tree &>/dev/null && in_git=1
 
 # 1. Changed files — modified, staged, and untracked. We use porcelain status
 # so newly created files (which `git diff` ignores) also surface in reminders.
-# Strip the 2-char status code and any rename arrow ("old -> new" → "new").
+#
+# Every git call in this script that names paths uses -z. Without it git quotes
+# any path holding a non-ASCII byte, a double quote or a backslash —
+# `"docs/\320\235\320\276\320\262.md"` — and the quoted form is not a path: it
+# failed the `[ -f ]` test below, so a changed Cyrillic file lost its @see refs
+# in silence, and its raw `"` broke the JSON this text is delivered in, taking
+# every other reminder of the turn down with it (command-center, 2026-09-25).
+# core.quotePath=false would fix only the Cyrillic; a quote or a backslash in a
+# name is still quoted. In -z form a rename is "XY new\0old\0" — the old name
+# is read and dropped.
 changed_files=""
 if [ "$in_git" = 1 ]; then
-  changed_files=$(git status --porcelain 2>/dev/null | sed -E 's/^.{2} //;s/^.* -> //')
+  changed_files=$(git status --porcelain -z 2>/dev/null | while IFS= read -r -d '' entry; do
+      # `(pattern)` form: bash 3.2 takes a bare `pattern)` inside $( ) for the
+      # end of the substitution.
+      case "${entry:0:2}" in (R*|C*|?R|?C) IFS= read -r -d '' _ ;; esac
+      printf '%s\n' "${entry:3}"
+    done)
 fi
 
 # Smart/conditional firing: nothing to report when the tree is clean.
@@ -75,7 +96,7 @@ fi
 # count said 30 for 640 files, and four of the project's own guides were missing.
 # Outside git, `find` with the heavy directories pruned — never descended into.
 if [ "$in_git" = 1 ]; then
-  md_files=$(git ls-files -co --exclude-standard -- '*.md' 2>/dev/null \
+  md_files=$(git ls-files -z -co --exclude-standard -- '*.md' 2>/dev/null | tr '\0' '\n' \
              | grep -vE '^(\.claude|\.serena)/' | sort)
 else
   md_files=$(find . \( -name .git -o -name node_modules -o -name vendor -o -name .claude \
@@ -95,7 +116,7 @@ if [ -n "$changed_files" ]; then
       refs=$(sed -nE 's/.*@see[[:space:]]+([^[:space:]]+).*/\1/p' "$f" 2>/dev/null \
              | grep -i '\.md' | head -5 | tr '\n' ',' | sed 's/,$//; s/,/, /g')
       if [ -n "$refs" ]; then
-        see_refs="${see_refs}${f}: ${refs}\n"
+        see_refs="${see_refs}$(_vdm_json_escape "$f"): $(_vdm_json_escape "$refs")\n"
       fi
     fi
   done <<< "$changed_files"
@@ -118,8 +139,8 @@ if [ -n "$keywords" ] && [ -n "$md_files" ]; then
   if [ -n "$pattern" ] && [ "$in_git" = 1 ]; then
     # One process over every doc, instead of one grep per file over the first
     # thirty the filesystem happened to return.
-    relevant_docs=$(git grep --untracked -l -i -E -e "$pattern" -- '*.md' \
-                      ':(exclude).claude' ':(exclude).serena' 2>/dev/null | head -10)
+    relevant_docs=$(git grep -z --untracked -l -i -E -e "$pattern" -- '*.md' \
+                      ':(exclude).claude' ':(exclude).serena' 2>/dev/null | tr '\0' '\n' | head -10)
   elif [ -n "$pattern" ]; then
     relevant_docs=$(echo "$md_files" | head -500 | while IFS= read -r md; do
       if [ -f "$md" ] && grep -qilE "$pattern" "$md" 2>/dev/null; then
@@ -137,7 +158,7 @@ context="[docs-sync] 📋 Documentation sync context:"
 # tree is clean — the rest of the payload (project docs map, footer) still emits.
 if [ -n "$changed_files" ]; then
   file_count=$(echo "$changed_files" | wc -l | tr -d ' ')
-  file_list=$(echo "$changed_files" | head -10 | tr '\n' ', ' | sed 's/,$//')
+  file_list=$(_vdm_json_escape "$(echo "$changed_files" | head -10 | tr '\n' ', ' | sed 's/,$//')")
   context="${context}\n\nChanged files (${file_count}): ${file_list}"
 fi
 
@@ -157,7 +178,7 @@ fi
 # prompt of the session. A sample plus the count says the same thing.
 if [ -n "$md_files" ]; then
   md_count=$(echo "$md_files" | wc -l | tr -d ' ')
-  md_list=$(echo "$md_files" | head -10 | tr '\n' ', ' | sed 's/,$//')
+  md_list=$(_vdm_json_escape "$(echo "$md_files" | head -10 | tr '\n' ', ' | sed 's/,$//')")
   if [ "$md_count" -gt 10 ]; then
     md_list="${md_list}, … (+$((md_count - 10)))"
   fi
@@ -168,7 +189,7 @@ fi
 
 # Relevant docs (keyword matches)
 if [ -n "$relevant_docs" ]; then
-  rel_list=$(echo "$relevant_docs" | tr '\n' ', ' | sed 's/,$//')
+  rel_list=$(_vdm_json_escape "$(echo "$relevant_docs" | tr '\n' ', ' | sed 's/,$//')")
   context="${context}\n\nPotentially affected docs: ${rel_list}"
 fi
 
@@ -176,9 +197,6 @@ fi
 context="${context}\n\nBEFORE completing user-facing changes: verify listed docs reflect current behavior."
 context="${context}\nFor deep analysis with relevance scoring → run /vdm:docs-sync"
 
-# Output
-# shellcheck disable=SC1091
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/reminder-emit.sh" 2>/dev/null \
-  || _vdm_reminder_emit() { printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "UserPromptSubmit",\n    "additionalContext": "%s"\n  }\n}\n' "$4"; }
+# Output — the emitter was loaded at the top.
 _vdm_reminder_emit docs-sync 1 \
   "docs-sync: user-facing change → verify affected docs (/vdm:docs-sync)" "$context"

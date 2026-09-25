@@ -220,5 +220,62 @@ direct=$( cd "$FX" && TMPDIR="$TMP/state2" bash "$REPO_ROOT/plugins/vdm/scripts/
           <<<'{"session_id":"z"}' 2>/dev/null )
 says "a child run by hand still prints its own hook JSON" "$direct" '"hookEventName": "UserPromptSubmit"'
 
+# valid <label> <json> — the hook output parses as JSON, the way the harness reads it.
+valid() {
+  printf '%s' "$2" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null \
+    && ok "$1" || bad "$1" "$(printf '%s' "$2" | head -c 400)"
+}
+
+printf '\ntext that is not valid JSON costs only itself\n'
+
+# The field report (command-center, 2026-09-25): git put a Cyrillic path in
+# quotes with octal escapes, docs-sync pasted it into its text, and the one
+# raw `"` made the whole section unparseable — every other reminder of that
+# turn went with it. Any reminder can produce such text; the contract that each
+# one escapes itself held until the first one did not.
+K="$TMP/k6"
+kid "$K" docs-sync       1 0 "docs short"    '[docs-sync] Project docs (2): "gaps/Taxradar-\320\241.md", ok.md'
+kid "$K" crystal-capture 1 0 "crystal short" '[crystal] NEIGHBOUR-FULL'
+dispatch "$K"
+valid "RED: a fragment with a raw quote and a bad escape still yields valid hook JSON" "$RAW"
+says "RED: …the neighbour is delivered" "$CTX" "NEIGHBOUR-FULL"
+says "RED: …the broken text is delivered too, escaped" "$CTX" 'gaps/Taxradar-'
+says "RED: …and named as a defect of that reminder, not passed off as normal" "$CTX" "docs-sync: this reminder's text was not valid JSON"
+
+K="$TMP/k7"
+kid "$K" docs-sync 1 0 "docs short" "$(printf '[docs-sync] RAW-FIRST\nRAW-SECOND')"
+kid "$K" learn     2 0 "learn-SHORT" '[learn] LEARN-FULL'
+dispatch "$K"
+valid "RED: a raw newline inside a fragment does not break the JSON" "$RAW"
+says "RED: …and both of its lines arrive" "$CTX" "RAW-SECOND"
+says "RED: …and the habit line survives next to it" "$CTX" "learn-SHORT"
+
+direct=$( printf '. %q\n_vdm_reminder_emit probe 1 %q %q\n' "$LIBDIR/reminder-emit.sh" \
+            'short "q"' 'full "q" \3 end' | bash 2>/dev/null )
+valid "RED: run by hand, a reminder with broken text still prints valid JSON" "$direct"
+
+printf '\ndocs-sync: paths git would quote\n'
+
+# The real child, in a repository whose .md names are exactly what git quotes:
+# Cyrillic, a space, a double quote. Before the fix all three came out in
+# `"…\320…"` form, broke the JSON, and — for a changed file — also failed the
+# `[ -f ]` test, so its @see references were silently skipped.
+DS="$TMP/ds"; mkdir -p "$DS/docs" "$DS/src"
+( cd "$DS" && git init -q . && git config user.email t@t && git config user.name t ) >/dev/null 2>&1
+printf 'a\n' > "$DS/docs/Документ с пробелом.md"
+printf 'b\n' > "$DS/docs/quote\"name.md"
+printf 'c\n' > "$DS/README.md"
+( cd "$DS" && git add -A && git commit -qm init ) >/dev/null 2>&1
+printf 'x\n' > "$DS/src/app.py"
+printf '# @see docs/Документ с пробелом.md\n' > "$DS/docs/Новый.md"
+ds=$( cd "$DS" && TMPDIR="$TMP/state3" bash "$REPO_ROOT/plugins/vdm/scripts/docs-sync-reminder.sh" \
+        <<<'{"session_id":"ds"}' 2>/dev/null )
+valid "RED: docs-sync over Cyrillic, space and quote paths prints valid JSON" "$ds"
+dsctx=$(printf '%s' "$ds" | python3 -c 'import json,sys; print(json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"], end="")' 2>/dev/null)
+says "RED: …the Cyrillic path with a space reads as itself" "$dsctx" "docs/Документ с пробелом.md"
+says "RED: …the path with a quote reads as itself" "$dsctx" 'docs/quote"name.md'
+says "RED: …a changed Cyrillic file is listed as itself" "$dsctx" "docs/Новый.md"
+says_not "RED: …and no octal escape leaks through" "$ds" '\320'
+
 printf '\nreminders-dispatch: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

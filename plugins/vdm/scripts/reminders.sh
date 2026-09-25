@@ -46,6 +46,20 @@
 set -u
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Every text this script prints comes from a child, and one malformed text used
+# to make the whole section unparseable — the harness then dropped every
+# reminder of the turn, not only the broken one (command-center, 2026-09-25).
+# The children check their texts as they hand them over; this checks them again
+# as they arrive, because a child killed by the watchdog mid-write can leave a
+# fragment cut inside an escape. Without the lib the texts pass unchecked, as
+# before — a reminder may fail open.
+# shellcheck disable=SC1091
+. "$SELF_DIR/../lib/reminder-emit.sh" 2>/dev/null || {
+  _vdm_reminder_text_guard() { printf '%s' "$2"; }
+  _vdm_json_text_ok() { return 0; }
+  _vdm_json_escape() { printf '%s' "$1"; }
+}
 CHILD_DIR="${VDM_REMINDERS_DIR:-$SELF_DIR}"
 DEADLINE="${VDM_REMINDERS_DEADLINE:-25}"
 case "$DEADLINE" in ''|*[!0-9]*) DEADLINE=25 ;; esac
@@ -98,6 +112,8 @@ for name in $TIER1_ORDER $TIER2_ORDER; do
   short=$(sed -n '2p' "$f")
   full=$(sed -n '3,$p' "$f")
   [ -n "$full" ] || continue
+  full=$(_vdm_reminder_text_guard "$name" "$full")
+  _vdm_json_text_ok "$short" || short=$(_vdm_json_escape "$short")
   n=$((n + 1))
   only_full="$full"
   if [ "$tier" = "1" ]; then
