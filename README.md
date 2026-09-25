@@ -517,7 +517,7 @@ If you forget, a SessionStart hook in `.claude/settings.json` prints a one-line 
 |------|--------|---------------|
 | lib-sync | `scripts/check-lib-sync.sh` | any file under `plugins/{vdm,vdm-git}/lib/**` is staged |
 | version-bump | `scripts/check-version-bump.sh` | any file under `plugins/X/**` is staged (bump check) **and** unconditionally (marketplace ↔ plugin.json parity) |
-| skill-paths | `scripts/check-skill-paths.sh` | unconditionally — user-time files must not reference `plugins/X/<subdir>/` (use `${CLAUDE_PLUGIN_ROOT}/...` instead) |
+| skill-paths | `scripts/check-skill-paths.sh` | unconditionally — user-time files must not reference `plugins/X/<subdir>/` (use `${CLAUDE_PLUGIN_ROOT}/...` instead), and must quote the root where a command invokes it |
 | crystal | `scripts/check-crystal-completion.sh` | any `docs/tasks/**/workitem.md` (or flat `docs/tasks/*.md`) is staged with frontmatter `status: done` and unchecked `- [ ]` items remain |
 | crystal-canon | `plugins/vdm/scripts/crystal-lint.sh --staged` | any staged workitem whose shape does not match the canon derived from `templates/workitem-template.md` (non-terminal tier only) |
 | gate red-tests | `tests/gates.test.sh` + `tests/gates-harness-isolation.test.sh` | a gate script or the harness itself is staged (~15s) |
@@ -552,6 +552,8 @@ bash tests/hook-commands.test.sh           # hooks.json commands as the harness 
 Always pair the bump with a `PROJECT_CHANGELOG.md` entry.
 
 **skill-paths.** Lints `plugins/*/skills/**/SKILL.md` and `plugins/*/templates/*.md` for direct references to `plugins/(vdm|vdm-git)/(scripts|lib|hooks|templates|skills)/...`. Those paths only resolve inside this dev clone — at user time the plugin lives under `${CLAUDE_PLUGIN_ROOT}` (resolved by Claude Code). Use `${CLAUDE_PLUGIN_ROOT}/<subdir>/...` everywhere in user-time files. Bare plugin names (e.g. "the vdm plugin") are not flagged — only concrete subpaths.
+
+A third check, added 2026-09-25: where a user-time file **invokes** a plugin file, the root is quoted — `"${CLAUDE_PLUGIN_ROOT}/scripts/x.sh" --flag`. The assistant copies such a command into a shell, and a plugin installed under a path with a space (`~/AI Projects/…`) splits there. An invocation is any occurrence in a fenced block, a line that opens with the root (an indented code block), or an inline span where the path takes an argument. A name in prose — `` Script: `${CLAUDE_PLUGIN_ROOT}/scripts/x.sh` `` — is not flagged: it is read or opened with a file tool, where a space does no harm and quotes would.
 
 One carve-out, added 2026-09-04, and it sharpens the rule rather than excusing a case: the same substring **rooted at an install directory** (`~/.claude/plugins/…`, `~/.qwen/plugins/…`) is a user-time path by construction — it resolves on the user's machine and nowhere in this clone, the exact inverse of what the gate catches. It exists because `guard/SKILL.md` emits a git-hook snippet that runs in a plain shell, where `${CLAUDE_PLUGIN_ROOT}` is undefined (the harness sets it for skills, not for git hooks), so that snippet has to resolve the install path itself. The anchor must appear **before** the match on the same line; a bare dev-tree path on a line that merely mentions an install directory later is still a leak, and there is a red test for exactly that — otherwise the exemption would be a hole shaped like a sentence.
 

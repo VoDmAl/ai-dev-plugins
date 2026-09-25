@@ -45,10 +45,10 @@ memory; it needed something that compares.
 
 ```bash
 # what is behind?
-${CLAUDE_PLUGIN_ROOT}/scripts/comms-index.py --check
+"${CLAUDE_PLUGIN_ROOT}/scripts/comms-index.py" --check
 
 # apply it, then read the diff before committing
-${CLAUDE_PLUGIN_ROOT}/scripts/comms-index.py --write
+"${CLAUDE_PLUGIN_ROOT}/scripts/comms-index.py" --write
 ```
 
 At session start a hook prints one line when something is behind, and nothing

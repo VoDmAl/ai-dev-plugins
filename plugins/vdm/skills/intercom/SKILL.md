@@ -287,7 +287,7 @@ All routing/scaffolding is done by the dispatcher script — invoke it, don't
 re-derive its logic:
 
 ```
-${CLAUDE_PLUGIN_ROOT}/scripts/intercom.sh <subcommand> [args]
+"${CLAUDE_PLUGIN_ROOT}/scripts/intercom.sh" <subcommand> [args]
 ```
 
 | Subcommand | Behavior |

@@ -1,5 +1,7 @@
 #!/bin/bash
-# check-skill-paths.sh — lint user-time files for dev-tree path leaks.
+# check-skill-paths.sh — lint user-time files for paths that do not resolve at
+# user time: dev-tree leaks, dangling repo-doc refs, and commands whose
+# ${CLAUDE_PLUGIN_ROOT} is unquoted (see Gate 3 below).
 #
 # Files in plugins/*/skills/**/SKILL.md and plugins/*/templates/*.md are
 # the plugin's contract with user projects. Their paths must resolve at user
@@ -144,8 +146,58 @@ for f in "${targets[@]}"; do
   done
 done
 
+# ---------------------------------------------------------------------------
+# Gate 3: an INVOCATION of a plugin file must quote the root.
+#
+# The root is substituted into the text the assistant reads, and the assistant
+# copies a command into a shell. Unquoted, a plugin installed under a path with
+# a space (`~/AI Projects/…`, a clone used as a marketplace) splits there:
+# `/Users/…/AI: No such file or directory`. Found 2026-09-25 by echelon in
+# hooks.json, where it switched the blocking hooks off silently; the same form
+# sat in 29 commands across the SKILL.md files.
+#
+# What counts as an invocation, deliberately narrow:
+#   - any occurrence inside a fenced code block;
+#   - a line that BEGINS with the root (an indented code block);
+#   - an inline code span in which the path is followed by an argument.
+# A name-only span in prose — "Script: `${CLAUDE_PLUGIN_ROOT}/scripts/x.sh`",
+# "Read the template at `…`" — is a name, not a command: it is read, or opened
+# with a file tool, and a space harms neither. Quoting names would only teach
+# the file tool to receive a path with quotes in it.
+#
+# Quoted = the character before `$` is `"` or `'`. That covers `"${…}/x.sh" args`
+# and `command='bash "${…}/x.sh"'`.
+# ---------------------------------------------------------------------------
+unquoted=$(awk '
+  FNR == 1 { fence = 0 }
+  /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+  {
+    if (fence || $0 ~ /^[[:space:]]*\$\{CLAUDE_PLUGIN_ROOT\}\//) {
+      if ($0 ~ /(^|[^"'"'"'\\])\$\{CLAUDE_PLUGIN_ROOT\}\//) print FILENAME ":" FNR ": " $0
+      next
+    }
+    n = split($0, part, "`")
+    for (i = 2; i <= n; i += 2)
+      if (part[i] ~ /(^|[^"'"'"'\\])\$\{CLAUDE_PLUGIN_ROOT\}\/[^ ]+ +[^ ]/) { print FILENAME ":" FNR ": " $0; break }
+  }
+' "${targets[@]}" 2>/dev/null || true)
+
+if [ -n "$unquoted" ]; then
+  drift=1
+  {
+    printf '\n'
+    printf 'skill-paths: 🚨 unquoted ${CLAUDE_PLUGIN_ROOT} in a command:\n'
+    printf '\n'
+    printf '%s\n' "$unquoted" | sed 's/^/  /'
+    printf '\n'
+    printf '  The assistant runs this in a shell. Installed under a path with a space,\n'
+    printf '  the root splits there and the command fails. Quote the path, keep the\n'
+    printf '  arguments outside: "${CLAUDE_PLUGIN_ROOT}/scripts/x.sh" --flag\n'
+  } >&2
+fi
+
 if [ "$drift" -eq 0 ]; then
-  echo "skill-paths: ✓ user-time files use \${CLAUDE_PLUGIN_ROOT}; no dangling repo-doc refs"
+  echo "skill-paths: ✓ user-time files use \${CLAUDE_PLUGIN_ROOT}, quoted where invoked; no dangling repo-doc refs"
 fi
 
 exit "$drift"

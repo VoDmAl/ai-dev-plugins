@@ -61,8 +61,8 @@ pending_unverified() {
   if command -v vdm_gate_unverified >/dev/null 2>&1; then
     vdm_gate_unverified "comms-pending" "$1" \
       "a markdown file carrying open items was just written — whether its new items name an owner and a date was never checked" \
-      "install python3 (stdlib is enough — the plugin brings no dependencies), then re-run: \${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh --lint <file>" \
-      "or check it against \${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh --print-contract by hand"
+      "install python3 (stdlib is enough — the plugin brings no dependencies), then re-run: \"\${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh\" --lint <file>" \
+      "or check it against \"\${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh\" --print-contract by hand"
   else
     printf '\n[comms-pending] NOT CHECKED — %s\n  A file with open items was written and the contract check could not run.\n\n' "$1" >&2
   fi
@@ -130,7 +130,7 @@ if [ "$rc" -eq 1 ]; then
     printf '\n'
     printf 'An item needs an owner and a date to be a signal rather than a note.\n'
     printf 'Print the contract with:\n'
-    printf '  ${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh --print-contract\n'
+    printf '  "${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh" --print-contract\n'
   } >&2
   exit 2
 fi

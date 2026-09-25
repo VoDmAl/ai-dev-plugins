@@ -49,5 +49,5 @@ rc=$?
 
 printf '%s\n' "$out"
 printf '        Who owes what: /vdm-comms:pending — or by owner:\n'
-printf '        ${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh --owner\n'
+printf '        "${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh" --owner\n'
 exit 0

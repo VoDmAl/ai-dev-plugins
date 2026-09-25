@@ -159,12 +159,12 @@ gets switched off, which costs the real findings too.
 ## Use
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh              # overdue · 7 days · by event
-${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh --owner      # grouped by owner
-${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh --all        # everything, including far-dated
-${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh --lint       # contract violations, whole repo
-${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh --json       # for scripts
-${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh --print-contract
+"${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh"              # overdue · 7 days · by event
+"${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh" --owner      # grouped by owner
+"${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh" --all        # everything, including far-dated
+"${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh" --lint       # contract violations, whole repo
+"${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh" --json       # for scripts
+"${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh" --print-contract
 ```
 
 **When to run it**: at the start of a session (the first question is always

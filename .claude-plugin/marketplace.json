@@ -11,7 +11,7 @@
     {
       "name": "vdm",
       "description": "SDLC workflow plugins: docs-sync (documentation synchronization), docs-distill (synthesis layer — the summary view nobody rebuilds because nobody asks; discovery + drift signal via `covers:` frontmatter, crystal harvest on cut, two-way handoff with docs-sync), learn (knowledge capture), changelog (project change tracking), crystal-* (multi-root workitem discipline gate — grow/bud/cut/cave/migrate with auto-scan + 4-tier status taxonomy + in-flight capture-reminder + orphan-sidetracks gate + batch legacy-doc migration + evidence discipline: Basis taxonomy, pre-action gate, live current-model section), intercom (central cross-agent/cross-session message store outside all repos, git-remote-identity routing + agent directory: auto-aliases + user-said names + description, SessionStart identity check, hard-stop on unresolved targets).",
-      "version": "2.35.1",
+      "version": "2.35.2",
       "author": {
         "name": "Dmitry Vorobyev"
       },
@@ -39,7 +39,7 @@
     {
       "name": "vdm-comms",
       "description": "Meetings and correspondence discipline for repositories that keep them as files: a configurable contract linter for meetings/<date>-<slug>/ and series files (the contract is a floor distilled from three repositories — a track may resolve as a directory or a single file, index.md is owed only after the meeting has happened), with a project's own conventions switched on by name (comms.meeting-rules); a drift signal for the generated registry and per-track meeting pointers, written as markdown or Obsidian wikilinks with participant, topic and material columns; a PreToolUse guard that refuses to create an outgoing letter already claiming to have been sent, and a linted attachment checklist the sender can click; and a pending-item summary — who owes what by when, series queues, unsent drafts, meetings without a transcript. The wording of everything it writes into the project is configurable (comms.labels), defaulting to English. python3 stdlib only — the frontmatter reader is vendored.",
-      "version": "0.5.1",
+      "version": "0.5.2",
       "author": {
         "name": "Dmitry Vorobyev"
       },

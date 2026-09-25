@@ -55,8 +55,8 @@ lint_unverified() {
   if command -v vdm_gate_unverified >/dev/null 2>&1; then
     vdm_gate_unverified "comms-lint" "$1" \
       "a file under the meetings tree was just written — whether it meets the contract was never checked" \
-      "install python3 (stdlib is enough — the plugin brings no dependencies), then re-run: \${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh <file>" \
-      "or check it against \${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh --print-contract by hand"
+      "install python3 (stdlib is enough — the plugin brings no dependencies), then re-run: \"\${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh\" <file>" \
+      "or check it against \"\${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh\" --print-contract by hand"
   else
     printf '\n[comms-lint] NOT CHECKED — %s\n  A meetings file was written and the contract check could not run.\n\n' "$1" >&2
   fi
@@ -127,7 +127,7 @@ if [ "$rc" -eq 1 ]; then
     printf '\n'
     printf 'The contract is a FLOOR — extra keys and extra sections are never\n'
     printf 'violations. Print it with:\n'
-    printf '  ${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh --print-contract\n'
+    printf '  "${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh" --print-contract\n'
   } >&2
   exit 2
 fi

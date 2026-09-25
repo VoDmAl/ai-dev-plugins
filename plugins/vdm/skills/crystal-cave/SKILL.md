@@ -248,7 +248,7 @@ When `/vdm:crystal-cave [args]` is invoked:
 ### Step 2: Overview → invoke the script, print verbatim
 
 For Overview mode (with or without `--all`), run
-`${CLAUDE_PLUGIN_ROOT}/scripts/crystal-cave.sh [--all]` and print its
+`"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-cave.sh" [--all]` and print its
 stdout verbatim. The script handles resolver, tier classification,
 icons, alignment, group ordering, singleton warnings, and the
 non-canonical drift footer.
@@ -290,7 +290,7 @@ Resolve one only when the user asks for it — bring the file to canon, then
 drop the `crystal-schema:` key.
 
 For `⚠ Off-canon shape`, run
-`${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh --all` to see what each file
+`"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh" --all` to see what each file
 is missing. Never guess the list: canon is derived from the template and is
 the linter's to report.
 
