@@ -116,30 +116,67 @@ else
              -o -type f -name '*.md' -print 2>/dev/null | head -2000 | sed 's|^\./||' | sort)
 fi
 
-# 3. Extract @see references from changed files
+# 3. Extract @see references from changed files.
+#
+# One awk over all of them, and one escape for the whole block. The loop this
+# replaces ran `sed | grep | head | tr | sed` for each file and escaped two
+# strings for each file with a match; with step 4 that was about ten processes
+# per changed file — 75 launches with two changes, 249 with twenty (Sidetrack
+# #8, docs/tasks/crystal-wake/workitem.md). The rule is the same, file by file:
+# on each line the token after the LAST `@see` (what sed's greedy `.*@see`
+# found), kept if it names a .md in any case, the first five, joined by ", " —
+# a comma inside a token included, as the old `s/,/, /g` did. awk is handed
+# `./path`, because a bare `a=b` is an assignment to awk, not a file; it answers
+# with the argument's position, so no name has to survive a trip through awk's
+# output. Unreadable files are left out: one of them would stop awk for all.
+# (`grep -P` was never an option — the stock macOS grep has none.)
 see_refs=""
 if [ -n "$changed_files" ]; then
+  see_names=()
+  see_args=()
   while IFS= read -r f; do
-    if [ -f "$f" ]; then
-      # `grep -P` is not portable: the stock macOS grep has no -P, and with
-      # 2>/dev/null the refusal read as "no @see found" — this section never
-      # appeared on a Mac. sed -E is in every base system.
-      refs=$(sed -nE 's/.*@see[[:space:]]+([^[:space:]]+).*/\1/p' "$f" 2>/dev/null \
-             | grep -i '\.md' | head -5 | tr '\n' ',' | sed 's/,$//; s/,/, /g')
-      if [ -n "$refs" ]; then
-        see_refs="${see_refs}$(_vdm_json_escape "$f"): $(_vdm_json_escape "$refs")\n"
-      fi
-    fi
+    [ -f "$f" ] && [ -r "$f" ] || continue
+    see_names+=("$f")
+    case "$f" in /*) see_args+=("$f") ;; *) see_args+=("./$f") ;; esac
   done <<< "$changed_files"
+  if [ "${#see_args[@]}" -gt 0 ]; then
+    raw_refs=""
+    while IFS=$'\t' read -r i refs; do
+      [ -n "$refs" ] || continue
+      raw_refs="${raw_refs:+$raw_refs$'\n'}${see_names[$((i - 1))]}: $refs"
+    done < <(awk '
+      function flush() { if (out != "") { gsub(/,/, ", ", out); printf "%d\t%s\n", cur, out }; out = "" }
+      BEGIN { for (a = 1; a < ARGC; a++) pos[ARGV[a]] = a }
+      FNR == 1 { flush(); cur = pos[FILENAME]; n = 0 }
+      {
+        line = $0; tok = ""
+        while ((p = index(line, "@see")) > 0) {
+          rest = substr(line, p + 4)
+          if (match(rest, /^[[:space:]]+[^[:space:]]+/)) {
+            tok = substr(rest, RSTART, RLENGTH); sub(/^[[:space:]]+/, "", tok)
+          }
+          line = substr(line, p + 1)
+        }
+        if (tok != "" && n < 5 && tolower(tok) ~ /\.md/) { out = out (n ? "," : "") tok; n++ }
+      }
+      END { flush() }
+    ' "${see_args[@]}" 2>/dev/null)
+    [ -n "$raw_refs" ] && see_refs="$(_vdm_json_escape "$raw_refs")\n"
+  fi
 fi
 
-# 4. Extract keywords from changed file paths (directory names, file basenames without extension)
+# 4. Extract keywords from changed file paths (directory names, file basenames
+# without extension), common names skipped, four bytes or more. One awk over
+# all the paths, not `tr | sed | grep | grep` per path (Sidetrack #8).
 keywords=""
 if [ -n "$changed_files" ]; then
-  keywords=$(echo "$changed_files" | while IFS= read -r f; do
-    # Get meaningful path segments (skip common dirs like src, lib, app)
-    echo "$f" | tr '/' '\n' | sed 's/\.[^.]*$//' | grep -viE '^(src|lib|app|index|main|test|spec|__tests__|scripts|hooks|config|utils|helpers|common|shared|types|models|services|controllers|templates|docs|features|public|assets|styles|dist|build|vendor|node_modules)$' | grep -E '.{4,}'
-  done | sort -u | head -10 | tr '\n' ', ' | sed 's/,$//')
+  keywords=$(printf '%s\n' "$changed_files" | awk -F/ '{
+      for (i = 1; i <= NF; i++) {
+        s = $i; sub(/\.[^.]*$/, "", s)
+        if (tolower(s) ~ /^(src|lib|app|index|main|test|spec|__tests__|scripts|hooks|config|utils|helpers|common|shared|types|models|services|controllers|templates|docs|features|public|assets|styles|dist|build|vendor|node_modules)$/) continue
+        if (length(s) >= 4) print s
+      }
+    }' | sort -u | head -10 | tr '\n' ', ' | sed 's/,$//')
 fi
 
 # 5. Find .md files that mention keywords from changed files
