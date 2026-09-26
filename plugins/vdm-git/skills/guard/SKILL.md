@@ -410,11 +410,12 @@ user editing the workitem directly in their IDE and committing it,
 bypassing the assistant entirely.
 
 Script: `${CLAUDE_PLUGIN_ROOT}/scripts/crystal-precommit-check.sh`. Reads
-`git diff --cached --name-only`, checks each staged workitem
-(folder-style `docs/tasks/<slug>/workitem.md` or flat `docs/tasks/<slug>.md`,
-with the root configurable via `.claude/vdm-plugins.json:crystal.path`).
-Exits 1 with a diagnostic per offending file when `status: done` ships with
-unchecked items.
+the staged paths and checks each staged workitem (folder-style
+`<root>/<slug>/workitem.md` or flat `<root>/<slug>.md`) under **every** crystal
+root the suite resolves: the ones in `.claude/vdm-plugins.json`
+(`crystal.paths`, or `crystal.path`), otherwise each `tasks/` directory found in
+the repository — typically just `docs/tasks/`. Exits 1 with a diagnostic per
+offending file when `status: done` ships with unchecked items.
 
 ### Activating in a downstream project
 

@@ -13,8 +13,8 @@
 # for activation instructions.
 #
 # Behavior:
-#   - Scans `git diff --cached --name-only` for files under the resolved
-#     crystal root (default docs/tasks/).
+#   - Scans the staged paths for files under every resolved crystal root
+#     (default docs/tasks/; `crystal.paths`, or each `tasks/` the scan finds).
 #   - For each candidate workitem (folder-style or flat), reads the STAGED
 #     version (`git show :path`) and checks: status:done + any `- [ ]` → block.
 #   - Exit 0 on clean, 1 on drift (with stderr diagnostic per offending file).
@@ -34,7 +34,7 @@ if command -v vdm_is_enabled >/dev/null 2>&1; then
   vdm_is_enabled "crystal" || exit 0
 fi
 
-if ! command -v resolve_crystal_root >/dev/null 2>&1; then
+if ! command -v resolve_crystal_roots >/dev/null 2>&1; then
   exit 0
 fi
 
@@ -42,13 +42,21 @@ fi
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 cd "$repo_root" || exit 0
 
-crystal_root=$(resolve_crystal_root 2>/dev/null) || exit 0
-# Convert absolute root → relative to repo root for matching git's output.
-case "$crystal_root" in
-  "$repo_root"/*) rel_root="${crystal_root#"$repo_root/"}" ;;
-  *) rel_root="" ;;
-esac
-[ -z "$rel_root" ] && exit 0
+# Every crystal root, relative to the repo root for matching git's output. Not
+# "the" root: resolve_crystal_root is the first of them, and in a repository
+# with two a `done` with open items under the second went through unchecked
+# (Sidetrack #11, cc-vdm-plugins → docs/tasks/crystal-wake/workitem.md). Roots
+# outside the repository cannot hold a staged path and are dropped.
+rel_roots=""
+while IFS= read -r r; do
+  case "$r" in
+    "$repo_root"/*) rel_roots="${rel_roots}${r#"$repo_root/"}
+" ;;
+  esac
+done <<EOF
+$(resolve_crystal_roots 2>/dev/null)
+EOF
+[ -z "$rel_roots" ] && exit 0
 
 # -z: in line form git quotes a path holding any byte outside ASCII, and the
 # quoted line matched none of the patterns below — a crystal with a Cyrillic
@@ -61,23 +69,23 @@ staged=$(git diff --cached --name-only -z 2>/dev/null | LC_ALL=C tr '\0' '\n')
 drift=0
 while IFS= read -r f; do
   [ -n "$f" ] || continue
-  # Only consider candidate workitems under the crystal root.
-  case "$f" in
-    "$rel_root"/*.md|"$rel_root"/*/workitem.md) ;;
-    *) continue ;;
-  esac
-  # Skip if not a workitem layout we recognize.
+  # Only candidate workitems under a crystal root, in a layout we recognize:
+  # folder-style at any depth below it, flat only as a direct .md child. A path
+  # that fails one root is tried against the next — a flat file directly under
+  # an inner root is still below the outer one, just not a direct child of it.
+  layout=""
+  while IFS= read -r rel_root; do
+    [ -n "$rel_root" ] || continue
+    case "$f" in
+      "$rel_root"/*/workitem.md) layout="folder" ;;
+      "$rel_root"/*.md) [ "${f%/*}" = "$rel_root" ] && layout="flat" ;;
+    esac
+    [ -n "$layout" ] && break
+  done <<EOF
+$rel_roots
+EOF
+  [ -n "$layout" ] || continue
   base=$(basename "$f")
-  case "$f" in
-    "$rel_root"/*/workitem.md) layout="folder" ;;
-    "$rel_root"/*.md)
-      # flat layout: only direct .md children of $rel_root
-      parent=$(dirname "$f")
-      [ "$parent" = "$rel_root" ] || continue
-      layout="flat"
-      ;;
-    *) continue ;;
-  esac
 
   # Read STAGED content (git show :path) — this is what's about to commit.
   staged_content=$(git show ":$f" 2>/dev/null) || continue

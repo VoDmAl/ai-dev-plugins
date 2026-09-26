@@ -47,13 +47,16 @@ fixture() {
   ( cd "$d" && git init -q . 2>/dev/null )
   printf '%s' "$d"
 }
-# workitem <repo> <slug> <status> <checkbox> — writes and stages one workitem.
-workitem() {
-  mkdir -p "$1/docs/tasks/$2"
+# workitem_in <repo> <root> <slug> <status> <checkbox> — writes and stages one
+# folder-style workitem under <root>.
+workitem_in() {
+  mkdir -p "$1/$2/$3"
   printf -- '---\nslug: %s\nstatus: %s\n---\n\n## Next actions\n\n%s item\n' \
-    "$2" "$3" "$4" > "$1/docs/tasks/$2/workitem.md"
-  ( cd "$1" && git add -- "docs/tasks/$2/workitem.md" 2>/dev/null )
+    "$3" "$4" "$5" > "$1/$2/$3/workitem.md"
+  ( cd "$1" && git add -- "$2/$3/workitem.md" 2>/dev/null )
 }
+# workitem <repo> <slug> <status> <checkbox> — the same under docs/tasks/.
+workitem() { workitem_in "$1" docs/tasks "$2" "$3" "$4"; }
 # gate <repo> — runs the gate from a UTF-8 locale; sets OUT and RC.
 gate() {
   OUT=$(cd "$1" && LC_ALL=en_US.UTF-8 bash "$GATE" 2>&1)
@@ -108,6 +111,44 @@ case "$OUT" in
   *"Illegal byte sequence"*) bad "…and no tool complains about it" "$(printf '%s' "$OUT" | head -c 200)" ;;
   *)                         ok  "…and no tool complains about it" ;;
 esac
+
+# ---------------------------------------------------------------------------
+printf '\nevery root is checked, not the first\n'
+# ---------------------------------------------------------------------------
+# The library resolves every `tasks/` it finds. The gate asked for "the" root,
+# got the first of them, and in a repository with two a `done` with open items
+# under the second went through (Sidetrack #11,
+# docs/tasks/crystal-wake/workitem.md).
+roots() {
+  local d="$TMP/$1"
+  mkdir -p "$d"
+  ( cd "$d" && git init -q . 2>/dev/null )
+  workitem_in "$d" projects/a/tasks xa in-progress '- [ ]'
+  workitem_in "$d" projects/b/tasks yb in-progress '- [ ]'
+  printf '%s' "$d"
+}
+
+R=$(roots first)
+workitem_in "$R" projects/a/tasks xa done '- [ ]'
+gate "$R"
+eq "canary: done with an open item under the first of two roots is blocked" 1 "$RC"
+
+R=$(roots second)
+workitem_in "$R" projects/b/tasks yb done '- [ ]'
+gate "$R"
+eq "RED: done with an open item under the second root is blocked" 1 "$RC"
+says "…and the message names it" "$OUT" "yb"
+
+R=$(roots flat)
+printf -- '---\nslug: zb\nstatus: done\n---\n\n- [ ] item\n' > "$R/projects/b/tasks/zb.md"
+( cd "$R" && git add -- projects/b/tasks/zb.md 2>/dev/null )
+gate "$R"
+eq "RED: a flat workitem under the second root is checked too" 1 "$RC"
+
+R=$(roots clean)
+workitem_in "$R" projects/b/tasks yb done '- [x]'
+gate "$R"
+eq "done with every item checked passes under any root" 0 "$RC"
 
 printf '\ncrystal-precommit-check: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
