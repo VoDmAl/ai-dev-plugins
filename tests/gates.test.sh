@@ -797,6 +797,11 @@ Not a checkbox at all - [ ] mid-sentence
 ~~~
 - [ ] tilde-fenced example, also not one
 ~~~
+- [ ] a wrapped obligation whose text
+      continues on the next line (due: 2026-01-01)
+- [ ] a parent obligation
+  - [ ] with a nested checkbox of its own
+- [	] a tab inside the brackets, still real
 - [ ] the last real one
 FIXTURE
 
@@ -815,15 +820,21 @@ spec.loader.exec_module(m)
 print(len(m._unchecked_lines(open('$CONF').read())))
 " 2>/dev/null)
 
-# 4 real obligations; the two fenced examples and the mid-sentence text are not.
+# 8 real obligations; the two fenced examples and the mid-sentence text are not.
+# The wrapped item and the nested checkbox are there for crystal-wake DL #1: the
+# lib now JOINS an item's continuation onto its checkbox line, while the other two
+# engines count checkbox lines — so the join must never change the count (one
+# line per checkbox, a nested one included). The tab inside the brackets was a
+# quiet split until the same day: both awk engines took it (`[[:space:]]`), the
+# Python guard did not (`\[ \]`).
 # Absolute values FIRST, agreement second. Agreement alone is not the test: three
 # engines that all return 0 agree perfectly and are all wrong — which is exactly
 # the shape of the incident this guards against. Pinning the number is what makes
 # the agreement assertion mean something.
 conf_eq() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "expected $2, got $3"; fi; }
-conf_eq "lib (file/awk) counts only real obligations"        "4" "$conf_lib"
-conf_eq "pre-commit gate (blob/awk) agrees"                  "4" "$conf_gate"
-conf_eq "PreToolUse guard (string/Python) agrees"            "4" "$conf_py"
+conf_eq "lib (file/awk) counts only real obligations"        "8" "$conf_lib"
+conf_eq "pre-commit gate (blob/awk) agrees"                  "8" "$conf_gate"
+conf_eq "PreToolUse guard (string/Python) agrees"            "8" "$conf_py"
 
 # And that they cannot drift apart without this failing.
 if [ "$conf_lib" = "$conf_gate" ] && [ "$conf_gate" = "$conf_py" ]; then

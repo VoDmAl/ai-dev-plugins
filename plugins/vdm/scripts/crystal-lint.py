@@ -157,31 +157,62 @@ def parse_canon(template_text):
 # and rejects only what claims to be a projection without being one.
 DUE_OK_RE = re.compile(r"\(due:\s*\d{4}-\d{2}-\d{2}\s*\)")
 DUE_ANY_RE = re.compile(r"\(due:")
-UNCHECKED_RE = re.compile(r"^[ \t]*-[ \t]*\[ \]")
+UNCHECKED_RE = re.compile(r"^[ \t]*-[ \t]*\[[ \t]\]")
+CHECKBOX_RE = re.compile(r"^[ \t]*-[ \t]*\[([ \t]|x|X)\]")
 FENCE_RE = re.compile(r"^[ \t]*(```|~~~)")
 
 
-def malformed_due(body_lines):
-    """Unchecked-checkbox lines whose `due:` marker is not an ISO date.
+def _indent(line):
+    return len(line) - len(line.lstrip(" \t"))
 
-    Fenced blocks are skipped: a checkbox inside ``` is the format being
-    documented, not a promise being made. Mirrors `_unchecked_lines` in
-    lib/crystal-path.sh and check-crystal-completion.sh — kept in step by the
-    conformance test in tests/crystal-lint.test.sh.
+
+def unchecked_items(body_lines):
+    """One string per unchecked item outside a fence: the checkbox line with its
+    continuation joined on (crystal-wake DL #1).
+
+    Hard-wrapped items put the `(due:)` that closes the sentence on the last,
+    wrapped line; read line by line it was invisible. The continuation is every
+    line deeper than the checkbox, blank lines inside included; it ends at a line
+    no deeper, at the next checkbox (a nested one owns its own text), or at a
+    fence that is no deeper. Same model as `_unchecked_lines` in
+    lib/crystal-path.sh; the two are compared by "malformed dates — the lint and
+    the lib read the same items" in tests/crystal-lint.test.sh.
     """
-    out = []
-    fence = False
-    for line in body_lines:
+    items, cur, ind, fence = [], None, 0, False
+    for raw in body_lines:
+        line = raw.rstrip("\r\n")
         if FENCE_RE.match(line):
+            if cur is not None and _indent(line) <= ind:
+                items.append(cur)
+                cur = None
             fence = not fence
             continue
         if fence:
             continue
-        if not UNCHECKED_RE.match(line):
+        if CHECKBOX_RE.match(line):
+            if cur is not None:
+                items.append(cur)
+            ind = _indent(line)
+            cur = line if UNCHECKED_RE.match(line) else None
             continue
-        if DUE_ANY_RE.search(line) and not DUE_OK_RE.search(line):
-            out.append(line.strip())
-    return out
+        if cur is None or not line.strip():
+            continue
+        if _indent(line) > ind:
+            cur += " " + line.strip()
+        else:
+            items.append(cur)
+            cur = None
+    if cur is not None:
+        items.append(cur)
+    return items
+
+
+def malformed_due(body_lines):
+    """Unchecked items whose `due:` marker is not an ISO date — wherever in the
+    item it stands. Fenced blocks are skipped: a checkbox inside ``` is the
+    format being documented, not a promise being made."""
+    return [item.strip() for item in unchecked_items(body_lines)
+            if DUE_ANY_RE.search(item) and not DUE_OK_RE.search(item)]
 
 
 def dl_entries(body_lines):

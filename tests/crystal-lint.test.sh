@@ -286,6 +286,42 @@ expect_exit "legacy import is not a violation" 0 "$(run_rc)"
 expect_says "legacy warns against copying it"  "$OUT" "never infer"
 
 # ---------------------------------------------------------------------------
+printf '\nmalformed dates — the lint and the lib read the same items\n'
+# ---------------------------------------------------------------------------
+# crystal-lint.py's `malformed_due` said it was "kept in step by the conformance
+# test in tests/crystal-lint.test.sh". There was no such test until
+# crystal-wake DL #1 (2026-09-25): two implementations of one rule that nothing
+# compares are two rules. And that day they had to change together — an item
+# is its checkbox line plus its continuation, so a broken date on a wrapped
+# tail is broken, not invisible. Absolute value first, agreement second.
+MDW="$TMP/tasks/malformed-due"
+mkdir -p "$MDW"
+{
+  printf -- '---\ntitle: "Malformed due"\nslug: malformed-due\nstatus: in-progress\n'
+  printf 'session-type: prd-work\ncreated: 2026-09-25\nlast-updated: 2026-09-25\n---\n\n# Malformed due\n\n'
+  printf '## Назначение\nx\n\n## Текущая модель\nx\n\n## Sidetracks\nx\n\n## Next actions\n'
+  printf -- '- [ ] on its own line, broken (due: 22-07-2026)\n'
+  printf -- '- [ ] a wrapped item whose tail\n      carries a broken date (due: soon)\n'
+  printf -- '- [ ] a wrapped item with a good date\n      (due: 2026-09-01)\n'
+  printf -- '- [x] done, so its broken date owes nothing\n      (due: whenever)\n'
+  printf '\n## References\nx\n'
+} >"$MDW/workitem.md"
+md_lib=$(bash -c ". '$REPO_ROOT/plugins/vdm/lib/crystal-path.sh' 2>/dev/null; audit_malformed_due '$MDW/workitem.md'" | grep -c .)
+md_py=$(python3 -c "
+import importlib.util
+spec = importlib.util.spec_from_file_location('cl', '$REPO_ROOT/plugins/vdm/scripts/crystal-lint.py')
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+print(len(m.malformed_due(open('$MDW/workitem.md', encoding='utf-8').read().splitlines())))
+" 2>&1)
+expect_exit "lib: two broken dates — one on its line, one on the wrapped tail" 2 "$md_lib"
+expect_exit "lint: the same two" 2 "$md_py"
+expect_exit "lib and lint agree" "$md_lib" "$md_py"
+OUT=$(bash "$LINT" "$MDW/workitem.md" 2>&1)
+expect_says "the lint names the date on the wrapped tail" "$OUT" "(due: soon)"
+expect_not_says "…and not the done item's" "$OUT" "whenever"
+
+# ---------------------------------------------------------------------------
 printf '\nhook — an open sidetrack this change introduced must carry a checkbox\n'
 # ---------------------------------------------------------------------------
 # The rule is old (crystal-multi-root DL #14) and it is enforced at ONE moment,

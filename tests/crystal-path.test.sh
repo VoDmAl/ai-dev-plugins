@@ -270,6 +270,85 @@ expect_eq "the fenced example is not an obligation"    "7" "$unchecked"
 fenced_od=$(bash -c ". '$CFG' 2>/dev/null; . '$LIB' 2>/dev/null; list_overdue '$OD' 2026-09-04" | grep -c 'DOCUMENTED')
 expect_eq "…nor a phantom overdue promise"             "0" "$fenced_od"
 
+printf '\n=== an item is its checkbox line and its continuation ===\n'
+# Field report (echelon, 2026-09-25, crystal-wake DL #1): a correctly written
+# date on the wrapped tail of a long item was neither overdue nor malformed —
+# invisible. The census that day found 3 more live ones on the machine, every
+# one the last line of a hard-wrapped item, one of them already overdue in
+# silence. Hard-wrapping is how every agent here writes, and `(due:)` closes
+# the sentence — so it lands on the continuation. The item's text is its
+# checkbox line plus every deeper-indented line under it (blank lines inside
+# included); it ends at a line no deeper than the checkbox or at the next
+# checkbox. The COUNT of obligations does not change: one per checkbox.
+IT="$TMP/items.md"
+cat > "$IT" <<'FIXTURE'
+---
+status: in-progress
+---
+## Next actions
+- [ ] short, on one line (due: 2026-09-01)
+- [ ] a long item that wraps onto the next
+      line, where the date sits (due: 2026-09-02)
+- [ ] an item with nested bullets:
+  - first detail;
+  - second detail
+
+  and a paragraph after a blank line (due: 2026-09-03)
+- [ ] an item whose wrapped line carries a broken date
+      (due: 03-09-2026)
+- [x] a done item that wraps
+      onto a dated line (due: 2026-01-01)
+- [ ] a parent item
+  - [ ] a nested checkbox with its own date (due: 2026-09-04)
+- [ ] an item followed by a heading
+## Another section
+Prose at column zero (due: 2026-09-05) is not a promise.
+- [ ] an item with a fence inside it
+      ```
+      - [ ] documented, not promised (due: 2026-01-01)
+      ```
+      then its own date (due: 2026-09-06)
+FIXTURE
+lib() { bash -c ". '$CFG' 2>/dev/null; . '$LIB' 2>/dev/null; $1"; }
+expect_eq "RED: dates on continuation lines count — five overdue" \
+  "5" "$(lib "count_overdue '$IT' 2026-09-30")"
+expect_eq "…the wrapped one among them" \
+  "2026-09-02" "$(lib "list_overdue '$IT' 2026-09-30" | cut -f1 | grep -x 2026-09-02)"
+expect_eq "…and the one after nested bullets and a blank line" \
+  "2026-09-03" "$(lib "list_overdue '$IT' 2026-09-30" | cut -f1 | grep -x 2026-09-03)"
+expect_eq "…and the one after a fence inside the item" \
+  "2026-09-06" "$(lib "list_overdue '$IT' 2026-09-30" | cut -f1 | grep -x 2026-09-06)"
+expect_eq "GREEN: a done item's wrapped date is not overdue" \
+  "0" "$(lib "list_overdue '$IT' 2026-09-30" | grep -c 2026-01-01)"
+expect_eq "GREEN: prose at column zero is not a promise" \
+  "0" "$(lib "list_overdue '$IT' 2026-09-30" | grep -c 2026-09-05)"
+expect_eq "GREEN: a nested checkbox keeps its own date — it is not the parent's" \
+  "1" "$(lib "list_overdue '$IT' 2026-09-30" | grep -c 2026-09-04)"
+expect_eq "RED: a broken date on a continuation line is flagged" \
+  "1" "$(lib "audit_malformed_due '$IT'" | grep -c '03-09-2026')"
+expect_eq "GREEN: the count is still one per checkbox (8 open, fence and [x] out)" \
+  "8" "$(lib "count_unchecked '$IT'")"
+
+# The brief's own shape, verbatim in structure.
+EB="$TMP/echelon-shape.md"
+cat > "$EB" <<'FIXTURE'
+## Next actions
+- [ ] п. 4, command-center. При заходе видна очередь встреч: … Подтверждения после перезапуска 25.09:
+  - `git status` чист;
+  - …
+
+  Первую настоящую дельту SSO/Beta command-center подтвердит после следующего сбора. Сам не проверяю — решение владельца 25.09 (due: 2026-09-28)
+FIXTURE
+expect_eq "RED: the echelon shape — overdue on 2026-09-29" "1" "$(lib "count_overdue '$EB' 2026-09-29")"
+
+# Where the form came from. The template's own dated example has wrapped its
+# `(due:)` onto the continuation line since the day the signal shipped (2.24.0),
+# so every crystal that copied the example got a date the reader never saw. The
+# example a template teaches must be one the reader can see.
+TPL="$REPO_ROOT/plugins/vdm/templates/workitem-template.md"
+expect_eq "RED: the template's own dated example is read (overdue once its date passes)" \
+  "2026-12-31" "$(lib "list_overdue '$TPL' 2027-01-01" | cut -f1)"
+
 printf '\n=== root resolution: found once, and found at all ===\n'
 # Two defects found during the 2.24.0 acceptance run, both of the same shape as
 # everything else this suite keeps rediscovering: a mechanism that LOOKS like it

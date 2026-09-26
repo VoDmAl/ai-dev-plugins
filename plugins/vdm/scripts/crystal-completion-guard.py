@@ -148,6 +148,13 @@ def _unchecked_lines(content: str) -> list[str]:
     take three different inputs — a tool-input string here, a file there, a
     staged blob in the third. Consolidating them is Sidetrack #2 of that crystal,
     not a thing to improvise while fixing the rule they all got wrong.
+
+    The lib's copy also joins each item's continuation onto its checkbox line
+    (crystal-wake DL #1), because its callers read dates out of the text. This
+    one only counts and samples, and the count is the same: one per checkbox,
+    which tests/gates.test.sh pins across all three. The bracket takes a tab as
+    well as a space, as both awk copies always have (`[[:space:]]`); until
+    2026-09-25 this copy took only a space and the three quietly disagreed.
     """
     out: list[str] = []
     fence = False
@@ -157,7 +164,7 @@ def _unchecked_lines(content: str) -> list[str]:
             continue
         if fence:
             continue
-        if re.match(r"^[ \t]*-[ \t]*\[ \]", line):
+        if re.match(r"^[ \t]*-[ \t]*\[[ \t]\]", line):
             out.append(line)
     return out
 

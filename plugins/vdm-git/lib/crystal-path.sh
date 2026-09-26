@@ -476,14 +476,46 @@ audit_non_canonical() {
 # The awk state machine is shared by every obligation-shaped question so the
 # fence rule has ONE home; callers that need a different projection of the same
 # lines (overdue, malformed dates) pipe through it rather than re-deriving it.
+#
+# An item is its checkbox line AND its continuation (crystal-wake DL #1). Every
+# agent here hard-wraps long items, and a `(due:)` closes the sentence — so it
+# lands on the last, wrapped line. Read line by line, that date was neither
+# overdue nor malformed: invisible. Measured 2026-09-25 across the machine: 3 of
+# 23 live dates sat on a continuation line, one of them already overdue in
+# silence; echelon had moved a fourth by hand. The continuation is every line
+# indented deeper than the checkbox, blank lines inside included; it ends at a
+# line no deeper than the checkbox, at the next checkbox (a nested one owns its
+# own text), or at a fence that is no deeper. The COUNT is unchanged — one
+# output line per checkbox — which is what keeps the three implementations of
+# "what is an obligation" (here, the pre-commit gate, the PreToolUse guard) in
+# agreement: they count lines, and this joins them.
 _unchecked_lines() {
-  # Prints every unchecked-checkbox line that is NOT inside a fenced block.
+  # Prints every unchecked item that is NOT inside a fenced block, one line per
+  # item: the checkbox line with its continuation joined on by single spaces.
   local file="$1"
   [ -f "$file" ] || return 0
   awk '
-    /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+    function indent(s) { match(s, /^[ \t]*/); return RLENGTH }
+    function flush() { if (item != "") print item; item = "" }
+    /^[[:space:]]*(```|~~~)/ {
+      if (item != "" && indent($0) <= ind) flush()
+      fence = !fence
+      next
+    }
     fence { next }
-    /^[[:space:]]*-[[:space:]]*\[[[:space:]]\]/ { print }
+    /^[[:space:]]*-[[:space:]]*\[([[:space:]]|x|X)\]/ {
+      flush()
+      ind = indent($0)
+      if ($0 ~ /^[[:space:]]*-[[:space:]]*\[[[:space:]]\]/) item = $0
+      next
+    }
+    item == "" { next }
+    /^[[:space:]]*$/ { next }
+    {
+      if (indent($0) > ind) { t = $0; sub(/^[[:space:]]+/, "", t); item = item " " t }
+      else flush()
+    }
+    END { flush() }
   ' "$file" 2>/dev/null
 }
 
@@ -511,9 +543,14 @@ count_unchecked() {
 # of the ladder are degrees of how far external state is projected into the
 # tree). The external state of a promise is the date by which it was promised.
 #
-# Syntax, written by whoever makes the promise, in the SAME line as the promise:
+# Syntax, written by whoever makes the promise, inside the promise itself — on
+# the checkbox line or anywhere in its continuation (crystal-wake DL #1: an item
+# is its checkbox line plus the deeper-indented lines under it; see
+# _unchecked_lines):
 #
 #     - [ ] verify the event lands in GA4 (due: 2026-07-22)
+#     - [ ] verify the event lands in GA4 once the Friday deploy has had
+#           a week of traffic (due: 2026-07-22)
 #
 # Optional on purpose (DL #2): most promises have no meaningful date, and
 # demanding one would produce invented dates — a signal allowed to lie stops
