@@ -72,7 +72,7 @@ expect_eq "a suite that does not exist — nobody"    "$(owners tests/zz-no-such
 # explicit_suites <pre-commit> — names the pre-commit runs by name, comments out.
 explicit_suites() {
   sed -nE '/^[[:space:]]*#/d
-           s/^[[:space:]]*run_suite(_quiet)?[[:space:]]+([a-z0-9-]+)([[:space:]].*)?$/\2/p
+           s/^[[:space:]]*run_suite(_quiet|_now)?[[:space:]]+([a-z0-9-]+)([[:space:]].*)?$/\2/p
            s#^[[:space:]]*bash[[:space:]]+tests/([a-z0-9-]+)\.test\.sh.*#\1#p' "$1" | sort -u
 }
 # name_keyed_suites <pre-commit> — what the rule reaches, IF the pre-commit calls it.

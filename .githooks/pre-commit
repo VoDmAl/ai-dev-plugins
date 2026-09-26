@@ -82,6 +82,12 @@
 #                       and turned back into lines in the C locale
 #                       (tests/git-path-lists.test.sh). Unconditional; one awk
 #                       pass over the scripts.
+#
+# The suites that gates 6–9, 11 and 12 name are not run where they are named:
+# they are queued, and the queue runs side by side after the last gate
+# (scripts/run-suites.sh), each suite with a TMPDIR of its own. The runner's own
+# suite, tests/run-suites.test.sh, runs first and directly when the runner or
+# this hook is staged.
 
 set -eu
 
@@ -92,26 +98,48 @@ set -eu
 staged=$(git diff --cached --name-only -z | LC_ALL=C tr '\0' '\n')
 
 # Every suite runs at most once per commit, whichever gate asks for it first —
-# gate 11 below can name a suite that gate 7 has already run.
+# gate 11 below can name a suite that gate 7 has already queued.
+#
+# A gate does not run its suites, it queues them, and the queue runs side by
+# side after the last gate (scripts/run-suites.sh; Sidetrack #6,
+# docs/tasks/crystal-wake/workitem.md). Measured 2026-09-26 on eighteen suites,
+# load 12–45 on 8 cores: 89 s one at a time, 30 s side by side. The queue starts
+# in the order the gates name the suites, and the long ones (gates,
+# hook-commands, reminders-dispatch, comms) are named early; queued last,
+# `gates` alone stretched the pass to 42–65 s. Each suite gets its own TMPDIR;
+# a passing suite prints its summary line, a failing one everything it printed —
+# so every suite is now "quiet", and the _quiet name stays only for the gates
+# that queue on EVERY commit.
+# >>> suite queue — tests/run-suites.test.sh runs this block on its own.
 suites_ran=" "
+suites_now=" "
+suite_queue=""
 suite_ran() { case "$suites_ran" in *" $1 "*) return 0 ;; esac; return 1; }
 run_suite() {
   suite_ran "$1" && return 0
   suites_ran="$suites_ran$1 "
+  suite_queue="$suite_queue $1"
+}
+run_suite_quiet() { run_suite "$1"; }
+# At once, not queued — for the runner's own suite, which must not be judged by
+# the runner it tests. It runs even if a gate queued it first (gate 11 does: a
+# staged suite owns itself), and queued_suites leaves it out of the queue. The
+# first version returned early on "already queued" and let the runner check
+# itself — seen in its own first run.
+run_suite_now() {
+  case "$suites_now" in *" $1 "*) return 0 ;; esac
+  suites_now="$suites_now$1 "
+  suites_ran="$suites_ran$1 "
   bash "tests/$1.test.sh"
 }
-# Same, for a suite that runs on EVERY commit: one line when it passes, its
-# full report only when it does not.
-run_suite_quiet() {
-  local out
-  suite_ran "$1" && return 0
-  suites_ran="$suites_ran$1 "
-  if ! out=$(bash "tests/$1.test.sh" 2>&1); then
-    printf '%s\n' "$out" >&2
-    return 1
-  fi
-  printf '%s\n' "$out" | tail -n 1
+queued_suites() {
+  local s out=""
+  for s in $suite_queue; do
+    case "$suites_now" in *" $s "*) ;; *) out="$out $s" ;; esac
+  done
+  printf '%s' "$out"
 }
+# <<< suite queue
 
 # Gate 1 — lib-sync: only relevant when a lib/ is staged. ANY plugin's — a
 # trigger that enumerates plugins stops firing the day one is added, and the
@@ -317,3 +345,21 @@ done
 # docs/tasks/crystal-wake/workitem.md). One awk pass over the scripts; every
 # commit, because a new reader can arrive in any of them.
 run_suite_quiet git-path-lists
+
+# The runner that runs every queued suite is itself the subject of a suite, and
+# a broken runner could report a failed suite as passed — every gate behind it
+# would then pass. So its suite runs first, directly, whenever the runner, its
+# suite or this hook is staged.
+if printf '%s\n' "$staged" | grep -qE '^(scripts/run-suites\.sh|tests/run-suites\.test\.sh|\.githooks/pre-commit)$'; then
+  echo "gates: the suite runner changed — checking it directly first…"
+  run_suite_now run-suites
+fi
+
+# The queue: every suite a gate above named, side by side, less the ones that
+# already ran directly. Unquoted on purpose: a suite name is a file-name word,
+# and each one is its own argument.
+queue=$(queued_suites)
+if [ -n "$queue" ]; then
+  echo "gates: running the queued suites side by side:$queue"
+  bash scripts/run-suites.sh $queue
+fi
