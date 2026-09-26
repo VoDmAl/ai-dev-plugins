@@ -59,7 +59,16 @@ case "${1:-}" in
   *)           printf 'usage: %s [--drift|--drift-all|--list]\n' "$(basename "$0")" >&2; exit 2 ;;
 esac
 
-project_root=$(git rev-parse --show-toplevel 2>/dev/null) || project_root=$(pwd)
+# Whether we are in a git work tree is asked ONCE, here, and every function
+# below reads the answer. It used to be re-asked by each helper, one
+# `git rev-parse` per covered directory — part of what made a prompt pay 59
+# launches for a scan of this repository's suite.md that found nothing.
+_IN_GIT=0
+if project_root=$(git rev-parse --show-toplevel 2>/dev/null); then
+  _IN_GIT=1
+else
+  project_root=$(pwd)
+fi
 cd "$project_root" 2>/dev/null || exit 0
 
 # ---------------------------------------------------------------------------
@@ -188,7 +197,7 @@ _candidate_markdown() {
   # document is untracked for its entire first session, and a scanner that only
   # sees the index would stay silent exactly when the tier is being born — the
   # one moment the signal has to work.
-  if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if [ "$_IN_GIT" = 1 ]; then
     git ls-files --cached --others --exclude-standard '*.md' 2>/dev/null
   else
     find . \
@@ -301,7 +310,7 @@ _files_under() {
   # written this session is untracked, and an input that only counts once
   # committed would miss exactly the edit that caused the drift.
   local dir="$1" ref="$2" f
-  if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if [ "$_IN_GIT" = 1 ]; then
     while IFS= read -r f; do
       [ -n "$f" ] || continue
       [ -f "$f" ] || continue
@@ -335,8 +344,7 @@ _content_filter_init() {
   local synth="$1" base
   _CF_ACTIVE=0
   _CF_CHANGED=""
-  command -v git >/dev/null 2>&1 || return 0
-  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  [ "$_IN_GIT" = 1 ] || return 0
   git ls-files --error-unmatch -- "$synth" >/dev/null 2>&1 || return 0
   git diff --quiet HEAD -- "$synth" >/dev/null 2>&1 || return 0
   base=$(git log -1 --format=%H -- "$synth" 2>/dev/null)
@@ -422,6 +430,11 @@ newer_inputs() {
   mtime_ref="$synth"
   [ "$_CF_ACTIVE" = "1" ] && mtime_ref=""
 
+  if [ "$_CF_ACTIVE" = "1" ]; then
+    _changed_inputs "$synth"
+    return 0
+  fi
+
   while IFS= read -r glob; do
     [ -n "$glob" ] || continue
     glob="${glob%/}"
@@ -448,6 +461,57 @@ newer_inputs() {
       fi
     done < <(_expand_glob "$glob")
   done < <(_fm_list "$synth" covers)
+  return 0
+}
+
+_changed_inputs() {
+  # _changed_inputs <synthesis-file> — newer_inputs when the content filter is
+  # armed, which is the common case: a synthesis committed and left alone.
+  #
+  # Same answer as the directory walk below, at a cost that does not grow with
+  # what the document covers. The candidates ARE the content-changed set (see
+  # newer_inputs), so there is nothing to walk: for each covered directory the
+  # answer is the changed files under it that git still lists — tracked, or
+  # untracked and not ignored, exactly `_files_under`'s definition — in the same
+  # sorted order. Asking git that question takes one `ls-files` for all covered
+  # directories together; the walk asked it once per directory, with a
+  # `rev-parse` and a `sort` each.
+  local synth="$1" glob e hit prefix listed="" entries
+  local dirs=()
+  entries=$(
+    while IFS= read -r glob; do
+      [ -n "$glob" ] || continue
+      _expand_glob "${glob%/}"
+    done < <(_fm_list "$synth" covers)
+  )
+  [ -n "$entries" ] || return 0
+  while IFS= read -r e; do
+    [ -n "$e" ] && [ -d "$e" ] && dirs+=("$e")
+  done <<<"$entries"
+  if [ "${#dirs[@]}" -gt 0 ]; then
+    listed=$(git ls-files --cached --others --exclude-standard -- "${dirs[@]}" 2>/dev/null)
+  fi
+
+  while IFS= read -r e; do
+    [ -n "$e" ] || continue
+    # The synthesis document must never count as its own input (newer_inputs).
+    [ "$e" = "$synth" ] && continue
+    if [ -d "$e" ]; then
+      prefix="$e/"
+      [ "$e" = "." ] && prefix=""
+      while IFS= read -r hit; do
+        [ -n "$hit" ] || continue
+        case "$hit" in "$prefix"*) ;; *) continue ;; esac
+        [ "$hit" = "$synth" ] && continue
+        [ -f "$hit" ] || continue
+        case $'\n'"$listed"$'\n' in *$'\n'"$hit"$'\n'*) ;; *) continue ;; esac
+        printf '%s\n' "$hit"
+      done <<<"$_CF_CHANGED"
+    elif [ -f "$e" ]; then
+      _content_changed "$e" || continue
+      printf '%s\n' "$e"
+    fi
+  done <<<"$entries"
   return 0
 }
 

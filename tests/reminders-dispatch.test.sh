@@ -277,5 +277,37 @@ says "RED: …the path with a quote reads as itself" "$dsctx" 'docs/quote"name.m
 says "RED: …a changed Cyrillic file is listed as itself" "$dsctx" "docs/Новый.md"
 says_not "RED: …and no octal escape leaks through" "$ds" '\320'
 
+printf '\nwaiting costs nothing per tick\n'
+# The dispatcher runs on every prompt of every project. It used to wait for its
+# children by polling — `$(jobs -rp)` and a `sleep 0.1` every tick — so a slow
+# child cost it a process per 100 ms on top of the child's own, and the prompt
+# waited up to 100 ms after the last child had already finished. The property:
+# how long the children take changes nothing about what the dispatcher itself
+# starts. Counted, not timed — a count holds on a loaded machine.
+SHIMS="$TMP/dispatch-shims"; mkdir -p "$SHIMS"
+for tool in sleep pkill mktemp rm mkdir sed cat date jq python3 bash; do
+  real=$(type -P "$tool" 2>/dev/null) || continue
+  cat > "$SHIMS/$tool" <<EOF
+#!/bin/bash
+printf x >> "\$LAUNCH_LOG"
+exec "$real" "\$@"
+EOF
+  chmod +x "$SHIMS/$tool"
+done
+launches_waiting_for() {  # launches_waiting_for <seconds> — one child that takes that long
+  local kids="$TMP/tick-$1" log="$TMP/tick-$1.log"
+  kid "$kids" docs-sync 1 "$1" "docs short" '[docs-sync] slow'
+  : > "$log"
+  ( cd "$PROJ" && printf '{"session_id":"tick"}' | \
+    LAUNCH_LOG="$log" PATH="$SHIMS:$PATH" CLAUDE_PROJECT_DIR="$PROJ" \
+    VDM_REMINDERS_DIR="$kids" VDM_REMINDERS_DEADLINE=25 bash "$DISPATCH" >/dev/null 2>&1 )
+  wc -c < "$log" | tr -d ' '
+}
+quick=$(launches_waiting_for 0.2)
+slow=$(launches_waiting_for 1.5)
+if [ "${quick:-0}" -gt 0 ]; then ok "the counter sees the dispatcher run ($quick launches)"
+else bad "the counter sees the dispatcher run" "counted ${quick:-nothing}"; fi
+eq "RED: a child 1.3 s slower costs the dispatcher no extra launches" "$slow" "$quick"
+
 printf '\nreminders-dispatch: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

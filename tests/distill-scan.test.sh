@@ -48,7 +48,7 @@ count_is() {
 }
 
 TMP=$(mktemp -d 2>/dev/null || mktemp -d -t distillscan)
-cleanup() { rm -rf "$TMP" ${TMP2:+"$TMP2"}; }
+cleanup() { rm -rf "$TMP" ${TMP2:+"$TMP2"} ${TMP3:+"$TMP3"} ${COSTS:+"$COSTS"}; }
 trap cleanup EXIT
 
 cd "$TMP" || exit 1
@@ -278,6 +278,54 @@ touch src/a.txt docs/model/m.md
 OUT=$(bash "$SCAN" --drift)
 if [ -z "$OUT" ]; then ok "content identical again ⇒ silent, whatever the mtimes"
 else bad "content identical again ⇒ silent, whatever the mtimes" "$OUT"; fi
+
+# ---------------------------------------------------------------------------
+# COST: docs-distill's UserPromptSubmit hook runs this scan on every prompt while
+# its window is open — drift is a state, there is no cheaper moment to read it.
+# It used to spend a `git rev-parse`, a `git ls-files` and a `sort` on EVERY
+# covered directory: this repository's suite.md covers 13, which made one prompt
+# pay 59 launches for a scan that found nothing. The property: a committed,
+# clean synthesis costs the same whatever it covers. Counted, not timed.
+COSTS=$(mktemp -d 2>/dev/null || mktemp -d -t distillcost)
+for tool in git sort awk grep head tail xargs tr find sed cat cut wc dirname basename; do
+  real=$(type -P "$tool" 2>/dev/null) || continue
+  cat > "$COSTS/$tool" <<EOF
+#!/bin/bash
+printf x >> "\$LAUNCH_LOG"
+exec "$real" "\$@"
+EOF
+  chmod +x "$COSTS/$tool"
+done
+scan_launches() {  # scan_launches — launches of one `--drift` run in the current repo
+  : > "$COSTS/log"
+  LAUNCH_LOG="$COSTS/log" PATH="$COSTS:$PATH" bash "$SCAN" --drift >/dev/null 2>&1
+  wc -c < "$COSTS/log" | tr -d ' '
+}
+covering() {  # covering <n> — rewrite the synthesis to cover d1..d<n>, commit it
+  { printf -- '---\ntype: model\nquestion: "cost"\ncovers:\n'
+    i=1; while [ "$i" -le "$1" ]; do printf '  - d%s/\n' "$i"; i=$((i + 1)); done
+    printf 'observed: 2026-09-26\n---\n# Cost\n'
+  } > docs/model/c.md
+  git add -A >/dev/null 2>&1 && git commit -qm "cover $1" >/dev/null 2>&1
+}
+TMP3=$(mktemp -d 2>/dev/null || mktemp -d -t distillscan3)
+cd "$TMP3" || exit 1
+git init -q . 2>/dev/null
+git config user.email t@t; git config user.name t
+mkdir -p docs/model
+i=1; while [ "$i" -le 12 ]; do mkdir -p "d$i"; printf 'x\n' > "d$i/f.txt"; i=$((i + 1)); done
+covering 2
+narrow=$(scan_launches)
+covering 12
+wide=$(scan_launches)
+if [ "${narrow:-0}" -gt 0 ]; then ok "the counter sees the scan run ($narrow launches covering 2 dirs)"
+else bad "the counter sees the scan run" "counted ${narrow:-nothing}"; fi
+count_is "RED: covering 12 dirs instead of 2 costs no more launches" "$narrow" "$wide"
+# …and the cheap path still finds what it is for, in a directory only the wide
+# version covers.
+printf 'y\n' >> d7/f.txt
+OUT=$(bash "$SCAN" --drift)
+says "a change under the 7th covered dir is still drift" "$OUT" "d7/f.txt"
 
 cd "$TMP" || exit 1
 

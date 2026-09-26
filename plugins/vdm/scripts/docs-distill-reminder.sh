@@ -47,19 +47,28 @@ payload=$(cat 2>/dev/null || true)
 mode=$(vdm_config_read "distill" "mode" "smart")
 [ "$mode" = "silent" ] && exit 0
 
-# The scan is the single source of truth for what counts as drift — the hook
-# must not re-derive the algorithm (same discipline as check-doc-orphans.sh).
-drift=$(bash "$HERE/distill-scan.sh" --drift 2>/dev/null)
-[ -z "$drift" ] && exit 0
-
+# The window is asked BEFORE the scan. A closed window mutes whatever the scan
+# would find, so scanning first only paid for an answer nobody would hear — on
+# every prompt of the half hour after each reminder. Asking first changes no
+# outcome: closed ⇒ silent either way; open ⇒ scan, and touch only on an emit,
+# exactly as before. (The window is NOT touched on a quiet scan: drift that
+# appears mid-session has to surface on the next prompt, not half an hour on.)
+throttled=0
 if [ "$mode" = "smart" ] && command -v _vdm_reminder_throttle_check >/dev/null 2>&1; then
+  throttled=1
   sid=$(printf '%s' "$payload" | _vdm_reminder_session_id 2>/dev/null || printf 'default')
   throttle=$(vdm_config_read "distill" "throttle" "1800")
   if _vdm_reminder_throttle_check "docs-distill" "$throttle" "$sid"; then
     exit 0
   fi
-  _vdm_reminder_throttle_touch "docs-distill" "$sid"
 fi
+
+# The scan is the single source of truth for what counts as drift — the hook
+# must not re-derive the algorithm (same discipline as check-doc-orphans.sh).
+drift=$(bash "$HERE/distill-scan.sh" --drift 2>/dev/null)
+[ -z "$drift" ] && exit 0
+
+[ "$throttled" = 1 ] && _vdm_reminder_throttle_touch "docs-distill" "$sid"
 
 # Render. Name the drifted documents and one example input each — a reminder
 # that says "something is stale" without saying WHAT costs the assistant a

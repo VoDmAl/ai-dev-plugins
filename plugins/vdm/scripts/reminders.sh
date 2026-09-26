@@ -81,24 +81,46 @@ work=$(mktemp -d 2>/dev/null) || exit 0
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/out"
 
+# The payload goes to the children from a file rather than through a pipe: each
+# child is then this script's own direct child, and the pid in hand is the one
+# to stop — no subshell in between whose children have to be hunted down.
+printf '%s' "$payload" > "$work/payload"
+
+pids=""
 for name in $TIER1_ORDER $TIER2_ORDER; do
   child="$CHILD_DIR/$name-reminder.sh"
   [ -f "$child" ] || continue
-  (
-    printf '%s' "$payload" | VDM_REMINDER_FRAGMENT="$work/out" bash "$child" >/dev/null 2>&1
-  ) &
+  VDM_REMINDER_FRAGMENT="$work/out" bash "$child" <"$work/payload" >/dev/null 2>&1 &
+  pids="$pids $!"
 done
 
-# Watchdog. SECONDS has one-second resolution, which is all a deadline measured
-# in tens of seconds needs.
-stop_at=$((SECONDS + DEADLINE))
-while [ -n "$(jobs -rp)" ] && [ "$SECONDS" -lt "$stop_at" ]; do
-  sleep 0.1
-done
-for pid in $(jobs -rp); do
-  pkill -P "$pid" 2>/dev/null
-  kill "$pid" 2>/dev/null
-done
+# Wait for the children, not for the clock. This used to poll — `$(jobs -rp)`
+# and a `sleep 0.1` every tick — so a slow child cost the dispatcher a process
+# per 100 ms on top of its own, and the prompt waited up to 100 ms after the
+# last child had already finished. `wait` returns the moment the last one does.
+# The deadline is ONE sleep in a watchdog that speaks only if it runs out: it
+# interrupts the `wait` with USR1, and the stragglers are stopped here, from
+# this shell's own job table — the one place that knows which pids are still
+# its children. When the children finish first, the watchdog is stopped and
+# takes its sleep with it. No children, no wait: a bare `wait` would wait for
+# the watchdog too.
+if [ -n "$pids" ]; then
+  timed_out=0
+  trap 'timed_out=1' USR1
+  (
+    s=""
+    trap 'kill "$s" 2>/dev/null; exit 0' TERM
+    sleep "$DEADLINE" & s=$!
+    wait "$s" && kill -USR1 $$
+  ) >/dev/null 2>&1 &
+  watchdog=$!
+  # shellcheck disable=SC2086
+  wait $pids 2>/dev/null
+  kill "$watchdog" 2>/dev/null
+  if [ "$timed_out" = 1 ]; then
+    for pid in $(jobs -rp); do kill "$pid" 2>/dev/null; done
+  fi
+fi
 
 # Compose.
 n=0
