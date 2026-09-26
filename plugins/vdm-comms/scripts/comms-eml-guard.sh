@@ -37,26 +37,39 @@ guard_in_scope() {
   return 0
 }
 
+# guard_unverified <reason> [<way out>...] — the way out belongs to the cause.
+# It used to be one line for every cause, "install python3", and program
+# got it (2026-09-26) from a guard whose python3 had just run and given up.
 guard_unverified() {
   guard_in_scope || exit 0
+  local reason="$1"
+  shift
   if command -v vdm_gate_unverified >/dev/null 2>&1; then
-    vdm_gate_unverified "comms-eml-guard" "$1" \
+    vdm_gate_unverified "comms-eml-guard" "$reason" \
       "a call that mentions an \`.eml\` next to comms/ or meetings/ — whether it puts the raw mail file into the repository was never checked" \
-      "install python3 (stdlib is enough) and try again, or" \
+      "$@" \
       "write only the letter's text to comms/*-in.md and the extracted attachments to comms/attachments/ — never the .eml itself"
   else
-    printf '\n[comms-eml-guard] NOT CHECKED — %s\n  An .eml near comms/ or meetings/ arrived and the guard could not run.\n\n' "$1" >&2
+    printf '\n[comms-eml-guard] NOT CHECKED — %s\n  An .eml near comms/ or meetings/ arrived and the guard could not run.\n\n' "$reason" >&2
   fi
   exit 2
 }
 
-command -v python3 >/dev/null 2>&1 || guard_unverified "python3 is not on PATH"
-[ -f "$SELF_DIR/comms-eml-guard.py" ] || guard_unverified "guard not found at $SELF_DIR/comms-eml-guard.py"
+command -v python3 >/dev/null 2>&1 || guard_unverified "python3 is not on PATH" "install python3 (stdlib is enough) and try again, or"
+[ -f "$SELF_DIR/comms-eml-guard.py" ] || guard_unverified "guard not found at $SELF_DIR/comms-eml-guard.py" "reinstall the plugin, or"
 
 out=$(printf '%s' "$payload" | python3 "$SELF_DIR/comms-eml-guard.py" 2>&1)
 rc=$?
 case "$rc" in
   0) exit 0 ;;
   2) printf '%s\n' "$out" >&2; exit 2 ;;
-  *) guard_unverified "the guard exited $rc without a verdict" ;;
+  3) # The guard's own account: line one the reason, line two the way out.
+     why="" how=""
+     { IFS= read -r why; IFS= read -r how; } <<EOF
+$out
+EOF
+     if [ -n "$how" ]; then guard_unverified "${why:-the guard could not decide}" "$how"
+     else guard_unverified "${why:-the guard could not decide}"; fi ;;
+  *) last=$(printf '%s\n' "$out" | tail -n 1)
+     guard_unverified "the guard failed (exit $rc)${last:+: $last}" ;;
 esac

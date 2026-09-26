@@ -983,16 +983,90 @@ expect_exit "GREEN: the letter's text as -in.md ⇒ exit 0" 0 "$rc"
 eml_run "$(bash_payload "cp '$TMP/letter.eml' 'gaps/alpha/comms/attachments/letter.eml")"; rc=$?
 expect_exit "RED: unbalanced quotes near comms/ ⇒ NOT CHECKED, exit 2" 2 "$rc"
 expect_says "…and says so" "$OUT" "NOT CHECKED"
+expect_says "RED: …naming what stopped it — the quotes" "$OUT" "quotes do not close"
+expect_not_says "RED: …and not sending the reader to install the python3 that just ran" "$OUT" "install python3"
 
 OUT=$(printf '%s' "$(payload Write "$FX/gaps/alpha/comms/attachments/letter.eml" "raw")" | \
       env -i HOME="$HOME" LC_ALL=C PATH="$FARM" bash -c "cd '$FX' && bash '$EML_GUARD'" 2>&1); rc=$?
 expect_exit "RED: .eml into comms/ without python3 ⇒ NOT CHECKED, exit 2" 2 "$rc"
+expect_says "…and here the way out is python3" "$OUT" "install python3"
+BADPY="$TMP/bin-badpy"
+mkdir -p "$BADPY"
+for f in "$FARM"/*; do ln -sf "$(readlink "$f")" "$BADPY/${f##*/}"; done
+printf '#!/bin/sh\necho "Traceback (most recent call last):" >&2\necho "ZeroDivisionError: boom" >&2\nexit 1\n' > "$BADPY/python3"
+chmod +x "$BADPY/python3"
+OUT=$(printf '%s' "$(payload Write "$FX/gaps/alpha/comms/attachments/letter.eml" "raw")" | \
+      env -i HOME="$HOME" LC_ALL=C PATH="$BADPY" bash -c "cd '$FX' && bash '$EML_GUARD'" 2>&1); rc=$?
+expect_exit "RED: the guard crashes ⇒ NOT CHECKED, exit 2" 2 "$rc"
+expect_says "RED: …and it quotes the crash" "$OUT" "the guard failed (exit 1): ZeroDivisionError: boom"
+expect_not_says "RED: …not a python3 that is plainly there" "$OUT" "install python3"
 OUT=$(printf '%s' "$(bash_payload "cp '$TMP/letter.eml' tests/fixtures/")" | \
       env -i HOME="$HOME" LC_ALL=C PATH="$FARM" bash -c "cd '$FX' && bash '$EML_GUARD'" 2>&1); rc=$?
 expect_exit "GREEN: same broken env, an .eml nowhere near comms/ ⇒ exit 0" 0 "$rc"
 OUT=$(printf '%s' "$(bash_payload "ls -la")" | \
       env -i HOME="$HOME" LC_ALL=C PATH="$FARM" bash -c "cd '$FX' && bash '$EML_GUARD'" 2>&1); rc=$?
 expect_exit "GREEN: same broken env, a call with no .eml at all ⇒ exit 0" 0 "$rc"
+
+echo ""
+echo "== field report 2026-09-26 (program): a heredoc body and a comment are not shell =="
+# The call that was blocked: `python3 - <<'PY' … PY`, reading an .eml where it
+# lies and writing only the letter's text into comms/*-in.md — what the rule asks
+# for. The body is python: an f-string whose subject line says "you're". Read as
+# shell, its quotes never close; the guard gave up, said NOT CHECKED and sent the
+# reader to install the python3 that had just run. The commands are written to
+# files first: a heredoc inside $( ) is where bash 3.2's own parser trips over an
+# apostrophe.
+cp "$TMP/letter.eml" "$TMP/Court of Honor tomorrow — you're running it.eml"
+cat > "$TMP/cmd-field.txt" <<EOF
+cd "$FX" && python3 - <<'PY'
+import email, pathlib
+# 1. the reply, next to the letter of the 23rd
+p = "$TMP/Court of Honor tomorrow — you're running it.eml"
+m = email.message_from_file(open(p, encoding="utf-8"))
+out = pathlib.Path("gaps/alpha/comms/2026-09-24-reply-in.md")
+out.write_text(f"""---
+subject: "Re: Court of Honor tomorrow — you're running it"
+---
+
+**Subject:** Re: Court of Honor tomorrow — you're running it
+
+{m.get_payload()}
+""", encoding="utf-8")
+PY
+ls -la gaps/alpha/comms/2026-09-24-reply-in.md | awk '{print \$5}'
+EOF
+eml_run "$(bash_payload "$(cat "$TMP/cmd-field.txt")")"; rc=$?
+expect_exit "RED: the field call — the letter's text into comms/ from a python heredoc ⇒ exit 0" 0 "$rc"
+
+cat > "$TMP/cmd-raw.txt" <<'EOF'
+cat > gaps/alpha/comms/copy.eml <<'MAIL'
+From: a
+
+it's the raw letter, byte for byte
+MAIL
+EOF
+eml_run "$(bash_payload "$(cat "$TMP/cmd-raw.txt")")"; rc=$?
+expect_exit "…the line that opens a heredoc is still read: > comms/copy.eml ⇒ exit 2" 2 "$rc"
+expect_says "RED: …as a verdict that names where it lands, not as NOT CHECKED" "$OUT" "gaps/alpha/comms/copy.eml"
+
+printf 'cat <<-EOF > gaps/alpha/comms/2026-09-24-x-in.md\n\tit%ss only the text of %s\n\tEOF\n' "'" "$TMP/letter.eml" > "$TMP/cmd-dash.txt"
+eml_run "$(bash_payload "$(cat "$TMP/cmd-dash.txt")")"; rc=$?
+expect_exit "RED: <<- ends at a tab-indented delimiter ⇒ exit 0" 0 "$rc"
+
+# A `<<` that no line closes is not taken for a heredoc — or `$((1<<2))` would
+# hide every line after it, and the copy on the next line would pass unread.
+printf 'echo $((1<<2))\ncp %s gaps/alpha/comms/\n' "'$TMP/letter.eml'" > "$TMP/cmd-arith.txt"
+eml_run "$(bash_payload "$(cat "$TMP/cmd-arith.txt")")"; rc=$?
+expect_exit "…a << that no line closes hides nothing after it ⇒ exit 2" 2 "$rc"
+
+printf '# the letter%ss text only — the .eml stays where it lies\npython3 extract.py %s > gaps/alpha/comms/2026-09-24-x-in.md\n' "'" "'$TMP/letter.eml'" > "$TMP/cmd-comment.txt"
+eml_run "$(bash_payload "$(cat "$TMP/cmd-comment.txt")")"; rc=$?
+expect_exit "RED: a comment with an apostrophe is not shell ⇒ exit 0" 0 "$rc"
+eml_run "$(bash_payload "cp '$TMP/letter.eml' tests/fixtures/#1 gaps/alpha/comms/")"; rc=$?
+expect_exit "…a # inside a word starts no comment: the copy still lands in comms/ ⇒ exit 2" 2 "$rc"
+eml_run "$(bash_payload "cp '$TMP/letter #2.eml' gaps/alpha/comms/")"; rc=$?
+expect_exit "…nor does a # inside quotes ⇒ exit 2" 2 "$rc"
+expect_says "…as a verdict that names the file, not as NOT CHECKED" "$OUT" "gaps/alpha/comms/letter #2.eml"
 
 printf '\ncomms: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
