@@ -52,8 +52,11 @@ if ! command -v resolve_crystal_roots >/dev/null 2>&1; then
   exit 0
 fi
 
-# Collect roots as colon-separated. Empty = nothing to guard.
-roots_colon=$(resolve_crystal_roots | tr '\n' ':' | sed 's/:$//')
+# Collect roots as colon-separated. Empty = nothing to guard. In the C locale: a
+# root is bytes, and in a UTF-8 one macOS `tr` stops at the first byte that is
+# not UTF-8 and keeps only what came before — the real roots after it were lost
+# (Sidetrack #12, docs/tasks/crystal-wake/workitem.md).
+roots_colon=$(resolve_crystal_roots | LC_ALL=C tr '\n' ':' | LC_ALL=C sed 's/:$//')
 [ -z "$roots_colon" ] && exit 0
 
 # Build gate value sets — canonical terminal status + any status-aliases that

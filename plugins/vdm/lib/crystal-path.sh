@@ -200,12 +200,20 @@ _auto_scan_tasks_dirs() {
     # UTF-8; APFS will not store such a name, a git index will. The prefix is
     # per command because this file is sourced: an `export` would change the
     # caller's locale (Sidetrack #9, docs/tasks/crystal-wake/workitem.md).
+    #
+    # And only directories that are there. The index can name a `tasks/` that is
+    # not on disk — deleted and not yet staged, or named in bytes APFS refuses.
+    # Such a root sorted ahead of the real ones and handed its bytes to every
+    # consumer; the completion guard, joining roots with `tr`, lost `docs/tasks`
+    # behind it (Sidetrack #12). `if`, not `&&`: a last root that fails the test
+    # must not turn the pipeline's status false under a caller's `set -e`.
     ( cd "$root" 2>/dev/null && git ls-files -z --cached --others --exclude-standard 2>/dev/null ) \
       | LC_ALL=C tr '\0' '\n' \
       | LC_ALL=C _extract_tasks_dirs_from_git_files \
       | LC_ALL=C awk -v r="$root/" '/./{ print r $0 }' \
       | LC_ALL=C grep -vE '/(node_modules|vendor)/' \
-      | LC_ALL=C sort -u
+      | LC_ALL=C sort -u \
+      | while IFS= read -r d; do if [ -d "$d" ]; then printf '%s\n' "$d"; fi; done
     return 0
   fi
 

@@ -458,6 +458,26 @@ roots=$(roots_u8 "$BADIX")
 expect_says "RED: an index entry that is not UTF-8 does not erase the other roots" "$roots" "/docs/tasks"
 expect_not_says "…and no tool complains in their place" "$roots" "Illegal byte sequence"
 
+# A root is a directory on disk. The scan reads the index, and an index can
+# name a `tasks/` that is not there: one deleted and not yet staged, or one
+# whose name no file system here will hold — the entry above. Handed on, that
+# root sorted first, and every tool downstream met its bytes: the completion
+# guard joined the roots with `tr` and lost the real `docs/tasks` behind it
+# (Sidetrack #12, docs/tasks/crystal-wake/workitem.md).
+expect_eq "RED: …and the tasks/ that no file system here can hold is not a root" \
+  "1" "$(printf '%s\n' "$roots" | LC_ALL=C grep -c .)"
+
+GONE="$TMP/gone"
+rm -rf "$GONE"; mkdir -p "$GONE/docs/tasks/alpha"
+( cd "$GONE" && git init -q . 2>/dev/null )
+printf -- '---\nstatus: in-progress\n---\n' >"$GONE/docs/tasks/alpha/workitem.md"
+( cd "$GONE" && git add -A 2>/dev/null
+  blob=$(printf 'x\n' | git hash-object -w --stdin)
+  git update-index --add --cacheinfo "100644,$blob,old/tasks/x/workitem.md" 2>/dev/null )
+roots=$(roots_u8 "$GONE")
+expect_says "a tasks/ that is only in the index leaves the real root in place" "$roots" "/docs/tasks"
+expect_not_says "RED: …and is not a root itself — deleted, not yet staged" "$roots" "/old/tasks"
+
 printf '\n=== the mirror ===\n'
 # lib/ is mirrored across both plugins by invariant; a fix applied to one copy
 # only would pass every test above and ship broken to vdm-git.
