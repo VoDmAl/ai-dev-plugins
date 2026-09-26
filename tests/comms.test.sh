@@ -1073,5 +1073,17 @@ printf 'cp %s gaps/alpha/co\\\nmms/\n' "'$TMP/letter.eml'" > "$TMP/cmd-cont.txt"
 eml_run "$(bash_payload "$(cat "$TMP/cmd-cont.txt")")"; rc=$?
 expect_exit "RED: a line continuation inside a word is joined, as bash joins it ⇒ exit 2" 2 "$rc"
 
+echo ""
+echo "== a newline ends a command, as it does for the shell (Sidetrack #19) =="
+# The reader took a newline for a space. `cd gaps/alpha⏎cp x.eml comms/` was one
+# command to it — `cd` with four arguments — and the copy was never looked at;
+# in `cp x.eml gaps/alpha/comms/⏎echo done` the next line became the destination.
+printf 'cd gaps/alpha\ncp %s comms/\n' "'$TMP/letter.eml'" > "$TMP/cmd-nl1.txt"
+eml_run "$(bash_payload "$(cat "$TMP/cmd-nl1.txt")")"; rc=$?
+expect_exit "RED: cd on one line, the copy on the next ⇒ exit 2" 2 "$rc"
+printf 'cp %s gaps/alpha/comms/\necho done\n' "'$TMP/letter.eml'" > "$TMP/cmd-nl2.txt"
+eml_run "$(bash_payload "$(cat "$TMP/cmd-nl2.txt")")"; rc=$?
+expect_exit "RED: the next line does not become the copy's destination ⇒ exit 2" 2 "$rc"
+
 printf '\ncomms: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

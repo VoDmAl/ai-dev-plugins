@@ -10,6 +10,7 @@
 #     everything after it;
 #   * `<<` and `#` inside quotes stay text, and a `#` inside a word is no comment;
 #   * a line continuation is joined, as the shell joins it;
+#   * a newline outside quotes ends a simple command, as `;` does;
 #   * the command splits into simple commands with the quotes removed, and
 #     redirections stay where a guard can read them;
 #   * a command whose quotes do not close is not guessed at: ValueError.
@@ -78,8 +79,16 @@ CMDS = [  # (what, command, the simple commands)
      "cat > f 2>&1", [["cat", ">", "f", "2", ">&", "1"]]),
     ("quotes come off",
      "'git' \"commit\" -m 'a b'", [["git", "commit", "-m", "a b"]]),
-    ("a newline is whitespace, not a separator (Sidetrack #19)",
-     "a\nb", [["a", "b"]]),
+    ("a newline outside quotes ends a simple command",
+     "a\nb", [["a"], ["b"]]),
+    ("…inside quotes it is text",
+     "echo 'a\nb'", [["echo", "a\nb"]]),
+    ("…a continuation joins lines, it does not end a command",
+     "cp a \\\nb", [["cp", "a", "b"]]),
+    ("…after a heredoc body the next line is a command of its own",
+     "cat <<'E'\nx\nE\nnext", [["cat", "<<", "E"], ["next"]]),
+    ("…and a newline after | or && belongs to the operator",
+     "a |\nb &&\nc", [["a"], ["b"], ["c"]]),
 ]
 
 for what, cmd, want in TEXT:
@@ -106,7 +115,7 @@ for lib in "$REPO_ROOT"/plugins/*/lib; do
     ran=$((ran + 1))
     if [ "$verdict" = ok ]; then ok "$what"; else bad "$verdict $what" "${detail:-}"; fi
   done < <(python3 "$TMP/cases.py" "$lib" 2>&1)
-  if [ "$ran" -ge 20 ]; then ok "canary: all $ran cases ran"
+  if [ "$ran" -ge 24 ]; then ok "canary: all $ran cases ran"
   else bad "canary: all cases ran" "only $ran — the cases were cut or the reader did not load"; fi
 done
 if [ "$copies" = 2 ]; then ok "canary: both copies were read (vdm-git, vdm-comms)"

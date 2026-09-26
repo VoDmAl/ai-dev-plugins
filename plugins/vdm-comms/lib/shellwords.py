@@ -16,7 +16,9 @@ shell does not have:
   * a `<<` that no line closes (`$((1<<2))`, `<<<"msg"`) was taken for a
     heredoc, and everything after it was thrown away unread;
   * quotes were stripped by patterns that did not follow them, so an
-    apostrophe inside "…" paired with the next '…'.
+    apostrophe inside "…" paired with the next '…';
+  * a newline was read as a space, so `cd gaps/alpha⏎cp x.eml comms/` was one
+    command — `cd` with four arguments — and the copy was never looked at.
 
 What a reader does with text it could not classify decides which way its guard
 errs: throwing the text away lets through whatever stood after it. So a heredoc
@@ -24,8 +26,7 @@ is cut only when a line closes it, and a command whose quotes do not close
 raises ValueError rather than being guessed at — each guard decides what "could
 not read" means for it.
 
-Not modelled: `$'…'` quoting, aliases and functions. A newline is whitespace
-here, not a command separator.
+Not modelled: `$'…'` quoting, aliases and functions.
 """
 import shlex
 
@@ -88,6 +89,13 @@ def shell_text(command):
     quotes and inside double quotes, as the shell joins it. Quoting is followed,
     so a `<<` or a `#` inside quotes stays text, and a `#` starts a comment only
     where a word would start."""
+    return _read(command, "\n")
+
+
+def _read(command, newline):
+    """shell_text, with every newline outside quotes written as `newline`:
+    itself for shell_text, `;` for simple_commands — the shell ends a command
+    there, and shlex would take it for a space."""
     out, heredocs = [], []
     i, n = 0, len(command)
     quote, word_start = None, True
@@ -123,7 +131,7 @@ def shell_text(command):
             continue
         if c in "'\"":
             quote = c
-        out.append(c)
+        out.append(newline if c == "\n" else c)
         i += 1
         if c == "\n" and heredocs:
             i = _past_bodies(command, i, heredocs)
@@ -134,9 +142,10 @@ def shell_text(command):
 
 def simple_commands(command):
     """The simple commands in `command`, each as its argv, quotes removed.
-    Redirection operators stay in the argv. Raises ValueError when the quotes do
-    not close — nothing can be said then about where one word ends."""
-    lex = shlex.shlex(shell_text(command), posix=True, punctuation_chars=";&|()<>`")
+    A newline outside quotes ends a command, as `;` does. Redirection operators
+    stay in the argv. Raises ValueError when the quotes do not close — nothing
+    can be said then about where one word ends."""
+    lex = shlex.shlex(_read(command, ";"), posix=True, punctuation_chars=";&|()<>`")
     lex.whitespace_split = True
     lex.commenters = ""
     cmds, cur = [], []

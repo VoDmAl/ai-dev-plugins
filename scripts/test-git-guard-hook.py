@@ -120,6 +120,10 @@ CASES = [
     (False, "bash -c with status",          "bash -c 'git status'"),
     (False, "$( ) with status",             'echo "$(git status)"'),
     (False, "quotes that never close, no git", 'echo "unclosed'),
+    # A newline ends a command (Sidetrack #19): `git` and `commit` on two lines
+    # are two commands, and neither of them commits.
+    (True,  "commit on the line after cd",  'cd /repo\ngit commit -m x'),
+    (False, "git and commit on two lines",  'git\ncommit'),
 ]
 
 
