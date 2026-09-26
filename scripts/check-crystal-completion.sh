@@ -20,7 +20,12 @@ set -eu
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
 
 CRYSTAL_ROOT="docs/tasks"
-staged=$(git diff --cached --name-only 2>/dev/null || true)
+# -z: in line form git quotes a path holding any byte outside ASCII, and the
+# quoted line matched neither workitem shape below, so a Cyrillic slug closed
+# with open items went through. `tr` in the C locale, because in a UTF-8 one
+# macOS `tr` stops at the first name that is not UTF-8 (Sidetrack #9,
+# docs/tasks/crystal-wake/workitem.md).
+staged=$(git diff --cached --name-only -z 2>/dev/null | LC_ALL=C tr '\0' '\n' || true)
 
 if [ -z "$staged" ]; then
   exit 0

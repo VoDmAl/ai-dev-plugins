@@ -50,7 +50,12 @@ case "$crystal_root" in
 esac
 [ -z "$rel_root" ] && exit 0
 
-staged=$(git diff --cached --name-only 2>/dev/null)
+# -z: in line form git quotes a path holding any byte outside ASCII, and the
+# quoted line matched none of the patterns below — a crystal with a Cyrillic
+# slug went through as `done` with open items, unchecked. `tr` in the C locale,
+# because in a UTF-8 one macOS `tr` stops at the first name that is not UTF-8
+# (Sidetrack #9, cc-vdm-plugins → docs/tasks/crystal-wake/workitem.md).
+staged=$(git diff --cached --name-only -z 2>/dev/null | LC_ALL=C tr '\0' '\n')
 [ -z "$staged" ] && exit 0
 
 drift=0

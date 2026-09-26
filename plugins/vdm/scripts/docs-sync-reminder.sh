@@ -43,6 +43,17 @@ payload=$(cat 2>/dev/null || true)
 # sessions work in one repository, a reminder that contends for `index.lock`
 # with a real commit is a reminder that can make that commit fail.
 export GIT_OPTIONAL_LOCKS=0
+
+# Paths are bytes, and every tool below that touches them runs in the C locale.
+# -z (next comment) hands names over raw; in a UTF-8 locale macOS `tr` and
+# `sed` then stop at the first byte that is not UTF-8 and `sort` drops the whole
+# list. APFS will not store such a name, but a git index will: on one
+# repository on this machine the hook printed "Changed files (4)" and a single
+# name cut in half (Sidetrack #9, docs/tasks/crystal-wake/workitem.md). The one
+# call that wants the caller's locale is `git grep -i`, so that case folding
+# still covers Cyrillic; it gets it back explicitly.
+_caller_lc_all="${LC_ALL-}"
+export LC_ALL=C
 in_git=0
 git rev-parse --is-inside-work-tree &>/dev/null && in_git=1
 
@@ -139,7 +150,7 @@ if [ -n "$keywords" ] && [ -n "$md_files" ]; then
   if [ -n "$pattern" ] && [ "$in_git" = 1 ]; then
     # One process over every doc, instead of one grep per file over the first
     # thirty the filesystem happened to return.
-    relevant_docs=$(git grep -z --untracked -l -i -E -e "$pattern" -- '*.md' \
+    relevant_docs=$(LC_ALL="$_caller_lc_all" git grep -z --untracked -l -i -E -e "$pattern" -- '*.md' \
                       ':(exclude).claude' ':(exclude).serena' 2>/dev/null | tr '\0' '\n' | head -10)
   elif [ -n "$pattern" ]; then
     relevant_docs=$(echo "$md_files" | head -500 | while IFS= read -r md; do

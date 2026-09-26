@@ -78,10 +78,18 @@
 #                       every commit (~1s) that no suite is left without a
 #                       trigger. Each suite runs at most once per commit, however
 #                       many gates name it.
+#  12. git-path-lists — every path list a script reads from git is read with -z
+#                       and turned back into lines in the C locale
+#                       (tests/git-path-lists.test.sh). Unconditional; one awk
+#                       pass over the scripts.
 
 set -eu
 
-staged=$(git diff --cached --name-only)
+# -z, and `tr` in the C locale: in line form git quotes a path holding any byte
+# outside ASCII, and a quoted path matches none of the triggers below; raw, a
+# name that is not UTF-8 makes macOS `tr` stop in a UTF-8 locale (Sidetrack #9,
+# docs/tasks/crystal-wake/workitem.md).
+staged=$(git diff --cached --name-only -z | LC_ALL=C tr '\0' '\n')
 
 # Every suite runs at most once per commit, whichever gate asks for it first —
 # gate 11 below can name a suite that gate 7 has already run.
@@ -300,3 +308,12 @@ for s in $(printf '%s\n' "$staged" | bash scripts/suites-for.sh); do
     run_suite "$s"
   fi
 done
+
+# Gate 12 — every path list read from git is read with -z and turned back into
+# lines in the C locale. The same defect was fixed three times as if new: in line
+# form git quotes a path holding any byte outside ASCII, and the quoted form is no
+# path — two gates let a Cyrillic workitem through unchecked. Raw, one name that
+# is not UTF-8 makes macOS `tr` stop in a UTF-8 locale (Sidetrack #9,
+# docs/tasks/crystal-wake/workitem.md). One awk pass over the scripts; every
+# commit, because a new reader can arrive in any of them.
+run_suite_quiet git-path-lists

@@ -424,6 +424,40 @@ for sc in "$REPO_ROOT"/plugins/vdm/scripts/crystal-capture-reminder.sh \
 done
 expect_eq "every root-resolving script primes the cache" "" "$missing"
 
+printf '\n=== names are bytes ===\n'
+# In line output git quotes any path holding a byte outside ASCII, so a crystal
+# whose every path under tasks/ held one — a Cyrillic slug is enough — gave the
+# root `…/"docs/tasks`, which exists nowhere. hydrate, cave and capture saw
+# nothing, while the `find` fallback outside git found it at once (Sidetrack #9,
+# docs/tasks/crystal-wake/workitem.md). Read with -z, the names arrive raw, and
+# that has a trap of its own: an index entry that is not UTF-8 at all — APFS
+# will not store such a file, a git index will — makes macOS `tr` stop and
+# `sort` drop everything in a UTF-8 locale. So these run from one.
+U8=en_US.UTF-8
+roots_u8() {  # roots_u8 <dir> — resolve_crystal_roots from a UTF-8 locale, stderr kept
+  ( cd "$1" && LC_ALL=$U8 bash -c ". '$CFG' 2>/dev/null; . '$LIB' 2>/dev/null; resolve_crystal_roots" 2>&1 )
+}
+
+CYR="$TMP/cyrproj"
+rm -rf "$CYR"; mkdir -p "$CYR/docs/tasks/кристалл"
+( cd "$CYR" && git init -q . 2>/dev/null )
+printf -- '---\nstatus: in-progress\n---\n' >"$CYR/docs/tasks/кристалл/workitem.md"
+( cd "$CYR" && git add -A 2>/dev/null )
+roots=$(roots_u8 "$CYR")
+expect_says "RED: a crystal whose only path under tasks/ is Cyrillic is found" "$roots" "/docs/tasks"
+expect_not_says "…and no quoted root is invented" "$roots" '"'
+
+BADIX="$TMP/badindex"
+rm -rf "$BADIX"; mkdir -p "$BADIX/docs/tasks/alpha"
+( cd "$BADIX" && git init -q . 2>/dev/null )
+printf -- '---\nstatus: in-progress\n---\n' >"$BADIX/docs/tasks/alpha/workitem.md"
+( cd "$BADIX" && git add -A 2>/dev/null
+  blob=$(printf 'x\n' | git hash-object -w --stdin)
+  git update-index --add --cacheinfo "100644,$blob,a$(printf '\377')/tasks/x/workitem.md" 2>/dev/null )
+roots=$(roots_u8 "$BADIX")
+expect_says "RED: an index entry that is not UTF-8 does not erase the other roots" "$roots" "/docs/tasks"
+expect_not_says "…and no tool complains in their place" "$roots" "Illegal byte sequence"
+
 printf '\n=== the mirror ===\n'
 # lib/ is mirrored across both plugins by invariant; a fix applied to one copy
 # only would pass every test above and ship broken to vdm-git.

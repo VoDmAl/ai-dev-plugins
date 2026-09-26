@@ -528,6 +528,7 @@ If you forget, a SessionStart hook in `.claude/settings.json` prints a one-line 
 | snippet red-tests | `tests/githook-snippets.test.sh` | anything under a plugin's `skills/` is staged — the git-hook blocks a SKILL hands to a user's own pre-commit, read out of the SKILL and run against fake installs (~5s) |
 | shell-syntax | `plugins/vdm/scripts/shell-syntax-check.sh --staged` | unconditionally — every staged shell file must parse under the interpreter it will meet (the shebang's; for bash also the PATH one), read from the staged blob |
 | owned suites | `scripts/suites-for.sh` → `tests/<name>.test.sh`, plus `tests/suite-wiring.test.sh` | a staged file under a plugin's `scripts/`, `lib/` or `bin/` runs the suite it is named after (`intercom-common.sh` → `intercom`, `fffd-precommit-check.sh` → `fffd`), and a staged suite runs itself. `suite-wiring` runs on every commit (~1s) and fails if any suite under `tests/` has no trigger at all — until 2026-09-25, nine of twenty-one had none. Each suite runs once per commit, however many gates name it |
+| git path lists | `tests/git-path-lists.test.sh` | unconditionally — every path list a script under `plugins/*/{scripts,lib,bin}/`, `scripts/` or `.githooks/` reads from git is read with `-z` and turned back into lines in the C locale. In line form git quotes any name with a byte outside ASCII, and the quoted form is no path; raw, a name that is not UTF-8 makes macOS `tr` stop in a UTF-8 locale. The same defect was fixed in three places before this check existed (~0.1s) |
 
 The timings in the table are rough figures for an idle machine. Under load they multiply: at load 40–70 on 8 cores a process launch costs ~13 ms instead of ~1 ms. A gate's cost is pinned by counting launches, not seconds. `tests/gates.test.sh` → *gate cost* grows the tree by 20 docs, 10 user-time files and 5 lib files, and asserts that `check-skill-paths` and `check-lib-sync` start the same number of processes as before. Until 2026-09-25 `check-skill-paths` ran two `grep`s per (file, doc) pair, ~2100 processes a run, and the pre-commit took minutes.
 
@@ -543,7 +544,8 @@ bash plugins/vdm/scripts/shell-syntax-check.sh --staged   # 0 = clean, 1 = a sta
 bash tests/gates.test.sh                   # red-tests all of the above (~15s)
 bash tests/harness-asserts.test.sh         # every suite's negative assertion fails on an empty haystack
 bash tests/suite-wiring.test.sh            # every suite under tests/ has a gate that runs it
-git diff --cached --name-only | bash scripts/suites-for.sh   # which suites own what you have staged
+git diff --cached --name-only -z | LC_ALL=C tr '\0' '\n' | bash scripts/suites-for.sh   # which suites own what you have staged
+bash tests/git-path-lists.test.sh          # every path list from git is read with -z, in the C locale
 bash tests/shell-syntax-check.test.sh      # the parse check after a write: the bash 3.2 incident, extglob, which interpreter
 bash tests/intercom.test.sh                # agent directory + name resolution, against a scratch store
 bash tests/crystal-capture-reminder.test.sh # capture reminder: throttle before scan (proven via a find shim), capture-exclude

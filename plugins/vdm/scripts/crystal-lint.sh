@@ -379,7 +379,12 @@ if [ "$mode" = "staged" ]; then
   repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
   cd "$repo_root" 2>/dev/null || exit 0
 
-  staged_files=$(git diff --cached --name-only 2>/dev/null) || exit 0
+  # -z: in line form git quotes a path holding any byte outside ASCII, and a
+  # quoted line is no workitem path — a non-canonical workitem under a Cyrillic
+  # slug went through unlinted. `tr` in the C locale, because in a UTF-8 one
+  # macOS `tr` stops at the first name that is not UTF-8 (Sidetrack #9,
+  # docs/tasks/crystal-wake/workitem.md).
+  staged_files=$(git diff --cached --name-only -z 2>/dev/null | LC_ALL=C tr '\0' '\n')
   [ -z "$staged_files" ] && exit 0
 
   roots=$(resolve_crystal_roots 2>/dev/null)
@@ -414,8 +419,11 @@ if [ "$mode" = "staged" ]; then
     lrc=$?
     if [ "$lrc" -ne 0 ]; then
       rc=1
-      # Map the scratch path back to the path the committer recognizes.
-      printf '%s\n' "$out" | sed "s|$target|$f|g" >&2
+      # Map the scratch path back to the path the committer recognizes. The
+      # real path goes in as the replacement, where `&`, `|` and `\` mean
+      # something to sed — escaped, so a name holding one reads as itself.
+      f_rep=$(printf '%s' "$f" | LC_ALL=C sed 's/[\\&|]/\\&/g')
+      printf '%s\n' "$out" | LC_ALL=C sed "s|$target|$f_rep|g" >&2
     fi
   done <<<"$staged_files"
 

@@ -262,7 +262,7 @@ if [ "$mode" = "staged" ]; then
   while IFS= read -r -d '' f; do
     # Regular files only: a symlink's blob is its target's name, a submodule
     # has none.
-    kind=$(git ls-files -s -- ":(literal)$f" 2>/dev/null | awk '{ print $1; exit }')
+    kind=$(git ls-files -z -s -- ":(literal)$f" 2>/dev/null | awk '{ print $1; exit }')
     case "$kind" in
       100644|100755) ;;
       *) continue ;;

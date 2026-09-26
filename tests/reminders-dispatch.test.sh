@@ -277,6 +277,29 @@ says "RED: …the path with a quote reads as itself" "$dsctx" 'docs/quote"name.m
 says "RED: …a changed Cyrillic file is listed as itself" "$dsctx" "docs/Новый.md"
 says_not "RED: …and no octal escape leaks through" "$ds" '\320'
 
+# The byte half, seen on a live repository on this machine: index entries whose
+# names are not UTF-8 at all — APFS will not store such a file, a git index
+# will — show as deleted in `git status`. docs-sync read them with -z and then
+# ran `tr` and `sed` over the names in the user's locale; in a UTF-8 one macOS
+# stops at the first bad byte, and the hook printed "Changed files (4)" and one
+# name cut in half (Sidetrack #9, docs/tasks/crystal-wake/workitem.md).
+DB="$TMP/dsbytes"; mkdir -p "$DB/src"
+( cd "$DB" && git init -q . && git config user.email t@t && git config user.name t ) >/dev/null 2>&1
+printf 'x\n' > "$DB/README.md"; printf 'x\n' > "$DB/src/omega.py"; printf 'x\n' > "$DB/src/zeta.py"
+( cd "$DB" && git add -A && git commit -qm init ) >/dev/null 2>&1
+( cd "$DB" && blob=$(printf 'x\n' | git hash-object -w --stdin) &&
+  git update-index --add --cacheinfo "100644,$blob,a$(printf '\320')b.jpg" ) >/dev/null 2>&1
+printf 'y\n' >> "$DB/src/omega.py"; printf 'y\n' >> "$DB/src/zeta.py"
+db=$( cd "$DB" && LC_ALL=en_US.UTF-8 TMPDIR="$TMP/state4" \
+        bash "$REPO_ROOT/plugins/vdm/scripts/docs-sync-reminder.sh" <<<'{"session_id":"db"}' 2>"$TMP/db.err" )
+dbctx=$(printf '%s' "$db" | python3 -c '
+import json, sys
+print(json.loads(sys.stdin.buffer.read().decode("utf-8", "replace"))["hookSpecificOutput"]["additionalContext"], end="")' 2>/dev/null)
+says "RED: a name that is not UTF-8 does not cut the list of changed files" "$dbctx" "src/zeta.py"
+says "RED: …the file after it is listed too" "$dbctx" "src/omega.py"
+if [ -s "$TMP/db.err" ]; then bad "RED: …and no tool complains about the bytes" "$(head -c 160 "$TMP/db.err")"
+else ok "RED: …and no tool complains about the bytes"; fi
+
 printf '\nwaiting costs nothing per tick\n'
 # The dispatcher runs on every prompt of every project. It used to wait for its
 # children by polling — `$(jobs -rp)` and a `sleep 0.1` every tick — so a slow

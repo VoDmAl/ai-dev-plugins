@@ -117,10 +117,16 @@ def run_git(args, cwd=None):
     the leading whitespace intact.
     """
     try:
+        # UTF-8 with replacement, not the locale's codec in strict mode: paths
+        # come back raw now (-z below), and one name that is not UTF-8 — a git
+        # index can hold such names, APFS cannot — raised here and was caught
+        # as "no output", emptying the whole list.
         r = subprocess.run(
             ["git"] + args,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=2,
             cwd=cwd,
         )
@@ -309,27 +315,46 @@ def get_changed_files(repo_root):
     record. `unstaged` is everything else in the working tree (modified-but-not-
     staged, untracked) so the assistant can see what *could* be staged.
     """
+    # Both lists are read with -z. In line form git quotes a path holding any
+    # byte outside ASCII — `"docs/\320\227…"` — and the assistant was handed
+    # that string as a path to stage, which `git add` refuses (Sidetrack #9,
+    # cc-vdm-plugins → docs/tasks/crystal-wake/workitem.md).
     staged = []
-    out = run_git(["diff", "--cached", "--name-status"], cwd=repo_root)
-    if out:
-        for line in out.split("\n"):
-            if "\t" in line:
-                status, path = line.split("\t", 1)
-                # Renames look like: `R100\told\tnew` — keep the destination.
-                if "\t" in path:
-                    path = path.split("\t", 1)[1]
-                staged.append((status, path))
+    out = run_git(["diff", "--cached", "--name-status", "-z"], cwd=repo_root)
+    # -z: STATUS\0PATH\0, and a rename or copy is STATUS\0OLD\0NEW\0 — keep
+    # the destination.
+    fields = out.split("\0")
+    i = 0
+    while i < len(fields):
+        status = fields[i]
+        if not status:
+            i += 1
+            continue
+        if status[0] in "RC":
+            path = fields[i + 2] if i + 2 < len(fields) else ""
+            i += 3
+        else:
+            path = fields[i + 1] if i + 1 < len(fields) else ""
+            i += 2
+        if path:
+            staged.append((status, path))
 
     unstaged = []
-    out = run_git(["status", "--porcelain"], cwd=repo_root)
-    for line in out.split("\n"):
-        if not line:
+    out = run_git(["status", "--porcelain", "-z"], cwd=repo_root)
+    # -z: `XY PATH\0`, and after a rename or copy the original path follows as
+    # a field of its own.
+    fields = out.split("\0")
+    i = 0
+    while i < len(fields):
+        entry = fields[i]
+        i += 1
+        if len(entry) < 4:
             continue
         # Porcelain XY: X = index, Y = worktree. `??` = untracked.
         # Anything with X != ' ' is already counted in `staged` above.
-        x = line[0]
-        y = line[1] if len(line) > 1 else " "
-        path = line[3:].lstrip()
+        x, y, path = entry[0], entry[1], entry[3:]
+        if x in "RC":
+            i += 1
         if x == "?" and y == "?":
             unstaged.append(("??", path))
         elif x == " " and y != " ":

@@ -80,7 +80,9 @@ for plugin_dir in plugins/*/; do
   manifest="${plugin_dir}.claude-plugin/plugin.json"
 
   # Any staged files under this plugin?
-  staged=$(git diff --cached --name-only -- "$plugin_dir" 2>/dev/null || true)
+  # Only whether anything is staged matters here, but the list is read the one
+  # way every path list in this repo is read (tests/git-path-lists.test.sh).
+  staged=$(git diff --cached --name-only -z -- "$plugin_dir" 2>/dev/null | LC_ALL=C tr '\0' '\n' || true)
   [ -z "$staged" ] && continue
 
   if [ ! -f "$manifest" ]; then

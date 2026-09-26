@@ -191,11 +191,21 @@ _auto_scan_tasks_dirs() {
     # after. Same single process, so the speed the git branch exists for is
     # kept; the tempting alternative — "empty result ⇒ fall through to find" —
     # would pay a ~4s tree walk in every repo that simply has no crystals.
-    ( cd "$root" 2>/dev/null && git ls-files --cached --others --exclude-standard 2>/dev/null ) \
-      | _extract_tasks_dirs_from_git_files \
-      | awk -v r="$root/" '/./{ print r $0 }' \
-      | grep -vE '/(node_modules|vendor)/' \
-      | sort -u
+    #
+    # -z, and every tool after it in the C locale. In line form git quotes any
+    # path holding a byte outside ASCII, so a crystal whose every path under
+    # tasks/ held one came out as the root `…/"docs/tasks`, which exists
+    # nowhere. Raw, the bytes then meet macOS `tr` and `sort`, which in a UTF-8
+    # locale stop at — or drop the whole list over — one name that is not
+    # UTF-8; APFS will not store such a name, a git index will. The prefix is
+    # per command because this file is sourced: an `export` would change the
+    # caller's locale (Sidetrack #9, docs/tasks/crystal-wake/workitem.md).
+    ( cd "$root" 2>/dev/null && git ls-files -z --cached --others --exclude-standard 2>/dev/null ) \
+      | LC_ALL=C tr '\0' '\n' \
+      | LC_ALL=C _extract_tasks_dirs_from_git_files \
+      | LC_ALL=C awk -v r="$root/" '/./{ print r $0 }' \
+      | LC_ALL=C grep -vE '/(node_modules|vendor)/' \
+      | LC_ALL=C sort -u
     return 0
   fi
 

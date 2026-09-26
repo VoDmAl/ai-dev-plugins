@@ -514,6 +514,29 @@ out=$(bash scripts/check-crystal-completion.sh 2>&1); rc=$?
 expect_exit "GREEN: unchecked in status:in-progress is not a violation" 0 "$rc"
 restore
 
+# A path is bytes: the staged list was read in line form, where git quotes a
+# path holding any byte outside ASCII, and the quoted line matched neither
+# workitem shape — a Cyrillic slug closed with open items went through
+# (Sidetrack #9, docs/tasks/crystal-wake/workitem.md).
+mkdir -p "docs/tasks/zz-gate-кристалл"
+cat > "docs/tasks/zz-gate-кристалл/workitem.md" <<'EOF'
+---
+title: "gate test"
+slug: zz-gate-кристалл
+status: done
+created: 2026-07-14
+last-updated: 2026-07-14
+---
+# gate test
+## Next actions
+- [ ] an obligation nobody addressed
+EOF
+git add "docs/tasks/zz-gate-кристалл/workitem.md"
+out=$(LC_ALL=en_US.UTF-8 bash scripts/check-crystal-completion.sh 2>&1); rc=$?
+expect_exit "RED: status:done + unchecked under a Cyrillic slug ⇒ exit 1" 1 "$rc"
+expect_says "RED: …and the slug is named as itself" "$out" "zz-gate-кристалл"
+restore
+
 # ---------------------------------------------------------------------------
 echo ""
 echo "== crystal-canon (crystal-lint.sh --staged) =="
@@ -622,6 +645,40 @@ x'
 git add "docs/tasks/$canon_slug/workitem.md"
 out=$(bash plugins/vdm/scripts/crystal-lint.sh --staged 2>&1); rc=$?
 expect_exit "RED: same file non-terminal ⇒ scope is not blindness" 1 "$rc"
+restore
+
+# A path is bytes. The staged list was read with `git diff --cached
+# --name-only`, which quotes a path holding any byte outside ASCII — and the
+# quoted line was no workitem path at all, so a non-canonical workitem under a
+# Cyrillic slug went through Gate 5 unlinted (Sidetrack #9,
+# docs/tasks/crystal-wake/workitem.md).
+cyr_dir="docs/tasks/${canon_slug}-кристалл"
+mkdir -p "$cyr_dir"
+{
+  printf -- '---\ntitle: "canon fixture"\nslug: %s\nstatus: ready\n' "${canon_slug}-кристалл"
+  printf 'session-type: other\ncreated: 2026-08-22\nlast-updated: 2026-08-22\n---\n\n# x\n## START HERE\nx\n'
+} > "$cyr_dir/workitem.md"
+git add "$cyr_dir/workitem.md"
+out=$(LC_ALL=en_US.UTF-8 bash plugins/vdm/scripts/crystal-lint.sh --staged 2>&1); rc=$?
+expect_exit "RED: non-canonical workitem under a Cyrillic slug ⇒ exit 1" 1 "$rc"
+expect_says "RED: …and it is named as itself" "$out" "${canon_slug}-кристалл"
+rm -rf "$cyr_dir"
+restore
+
+# The name goes back into the report through `sed`, as the replacement — where
+# `&` means "the matched text". A slug holding one printed the scratch path
+# spliced into the middle of the name.
+amp_dir="docs/tasks/${canon_slug}-a&b"
+mkdir -p "$amp_dir"
+{
+  printf -- '---\ntitle: "canon fixture"\nslug: %s\nstatus: ready\n' "${canon_slug}-ab"
+  printf 'session-type: other\ncreated: 2026-08-22\nlast-updated: 2026-08-22\n---\n\n# x\n## START HERE\nx\n'
+} > "$amp_dir/workitem.md"
+git add "$amp_dir/workitem.md"
+out=$(bash plugins/vdm/scripts/crystal-lint.sh --staged 2>&1); rc=$?
+expect_exit "non-canonical workitem under a slug with & ⇒ exit 1" 1 "$rc"
+expect_says "RED: …and the report names the path as itself" "$out" "$amp_dir/workitem.md"
+rm -rf "$amp_dir"
 restore
 
 # FALSE-POSITIVE 3: extra sections and host-repo frontmatter keys are legal —
