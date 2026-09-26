@@ -389,6 +389,70 @@ restore
 
 # ---------------------------------------------------------------------------
 echo ""
+echo "== gate cost: counted in launches, not seconds =="
+# Until 2026-09-25 check-skill-paths ran `grep | grep` for every (file, doc)
+# pair — ~2100 processes a run for 21 files and 33 docs — and check-lib-sync a
+# `basename` for every (name, file) pair. Every commit runs both, this suite runs
+# them once per red test, and on a loaded machine a launch costs ~13 ms: the
+# pre-commit took minutes on a repo of two hundred files. The property is that a
+# gate's cost does not grow with the tree, so the test grows the tree and counts.
+# Counted, not timed: a launch count is the same on a loaded machine and on an
+# idle one, and a stopwatch is not.
+COST_SHIM="$TMP/cost-shim"
+mkdir -p "$COST_SHIM"
+for tool in grep sed awk find sort basename dirname git diff head tail tr cat cut wc xargs uniq; do
+  real=$(type -P "$tool" 2>/dev/null) || continue
+  cat > "$COST_SHIM/$tool" <<EOF
+#!/bin/bash
+printf x >> "\$COST_LOG"
+exec "$real" "\$@"
+EOF
+  chmod +x "$COST_SHIM/$tool"
+done
+launches() {  # launches <script> — how many tool processes one run of it starts
+  local log="$TMP/cost.log"
+  : > "$log"
+  COST_LOG="$log" PATH="$COST_SHIM:$PATH" bash "$1" >/dev/null 2>&1
+  wc -c < "$log" | tr -d ' '
+}
+cost_same() {  # cost_same <label> <before> <after>
+  if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "launches went from $2 to $3"; fi
+}
+
+sp_base=$(launches scripts/check-skill-paths.sh)
+ls_base=$(launches scripts/check-lib-sync.sh)
+
+# Absolute values first: a counter that saw nothing agrees with everything.
+if [ "${sp_base:-0}" -gt 0 ] && [ "${ls_base:-0}" -gt 0 ]; then
+  ok "the counter sees both gates run (skill-paths $sp_base, lib-sync $ls_base launches)"
+else
+  bad "the counter sees both gates run" "skill-paths ${sp_base:-?}, lib-sync ${ls_base:-?}"
+fi
+if [ "${sp_base:-0}" -le 15 ]; then
+  ok "skill-paths: one run is a handful of launches, not one per file ($sp_base)"
+else
+  bad "skill-paths: one run is a handful of launches, not one per file" "it starts $sp_base"
+fi
+
+# Grow the tree: 20 more docs the gate must know about, 10 more user-time files
+# it must read, 5 more lib files. None of them is a finding.
+for i in $(seq 1 20); do mkdir -p "docs/tasks/cost-probe-$i"; done
+for i in $(seq 1 10); do
+  mkdir -p "plugins/vdm/skills/cost-probe-$i"
+  printf -- '---\nname: cost-probe-%s\n---\n\nNothing here.\n' "$i" > "plugins/vdm/skills/cost-probe-$i/SKILL.md"
+done
+mkdir -p plugins/vdm-cost-probe/lib
+for i in 1 2 3 4 5; do printf '# probe %s\n' "$i" > "plugins/vdm-cost-probe/lib/probe-$i.sh"; done
+
+cost_same "skill-paths: 20 more docs and 10 more files cost no more launches" \
+  "$sp_base" "$(launches scripts/check-skill-paths.sh)"
+cost_same "lib-sync: 5 more lib files cost no more launches" \
+  "$ls_base" "$(launches scripts/check-lib-sync.sh)"
+rm -rf docs/tasks/cost-probe-* plugins/vdm/skills/cost-probe-* plugins/vdm-cost-probe
+restore
+
+# ---------------------------------------------------------------------------
+echo ""
 echo "== check-crystal-completion =="
 mkdir -p docs/tasks/zz-gate-test
 

@@ -41,11 +41,14 @@ if [ ${#libs[@]} -eq 0 ]; then
   exit 0
 fi
 
-# Unique basenames.
+# Unique basenames. `${f##*/}` rather than `basename`: the loop below compares
+# every name with every file, and a process per comparison made this gate cost
+# ~130 launches a run for 14 files, and tests/gates.test.sh runs it once per
+# red test.
 names=()
 while IFS= read -r n; do
   [ -n "$n" ] && names+=("$n")
-done < <(for f in "${libs[@]}"; do basename "$f"; done | sort -u)
+done < <(for f in "${libs[@]}"; do printf '%s\n' "${f##*/}"; done | sort -u)
 
 drift=0
 checked=0
@@ -54,7 +57,7 @@ solo=()
 for name in "${names[@]}"; do
   copies=()
   for f in "${libs[@]}"; do
-    [ "$(basename "$f")" = "$name" ] && copies+=("$f")
+    [ "${f##*/}" = "$name" ] && copies+=("$f")
   done
 
   # A file that exists in exactly one plugin is not a mirror — it is that
@@ -71,7 +74,7 @@ for name in "${names[@]}"; do
   for counterpart in "${copies[@]:1}"; do
     checked=$((checked + 1))
     if ! diff <(normalize < "$reference") <(normalize < "$counterpart") >/dev/null; then
-      echo "lib-sync: DRIFT — $name differs between $(dirname "$reference") and $(dirname "$counterpart")" >&2
+      echo "lib-sync: DRIFT — $name differs between ${reference%/*} and ${counterpart%/*}" >&2
       diff -u <(normalize < "$reference") <(normalize < "$counterpart") | head -40 >&2 || true
       drift=1
     fi

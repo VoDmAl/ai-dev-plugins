@@ -529,6 +529,8 @@ If you forget, a SessionStart hook in `.claude/settings.json` prints a one-line 
 | shell-syntax | `plugins/vdm/scripts/shell-syntax-check.sh --staged` | unconditionally — every staged shell file must parse under the interpreter it will meet (the shebang's; for bash also the PATH one), read from the staged blob |
 | owned suites | `scripts/suites-for.sh` → `tests/<name>.test.sh`, plus `tests/suite-wiring.test.sh` | a staged file under a plugin's `scripts/`, `lib/` or `bin/` runs the suite it is named after (`intercom-common.sh` → `intercom`, `fffd-precommit-check.sh` → `fffd`), and a staged suite runs itself. `suite-wiring` runs on every commit (~1s) and fails if any suite under `tests/` has no trigger at all — until 2026-09-25, nine of twenty-one had none. Each suite runs once per commit, however many gates name it |
 
+The timings in the table are rough figures for an idle machine. Under load they multiply: at load 40–70 on 8 cores a process launch costs ~13 ms instead of ~1 ms. A gate's cost is pinned by counting launches, not seconds. `tests/gates.test.sh` → *gate cost* grows the tree by 20 docs, 10 user-time files and 5 lib files, and asserts that `check-skill-paths` and `check-lib-sync` start the same number of processes as before. Until 2026-09-25 `check-skill-paths` ran two `grep`s per (file, doc) pair, ~2100 processes a run, and the pre-commit took minutes.
+
 All of them can be run manually:
 
 ```bash

@@ -3,7 +3,15 @@
 #     git config core.hooksPath .githooks
 #
 # Runs eleven independent gates. Each fails fast — failure in any gate blocks
-# the commit:
+# the commit.
+#
+# The timings below are rough figures for an idle machine. Under load they
+# multiply: at load 40–70 on 8 cores a process launch costs ~13 ms instead of
+# ~1 ms. They are claims, not measurements, and one of them went stale without a
+# sound: gate 3's work grew with files × docs, and by 2026-09-25 one run started
+# ~2100 processes. Where cost matters it is pinned by a launch count, which holds
+# on any machine (tests/gates.test.sh → "gate cost").
+#
 #   1. lib-sync       — every lib file carried by two or more plugins must stay
 #                       byte-identical (caught by scripts/check-lib-sync.sh)
 #   2. version-bump   — staged plugin file change requires bump in

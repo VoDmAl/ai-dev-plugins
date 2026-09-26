@@ -62,23 +62,62 @@ pattern='plugins/[A-Za-z0-9_-]+/(scripts|lib|hooks|templates|skills)/'
 # at user time (see the header note). Anchor must precede the match on the line.
 install_rooted='\.(claude|qwen)/plugins/.*'"$pattern"
 
-drift=0
-for f in "${targets[@]}"; do
-  hits=$(grep -nE "$pattern" "$f" 2>/dev/null | grep -vE "$install_rooted" || true)
+# Every gate below reads all targets in ONE awk pass and prints one record per
+# finding, `<file>\t<name>\t<lineno>:<line>`, already in report order; the shell
+# only groups consecutive records into blocks. It used to run `grep | grep` per
+# file here and per (file, doc) pair in Gate 2 — ~2100 processes a run for 21
+# files and 33 docs, which made this the costliest gate in the repo and nine
+# tenths of tests/gates.test.sh, which runs it once per red test. The cost must
+# not grow with the number of files or docs; tests/gates.test.sh counts it.
+#
+# Patterns reach awk through ENVIRON, not -v: -v processes backslash escapes,
+# and `\.` would stop meaning a literal dot.
+
+# report_blocks <records> <header-fn> <footer-fn> — one block per run of
+# records that share file and name. A process only when there is a finding.
+tab=$(printf '\t')
+nl='
+'
+report_blocks() {
+  local records="$1" header="$2" footer="$3" rec prev_f="" prev_n="" f name hit hits=""
+  while IFS= read -r rec; do
+    [ -n "$rec" ] || continue
+    f=${rec%%"$tab"*}; rec=${rec#*"$tab"}
+    name=${rec%%"$tab"*}; hit=${rec#*"$tab"}
+    if [ -n "$hits" ] && { [ "$f" != "$prev_f" ] || [ "$name" != "$prev_n" ]; }; then
+      "$header" "$prev_f"; printf '%s\n' "$hits" | sed 's/^/  /'; "$footer" "$prev_n"
+      hits=""
+    fi
+    prev_f=$f; prev_n=$name
+    hits="${hits:+$hits$nl}$hit"
+  done <<EOF
+$records
+EOF
   if [ -n "$hits" ]; then
-    drift=1
-    {
-      printf '\n'
-      printf 'skill-paths: 🚨 dev-tree path leak in user-time file: %s\n' "$f"
-      printf '\n'
-      printf '%s\n' "$hits" | sed 's/^/  /'
-      printf '\n'
-      printf '  These paths only resolve inside this dev clone. At user time the\n'
-      printf '  plugin lives at ${CLAUDE_PLUGIN_ROOT} (resolved by Claude Code).\n'
-      printf '  Replace plugins/X/<subdir>/ with ${CLAUDE_PLUGIN_ROOT}/<subdir>/.\n'
-    } >&2
+    "$header" "$prev_f"; printf '%s\n' "$hits" | sed 's/^/  /'; "$footer" "$prev_n"
   fi
-done
+}
+
+leak_header() {
+  printf '\n'
+  printf 'skill-paths: 🚨 dev-tree path leak in user-time file: %s\n' "$1"
+  printf '\n'
+}
+leak_footer() {
+  printf '\n'
+  printf '  These paths only resolve inside this dev clone. At user time the\n'
+  printf '  plugin lives at ${CLAUDE_PLUGIN_ROOT} (resolved by Claude Code).\n'
+  printf '  Replace plugins/X/<subdir>/ with ${CLAUDE_PLUGIN_ROOT}/<subdir>/.\n'
+}
+
+drift=0
+leaks=$(PATTERN="$pattern" INSTALL_ROOTED="$install_rooted" awk '
+  $0 ~ ENVIRON["PATTERN"] && $0 !~ ENVIRON["INSTALL_ROOTED"] { print FILENAME "\t\t" FNR ":" $0 }
+' "${targets[@]}" 2>/dev/null || true)
+if [ -n "$leaks" ]; then
+  drift=1
+  report_blocks "$leaks" leak_header leak_footer >&2
+fi
 
 # ---------------------------------------------------------------------------
 # Gate 2: citations of THIS repo's own docs/ files.
@@ -111,40 +150,52 @@ done
 
 repo_name='cc-vdm-plugins'
 
-# Enumerate what actually exists here, so "does this resolve?" is a fact.
-own_docs=()
-while IFS= read -r d; do
-  [ -n "$d" ] && own_docs+=("$d")
-done < <(
-  { [ -d docs/tasks ] && find docs/tasks -mindepth 1 -maxdepth 1 -type d -exec basename {} \; ;
-    [ -d docs/llm ]   && find docs/llm   -mindepth 1 -maxdepth 1 -type f -name '*.md' -exec basename {} \; ;
-  } 2>/dev/null | sort -u
+# Enumerate what actually exists here, so "does this resolve?" is a fact. The
+# names are cut from the paths by one sed, not by a basename per entry.
+own_docs=$(
+  { [ -d docs/tasks ] && find docs/tasks -mindepth 1 -maxdepth 1 -type d ;
+    [ -d docs/llm ]   && find docs/llm   -mindepth 1 -maxdepth 1 -type f -name '*.md' ;
+  } 2>/dev/null | sed 's#.*/##' | sort -u
 )
 
-for f in "${targets[@]}"; do
-  for name in "${own_docs[@]}"; do
-    # Match `docs/tasks/<name>/` or `docs/llm/<name>` (name already carries .md
-    # for llm files). Skip lines that name the repo — those are citations.
-    hits=$(grep -nE "docs/(tasks/${name}/|llm/${name})" "$f" 2>/dev/null \
-           | grep -v "$repo_name" || true)
-    [ -n "$hits" ] || continue
-    drift=1
-    {
-      printf '\n'
-      printf 'skill-paths: 🚨 dangling repo-doc reference in user-time file: %s\n' "$f"
-      printf '\n'
-      printf '%s\n' "$hits" | sed 's/^/  /'
-      printf '\n'
-      printf '  `%s` exists in THIS repo but is not shipped: the plugin package is\n' "$name"
-      printf '  plugins/vdm only, so docs/ is absent both from the user project and\n'
-      printf '  from ${CLAUDE_PLUGIN_ROOT}. As written, that path resolves to nothing.\n'
-      printf '\n'
-      printf '  Either drop the reference, or make it an explicit cross-repo citation\n'
-      printf '  by naming the repo on the same line:\n'
-      printf '      `%s → docs/tasks/<slug>/workitem.md`\n' "$repo_name"
-    } >&2
-  done
-done
+dangling_header() {
+  printf '\n'
+  printf 'skill-paths: 🚨 dangling repo-doc reference in user-time file: %s\n' "$1"
+  printf '\n'
+}
+dangling_footer() {
+  printf '\n'
+  printf '  `%s` exists in THIS repo but is not shipped: the plugin package is\n' "$1"
+  printf '  plugins/vdm only, so docs/ is absent both from the user project and\n'
+  printf '  from ${CLAUDE_PLUGIN_ROOT}. As written, that path resolves to nothing.\n'
+  printf '\n'
+  printf '  Either drop the reference, or make it an explicit cross-repo citation\n'
+  printf '  by naming the repo on the same line:\n'
+  printf '      `%s → docs/tasks/<slug>/workitem.md`\n' "$repo_name"
+}
+
+# Match `docs/tasks/<name>/` or `docs/llm/<name>` (name already carries .md for
+# llm files). Skip lines that name the repo — those are citations. A file's
+# findings are held until the file ends, so they come out grouped by name in
+# the order of the list, exactly as the per-pair loop printed them.
+dangling=$(OWN_DOCS="$own_docs" REPO="$repo_name" awk '
+  function flush(   i) {
+    for (i = 1; i <= n; i++) if (hit[i] != "") { printf "%s", hit[i]; hit[i] = "" }
+  }
+  BEGIN { n = split(ENVIRON["OWN_DOCS"], name, "\n") }
+  FNR == 1 { flush() }
+  !/docs\/(tasks|llm)\// || index($0, ENVIRON["REPO"]) { next }
+  {
+    for (i = 1; i <= n; i++)
+      if (name[i] != "" && $0 ~ ("docs/(tasks/" name[i] "/|llm/" name[i] ")"))
+        hit[i] = hit[i] FILENAME "\t" name[i] "\t" FNR ":" $0 "\n"
+  }
+  END { flush() }
+' "${targets[@]}" 2>/dev/null || true)
+if [ -n "$dangling" ]; then
+  drift=1
+  report_blocks "$dangling" dangling_header dangling_footer >&2
+fi
 
 # ---------------------------------------------------------------------------
 # Gate 3: an INVOCATION of a plugin file must quote the root.
