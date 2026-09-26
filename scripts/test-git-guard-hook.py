@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Smoke-test the boundary-aware blocking logic in git-guard-hook.py.
+"""The case table for the command matcher in git-guard-hook.py.
 
 Dev-only — not shipped to user plugin installs (scripts/ is repo-root, hooks
-load only plugins/X/scripts/). Run manually:
+load only plugins/X/scripts/). Run by tests/git-guard-hook.test.sh and
+tests/shellwords.test.sh, so a change to the guard or to the reader it shares
+runs every case. Until 2026-09-26 it was run by hand only, and no gate called
+it. Run on its own:
 
     python3 scripts/test-git-guard-hook.py
 
@@ -74,6 +77,49 @@ CASES = [
     (False, "git diff (allowed)",     'git diff --cached'),
     (False, "literal in path arg",    'cat /var/log/git-commit.log'),
     (False, "in URL string",          'curl https://example.com/git/commit'),
+
+    # --- READ AS THE SHELL READS IT (Sidetrack #18, crystal-wake) ---
+    # The matcher cut "inert" text with regexes that did not follow the quoting.
+    # A `<<` that no line closes was taken for a heredoc to the end of the
+    # command, a `#` inside quotes for a comment, and an apostrophe inside "…"
+    # paired with the next '…'. Each threw away the commit that came after it.
+    (True,  "after a here-string",          'cat <<<"msg" > /tmp/m && git commit -F /tmp/m'),
+    (True,  "after an arithmetic shift",    'echo $((1<<2)); git commit -m x'),
+    (True,  "after << inside quotes",       'echo "a <<b" && git commit -m x'),
+    (True,  "after # inside quotes",        'echo "step #1" && git commit -m x'),
+    (True,  "after an apostrophe in \"…\"",  'echo "it\'s" && git commit -m \'x\''),
+    (True,  "through a line continuation",  'git \\\ncommit -m x'),
+    (True,  "a heredoc no line closes is read, not cut", 'cat <<EOF\ngit commit -m x'),
+    (True,  "after a closed heredoc",       "cat <<'EOF'\nbody\nEOF\ngit commit -m x"),
+    (True,  "a # inside a word is no comment", 'curl http://x/#frag && git commit -m x'),
+    (True,  "quotes that never close",      'git commit -m "unclosed'),
+    # git's own options stand between `git` and the subcommand, and the program
+    # is git however the shell is asked for it.
+    (True,  "git -C <dir> commit",          'git -C /repo commit -m x'),
+    (True,  "git -c k=v commit",            'git -c user.name=x commit -m x'),
+    (True,  "git --no-pager commit",        'git --no-pager commit -m x'),
+    (True,  "git --git-dir=… commit",       'git --git-dir=/r/.git commit -m x'),
+    (True,  "git -C <dir> push",            'git -C /repo push'),
+    (True,  "\\git",                         '\\git commit -m x'),
+    (True,  "'git' in quotes",              "'git' commit -m x"),
+    (True,  "\"commit\" in quotes",          'git "commit" -m x'),
+    (True,  "/usr/bin/git",                 '/usr/bin/git commit -m x'),
+    # Command text the shell runs from inside a command.
+    (True,  "bash -c '…'",                  "bash -c 'git commit -m x'"),
+    (True,  "sh -c \"…\"",                   'sh -c "git commit"'),
+    (True,  "bash -lc with cd",             "bash -lc 'cd /r && git commit -m x'"),
+    (True,  "bash -o pipefail -c",          "bash -o pipefail -c 'git commit -m x'"),
+    (True,  "eval",                         'eval "git commit -m x"'),
+    (True,  "$( ) inside \"…\"",             'echo "$(git commit -m x)"'),
+    (True,  "backticks inside \"…\"",        'echo "`git commit`"'),
+    # …and the same reading lets through what it always let through.
+    (False, "git -C <dir> status",          'git -C /repo status'),
+    (False, "git -c k=v log",               'git -c color.ui=never log'),
+    (False, "--no-pager log --grep commit", 'git --no-pager log --grep commit'),
+    (False, "commit inside a --grep value", 'git log --grep="fix commit"'),
+    (False, "bash -c with status",          "bash -c 'git status'"),
+    (False, "$( ) with status",             'echo "$(git status)"'),
+    (False, "quotes that never close, no git", 'echo "unclosed'),
 ]
 
 

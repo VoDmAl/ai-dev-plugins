@@ -16,6 +16,10 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+
+from shellwords import simple_commands  # noqa: E402
+
 
 BLOCKED_OPERATIONS = [
     ("commit", "git commit", "modifies history"),
@@ -23,89 +27,118 @@ BLOCKED_OPERATIONS = [
 ]
 
 
-# Heredoc opener: <<EOF, <<-EOF, <<'EOF', <<"EOF" (with optional spaces).
-_HEREDOC_RE = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?")
-# Line-comment: `#` to end of line, when at start-of-string or after whitespace.
-_COMMENT_RE = re.compile(r"(?:^|(?<=\s))#[^\n]*")
-# Single-quoted strings: no escapes inside.
-_SQ_RE = re.compile(r"'[^']*'")
-# Double-quoted strings: backslash escapes recognised.
-_DQ_RE = re.compile(r'"(?:\\.|[^"\\])*"')
+# git's own options that take the next word as their value: `git -C <dir> commit`.
+_GIT_OPTS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace",
+                        "--config-env", "--super-prefix", "--attr-source"}
+_SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
+_MAX_DEPTH = 4
 
 
-def _strip_inert_text(command):
-    """Remove regions where `git <op>` would not actually run as a command:
-    heredoc bodies, line comments, and quoted strings. Approximate (not a
-    full shell parser) but enough to drop the common false-positives:
+def _git_subcommands(argv):
+    """The subcommand after every `git` in one simple command. `git`, `\\git`,
+    `'git'` and `/usr/bin/git` are the same program to the shell, and git's own
+    options (`-C <dir>`, `-c k=v`, `--no-pager`) stand before the subcommand.
+    Every position is looked at, not only the first, so `sudo git commit`,
+    `if git commit` and `xargs git commit` are read the same way."""
+    for i, word in enumerate(argv):
+        if os.path.basename(word) != "git":
+            continue
+        j = i + 1
+        while j < len(argv) and argv[j].startswith("-"):
+            j += 2 if argv[j] in _GIT_OPTS_WITH_VALUE else 1
+        if j < len(argv):
+            yield argv[j]
 
-      grep "git commit" file       # quoted argument
-      cat <<EOF ... git commit ... # heredoc body
-      # git commit triggers here   # line comment
 
-    Order matters: heredocs first (their markers can be quoted), then
-    comments, then quotes.
-    """
-    s = command
-
-    # Heredoc bodies. Repeatedly find <<MARKER ... ^MARKER$ blocks and excise.
+def _substitutions(word):
+    """Command text inside `$( … )` and backticks in one word. Unquoted, the
+    reader has split them into their own commands already; inside "…" they are
+    still one word, and the shell runs them all the same."""
+    found, i = [], 0
     while True:
-        m = _HEREDOC_RE.search(s)
-        if not m:
+        k = word.find("$(", i)
+        if k < 0:
             break
-        marker = m.group(1)
-        body_start = m.end()
-        end = re.search(
-            rf"^\s*{re.escape(marker)}\s*$",
-            s[body_start:],
-            re.MULTILINE,
-        )
-        if not end:
-            # Malformed / unterminated — drop from `<<` to end of string so
-            # we don't leave heredoc body matching as live code.
-            s = s[:m.start()]
-            break
-        s = s[:m.start()] + s[body_start + end.end():]
-
-    s = _COMMENT_RE.sub("", s)
-    s = _SQ_RE.sub("", s)
-    s = _DQ_RE.sub("", s)
-    return s
+        depth, j = 1, k + 2
+        while j < len(word) and depth:
+            depth += {"(": 1, ")": -1}.get(word[j], 0)
+            j += 1
+        found.append(word[k + 2:j - 1] if depth == 0 else word[k + 2:])
+        i = j
+    found.extend(word.split("`")[1::2])
+    return found
 
 
-# Command boundary: start-of-string, whitespace, or shell separator/grouping.
-# Backtick covers ``…`` command substitution; `(` covers `$(…)` and subshells.
-_BOUNDARY_CLASS = r"\s;&|()`"
+def _inner_scripts(argv):
+    """Command text the shell will run from inside this command: the script of
+    `bash -c '…'` (also `-lc`, `-ec`, `-o pipefail -c`), the words of `eval`,
+    and substitutions inside quoted words."""
+    for i, word in enumerate(argv):
+        if os.path.basename(word) in _SHELLS:
+            j = i + 1
+            while j < len(argv) and argv[j][:1] in "-+" and argv[j] not in ("-", "--"):
+                flag = argv[j]
+                if flag in ("-o", "+o"):
+                    j += 2
+                    continue
+                if not flag.startswith("--") and "c" in flag[1:]:
+                    if j + 1 < len(argv):
+                        yield argv[j + 1]
+                    break
+                j += 1
+        elif word == "eval":
+            yield " ".join(argv[i + 1:])
+        for script in _substitutions(word):
+            yield script
 
 
-def _command_invokes(command, op_subcommand):
-    r"""True iff `command` would actually invoke `git <op_subcommand>`.
+def _mentions(command, op_subcommand):
+    """`git` followed somewhere by the subcommand, as words: what is left to go
+    on when the command cannot be read."""
+    op = re.escape(op_subcommand)
+    return re.search(rf"(?<![\w.-])git(?![\w-])[\s\S]*?(?<![\w-]){op}(?![\w-])",
+                     command) is not None
 
-    Catches direct invocations and chained / substituted forms:
-        git commit -m foo
-        cd /repo && git commit
-        if git commit; then …
-        $(git commit)
 
-    Ignores false-positives where `git commit` appears as data:
-        grep "git commit" file
-        echo 'git commit'
-        cat <<EOF ... git commit ... EOF
-        # git commit
+def _command_invokes(command, op_subcommand, depth=0):
+    r"""True iff `command` would run `git <op_subcommand>`, read the way the
+    shell reads it (lib/shellwords.py): split into simple commands, quotes
+    removed, heredoc bodies and comments cut. Blocks
 
-    …and where the word is a PREFIX of a different subcommand:
-        git commit-tree     — writes an object, moves no ref
-        git commit-graph    — maintains a cache
+        git commit -m foo · cd /repo && git commit · if git commit; then …
+        $(git commit) · git -C /repo commit · \git commit · bash -c 'git commit'
 
-    That last class is why the trailing guard is `(?![\w-])` rather than `\b`.
-    `\b` sits between a word character and a non-word one, and `-` is non-word,
-    so `git\s+commit\b` matched `git commit-tree` — blocking a plumbing command
-    that changes nothing, while `git update-ref`, which does move refs, was never
-    on the list at all. The matcher was reading a string prefix where it meant to
-    read a subcommand.
+    and lets through `git commit` as data:
+
+        grep "git commit" file · echo 'git commit' · # git commit
+        cat <<EOF … git commit … EOF
+
+    The subcommand is compared as a whole word, so `git commit-tree` (writes an
+    object, moves no ref) and `git commit-graph` are not `git commit`. The old
+    `\b` boundary matched them: it read a string prefix where it meant to read
+    a subcommand (v2.7.2).
+
+    Until vdm-git 2.15.10 the matcher cut "inert" text with regexes that did not
+    follow the quoting, and each cut could throw away the commit after it: a
+    `<<` no line closes (`<<<"msg"`, `$((1<<2))`), a `#` inside quotes, an
+    apostrophe inside "…" pairing with the next '…'. `git -C <dir> commit`,
+    `'git' commit` and `bash -c 'git commit'` were never matched at all
+    (Sidetrack #18, docs/tasks/crystal-wake/workitem.md). A command whose quotes
+    do not close cannot be split into words; then a mention is enough to stop.
     """
-    cleaned = _strip_inert_text(command)
-    pattern = rf"(?:^|[{_BOUNDARY_CLASS}])git\s+{re.escape(op_subcommand)}(?![\w-])"
-    return bool(re.search(pattern, cleaned))
+    if depth > _MAX_DEPTH:
+        return _mentions(command, op_subcommand)
+    try:
+        commands = simple_commands(command)
+    except ValueError:
+        return _mentions(command, op_subcommand)
+    for argv in commands:
+        if op_subcommand in _git_subcommands(argv):
+            return True
+        for script in _inner_scripts(argv):
+            if _command_invokes(script, op_subcommand, depth + 1):
+                return True
+    return False
 
 
 def run_git(args, cwd=None):

@@ -100,5 +100,19 @@ says "RED: the staged Cyrillic file is still listed" "$OUT" "docs/Заметка
 says_not "RED: …and the message does not claim nothing is staged" "$OUT" "STAGED: none"
 says "…with both entries counted" "$OUT" "STAGED (2 file(s))"
 
+# ---------------------------------------------------------------------------
+printf '\nthe command matcher: every case in scripts/test-git-guard-hook.py\n'
+# ---------------------------------------------------------------------------
+# The table was written with the matcher and run by hand only: no gate called
+# it. On 2026-09-26 the 23 cases added to it were red on the matcher of the
+# time — `git -C <dir> commit`, `bash -c 'git commit'`, a commit after a
+# here-string (Sidetrack #18, docs/tasks/crystal-wake/workitem.md).
+CASES_OUT=$(python3 "$REPO_ROOT/scripts/test-git-guard-hook.py" 2>&1); RC=$?
+n=$(printf '%s\n' "$CASES_OUT" | grep -cE '✓|✗')
+if [ "$n" -ge 70 ]; then ok "canary: the table ran ($n cases)"
+else bad "canary: the table ran" "only $n cases — the table was cut or did not load"; fi
+if [ "$RC" = 0 ]; then ok "RED: every case in the table holds"
+else bad "RED: every case in the table holds" "$(printf '%s\n' "$CASES_OUT" | grep -A1 '✗' | head -20)"; fi
+
 printf '\ngit-guard-hook: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

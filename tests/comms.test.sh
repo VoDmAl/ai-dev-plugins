@@ -1067,6 +1067,11 @@ expect_exit "…a # inside a word starts no comment: the copy still lands in com
 eml_run "$(bash_payload "cp '$TMP/letter #2.eml' gaps/alpha/comms/")"; rc=$?
 expect_exit "…nor does a # inside quotes ⇒ exit 2" 2 "$rc"
 expect_says "…as a verdict that names the file, not as NOT CHECKED" "$OUT" "gaps/alpha/comms/letter #2.eml"
+# The reading is shared with git-guard since vdm-comms 0.6.4 (lib/shellwords.py),
+# and with it came the line continuation: bash joins `co\⏎mms` into `comms`.
+printf 'cp %s gaps/alpha/co\\\nmms/\n' "'$TMP/letter.eml'" > "$TMP/cmd-cont.txt"
+eml_run "$(bash_payload "$(cat "$TMP/cmd-cont.txt")")"; rc=$?
+expect_exit "RED: a line continuation inside a word is joined, as bash joins it ⇒ exit 2" 2 "$rc"
 
 printf '\ncomms: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

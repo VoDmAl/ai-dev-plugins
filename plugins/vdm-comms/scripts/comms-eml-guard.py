@@ -28,6 +28,9 @@ report, program, 2026-09-26: `python3 - <<'PY' … PY` wrote only the
 letter's text into comms/, as the rule asks, and its body — an f-string with
 "you're" in it — was read as shell. The quotes never closed, and the call was
 blocked as NOT CHECKED with a hint to install the python3 that had just run.
+The reading itself lives in lib/shellwords.py, shared with git-guard (vdm-git),
+whose own reading had the same holes and worse ones (Sidetrack #18,
+docs/tasks/crystal-wake/workitem.md).
 
 Reads the hook payload on stdin. Exit 0 allow, 2 block (message on stdout),
 3 could not decide — the reason on stderr's first line, the way out on its
@@ -37,16 +40,17 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(HERE, "..", "lib"))
 
 import comms_config as cfgmod  # noqa: E402
+from shellwords import simple_commands  # noqa: E402
 
 COPY_VERBS = {"cp", "mv", "rsync", "ditto", "install", "ln", "scp"}
 PREFIXES = {"sudo", "command", "env", "nice", "nohup", "time"}
-SEPARATORS = {";", "&&", "||", "|", "&", "\n", "(", ")"}
 
 
 def is_eml(p):
@@ -75,120 +79,9 @@ def landing(dest, source, cwd):
     return full
 
 
-def heredoc_word(command, j):
-    """The delimiter that follows `<<` at `j`: (index past it, word, tabs
-    stripped?). Quotes and backslashes come off, as the shell takes them off."""
-    n = len(command)
-    strip = command.startswith("-", j)
-    if strip:
-        j += 1
-    while j < n and command[j] in " \t":
-        j += 1
-    word, quote = [], None
-    while j < n:
-        c = command[j]
-        if quote:
-            if c == quote:
-                quote = None
-            else:
-                word.append(c)
-        elif c in "'\"":
-            quote = c
-        elif c == "\\" and j + 1 < n:
-            j += 1
-            word.append(command[j])
-        elif c in " \t\n;&|()<>":
-            break
-        else:
-            word.append(c)
-        j += 1
-    return j, "".join(word), strip
-
-
-def past_bodies(command, i, heredocs):
-    """Where the bodies of `heredocs` end, read one after another from `i`, as
-    the shell reads them. A body that no line closes cuts nothing: `$((1<<2))`
-    looks like a heredoc, and taking the rest of the command for its body would
-    hide every command after it."""
-    n, j = len(command), i
-    for word, strip in heredocs:
-        while True:
-            if j >= n:
-                return i
-            k = command.find("\n", j)
-            line = command[j:] if k < 0 else command[j:k]
-            j = n if k < 0 else k + 1
-            if (line.lstrip("\t") if strip else line) == word:
-                break
-    return j
-
-
-def shell_text(command):
-    """`command` without what the shell does not read as words: heredoc bodies
-    and comments. Quoting is followed, so a `<<` or a `#` inside quotes stays
-    text, and a `#` starts a comment only where a word would start."""
-    out, heredocs = [], []
-    i, n = 0, len(command)
-    quote, word_start = None, True
-    while i < n:
-        c = command[i]
-        if quote:
-            if c == "\\" and quote == '"' and i + 1 < n:
-                out.append(command[i:i + 2])
-                i += 2
-                continue
-            if c == quote:
-                quote = None
-            out.append(c)
-            i += 1
-            continue
-        if c == "\\" and i + 1 < n:
-            out.append(command[i:i + 2])
-            i += 2
-            word_start = False
-            continue
-        if c == "#" and word_start:
-            k = command.find("\n", i)
-            i = n if k < 0 else k
-            continue
-        if command.startswith("<<", i):
-            j, word, strip = heredoc_word(command, i + 2)
-            if word:
-                heredocs.append((word, strip))
-            out.append(command[i:j])
-            i, word_start = j, False
-            continue
-        if c in "'\"":
-            quote = c
-        out.append(c)
-        i += 1
-        if c == "\n" and heredocs:
-            i = past_bodies(command, i, heredocs)
-            heredocs = []
-        word_start = quote is None and c in " \t\n;&|()<>"
-    return "".join(out)
-
-
-def split_commands(command):
-    lex = shlex.shlex(shell_text(command), posix=True, punctuation_chars=";&|()<>")
-    lex.whitespace_split = True
-    lex.commenters = ""
-    cmds, cur = [], []
-    for tok in lex:
-        if tok in SEPARATORS or set(tok) <= set(";&|()") and tok:
-            if cur:
-                cmds.append(cur)
-            cur = []
-            continue
-        cur.append(tok)
-    if cur:
-        cmds.append(cur)
-    return cmds
-
-
 def offences_in_bash(command, cwd, territory):
     found = []
-    for argv in split_commands(command):
+    for argv in simple_commands(command):
         # redirections anywhere in the simple command: `> x.eml`, `>> x.eml`
         for i, tok in enumerate(argv[:-1]):
             if tok in (">", ">>", ">|") and is_eml(argv[i + 1]):
