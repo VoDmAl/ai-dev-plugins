@@ -39,7 +39,9 @@ being told, asked or written to — «Tell [[…|Petrov]] that the check passed�
 «Ask [[…|Petrov]] about TLS», «Second letter to [[…|Petrov]]: …» — and the ball
 is ours. Put the owner first, or the summary will file the item under whoever
 the sentence mentions. Flags before the owner (`🔴`, `🆕`, a date marker) are
-stepped over.
+stepped over, and so is an event marker together with its event:
+`⏰ после: доступ подтверждён — **echelon** — …` is owned by `echelon`. An event
+with nothing after it names what we wait for, not who owns the item.
 
 **Date.** `⏰` plus an ISO date. It is a **review date, not the counterparty's
 deadline**: the day we come back to this if nothing has happened. Say what we

@@ -131,6 +131,7 @@ LOOSE_DMY_RE = re.compile(
     r"\s*\**~?(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?\**")
 EVENT_RE = re.compile(
     r"⏰\s*\**\s*(?:после|по событию|при|когда|after|once|upon|when|on)\b\s*[:—–-]?", re.I)
+EVENT_END_RE = re.compile(r"\s+(?:—|–|→)\s+")
 
 LEAD_CHARS = 80
 LEAD_SEP_RE = re.compile(r"\s+(?:—|–|→)\s+|\s*:\s+")
@@ -281,7 +282,11 @@ def lead_segment(body):
     So the search is bounded to what precedes the first separator, after a
     leading date marker is stepped over (`⏰ 2026-09-15 — Accounting — …` puts the
     counterparty *after* the first dash, and that shape is a third of another
-    repository's items).
+    repository's items). A leading event marker is stepped over the same way,
+    together with its event: `⏰ после: доступ подтверждён — **echelon** — …`
+    names the condition first and the owner after it. Taken for a bare flag, it
+    made the word «после» the head, and the owner was lost — "no owner" in a
+    waiting section, "us" in an action one (hq, 2026-09-26).
     """
     s = body.strip()
     while s:
@@ -294,8 +299,16 @@ def lead_segment(body):
             continue
         break
     m = LEAD_CLOCK_RE.match(s)
+    ev = None if m else EVENT_RE.match(s)
     if m:
         s = re.sub(r"^\s*(?:—|–|→|:)\s*", "", s[m.end():])
+    elif ev:
+        # The event runs to the first dash or arrow — a colon may sit inside
+        # it — and the head is what follows. With nothing after the event there
+        # is no head at all: its words name what we wait for, and an owner
+        # picked out of them would be a guess.
+        sep = EVENT_END_RE.search(s, ev.end())
+        s = s[sep.end():] if sep else ""
     elif s.startswith("⏰"):
         # A bare clock is a flag, like 🔴: `⏰ If <person> comes back with …`
         # opens with the condition, and the person in it is not the owner.

@@ -548,5 +548,49 @@ expect_says "RED: the session-start line names the unprepared series" "$OUT" "se
 expect_not_says "…and not the prepared one" "$OUT" "plc 2026-09-24"
 expect_says "…and counts the stale next:" "$OUT" "1 series with a past \`next:\`"
 
+echo ""
+echo "== field report 2026-09-26: the owner after an event marker =="
+# hq writes the event first: `⏰ после: <event> — <owner> — …`. A leading
+# date was stepped over and the owner found; a leading event was taken for a bare
+# flag, the head became the word «после», and the owner was lost — "no owner" in
+# a waiting section, "us" in an action one. The lines are theirs, from the brief.
+EX="$TMP/event"; mkdir -p "$EX/.claude" "$EX/tracks/x"
+( cd "$EX" && git init -q . ) >/dev/null 2>&1
+cat > "$EX/.claude/vdm-plugins.json" <<'JSON'
+{ "comms": { "pending-paths": ["tracks/*/index.md"],
+             "pending-sections": {"waiting": ["Ожидаем"], "action": ["Наши действия"]},
+             "owners": ["echelon", "Владелец"] } }
+JSON
+cat > "$EX/tracks/x/index.md" <<'EOF'
+# x
+
+## Ожидаем ответы
+
+- [ ] ⏰ после: доступ подтверждён — **echelon** — чтение jira-insights
+- [ ] ⏰ после: доступ подтверждён — **Владелец** — чтение jira-insights
+- [ ] ⏰ after: access granted — echelon — an unmarked owner after an English event
+- [ ] ⏰ 2026-09-30 — **echelon** — the date form, as it always was
+- [ ] ⏰ после: echelon подтвердит доступ, и дальше ни слова
+
+## Наши действия
+
+- [ ] ⏰ после: доступ подтверждён — **echelon** — чтение jira-insights
+EOF
+OUT=$(cd "$EX" && COMMS_TODAY="$TODAY" python3 "$PEND" --json --project-root "$EX" 2>&1)
+json_check "RED: an owner after an event marker is found (waiting, bold)" \
+  "[i for i in items if i['section'] == 'waiting' and '**echelon** — чтение' in i['line']][0]['owner'] == 'echelon'"
+json_check "RED: …a declared name in Cyrillic too" \
+  "[i for i in items if '**Владелец**' in i['line']][0]['owner'] == 'Владелец'"
+json_check "RED: …and an unmarked one after an English event" \
+  "[i for i in items if 'access granted' in i['line']][0]['owner'] == 'echelon'"
+json_check "RED: in an action section the named owner wins over the default us" \
+  "[i for i in items if i['section'] == 'action'][0]['owner'] == 'echelon'"
+json_check "the date form is read as before" \
+  "[i for i in items if 'the date form' in i['line']][0]['owner'] == 'echelon'"
+json_check "an event with nothing after it has no head: its words are the condition, not the owner" \
+  "[i for i in items if 'ни слова' in i['line']][0]['owner_kind'] == 'missing'"
+json_check "the event is still the item's date kind" \
+  "all(i['date_kind'] == 'event' for i in items if 'после' in i['line'] or 'after:' in i['line'])"
+
 printf '\ncomms-pending: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
