@@ -147,5 +147,64 @@ says_not "no off-canon footer on a clean tree" "$OUT_CLEAN" "Off-canon shape"
 says_not "no legacy footer on a clean tree"    "$OUT_CLEAN" "Legacy schema"
 says     "still renders the surviving crystal" "$OUT_CLEAN" "good"
 
+# ---------------------------------------------------------------------------
+printf '\ncost: counted in launches, not seconds\n'
+# ---------------------------------------------------------------------------
+# The overview read each workitem with processes of its own — four or five
+# awk for the frontmatter, a grep for the slug, an awk for the canon verdict,
+# five more for dates — and resolved the roots again for every one, because
+# the call that fills their memo stood in the branch that runs only when the
+# library is missing: about twenty launches a workitem, 731 in the plugins
+# repository (Sidetrack #14, docs/tasks/crystal-wake/workitem.md).
+SHIMS="$TMP/shims"
+mkdir -p "$SHIMS"
+for tool in awk sed grep sort find git date head tail tr cat cut wc dirname basename jq python3 mkdir uniq; do
+  real=$(type -P "$tool" 2>/dev/null) || continue
+  cat > "$SHIMS/$tool" <<EOF
+#!/bin/bash
+printf x >> "\$LAUNCH_LOG"
+exec "$real" "\$@"
+EOF
+  chmod +x "$SHIMS/$tool"
+done
+# cost_repo <dir> <n> — two crystal roots and n workitems between them, each
+# with a description, an overdue promise and a malformed date, so that every
+# per-workitem step has something to do.
+cost_repo() {
+  local d="$1" i root
+  mkdir -p "$d"
+  ( cd "$d" && git init -q . && git config user.email t@t && git config user.name t )
+  i=1
+  while [ "$i" -le "$2" ]; do
+    root=a; [ $((i % 2)) -eq 0 ] && root=b
+    mkdir -p "$d/$root/tasks/w$i"
+    printf -- '---\nslug: w%s\nstatus: ready\nsession-type: research\nlast-updated: 2026-09-01\ndescription: "item %s"\n---\n- [ ] late (due: 2020-01-01)\n- [ ] vague (due: soon)\n' \
+      "$i" "$i" > "$d/$root/tasks/w$i/workitem.md"
+    i=$((i + 1))
+  done
+  ( cd "$d" && git add -A ) >/dev/null 2>&1
+}
+# cave_launches <dir> — launches of one overview; its output is left in
+# $TMP/cave.out, to show which path the counted run took.
+cave_launches() {
+  : > "$TMP/cave.log"
+  ( cd "$1" && LAUNCH_LOG="$TMP/cave.log" PATH="$SHIMS:$PATH" bash "$CAVE" > "$TMP/cave.out" 2>&1 )
+  wc -c < "$TMP/cave.log" | tr -d ' '
+}
+cost_repo "$TMP/cost2" 2
+cost_repo "$TMP/cost20" 20
+c2=$(cave_launches "$TMP/cost2")
+c20=$(cave_launches "$TMP/cost20")
+out20=$(cat "$TMP/cave.out")
+# Canaries: the counter sees something, and the counted run did the per-workitem
+# work — a slug under the second root, every overdue promise, every bad date.
+if [ "${c2:-0}" -gt 0 ]; then ok "canary: the counter sees the overview ($c2 launches with two workitems)"
+else bad "canary: the counter sees the overview" "no launch counted"; fi
+says "canary: the counted run lists the last workitem under its root" "$out20" "w20"
+says "canary: …counts every overdue promise" "$out20" "Overdue promises: 20"
+says "canary: …and every malformed date" "$out20" 'Malformed `due:` markers: 20'
+if [ "$c2" = "$c20" ]; then ok "RED: twenty workitems cost what two do ($c20)"
+else bad "RED: twenty workitems cost what two do" "2 workitems: $c2 launches, 20: $c20"; fi
+
 printf '\ncrystal-cave: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

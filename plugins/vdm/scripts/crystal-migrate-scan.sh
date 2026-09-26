@@ -34,18 +34,23 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/../lib/config-read.sh" 2>/dev/null || true
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/crystal-path.sh" 2>/dev/null || {
+  echo "crystal-migrate-scan: lib/crystal-path.sh not found relative to $SCRIPT_DIR" >&2
+  exit 1
+}
 
 # Warm the root cache in THIS shell before anything fans out into subshells.
 # The memo inside resolve_crystal_roots is process-scoped, and every use of it
 # below sits inside `$(...)`, `< <(...)` or a pipeline — a subshell inherits the
 # cache but cannot fill it. Without this line the tree is rescanned once per
 # call site (measured: 7× per hook run on an 11-root vault).
+#
+# From 2.24.1 this call stood inside the `|| { … }` above, the branch that runs
+# only when the library is missing, so it never ran; the test that required it
+# asked only whether the text was in the file (Sidetrack #14,
+# docs/tasks/crystal-wake/workitem.md).
 if command -v vdm_prime_crystal_roots >/dev/null 2>&1; then
   vdm_prime_crystal_roots
 fi
-  echo "crystal-migrate-scan: lib/crystal-path.sh not found relative to $SCRIPT_DIR" >&2
-  exit 1
-}
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/crystal-dates.sh" 2>/dev/null || {
   echo "crystal-migrate-scan: crystal-dates.sh not found relative to $SCRIPT_DIR" >&2

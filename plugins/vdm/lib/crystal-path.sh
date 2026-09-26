@@ -371,6 +371,44 @@ find_workitems() {
   } | sort -u
 }
 
+# The frontmatter reader: one awk program behind every function that reads a
+# key, for one file or for a list. Keys are read between the first two `---`
+# lines, the first occurrence of a key wins, trailing space and a surrounding
+# quote are stripped; a key is matched as a regular expression anchored at the
+# start of the line. The keys arrive in the environment (_VDM_FM_KEYS,
+# space-separated) and the values land in fm_val[1..nkeys], so a caller that
+# needs five fields of fifty files pays one process, not two hundred and fifty
+# (Sidetrack #14, cc-vdm-plugins → docs/tasks/crystal-wake/workitem.md). The
+# single-file reader and the status batch each carried a copy of these rules,
+# with a comment asserting that the copies agreed; now there is nothing to agree.
+# Files are opened with getline, so a path is never read as an awk assignment
+# and a file that is not there costs nothing.
+_VDM_FRONTMATTER_AWK='
+  function fm_read(file,   line, count, i, v) {
+    for (i = 1; i <= nkeys; i++) { fm_val[i] = ""; fm_got[i] = 0 }
+    count = 0
+    while ((getline line < file) > 0) {
+      if (line ~ /^---[[:space:]]*$/) {
+        count++
+        if (count == 2) break
+        continue
+      }
+      if (count != 1) continue
+      for (i = 1; i <= nkeys; i++) {
+        if (!fm_got[i] && match(line, "^" fm_key[i] "[[:space:]]*:[[:space:]]*")) {
+          v = substr(line, RSTART + RLENGTH)
+          sub(/[[:space:]]+$/, "", v)
+          gsub(/^["\047]|["\047]$/, "", v)
+          fm_val[i] = v
+          fm_got[i] = 1
+        }
+      }
+    }
+    close(file)
+  }
+  BEGIN { nkeys = split(ENVIRON["_VDM_FM_KEYS"], fm_key, " ") }
+'
+
 extract_frontmatter_field() {
   # extract_frontmatter_field <file> <field>
   # Reads the YAML frontmatter (between leading `---` markers) and prints the
@@ -378,23 +416,28 @@ extract_frontmatter_field() {
   # we only consume simple scalar values (status, slug, session-type, etc.).
   local file="$1" field="$2"
   [ -f "$file" ] || return 0
-  awk -v key="$field" '
-    BEGIN { count = 0 }
-    /^---[[:space:]]*$/ {
-      count++
-      if (count == 2) exit
-      next
+  _VDM_FM_KEYS="$field" _VDM_FM_FILE="$file" awk "$_VDM_FRONTMATTER_AWK"'
+    BEGIN { fm_read(ENVIRON["_VDM_FM_FILE"]); if (fm_got[1]) print fm_val[1] }
+  ' 2>/dev/null
+}
+
+_extract_frontmatter_batch() {
+  # _extract_frontmatter_batch <key>... — reads workitem paths on stdin and
+  # prints "<path>␟<value>␟…" for every one, a value per key in the order
+  # given, empty where the key is absent. One awk for the whole list.
+  #
+  # The separator is the unit separator, \037, not a tab: tab is whitespace
+  # to `read`, which folds a run of them into one, and every empty value
+  # would pull the next one into its place.
+  local IFS=' '
+  _VDM_FM_KEYS="$*" awk "$_VDM_FRONTMATTER_AWK"'
+    $0 != "" {
+      fm_read($0)
+      out = $0
+      for (i = 1; i <= nkeys; i++) out = out "\037" fm_val[i]
+      print out
     }
-    count == 1 {
-      if (match($0, "^"key"[[:space:]]*:[[:space:]]*")) {
-        val = substr($0, RSTART + RLENGTH)
-        sub(/[[:space:]]+$/, "", val)
-        gsub(/^["\047]|["\047]$/, "", val)
-        print val
-        exit
-      }
-    }
-  ' "$file" 2>/dev/null
+  ' 2>/dev/null
 }
 
 _extract_status_batch() {
@@ -411,32 +454,8 @@ _extract_status_batch() {
   #
   # Paths arrive on stdin rather than argv so the batch is not bounded by
   # ARG_MAX; awk opens each with getline and closes it immediately.
-  #
-  # Frontmatter semantics are identical to extract_frontmatter_field (which
-  # stays for single-file callers): count `---` fences, read keys inside the
-  # first pair, first match wins, strip trailing space and surrounding quotes.
-  awk '
-    {
-      file = $0
-      if (file == "") next
-      status = ""
-      count = 0
-      while ((getline line < file) > 0) {
-        if (line ~ /^---[[:space:]]*$/) {
-          count++
-          if (count == 2) break
-          continue
-        }
-        if (count == 1 && match(line, /^status[[:space:]]*:[[:space:]]*/)) {
-          status = substr(line, RSTART + RLENGTH)
-          sub(/[[:space:]]+$/, "", status)
-          gsub(/^["\047]|["\047]$/, "", status)
-          break
-        }
-      }
-      close(file)
-      if (status != "") print file "\t" status
-    }
+  _VDM_FM_KEYS=status awk "$_VDM_FRONTMATTER_AWK"'
+    $0 != "" { fm_read($0); if (fm_val[1] != "") print $0 "\t" fm_val[1] }
   ' 2>/dev/null
 }
 
@@ -528,34 +547,59 @@ audit_non_canonical() {
 # output line per checkbox — which is what keeps the three implementations of
 # "what is an obligation" (here, the pre-commit gate, the PreToolUse guard) in
 # agreement: they count lines, and this joins them.
+_VDM_UNCHECKED_AWK='
+  function indent(s) { match(s, /^[ \t]*/); return RLENGTH }
+  function flush() { if (item != "") print (keyed ? cur "\t" : "") item; item = "" }
+  # A new file closes the last item of the one before, under that file'"'"'s name,
+  # and starts from a clean state. With one file this changes nothing.
+  FNR == 1 {
+    flush(); fence = 0; ind = 0
+    cur = FILENAME; if (substr(cur, 1, 1) != "/") cur = substr(cur, 3)
+  }
+  /^[[:space:]]*(```|~~~)/ {
+    if (item != "" && indent($0) <= ind) flush()
+    fence = !fence
+    next
+  }
+  fence { next }
+  /^[[:space:]]*-[[:space:]]*\[([[:space:]]|x|X)\]/ {
+    flush()
+    ind = indent($0)
+    if ($0 ~ /^[[:space:]]*-[[:space:]]*\[[[:space:]]\]/) item = $0
+    next
+  }
+  item == "" { next }
+  /^[[:space:]]*$/ { next }
+  {
+    if (indent($0) > ind) { t = $0; sub(/^[[:space:]]+/, "", t); item = item " " t }
+    else flush()
+  }
+  END { flush() }
+'
+
 _unchecked_lines() {
   # Prints every unchecked item that is NOT inside a fenced block, one line per
   # item: the checkbox line with its continuation joined on by single spaces.
   local file="$1"
   [ -f "$file" ] || return 0
-  awk '
-    function indent(s) { match(s, /^[ \t]*/); return RLENGTH }
-    function flush() { if (item != "") print item; item = "" }
-    /^[[:space:]]*(```|~~~)/ {
-      if (item != "" && indent($0) <= ind) flush()
-      fence = !fence
-      next
-    }
-    fence { next }
-    /^[[:space:]]*-[[:space:]]*\[([[:space:]]|x|X)\]/ {
-      flush()
-      ind = indent($0)
-      if ($0 ~ /^[[:space:]]*-[[:space:]]*\[[[:space:]]\]/) item = $0
-      next
-    }
-    item == "" { next }
-    /^[[:space:]]*$/ { next }
-    {
-      if (indent($0) > ind) { t = $0; sub(/^[[:space:]]+/, "", t); item = item " " t }
-      else flush()
-    }
-    END { flush() }
-  ' "$file" 2>/dev/null
+  awk -v keyed=0 "$_VDM_UNCHECKED_AWK" "$file" 2>/dev/null
+}
+
+_unchecked_lines_batch() {
+  # The same items for a list of files: reads paths on stdin and prints
+  # "<path>\t<item>" per item, one awk for the whole list, the program above
+  # unchanged. A relative path goes to awk as ./path — a bare `a=b` is an
+  # assignment to awk, not a file — and comes back without the ./. Only files
+  # that exist and can be read are handed over: awk stops at the first it
+  # cannot open, and that would silence every file after it.
+  local f
+  local args=()
+  while IFS= read -r f; do
+    [ -n "$f" ] && [ -f "$f" ] && [ -r "$f" ] || continue
+    case "$f" in /*) args+=("$f") ;; *) args+=("./$f") ;; esac
+  done
+  [ "${#args[@]}" -gt 0 ] || return 0
+  awk -v keyed=1 "$_VDM_UNCHECKED_AWK" "${args[@]}" 2>/dev/null
 }
 
 count_unchecked() {
@@ -602,6 +646,12 @@ _vdm_today() {
   date +%Y-%m-%d 2>/dev/null || printf '0000-00-00'
 }
 
+# A well-formed due marker, `(due: YYYY-MM-DD)` — one definition for every
+# reader of promised dates: list_overdue, audit_malformed_due, due_counts_batch.
+# It is spliced into their awk programs as text, not handed over with -v, which
+# would reinterpret its backslashes.
+_VDM_DUE_RE='\(due:[[:space:]]*[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][[:space:]]*\)'
+
 list_overdue() {
   # list_overdue <file> [today]
   # Prints one line per unchecked checkbox whose `(due: YYYY-MM-DD)` is in the
@@ -621,7 +671,7 @@ list_overdue() {
     # Unchecked checkbox carrying a well-formed due date.
     {
       line = $0
-      if (match(line, /\(due:[[:space:]]*[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][[:space:]]*\)/)) {
+      if (match(line, /'"$_VDM_DUE_RE"'/)) {
         due = substr(line, RSTART, RLENGTH)
         gsub(/[^0-9-]/, "", due)
         if (due < today) {
@@ -656,7 +706,7 @@ audit_malformed_due() {
   [ -f "$file" ] || return 0
   _unchecked_lines "$file" | awk '
     /\(due:/ {
-      if (!match($0, /\(due:[[:space:]]*[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][[:space:]]*\)/)) {
+      if (!match($0, /'"$_VDM_DUE_RE"'/)) {
         print $0
       }
     }
@@ -728,16 +778,47 @@ audit_sidetracks_without_markers() {
   printf '%s' "$missing"
 }
 
+due_counts_batch() {
+  # due_counts_batch [today] — reads workitem paths on stdin and prints
+  # "<path>\t<overdue>\t<malformed>" for every path with at least one of either:
+  # what count_overdue and audit_malformed_due answer file by file, for a whole
+  # list in two processes. crystal-cave asked per workitem, three processes for
+  # the overdue count and two more for the malformed ones (Sidetrack #14).
+  local today="${1:-}"
+  [ -n "$today" ] || today="$(_vdm_today)"
+  _unchecked_lines_batch | awk -v today="$today" '
+    {
+      p = index($0, "\t"); f = substr($0, 1, p - 1); line = substr($0, p + 1)
+      if (match(line, /'"$_VDM_DUE_RE"'/)) {
+        due = substr(line, RSTART, RLENGTH)
+        gsub(/[^0-9-]/, "", due)
+        if (due < today) { od[f]++; seen[f] = 1 }
+      } else if (line ~ /\(due:/) { bad[f]++; seen[f] = 1 }
+    }
+    END { for (f in seen) printf "%s\t%d\t%d\n", f, od[f], bad[f] }
+  ' 2>/dev/null
+}
+
 extract_slug() {
   # extract_slug <workitem-path>
   # In single-root mode: slug is relative to root (e.g. "auth-refactor").
   # In multi-root mode: slug is `<parent>/<file-slug>` where <parent> is the
   # path segment immediately above the tasks/ root (e.g. "auth/refactor-jwt").
   # Defensive fallback to basename when path isn't rooted under any known root.
-  local file="$1"
-  local roots root rel root_count
+  local roots root_count
   roots=$(resolve_crystal_roots)
   root_count=$(printf '%s\n' "$roots" | grep -c '.' 2>/dev/null || echo 0)
+  _slug_into "$1" "$roots" "$root_count"
+  printf '%s\n' "$_VDM_SLUG"
+}
+
+_slug_into() {
+  # _slug_into <workitem-path> <roots> <root-count> — extract_slug's answer, left
+  # in _VDM_SLUG, from roots the caller has already resolved. No subshell and no
+  # process, so a loop over every workitem can ask it per file; extract_slug
+  # itself is this plus the lookup. crystal-cave paid a grep per workitem here,
+  # and two more processes per workitem with several roots (Sidetrack #14).
+  local file="$1" roots="$2" root_count="$3" r root="" rel="" slug p
   while IFS= read -r r; do
     [ -n "$r" ] || continue
     case "$file" in
@@ -745,26 +826,36 @@ extract_slug() {
     esac
   done <<<"$roots"
 
-  if [ -z "${root:-}" ]; then
-    local base
-    base=$(basename "$file" .md)
-    printf '%s\n' "${base%/workitem}"
+  if [ -z "$root" ]; then
+    # basename "$file" .md — the suffix stays when it is the whole name.
+    p="$file"
+    while [ "${p%/}" != "$p" ] && [ "$p" != "/" ]; do p="${p%/}"; done
+    p="${p##*/}"
+    [ "$p" = ".md" ] || p="${p%.md}"
+    _VDM_SLUG="$p"
     return 0
   fi
 
-  local slug
   case "$rel" in
     */workitem.md) slug="${rel%/workitem.md}" ;;
     *.md)          slug="${rel%.md}" ;;
     *)             slug="$rel" ;;
   esac
 
-  if [ "${root_count:-1}" -gt 1 ]; then
-    local parent
-    parent=$(basename "$(dirname "$root")")
-    printf '%s/%s\n' "$parent" "$slug"
+  if [ "${root_count:-1}" -gt 1 ] 2>/dev/null; then
+    # basename "$(dirname "$root")", by the same rules as the two tools.
+    p="$root"
+    while [ "${p%/}" != "$p" ] && [ "$p" != "/" ]; do p="${p%/}"; done
+    case "$p" in
+      */*) p="${p%/*}"
+           while [ "${p%/}" != "$p" ] && [ -n "$p" ]; do p="${p%/}"; done
+           [ -n "$p" ] || p="/"
+           [ "$p" = "/" ] || p="${p##*/}" ;;
+      *)   p="." ;;
+    esac
+    _VDM_SLUG="$p/$slug"
   else
-    printf '%s\n' "$slug"
+    _VDM_SLUG="$slug"
   fi
 }
 

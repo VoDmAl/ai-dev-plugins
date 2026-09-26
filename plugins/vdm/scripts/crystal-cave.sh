@@ -37,18 +37,23 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/../lib/config-read.sh" 2>/dev/null || true
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/crystal-path.sh" 2>/dev/null || {
+  echo "crystal-cave: lib/crystal-path.sh not found relative to $SCRIPT_DIR" >&2
+  exit 1
+}
 
 # Warm the root cache in THIS shell before anything fans out into subshells.
 # The memo inside resolve_crystal_roots is process-scoped, and every use of it
 # below sits inside `$(...)`, `< <(...)` or a pipeline — a subshell inherits the
 # cache but cannot fill it. Without this line the tree is rescanned once per
 # call site (measured: 7× per hook run on an 11-root vault).
+#
+# From 2.24.1 this call stood inside the `|| { … }` above, the branch that runs
+# only when the library is missing, so it never ran; the test that required it
+# asked only whether the text was in the file (Sidetrack #14,
+# docs/tasks/crystal-wake/workitem.md).
 if command -v vdm_prime_crystal_roots >/dev/null 2>&1; then
   vdm_prime_crystal_roots
 fi
-  echo "crystal-cave: lib/crystal-path.sh not found relative to $SCRIPT_DIR" >&2
-  exit 1
-}
 
 INCLUDE_TERMINAL=0
 for arg in "$@"; do
@@ -104,38 +109,33 @@ SINGLETON_MODE=$(derive_singleton_mode)
 # it is invisible, because both branches produce the same empty column.
 LINT_SUMMARY=$(bash "$SCRIPT_DIR/crystal-lint.sh" --all --summary 2>/dev/null || true)
 
-canon_flag_for() {
-  # canon_flag_for <abs-path> — prints "off-canon" | "legacy" | "" (empty).
-  [ -z "$LINT_SUMMARY" ] && return 0
-  printf '%s\n' "$LINT_SUMMARY" | awk -F'\t' -v f="$1" '
-    $1 == f {
-      if ($2 == "violations") print "off-canon"
-      else if ($2 == "legacy") print "legacy"
-      exit
-    }'
-}
+# Every workitem once, and everything a row needs read from all of them in a
+# fixed number of processes. The loop below used to ask per workitem — four or
+# five awk for the frontmatter, a grep for the slug, an awk for the canon
+# verdict, three processes for the overdue count, two more for malformed dates —
+# about twenty launches a workitem, 731 in this repository (Sidetrack #14,
+# docs/tasks/crystal-wake/workitem.md). The rules have not moved: the fields,
+# the obligations and the due dates are read by the library's own programs, in
+# their batch form.
+ALL_ITEMS=$(find_workitems)
+DUES=$(printf '%s\n' "$ALL_ITEMS" | due_counts_batch)
 
 build_meta() {
-  local all_items f raw resolved tier slug type updated description group short to icon canon overdue
-  all_items=$(find_workitems)
-  [ -z "$all_items" ] && return 0
+  local f raw type fallback updated description resolved tier group short to icon
+  [ -z "$ALL_ITEMS" ] && return 0
   # Once, here: every `$(_apply_status_alias …)` below is a subshell, which
   # can use the aliases but not load them for the next one (Sidetrack #13).
   _load_status_aliases
-  while IFS= read -r f; do
+  while IFS=$'\037' read -r f raw type fallback updated description; do
     [ -n "$f" ] || continue
-    raw=$(extract_frontmatter_field "$f" status)
     [ -z "$raw" ] && continue
     resolved=$(_apply_status_alias "$raw")
     tier=$(derive_status_tier "$resolved")
-    slug=$(extract_slug "$f")
-    type=$(extract_frontmatter_field "$f" session-type)
-    [ -z "$type" ] && type=$(extract_frontmatter_field "$f" type)
-    updated=$(extract_frontmatter_field "$f" "last-updated")
-    description=$(extract_frontmatter_field "$f" description)
-    case "$slug" in
-      */*) group="${slug%%/*}"; short="${slug#*/}" ;;
-      *)   group="."; short="$slug" ;;
+    _slug_into "$f" "$ROOTS" "$ROOT_COUNT"
+    [ -z "$type" ] && type="$fallback"
+    case "$_VDM_SLUG" in
+      */*) group="${_VDM_SLUG%%/*}"; short="${_VDM_SLUG#*/}" ;;
+      *)   group="."; short="$_VDM_SLUG" ;;
     esac
     case "$tier" in
       active)   to=0; icon='●' ;;
@@ -148,18 +148,36 @@ build_meta() {
       terminal) to=4; icon='✓' ;;
       *)        to=5; icon='!' ;;
     esac
-    canon=$(canon_flag_for "$f")
-    # A third axis, separate from status and from structural canon: promises
-    # whose declared date has passed. Zero for every workitem that never named
-    # a date — which is most of them, by design (checkbox-decay-signal DL #2).
-    overdue=$(count_overdue "$f")
-    printf '%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$group" "$to" "${updated:-0000-00-00}" "$short" "$tier" "$resolved" \
-      "${type:-}" "${updated:-}" "${description:-}" "$icon" "${canon:-}" "${overdue:-0}"
-  done <<<"$all_items"
+    # The path leads the row until the join below has used it.
+    printf '%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$f" "$group" "$to" "${updated:-0000-00-00}" "$short" "$tier" "$resolved" \
+      "${type:-}" "${updated:-}" "${description:-}" "$icon"
+  done < <(printf '%s\n' "$ALL_ITEMS" \
+             | _extract_frontmatter_batch status session-type type last-updated description)
 }
 
-META=$(build_meta)
+# Two more axes, joined on by path in one pass. The canon verdict is the
+# linter's (first line per file wins, as before); a third axis, separate from
+# status and from structural canon, is promises whose declared date has passed.
+# Zero for every workitem that never named a date — which is most of them, by
+# design (checkbox-decay-signal DL #2).
+META=$(build_meta | _LINT="$LINT_SUMMARY" _DUES="$DUES" awk -F'\t' '
+  BEGIN {
+    n = split(ENVIRON["_LINT"], L, "\n")
+    for (i = 1; i <= n; i++) {
+      split(L[i], c, "\t")
+      if (c[1] == "" || (c[1] in canon)) continue
+      canon[c[1]] = (c[2] == "violations") ? "off-canon" : ((c[2] == "legacy") ? "legacy" : "")
+    }
+    n = split(ENVIRON["_DUES"], D, "\n")
+    for (i = 1; i <= n; i++) { split(D[i], c, "\t"); if (c[1] != "") od[c[1]] = c[2] + 0 }
+  }
+  {
+    out = $2
+    for (i = 3; i <= NF; i++) out = out "\t" $i
+    printf "%s\t%s\t%d\n", out, (($1 in canon) ? canon[$1] : ""), (($1 in od) ? od[$1] : 0)
+  }
+')
 
 if [ -z "$META" ]; then
   printf '🔮 No crystals found.\n'
@@ -356,10 +374,7 @@ fi
 # scope, which is this repository's recurring failure mode. Reported separately
 # from the count, because the fix is different: not "do the work", but "write
 # the date properly or drop the marker".
-MALFORMED=$(while IFS= read -r f; do
-  [ -n "$f" ] || continue
-  audit_malformed_due "$f"
-done < <(find_workitems) | grep -c '.' 2>/dev/null || true)
+MALFORMED=$(printf '%s\n' "$DUES" | awk -F'\t' '{ s += $3 } END { print s + 0 }')
 if [ "${MALFORMED:-0}" -gt 0 ]; then
   printf '\n⚠ Malformed `due:` markers: %d. They look like a deadline and are invisible to the\n' "$MALFORMED"
   printf '   overdue check. Expected form: `- [ ] promise (due: YYYY-MM-DD)`.\n'

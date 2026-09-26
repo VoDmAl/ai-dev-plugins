@@ -121,9 +121,12 @@ empty, the row stays unchanged — no placeholder, no quotes.
 If every row in a group is `idea`, the script collapses the column away
 entirely.
 
-All counts and tier classifications come from the same helpers the hooks
-use (`${CLAUDE_PLUGIN_ROOT}/lib/crystal-path.sh` — `count_unchecked`,
-`extract_frontmatter_field`, `derive_status_tier`, `_apply_status_alias`).
+All counts and tier classifications come from the library the hooks use
+(`${CLAUDE_PLUGIN_ROOT}/lib/crystal-path.sh`): fields, open items and due
+dates are read by the same programs as `extract_frontmatter_field` and
+`count_unchecked`, in their batch form, so the overview costs the same
+number of processes for two workitems or two hundred; statuses resolve
+through `derive_status_tier` and `_apply_status_alias`.
 
 ### Singleton violations
 

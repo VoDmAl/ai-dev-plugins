@@ -498,15 +498,26 @@ fi
 # Every script that resolves roots must prime. This is the obligation the fix
 # rests on, and memory is not an acceptable enforcement for it.
 missing=""
+misplaced=""
 for sc in "$REPO_ROOT"/plugins/vdm/scripts/crystal-capture-reminder.sh \
           "$REPO_ROOT"/plugins/vdm/scripts/crystal-cave.sh \
           "$REPO_ROOT"/plugins/vdm/scripts/crystal-hydrate.sh \
           "$REPO_ROOT"/plugins/vdm/scripts/crystal-stop-reminder.sh \
           "$REPO_ROOT"/plugins/vdm/scripts/list-open-crystals.sh \
           "$REPO_ROOT"/plugins/vdm/scripts/crystal-migrate-scan.sh; do
-  grep -q 'vdm_prime_crystal_roots' "$sc" 2>/dev/null || missing="$missing $(basename "$sc")"
+  grep -q 'vdm_prime_crystal_roots' "$sc" 2>/dev/null || { missing="$missing $(basename "$sc")"; continue; }
+  # Present is not the same as run. From 2.24.1 two of these scripts had the
+  # call inside `. lib/crystal-path.sh || { … }`, the branch taken only when
+  # the library is missing, and the check above passed on both
+  # (Sidetrack #14, docs/tasks/crystal-wake/workitem.md). The behavioural half
+  # is crystal-cave's cost test: without the memo it pays a scan per workitem.
+  awk '/\|\|[[:space:]]*\{[[:space:]]*$/ { inside = 1; next }
+       inside && /^\}/ { inside = 0; next }
+       inside && /^[[:space:]]*vdm_prime_crystal_roots[[:space:]]*$/ { hit = 1 }
+       END { exit !hit }' "$sc" && misplaced="$misplaced $(basename "$sc")"
 done
 expect_eq "every root-resolving script primes the cache" "" "$missing"
+expect_eq "RED: …and not in the branch that runs only when the library is missing" "" "$misplaced"
 
 printf '\n=== names are bytes ===\n'
 # In line output git quotes any path holding a byte outside ASCII, so a crystal

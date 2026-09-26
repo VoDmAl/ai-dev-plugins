@@ -440,9 +440,15 @@ status-aliases from config once per shell process». Написанное вер
 красные на прежнем коде. Вторая половина той же памяти — алиасы статусов — закрыта следом (vdm
 2.37.2): они грузятся раз на цикл, в оболочке цикла, а `audit_non_canonical` читает статусы одним
 `awk`. Хуки кристаллов больше не растут с числом workitem: `crystal-stop-reminder`, который
-срабатывает в конце каждого хода, при 2 и 20 workitem с конфигом стоил 44 и 116 запусков, теперь
-39 и 39 (Sidetrack #13, `docs/tasks/crystal-wake/workitem.md`). Этот же замер нашёл `crystal-cave`
-с двадцатью процессами на workitem — Sidetrack #14.
+срабатывает в конце каждого хода, при 2 и 20 workitem с конфигом стоил 44 и 116 запусков, теперь 39
+и 39 (Sidetrack #13, `docs/tasks/crystal-wake/workitem.md`). Тот же замер вскрыл третий случай, у
+памяти корней. В `crystal-cave.sh` и `crystal-migrate-scan.sh` её заполнение с 2.24.1 стояло в ветке
+`|| { … }`, которая выполняется, только если библиотеки нет, а тест «every root-resolving script
+primes the cache» спрашивал лишь, есть ли вызов в тексте. Это анти-паттерн «Counting a gate as wired
+because its file is present» (`docs/llm/soft-guidance-vs-deterministic-gates.md`), встреченный на
+собственном тесте. Вместе с чтением полей по процессу на workitem это давало около двадцати запусков
+на workitem. Теперь `crystal-cave` стоит 66 запусков при 2, 20 и 33 workitem (было 130, 508 и 731),
+и держит это тест на рост входа, а не на наличие текста (Sidetrack #14).
 
 #### Критерий участия подтверждён снаружи
 
