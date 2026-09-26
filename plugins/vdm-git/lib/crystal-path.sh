@@ -47,11 +47,22 @@ crystal_canonical_statuses() {
 }
 
 _load_status_aliases() {
-  # Loads status-aliases from config once per shell process; stores as a flat
-  # newline-separated `key=value` blob in _VDM_STATUS_ALIASES_DATA. Bash 3.2
-  # compat (no associative arrays).
-  [ -n "${_VDM_STATUS_ALIASES_LOADED:-}" ] && return 0
-  _VDM_STATUS_ALIASES_LOADED=1
+  # Loads status-aliases from config into _VDM_STATUS_ALIASES_DATA, a flat
+  # newline-separated `key=value` blob. Bash 3.2 compat (no associative arrays).
+  #
+  # Remembered only in the shell that runs this, and only for one place: the
+  # key is the working directory plus git's own location variables, the key
+  # lib/config-path.sh uses for the project root, so a caller that moves is
+  # answered from the project it is in now. The comment here used to say "once
+  # per shell process", and it held only for a shell that called this itself.
+  # Every per-workitem caller arrives from `$(...)`, where the memo is set and
+  # thrown away with the subshell, so each workitem read the config again: one
+  # `jq` per workitem wherever a project has a config (Sidetrack #13,
+  # cc-vdm-plugins → docs/tasks/crystal-wake/workitem.md). The loops below call
+  # this once before they fan out, and so must any script with a loop of its own.
+  local key="$PWD|${GIT_DIR-}|${GIT_WORK_TREE-}"
+  [ "${_VDM_STATUS_ALIASES_KEY-}" = "$key" ] && return 0
+  _VDM_STATUS_ALIASES_KEY="$key"
   _VDM_STATUS_ALIASES_DATA=""
   command -v jq >/dev/null 2>&1 || return 0
   local cfg
@@ -441,8 +452,11 @@ filter_status() {
     tier:*) match_tier="${expected#tier:}" ;;
   esac
   # Status extraction is batched into a single awk (see _extract_status_batch);
-  # alias resolution and tier derivation stay here, in-process and cached, so
-  # the rule that maps a raw status to a canonical one has exactly one home.
+  # alias resolution and tier derivation stay here, so the rule that maps a raw
+  # status to a canonical one has exactly one home. Aliases are loaded in this
+  # shell, before the pipe: the loop behind it and every `$(...)` inside it
+  # inherit them, and none can load them for the others (_load_status_aliases).
+  _load_status_aliases
   _extract_status_batch | {
     local f raw resolved tier
     while IFS=$'\t' read -r f raw; do
@@ -471,16 +485,23 @@ audit_non_canonical() {
   # Reads file paths on stdin; outputs only paths whose `status:` is
   # non-canonical (after alias resolution). Files without `status:` are
   # skipped — they're artifacts, not workitems with broken metadata.
-  local f raw resolved
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    raw=$(extract_frontmatter_field "$f" status)
-    [ -z "$raw" ] && continue
-    resolved=$(_apply_status_alias "$raw")
-    if [ "$(derive_status_tier "$resolved")" = "non-canonical" ]; then
-      printf '%s\n' "$f"
-    fi
-  done
+  #
+  # Statuses are read the way filter_status reads them: one awk for the whole
+  # list, aliases loaded once before the loop. This ran extract_frontmatter_field
+  # — an awk — per workitem, and crystal-hydrate and crystal-stop-reminder call
+  # it at every session start and at the end of every turn (Sidetrack #13).
+  _load_status_aliases
+  _extract_status_batch | {
+    local f raw resolved
+    while IFS=$'\t' read -r f raw; do
+      [ -n "$f" ] || continue
+      [ -n "$raw" ] || continue
+      resolved=$(_apply_status_alias "$raw")
+      if [ "$(derive_status_tier "$resolved")" = "non-canonical" ]; then
+        printf '%s\n' "$f"
+      fi
+    done
+  }
   return 0
 }
 

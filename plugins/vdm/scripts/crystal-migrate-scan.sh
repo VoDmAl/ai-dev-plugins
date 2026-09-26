@@ -191,6 +191,9 @@ for dir in "${TARGETS[@]}"; do
 "
 done
 
+# Aliases once, in this shell: each row derives its tier inside `$(...)`, which
+# can use them but not load them for the next row (Sidetrack #13).
+_load_status_aliases
 printf '%s\n' "$ALL" | sort -u | while IFS= read -r f; do
   [ -n "$f" ] || continue
   [ -f "$f" ] || continue

@@ -119,6 +119,9 @@ build_meta() {
   local all_items f raw resolved tier slug type updated description group short to icon canon overdue
   all_items=$(find_workitems)
   [ -z "$all_items" ] && return 0
+  # Once, here: every `$(_apply_status_alias …)` below is a subshell, which
+  # can use the aliases but not load them for the next one (Sidetrack #13).
+  _load_status_aliases
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     raw=$(extract_frontmatter_field "$f" status)

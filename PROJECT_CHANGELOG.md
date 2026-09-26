@@ -10,6 +10,41 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ## 2026-09-26
 
+### ⚡ PERF — статусы кристаллов: алиасы грузятся раз на цикл, аудит одним `awk` (vdm 2.37.2, vdm-git 2.15.8)
+
+**Что было.** У `_load_status_aliases` (`lib/crystal-path.sh`) написано «once per shell process».
+Но память ставилась внутри `$(_apply_status_alias …)`, в подоболочке на каждый workitem, и уходила
+вместе с ней. Так было с первого дня (2.5.0): все вызывающие звали её из подоболочки. Где у проекта
+есть конфиг, каждый workitem заново читал его `jq`, даже если алиасов в конфиге нет.
+`audit_non_canonical` к тому же запускал `awk` на каждый workitem при любом конфиге. Это зовут
+`crystal-stop-reminder` (конец каждого хода), `crystal-hydrate` (старт сессии),
+`crystal-capture-reminder` (промпт) и `list-open-crystals`. Sidetrack #13 в
+`docs/tasks/crystal-wake/workitem.md`.
+
+**Что сделано.**
+- `_load_status_aliases` помнит ответ для одного места: ключ `$PWD` + `GIT_DIR` + `GIT_WORK_TREE`,
+  тот же, что у корня в `lib/config-path.sh`. Кто сменил каталог, получает алиасы своего проекта.
+- `filter_status` и `audit_non_canonical` грузят алиасы в своей оболочке до цикла, и подоболочки
+  на каждый workitem их наследуют. `audit_non_canonical` читает статусы одним `awk`
+  (`_extract_status_batch`), как `filter_status`.
+- `crystal-cave.sh` и `crystal-migrate-scan.sh` крутят свои циклы и грузят алиасы перед ними.
+- Замеры по обёрткам, фикстура с одним активным кристаллом, 2 и 20 workitem. Без конфига:
+  `crystal-stop-reminder` было 34 и 52, стало 33 и 33; `crystal-hydrate` 35 и 53 → 34 и 34;
+  `list-open-crystals` 30 и 48 → 29 и 29. С конфигом: `crystal-stop-reminder` 44 и 116 → 39 и 39;
+  `crystal-hydrate` 46 и 118 → 41 и 41; `crystal-capture-reminder` 36 и 54 → 35 и 35;
+  `list-open-crystals` 38 и 110 → 33 и 33. В этом репо (33 workitem): `crystal-stop-reminder`
+  65 → 33, `crystal-hydrate` 66 → 34, `list-open-crystals` 61 → 29.
+- Ответы сверены со старой библиотекой в 27 репо машины, где есть workitem: `filter_status` по
+  восьми запросам, `audit_non_canonical` и вывод трёх хуков, 369 строк с путями — всё совпало.
+  Алиасов статусов нет ни в одном конфиге машины (конфиги есть у 4 репо), поэтому путь с алиасами
+  проверен только на фикстурах.
+- Тесты: `tests/crystal-path.test.sh` → «status aliases: loaded once, not once per workitem».
+  `filter_status` и `audit_non_canonical` при 2 и 20 workitem с конфигом стоят одинаково; алиасы,
+  загруженные в одном проекте, не отвечают в другом; каждый скрипт, который сам разбирает статусы,
+  грузит алиасы. Канарейки: алиас применён, значит, конфиг прочитан. На прежнем коде красные 4
+  проверки.
+- Не закрыто: `crystal-cave` тратит около 21 запуска на workitem (731 в этом репо). Это Sidetrack #14.
+
 ### ⚡ PERF — корень проекта спрашивается один раз, `docs-sync` без процесса на файл (vdm 2.37.1, vdm-git 2.15.7, vdm-comms 0.6.1)
 
 **Что было.** Каждое чтение конфига (`vdm_config_read`) звало `resolve_config_path`, а тот запускал

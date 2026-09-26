@@ -211,6 +211,90 @@ expect_eq "…and asking for done returns the other one"    "$TMP/fsmix/b/workit
 mixtier=$(find "$TMP/fsmix" -name workitem.md | sort | bash -c ". '$CFG' 2>/dev/null; . '$LIB' 2>/dev/null; filter_status tier:active")
 expect_eq "…and the tier: form still resolves"            "$TMP/fsmix/a/workitem.md" "$mixtier"
 
+printf '\n=== status aliases: loaded once, not once per workitem ===\n'
+# The batch above left one process per workitem standing, where a project has a
+# config: each status is resolved inside `$(_apply_status_alias …)`, and the
+# "once per shell process" memo was set in that subshell and died with it —
+# one `jq` per workitem, per call. audit_non_canonical kept an awk per workitem
+# besides. crystal-stop-reminder, at the end of every turn, went 44 → 116
+# launches between 2 and 20 workitems (Sidetrack #13,
+# docs/tasks/crystal-wake/workitem.md). Counted by shims, not by xtrace: the
+# launches that matter happen inside subshells.
+ALIAS_SHIMS="$TMP/alias-shims"
+mkdir -p "$ALIAS_SHIMS"
+for tool in jq awk; do
+  real=$(type -P "$tool" 2>/dev/null) || continue
+  cat > "$ALIAS_SHIMS/$tool" <<EOF
+#!/bin/bash
+printf '%s\n' "$tool" >> "\$LAUNCH_LOG"
+exec "$real" "\$@"
+EOF
+  chmod +x "$ALIAS_SHIMS/$tool"
+done
+# alias_project <name> <n> — n workitems under a config that aliases `wip` to
+# in-progress: w1 is `wip`, w2 `bogus`, the rest `ready`. Prints its path.
+alias_project() {
+  local d="$TMP/$1" i st
+  rm -rf "$d"; mkdir -p "$d/.claude" "$d/docs/tasks"
+  ( cd "$d" && git init -q . 2>/dev/null )
+  printf '{"crystal":{"status-aliases":{"wip":"in-progress"}}}\n' > "$d/.claude/vdm-plugins.json"
+  i=1
+  while [ "$i" -le "$2" ]; do
+    case "$i" in 1) st=wip ;; 2) st=bogus ;; *) st=ready ;; esac
+    mkdir -p "$d/docs/tasks/w$i"
+    printf -- '---\nstatus: %s\n---\n' "$st" > "$d/docs/tasks/w$i/workitem.md"
+    i=$((i + 1))
+  done
+  printf '%s' "$d"
+}
+# alias_launches <dir> <function> — "<jq> <awk>" launched by <function> reading
+# every workitem of <dir> on stdin; its output is left in $TMP/alias.out.
+alias_launches() {
+  find "$1/docs/tasks" -name workitem.md | sort > "$TMP/alias.list"
+  : > "$TMP/alias.log"
+  ( cd "$1" && LAUNCH_LOG="$TMP/alias.log" PATH="$ALIAS_SHIMS:$PATH" \
+      bash -c ". '$CFG' 2>/dev/null; . '$LIB' 2>/dev/null; $2" < "$TMP/alias.list" > "$TMP/alias.out" 2>/dev/null )
+  printf '%s %s' "$(grep -c '^jq$' "$TMP/alias.log")" "$(grep -c '^awk$' "$TMP/alias.log")"
+}
+A2=$(alias_project alias2 2)
+A20=$(alias_project alias20 20)
+
+fs2=$(alias_launches "$A2" "filter_status in-progress")
+fs2_out=$(cat "$TMP/alias.out")
+fs20=$(alias_launches "$A20" "filter_status in-progress")
+# Canary: the alias was applied, so the config was read on the counted path.
+expect_eq "canary: filter_status reads the alias (wip counts as in-progress)" \
+  "$A2/docs/tasks/w1/workitem.md" "$fs2_out"
+expect_eq "RED: filter_status — 20 workitems cost the jq and awk that 2 do" "$fs2" "$fs20"
+
+nc2=$(alias_launches "$A2" "audit_non_canonical")
+nc2_out=$(cat "$TMP/alias.out")
+nc20=$(alias_launches "$A20" "audit_non_canonical")
+expect_eq "canary: audit_non_canonical names the bogus status and not the aliased one" \
+  "$A2/docs/tasks/w2/workitem.md" "$nc2_out"
+expect_eq "RED: audit_non_canonical — 20 workitems cost the jq and awk that 2 do" "$nc2" "$nc20"
+
+# The memo belongs to a place. Loaded in one project, it must not answer in
+# another: there `wip` is no alias, so it is a non-canonical status.
+PLAIN=$(new_project plain-status)
+mkdir -p "$PLAIN/docs/tasks/w1"
+printf -- '---\nstatus: wip\n---\n' > "$PLAIN/docs/tasks/w1/workitem.md"
+moved=$(cd "$A2" && bash -c ". '$CFG' 2>/dev/null; . '$LIB' 2>/dev/null
+  _load_status_aliases
+  cd '$PLAIN'
+  printf '%s\n' '$PLAIN/docs/tasks/w1/workitem.md' | audit_non_canonical")
+expect_eq "aliases loaded in one project do not answer in another" \
+  "$PLAIN/docs/tasks/w1/workitem.md" "$moved"
+
+# Scripts with a status loop of their own must load the aliases before it, as
+# the library's loops do. Found by what they call, not by a list kept here.
+unloaded=""
+for sc in "$REPO_ROOT"/plugins/*/scripts/*.sh; do
+  grep -qE '_apply_status_alias|derive_status_tier' "$sc" 2>/dev/null || continue
+  grep -q '_load_status_aliases' "$sc" 2>/dev/null || unloaded="$unloaded $(basename "$sc")"
+done
+expect_eq "every script that resolves statuses itself loads the aliases first" "" "$unloaded"
+
 printf '\n=== overdue promises: the projection, not a cleverer scanner ===\n'
 # A checkbox has no decay signal of its own — every other signal in this suite
 # compares two artifacts on disk, and an unchecked item has no second operand.
