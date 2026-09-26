@@ -36,6 +36,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/../lib/config-read.sh" 2>/dev/null || exit 0
 # shellcheck disable=SC1091
 . "$HERE/../lib/reminder-throttle.sh" 2>/dev/null || true
+# The text below carries file names, and without the escaper there is no safe
+# way to put a name into JSON — so no escaper, no reminder. Silence is this
+# hook's legal failure; an unparseable text would take the turn's other
+# reminders down with it.
+# shellcheck disable=SC1091
+. "$HERE/../lib/reminder-emit.sh" 2>/dev/null || exit 0
 
 if command -v vdm_is_enabled >/dev/null 2>&1; then
   vdm_is_enabled "distill" || exit 0
@@ -73,6 +79,13 @@ drift=$(bash "$HERE/distill-scan.sh" --drift 2>/dev/null)
 # Render. Name the drifted documents and one example input each — a reminder
 # that says "something is stale" without saying WHAT costs the assistant a
 # re-scan and gets ignored by the third occurrence.
+#
+# Built as plain text with real line breaks and escaped once, as a whole. The
+# names are real paths — the scanner reads git with -z — and a real name can
+# hold a quote or a backslash; pasted raw, one such name broke the JSON, and the
+# emitter's safety net then delivered the whole text escaped, under a notice
+# that this reminder is defective. Escaping the finished text also leaves no
+# second place where a line break has to be spelled `\n` by hand.
 body=""
 doc=""
 while IFS= read -r line; do
@@ -80,25 +93,21 @@ while IFS= read -r line; do
   case "$line" in
     "  ← "*)
       [ -n "$doc" ] || continue
-      body="${body}\\n    ${line#  }"
+      body="${body}"$'\n'"    ${line#  }"
       ;;
     *)
       doc="$line"
-      body="${body}\\n  • ${doc} — отстал от того, что покрывает:"
+      body="${body}"$'\n'"  • ${doc} — отстал от того, что покрывает:"
       ;;
   esac
 done <<<"$drift"
 
 [ -n "$body" ] || exit 0
 
-ctx="[docs-distill] Слой синтеза отстал от входов."
-ctx="${ctx}${body}"
-ctx="${ctx}\\nСинтез не дописывают — его ПЕРЕСОБИРАЮТ. Фрагменты копятся сами; сводное «как оно устроено сейчас» — нет."
-ctx="${ctx}\\n→ /vdm:docs-distill — пересобрать и обновить \`observed:\`. Упрётесь в незадокументированную фичу → сначала /vdm:docs-sync."
+ctx="[docs-distill] Слой синтеза отстал от входов.${body}"
+ctx="${ctx}"$'\n'"Синтез не дописывают — его ПЕРЕСОБИРАЮТ. Фрагменты копятся сами; сводное «как оно устроено сейчас» — нет."
+ctx="${ctx}"$'\n'"→ /vdm:docs-distill — пересобрать и обновить \`observed:\`. Упрётесь в незадокументированную фичу → сначала /vdm:docs-sync."
 
-# shellcheck disable=SC1091
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/reminder-emit.sh" 2>/dev/null \
-  || _vdm_reminder_emit() { printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "UserPromptSubmit",\n    "additionalContext": "%s"\n  }\n}\n' "$4"; }
 _vdm_reminder_emit docs-distill 1 \
-  "docs-distill: a synthesis is behind its inputs → /vdm:docs-distill" "$ctx"
+  "docs-distill: a synthesis is behind its inputs → /vdm:docs-distill" "$(_vdm_json_escape "$ctx")"
 exit 0

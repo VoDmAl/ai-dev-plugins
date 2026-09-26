@@ -48,7 +48,7 @@ count_is() {
 }
 
 TMP=$(mktemp -d 2>/dev/null || mktemp -d -t distillscan)
-cleanup() { rm -rf "$TMP" ${TMP2:+"$TMP2"} ${TMP3:+"$TMP3"} ${COSTS:+"$COSTS"}; }
+cleanup() { rm -rf "$TMP" ${TMP2:+"$TMP2"} ${TMP3:+"$TMP3"} ${TMP4:+"$TMP4"} ${COSTS:+"$COSTS"}; }
 trap cleanup EXIT
 
 cd "$TMP" || exit 1
@@ -326,6 +326,58 @@ count_is "RED: covering 12 dirs instead of 2 costs no more launches" "$narrow" "
 printf 'y\n' >> d7/f.txt
 OUT=$(bash "$SCAN" --drift)
 says "a change under the 7th covered dir is still drift" "$OUT" "d7/f.txt"
+
+# ---------------------------------------------------------------------------
+printf '\nnames are bytes\n'
+# ---------------------------------------------------------------------------
+# In line output git quotes any path holding a byte outside ASCII —
+# "src/\320\224…" — and a quoted name fails every test after it: `[ -f ]`, the
+# prefix match, membership in the changed set. So a Cyrillic file under a
+# covered directory was never drift, in either mode, and a synthesis document
+# with a Cyrillic name was never found (Sidetrack #7 in
+# docs/tasks/crystal-wake/workitem.md).
+#
+# Reading git with -z hands over the raw bytes, and that is a trap of its own on
+# macOS: in a UTF-8 locale `tr` stops at the first byte that is not UTF-8,
+# `sed` too, and `sort` drops the WHOLE list. APFS will not store such a name,
+# but a git index will — a repository on this machine carries them — and one
+# index entry was enough to empty the signal. Hence the cases below run the
+# scanner from a UTF-8 locale, which is where the trap is.
+U8=en_US.UTF-8
+TMP4=$(mktemp -d 2>/dev/null || mktemp -d -t distillscan4)
+cd "$TMP4" || exit 1
+git init -q . 2>/dev/null
+git config user.email t@t; git config user.name t
+mkdir -p docs/model src
+printf -- '---\ntype: model\nquestion: "names"\ncovers:\n  - src/\nobserved: 2026-09-26\n---\n# U\n' > docs/model/u.md
+printf 'x\n' > src/plain.txt
+printf 'x\n' > 'src/Документ.txt'
+touch -t 202001010000 docs/model/u.md
+git add -A >/dev/null 2>&1
+
+OUT=$(LC_ALL=$U8 bash "$SCAN" --drift-all)
+says "RED: by mtime, a Cyrillic name under covers is drift" "$OUT" "src/Документ.txt"
+says "…and so is its ASCII neighbour" "$OUT" "src/plain.txt"
+
+git commit -qm names >/dev/null 2>&1
+printf 'y\n' >> src/plain.txt
+printf 'y\n' >> 'src/Документ.txt'
+OUT=$(LC_ALL=$U8 bash "$SCAN" --drift-all)
+says "RED: by content, a changed Cyrillic file is drift" "$OUT" "src/Документ.txt"
+says_not "…named as itself, not as git's quoted octal" "$OUT" '\320'
+
+# An index entry whose name is not UTF-8 at all. Staged, so it is in every set
+# the content filter reads; not on disk, as on APFS it cannot be.
+blob=$(printf 'x\n' | git hash-object -w --stdin)
+git update-index --add --cacheinfo "100644,$blob,src/b$(printf '\377')d.md" 2>/dev/null
+OUT=$(LC_ALL=$U8 bash "$SCAN" --drift-all)
+says "RED: a name that is not UTF-8 does not erase the rest of the list" "$OUT" "src/plain.txt"
+says "…Cyrillic included" "$OUT" "src/Документ.txt"
+
+printf -- '---\ntype: model\nquestion: "a name"\ncovers:\n  - src/\nobserved: 2026-09-26\n---\n# М\n' > 'docs/model/Модель.md'
+OUT=$(LC_ALL=$U8 bash "$SCAN" --list)
+says "RED: a synthesis document with a Cyrillic name is found" "$OUT" "docs/model/Модель.md"
+says "…next to the one with an ASCII name" "$OUT" "docs/model/u.md"
 
 cd "$TMP" || exit 1
 

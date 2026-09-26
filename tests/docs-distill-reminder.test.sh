@@ -160,5 +160,36 @@ else
   printf '  – SKIP modes: no jq, the config is not read\n'
 fi
 
+# ---------------------------------------------------------------------------
+printf '\na name is text inside JSON\n'
+# ---------------------------------------------------------------------------
+# The scanner hands over real names since it reads git with -z, and a real name
+# can hold a quote or a backslash. The hook pastes names into a JSON string;
+# one unescaped name makes the whole text unparseable — the failure that took
+# down every reminder of a turn at command-center, 2026-09-25.
+printf 'x\n' > 'src/quote"d.txt'
+printf 'x\n' > 'src/back\slash.txt'
+printf 'x\n' > 'src/Документ.txt'
+touch -t 202001010000 docs/model/m.md src/a.txt
+touch -t 202201010000 'src/quote"d.txt' 'src/back\slash.txt' 'src/Документ.txt'
+OUT=$(prompt s6)
+CTX=$(printf '%s' "$OUT" | python3 -c '
+import json, sys
+print(json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"])' 2>/dev/null)
+if [ -n "$CTX" ]; then ok "RED: with a quote and a backslash in names the reminder is still valid JSON"
+else bad "RED: with a quote and a backslash in names the reminder is still valid JSON" "$(printf '%s' "$OUT" | head -c 200)"; fi
+says "…the quoted name reads as itself" "$CTX" 'src/quote"d.txt'
+says "…so does the backslash" "$CTX" 'src/back\slash.txt'
+says "…and the Cyrillic one" "$CTX" 'src/Документ.txt'
+# Valid JSON alone is not the property: lib/reminder-emit.sh re-escapes a text
+# that breaks the contract and marks it as a defect of the reminder, so a hook
+# that pastes names raw still comes out parseable — under that notice, with its
+# own line breaks turned into literal "\n". The hook escapes its names itself.
+case "$CTX" in
+  *"not valid JSON"*) bad "RED: …because the hook escaped the names itself, not the safety net" "$(printf '%s' "$CTX" | head -c 160)" ;;
+  "")                 bad "RED: …because the hook escaped the names itself, not the safety net" "no text to look at" ;;
+  *)                  ok  "RED: …because the hook escaped the names itself, not the safety net" ;;
+esac
+
 printf '\ndocs-distill-reminder: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

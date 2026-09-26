@@ -43,6 +43,17 @@
 
 set -u
 
+# Paths are bytes. Every path below comes from git in -z form, raw — line form
+# quotes any name with a byte outside ASCII, and a quoted name then fails every
+# test after it, so a Cyrillic input was never drift and a Cyrillic synthesis
+# never found (Sidetrack #7, docs/tasks/crystal-wake/workitem.md). Raw bytes are
+# a trap of their own in a UTF-8 locale on macOS: `tr` and `sed` stop at the
+# first byte that is not UTF-8, and `sort` drops the WHOLE list. APFS will not
+# store such a name, but a git index will, and one index entry was enough to
+# empty the signal. In the C locale every tool here takes a name for the bytes
+# it is; the one visible effect is that lists sort in byte order.
+export LC_ALL=C
+
 # shellcheck disable=SC1091
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/config-read.sh" 2>/dev/null || exit 0
 
@@ -198,7 +209,7 @@ _candidate_markdown() {
   # sees the index would stay silent exactly when the tier is being born — the
   # one moment the signal has to work.
   if [ "$_IN_GIT" = 1 ]; then
-    git ls-files --cached --others --exclude-standard '*.md' 2>/dev/null
+    git ls-files -z --cached --others --exclude-standard '*.md' 2>/dev/null | tr '\0' '\n'
   else
     find . \
       \( -path '*/.*' -o -name 'node_modules' -o -name 'vendor' \) -prune -o \
@@ -311,12 +322,12 @@ _files_under() {
   # committed would miss exactly the edit that caused the drift.
   local dir="$1" ref="$2" f
   if [ "$_IN_GIT" = 1 ]; then
-    while IFS= read -r f; do
+    while IFS= read -r -d '' f; do
       [ -n "$f" ] || continue
       [ -f "$f" ] || continue
       [ -n "$ref" ] && { [ "$f" -nt "$ref" ] || continue; }
       printf '%s\n' "$f"
-    done < <(git ls-files --cached --others --exclude-standard -- "$dir" 2>/dev/null)
+    done < <(git ls-files -z --cached --others --exclude-standard -- "$dir" 2>/dev/null)
   elif [ -n "$ref" ]; then
     find "$dir" -type f -newer "$ref" \
       -not -path '*/.git/*' -not -path '*/node_modules/*' \
@@ -360,10 +371,10 @@ _content_filter_init() {
   # repository root; without it the membership test below would silently never
   # match when run from a subdirectory, and the filter would drop everything.
   _CF_CHANGED=$(
-    { git diff --name-only --relative "$base" HEAD 2>/dev/null
-      git diff --name-only --relative HEAD 2>/dev/null
-      git ls-files --others --exclude-standard 2>/dev/null
-    } | sort -u
+    { git diff -z --name-only --relative "$base" HEAD 2>/dev/null
+      git diff -z --name-only --relative HEAD 2>/dev/null
+      git ls-files -z --others --exclude-standard 2>/dev/null
+    } | tr '\0' '\n' | sort -u
   )
   _CF_ACTIVE=1
   return 0
@@ -489,7 +500,7 @@ _changed_inputs() {
     [ -n "$e" ] && [ -d "$e" ] && dirs+=("$e")
   done <<<"$entries"
   if [ "${#dirs[@]}" -gt 0 ]; then
-    listed=$(git ls-files --cached --others --exclude-standard -- "${dirs[@]}" 2>/dev/null)
+    listed=$(git ls-files -z --cached --others --exclude-standard -- "${dirs[@]}" 2>/dev/null | tr '\0' '\n')
   fi
 
   while IFS= read -r e; do
