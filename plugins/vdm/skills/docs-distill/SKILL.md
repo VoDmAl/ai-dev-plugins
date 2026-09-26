@@ -252,9 +252,19 @@ and false silence is what this tier exists to prevent.
 mtime does not select the candidates, and that distinction is the whole
 difference between a signal and a courtesy. While it did, the set could be
 emptied by writing to the *synthesis* — no edit to any input required — and the
-content check never ran at all. Three git calls answer the question directly,
-at a cost that does not grow with the number of candidates, so there is nothing
-for mtime to save.
+content check never ran at all. Four git calls answer the question directly —
+three for what changed, one for what is gone — at a cost that does not grow with
+the number of candidates, so there is nothing for mtime to save.
+
+**A deleted input is drift too, and is named as such:** `← удалён: <path>`. It
+cannot be found by expanding `covers:` — a glob expands only to what exists — so
+the scanner asks git once for the covered paths that existed at the synthesis's
+commit and are missing now, whether the deletion is committed or not. A rename
+shows as the old path deleted and the new one changed: a synthesis that still
+names the old path is stale either way. Outside git, or while the synthesis
+carries uncommitted edits, nothing records what existed, and a deletion goes
+unreported — there is no past to compare a missing file with, and the suite
+keeps no state of its own.
 
 The top rung is not the scanner's to compute, and that is the useful half of the
 ladder rather than its limitation. A fingerprint belongs to the external system;

@@ -341,6 +341,7 @@ _files_under() {
 
 _CF_ACTIVE=0
 _CF_CHANGED=""
+_CF_BASE=""
 
 _content_filter_init() {
   # _content_filter_init <synthesis-file>
@@ -355,11 +356,13 @@ _content_filter_init() {
   local synth="$1" base
   _CF_ACTIVE=0
   _CF_CHANGED=""
+  _CF_BASE=""
   [ "$_IN_GIT" = 1 ] || return 0
   git ls-files --error-unmatch -- "$synth" >/dev/null 2>&1 || return 0
   git diff --quiet HEAD -- "$synth" >/dev/null 2>&1 || return 0
   base=$(git log -1 --format=%H -- "$synth" 2>/dev/null)
   [ -n "$base" ] || return 0
+  _CF_BASE="$base"
 
   # Three questions, one git call each — cost independent of the number of
   # candidates:
@@ -488,7 +491,37 @@ _changed_inputs() {
   # directories together; the walk asked it once per directory, with a
   # `rev-parse` and a `sort` each.
   local synth="$1" glob e hit prefix listed="" entries
-  local dirs=()
+  local dirs=() specs=()
+
+  # Deleted inputs first, and before anything that expands `covers:` — a glob
+  # expands only to what exists, so a covered file that is gone simply vanished
+  # from the walk below and was never drift at all (Sidetrack #10, DL #8,
+  # docs/tasks/crystal-wake/workitem.md). Git knows what existed when the
+  # synthesis was written: one `diff` from that commit to the working tree,
+  # deletions only, answers "which covered files are gone" — committed, staged
+  # or not. `--no-renames`, because a synthesis naming the old path of a moved
+  # file is stale the same way; the new path turns up below as a changed input.
+  # Each covers entry becomes two pathspecs, the entry and everything under it,
+  # in `:(glob)` form so `*` stays inside one directory, as in the shell glob.
+  # Entries outside the tree are skipped: git refuses them, and one refusal
+  # would empty the whole answer. Where the filter is not armed there is no
+  # recorded past to compare a missing file with, and nothing is said.
+  if [ -n "$_CF_BASE" ]; then
+    while IFS= read -r glob; do
+      [ -n "$glob" ] || continue
+      glob="${glob%/}"
+      case "$glob" in /*|..|../*|*/../*|*/..) continue ;; esac
+      specs+=(":(glob)$glob" ":(glob)$glob/**")
+    done < <(_fm_list "$synth" covers)
+    if [ "${#specs[@]}" -gt 0 ]; then
+      while IFS= read -r -d '' hit; do
+        [ -n "$hit" ] || continue
+        [ "$hit" = "$synth" ] && continue
+        printf 'удалён: %s\n' "$hit"
+      done < <(git diff -z --name-only --relative --no-renames --diff-filter=D "$_CF_BASE" -- "${specs[@]}" 2>/dev/null)
+    fi
+  fi
+
   entries=$(
     while IFS= read -r glob; do
       [ -n "$glob" ] || continue

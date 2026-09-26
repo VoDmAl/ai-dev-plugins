@@ -48,7 +48,7 @@ count_is() {
 }
 
 TMP=$(mktemp -d 2>/dev/null || mktemp -d -t distillscan)
-cleanup() { rm -rf "$TMP" ${TMP2:+"$TMP2"} ${TMP3:+"$TMP3"} ${TMP4:+"$TMP4"} ${COSTS:+"$COSTS"}; }
+cleanup() { rm -rf "$TMP" ${TMP2:+"$TMP2"} ${TMP3:+"$TMP3"} ${TMP4:+"$TMP4"} ${TMP5:+"$TMP5"} ${COSTS:+"$COSTS"}; }
 trap cleanup EXIT
 
 cd "$TMP" || exit 1
@@ -378,6 +378,71 @@ printf -- '---\ntype: model\nquestion: "a name"\ncovers:\n  - src/\nobserved: 20
 OUT=$(LC_ALL=$U8 bash "$SCAN" --list)
 says "RED: a synthesis document with a Cyrillic name is found" "$OUT" "docs/model/Модель.md"
 says "…next to the one with an ASCII name" "$OUT" "docs/model/u.md"
+
+# ---------------------------------------------------------------------------
+printf '\n=== a deleted input is drift ===\n'
+# ---------------------------------------------------------------------------
+# A synthesis that still names a file which is gone describes something that no
+# longer exists. The scanner dropped every such path at `[ -f ]`, in both
+# modes, so deleting a covered file was the one change that never raised drift
+# (Sidetrack #10, DL #8, docs/tasks/crystal-wake/workitem.md). Git knows what
+# existed when the synthesis was written, so where git can arm the content
+# filter, a deletion is named — as `удалён: <path>`. Where nothing records the
+# past — a synthesis edited and not yet committed — there is nothing to compare
+# a missing file with, and the signal stays silent by design.
+TMP5=$(mktemp -d 2>/dev/null || mktemp -d -t distillscan5)
+cd "$TMP5" || exit 1
+git init -q . 2>/dev/null
+git config user.email t@t; git config user.name t
+mkdir -p docs/model src lib
+printf -- '---\ntype: model\nquestion: "deletions"\ncovers:\n  - src/\n  - notes.md\n  - lib/*.txt\nobserved: 2026-09-26\n---\n# D\n' > docs/model/d.md
+for f in src/keep.txt src/gone.txt 'src/Удалён.txt' src/moved.txt notes.md lib/one.txt lib/two.txt; do
+  printf '%s\n' "$f" > "$f"
+done
+git add -A >/dev/null 2>&1
+git commit -qm base >/dev/null 2>&1
+
+OUT=$(LC_ALL=$U8 bash "$SCAN" --drift-all)
+if [ -z "$OUT" ]; then ok "canary: nothing deleted yet ⇒ silent"
+else bad "canary: nothing deleted yet ⇒ silent" "$OUT"; fi
+
+rm src/gone.txt 'src/Удалён.txt' notes.md lib/one.txt
+git mv src/moved.txt src/renamed.txt
+OUT=$(LC_ALL=$U8 bash "$SCAN" --drift-all)
+says "RED: a deleted file under a covered directory is drift" "$OUT" "← удалён: src/gone.txt"
+says "RED: …a Cyrillic one, named as itself" "$OUT" "← удалён: src/Удалён.txt"
+says "RED: …a file covered by name" "$OUT" "← удалён: notes.md"
+says "RED: …a file covered by a glob that no longer expands to it" "$OUT" "← удалён: lib/one.txt"
+says "RED: a rename names the old path as deleted" "$OUT" "← удалён: src/moved.txt"
+says "…and the new one as a changed input" "$OUT" "← src/renamed.txt"
+says_not "…an untouched neighbour is not drift" "$OUT" "src/keep.txt"
+
+git add -A >/dev/null 2>&1
+git commit -qm "delete, rename" >/dev/null 2>&1
+OUT=$(LC_ALL=$U8 bash "$SCAN" --drift-all)
+says "RED: a committed deletion is still drift — the synthesis has not moved" "$OUT" "← удалён: src/gone.txt"
+
+printf 'tmp\n' > src/tmp.txt
+git add -A >/dev/null 2>&1
+git commit -qm "add tmp" >/dev/null 2>&1
+rm src/tmp.txt
+OUT=$(LC_ALL=$U8 bash "$SCAN" --drift-all)
+says_not "a file added after the synthesis and deleted again was never covered by it" "$OUT" "удалён: src/tmp.txt"
+
+git add -A >/dev/null 2>&1
+git commit -qm "drop tmp" >/dev/null 2>&1
+printf '\nrebuilt\n' >> docs/model/d.md
+git add -A >/dev/null 2>&1
+git commit -qm "rebuild synthesis" >/dev/null 2>&1
+OUT=$(LC_ALL=$U8 bash "$SCAN" --drift-all)
+if [ -z "$OUT" ]; then ok "rebuilt synthesis ⇒ the deletions are no longer drift"
+else bad "rebuilt synthesis ⇒ the deletions are no longer drift" "$OUT"; fi
+
+rm src/keep.txt
+printf '\nwip\n' >> docs/model/d.md          # synthesis dirty: no past to compare with
+OUT=$(LC_ALL=$U8 bash "$SCAN" --drift-all)
+if [ -z "$OUT" ]; then ok "dirty synthesis ⇒ a deletion has nothing to be compared with, silent by design"
+else bad "dirty synthesis ⇒ a deletion has nothing to be compared with, silent by design" "$OUT"; fi
 
 cd "$TMP" || exit 1
 
