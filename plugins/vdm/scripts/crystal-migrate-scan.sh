@@ -92,30 +92,36 @@ enumerate() {
   ) | awk -v r="$dir/" '/./{ sub(/^\.\//, r); print }'
 }
 
-has_frontmatter() {
-  # 1 if the first non-empty line is a `---` fence, else 0.
-  local f="$1" first
-  first=$(awk 'NF{print; exit}' "$f" 2>/dev/null)
-  case "$first" in
-    '---') printf '1\n' ;;
-    *)     printf '0\n' ;;
-  esac
-}
-
-count_headings() {
-  local f="$1" n
-  n=$(grep -cE '^#{1,6}[[:space:]]' "$f" 2>/dev/null) || n=0
-  printf '%s\n' "$n"
+file_signals_batch() {
+  # Reads paths on stdin and prints "<path>\t<has_fm>\t<headings>\t<name>" for
+  # each, one awk for the whole list, where one or more processes per file per
+  # signal used to answer (Sidetrack #15, docs/tasks/crystal-wake/workitem.md):
+  #   has_fm    1 if the first line that is not blank is `---`, else 0 — the
+  #             rule `awk 'NF{print; exit}'` applied (blank: spaces and tabs);
+  #   headings  lines matching `^#{1,6}[[:space:]]`, as `grep -cE` counted them;
+  #   name      the file name without `.md`, lowercased for name_hint. The
+  #             caller runs this in the C locale: every pattern name_hint knows
+  #             is ASCII, so no other letter can change a match.
+  awk '
+    $0 != "" {
+      f = $0; first = ""; seen = 0; heads = 0
+      while ((getline line < f) > 0) {
+        if (!seen && line ~ /[^ \t]/) { first = line; seen = 1 }
+        if (line ~ /^#{1,6}[[:space:]]/) heads++
+      }
+      close(f)
+      name = f; sub(/.*\//, "", name)
+      if (name != ".md") sub(/\.md$/, "", name)
+      printf "%s\t%d\t%d\t%s\n", f, (first == "---"), heads, tolower(name)
+    }' 2>/dev/null
 }
 
 name_hint() {
+  # name_hint <lowercased file name without .md>
   # Filename-shape signal only — NOT a bucket decision. spec = looks like a
   # specification/plan doc; asset = looks like a reusable prompt/agent artifact
   # (out-of-scope candidate, DL #4); plain = no strong shape signal.
-  local base lower
-  base=$(basename "$1" .md)
-  lower=$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')
-  case "$lower" in
+  case "$1" in
     prompt-*|subagent-*|agent-*|*-prompt|*.prompt|snippet-*|template-*)
       printf 'asset\n' ;;
     prd|spec|*-prd|*-spec|prd-*|spec-*|design|*-design|rfc|*-rfc)
@@ -163,46 +169,59 @@ guess_bucket() {
   printf 'ambiguous\n'
 }
 
-emit_row() {
-  local f="$1"
-  local dates created updated has_fm status tier unchecked headings hint bucket
-  dates=$(derive_dates "$f")
-  created="${dates%%$'\t'*}"
-  updated="${dates#*$'\t'}"
-  has_fm=$(has_frontmatter "$f")
-  status=$(extract_frontmatter_field "$f" status)
-  if [ -n "$status" ]; then
-    tier=$(derive_status_tier "$status")
-  else
-    tier="none"
-  fi
-  unchecked=$(count_unchecked "$f")
-  headings=$(count_headings "$f")
-  hint=$(name_hint "$f")
-  bucket=$(guess_bucket "$hint" "$has_fm" "$unchecked" "$headings")
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$f" "$created" "$updated" "$has_fm" "$status" "$tier" \
-    "$unchecked" "$headings" "$hint" "$bucket"
-}
-
 # ----------------------------------------------------------------------------
 # Scan
 # ----------------------------------------------------------------------------
 
 # Collect, dedupe across targets (overlapping globs), stable sort by path.
+# Dates are asked per target, since derive_dates_batch reads the paths the way
+# that target spelled them; a path under two targets keeps the first answer.
 ALL=""
+DATES=""
 for dir in "${TARGETS[@]}"; do
-  ALL="${ALL}$(enumerate "$dir")
+  listed=$(enumerate "$dir")
+  [ -n "$listed" ] || continue
+  ALL="${ALL}${listed}
+"
+  DATES="${DATES}$(printf '%s\n' "$listed" | derive_dates_batch "$dir")
 "
 done
+FILES=$(printf '%s' "$ALL" | sort -u | while IFS= read -r f; do
+  [ -n "$f" ] && [ -f "$f" ] && printf '%s\n' "$f"
+done)
+[ -n "$FILES" ] || exit 0
 
 # Aliases once, in this shell: each row derives its tier inside `$(...)`, which
 # can use them but not load them for the next row (Sidetrack #13).
 _load_status_aliases
-printf '%s\n' "$ALL" | sort -u | while IFS= read -r f; do
-  [ -n "$f" ] || continue
-  [ -f "$f" ] || continue
-  emit_row "$f"
-done
+
+# Every signal for every file, read in batches and joined on by path — a fixed
+# number of processes for the scan, where every file used to cost about
+# seventeen of its own (Sidetrack #15). The rows go out through the unit
+# separator: a tab is whitespace to `read`, and an empty date or status would
+# pull the next column into its place.
+while IFS=$'\037' read -r f created updated has_fm status unchecked headings name; do
+  if [ -n "$status" ]; then
+    tier=$(derive_status_tier "$status")
+  else
+    tier="none"
+  fi
+  hint=$(name_hint "$name")
+  bucket=$(guess_bucket "$hint" "$has_fm" "$unchecked" "$headings")
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$f" "$created" "$updated" "$has_fm" "$status" "$tier" \
+    "$unchecked" "$headings" "$hint" "$bucket"
+done < <(awk -F'\t' '
+  FILENAME == ARGV[1] { if (!($1 in cr)) { cr[$1] = $2; up[$1] = $3 }; next }
+  FILENAME == ARGV[2] { p = index($0, "\037"); if (p) st[substr($0, 1, p - 1)] = substr($0, p + 1); next }
+  FILENAME == ARGV[3] { p = index($0, "\t"); if (p) un[substr($0, 1, p - 1)]++; next }
+  $1 != "" {
+    printf "%s\037%s\037%s\037%s\037%s\037%d\037%s\037%s\n", \
+      $1, cr[$1], up[$1], $2, st[$1], un[$1] + 0, $3, $4
+  }
+' <(printf '%s\n' "$DATES") \
+  <(printf '%s\n' "$FILES" | _extract_frontmatter_batch status) \
+  <(printf '%s\n' "$FILES" | _unchecked_lines_batch) \
+  <(printf '%s\n' "$FILES" | LC_ALL=C file_signals_batch))
 
 exit 0

@@ -178,6 +178,131 @@ check_nonempty "multi-target includes non-git file"   "$(col "$OUT3" 'loose-note
 check "multi-target scans both roots (6+1 rows)"      "7" "$(grep -vc '^#' "$OUT3")"
 
 # ---------------------------------------------------------------------------
+# Dates in a batch: the answers derive_dates gives, file by file
+# ---------------------------------------------------------------------------
+# The scan asked for dates per file — a work-tree probe, two logs, a tail, a
+# dirname, a basename — and read every other signal with a process or more of
+# its own: about seventeen launches a file (Sidetrack #15,
+# docs/tasks/crystal-wake/workitem.md). derive_dates_batch answers a whole
+# directory with one log where that is exact, and must answer exactly what
+# derive_dates answers wherever it does not.
+echo "== dates: the batch answers what derive_dates answers =="
+TMP_D=$(mktemp -d 2>/dev/null || mktemp -d -t cmdates)
+trap 'rm -rf "$TMP_GIT" "$TMP_NOGIT" "$TMP_D"' EXIT
+# commit_at <repo> <date> <message> — a commit authored and committed on <date>.
+commit_at() {
+  ( cd "$1" && git add -A && GIT_AUTHOR_DATE="$2T12:00:00" GIT_COMMITTER_DATE="$2T12:00:00" \
+      git -c user.email=t@t -c user.name=t commit -qm "$3" ) >/dev/null 2>&1
+}
+# same_answers <label> <dir> — derive_dates_batch over every .md under <dir>
+# against derive_dates on each of them; prints nothing, records the check.
+same_answers() {
+  local batch single
+  batch=$(cd "$REPO_ROOT" && bash -c '. "$1"; find "$2" -name "*.md" -not -path "*/.git/*" | sort | derive_dates_batch "$2"' _ "$DATES" "$2" 2>&1)
+  single=$(cd "$REPO_ROOT" && bash -c '. "$1"; find "$2" -name "*.md" -not -path "*/.git/*" | sort | while IFS= read -r f; do printf "%s\t%s\n" "$f" "$(derive_dates "$f")"; done' _ "$DATES" "$2" 2>&1)
+  check "$1" "$single" "$batch"
+}
+
+# Linear history: the batch path. Created and updated differ; one file moves
+# within the directory, which a directory-wide log with renames on would read
+# as a rename and a one-file log reads as an add. Two names test the reading of
+# the log itself: one the line form would print quoted, and `@root.md`, whose
+# token starts with `@` — at the repository root a path is not prefixed by a
+# directory, and a reader that sorts tokens by spelling instead of by position
+# takes it for a commit header and dates the next file by it.
+LIN="$TMP_D/linear"; mkdir -p "$LIN/tasks/one" "$LIN/tasks/two"
+( cd "$LIN" && git init -q . )
+printf 'a\n' > "$LIN/tasks/one/workitem.md"; printf 'b\n' > "$LIN/tasks/two/workitem.md"
+printf 'c\n' > "$LIN/tasks/old-name.md"; printf 'r\n' > "$LIN/@root.md"
+printf 'q\n' > "$LIN/tasks/заметка \"q\".md"
+commit_at "$LIN" 2026-01-01 first
+printf 'a2\n' >> "$LIN/tasks/one/workitem.md"; printf 'r2\n' >> "$LIN/@root.md"
+commit_at "$LIN" 2026-02-02 second
+( cd "$LIN" && git mv tasks/old-name.md tasks/new-name.md ) >/dev/null 2>&1
+commit_at "$LIN" 2026-03-03 third
+check "linear: created is the first add"      "2026-01-01" "$(cd "$REPO_ROOT" && bash -c '. "$1"; printf "%s\n" "$2/tasks/one/workitem.md" | derive_dates_batch "$2"' _ "$DATES" "$LIN" | cut -f2)"
+check "linear: updated is the last touch"     "2026-02-02" "$(cd "$REPO_ROOT" && bash -c '. "$1"; printf "%s\n" "$2/tasks/one/workitem.md" | derive_dates_batch "$2"' _ "$DATES" "$LIN" | cut -f3)"
+check "linear: a moved file was added by the move" "2026-03-03" "$(cd "$REPO_ROOT" && bash -c '. "$1"; printf "%s\n" "$2/tasks/new-name.md" | derive_dates_batch "$2"' _ "$DATES" "$LIN" | cut -f2)"
+same_answers "linear: every file, batch = per file" "$LIN"
+
+# A merge in the history: the batch steps aside and derive_dates answers. The
+# merge itself changes a file — the shape that moved dates on this machine
+# (DL #9): the file's own log names the merge as its last change, and a merge
+# prints no status line, so a directory-wide log has nothing to date it by. A
+# merge that changes nothing proves nothing here: the batch would agree with or
+# without the guard, and this fixture used to be exactly that.
+MRG="$TMP_D/merged"; mkdir -p "$MRG/tasks/x"
+( cd "$MRG" && git init -q . && git checkout -qb main ) >/dev/null 2>&1
+printf 'x\n' > "$MRG/tasks/x/workitem.md"; commit_at "$MRG" 2026-01-01 base
+( cd "$MRG" && git checkout -qb side ) >/dev/null 2>&1
+printf 'side\n' > "$MRG/tasks/side.md"; commit_at "$MRG" 2026-02-02 side
+( cd "$MRG" && git checkout -q main ) >/dev/null 2>&1
+printf 'y\n' >> "$MRG/tasks/x/workitem.md"; commit_at "$MRG" 2026-03-03 main
+( cd "$MRG" && git -c user.email=t@t -c user.name=t merge -q --no-ff --no-commit side ) >/dev/null 2>&1
+printf 'edited in the merge\n' >> "$MRG/tasks/side.md"; commit_at "$MRG" 2026-04-04 merge
+check_nonempty "canary: the merge fixture has a merge" "$(git -C "$MRG" rev-list --merges HEAD 2>/dev/null)"
+check "canary: the merge changed tasks/side.md against both parents" "2" \
+  "$(for p in 1 2; do git -C "$MRG" diff --name-only "HEAD^$p" HEAD 2>/dev/null; done | grep -cx 'tasks/side.md')"
+check "merge in history: a merge that changed the file is its last change" "2026-04-04" \
+  "$(cd "$REPO_ROOT" && bash -c '. "$1"; printf "%s\n" "$2/tasks/side.md" | derive_dates_batch "$2"' _ "$DATES" "$MRG" | cut -f3)"
+same_answers "merge in history: batch = per file" "$MRG"
+
+# A nested repository and an untracked file: each answered from its own truth.
+# The outer repository once tracked the inner file itself, so its log names the
+# same path with other dates — the collision the nested-repository exclusion is
+# for. Without it this fixture agreed either way, like the merge one above.
+NST="$TMP_D/nested"; mkdir -p "$NST/tasks/inner/tasks"
+( cd "$NST" && git init -q . )
+printf 'o\n' > "$NST/tasks/outer.md"; printf 'i\n' > "$NST/tasks/inner/tasks/in.md"
+commit_at "$NST" 2026-01-01 outer
+( cd "$NST/tasks/inner" && git init -q . )
+printf 'i2\n' >> "$NST/tasks/inner/tasks/in.md"; commit_at "$NST/tasks/inner" 2026-05-05 inner
+check "canary: the outer repository's log names the inner file" "tasks/inner/tasks/in.md" \
+  "$(git -C "$NST" log --format= --name-only 2>/dev/null | grep -x 'tasks/inner/tasks/in.md')"
+printf 'u\n' > "$NST/tasks/untracked.md"
+check "nested: a file in the inner repository has its dates" "2026-05-05" "$(cd "$REPO_ROOT" && bash -c '. "$1"; printf "%s\n" "$2/tasks/inner/tasks/in.md" | derive_dates_batch "$2/tasks"' _ "$DATES" "$NST" | cut -f2)"
+same_answers "nested and untracked: batch = per file" "$NST"
+
+# Cost: the whole scan, counted in launches — twenty files cost what two do.
+SHIMS="$TMP_D/shims"; mkdir -p "$SHIMS"
+for tool in awk sed grep sort find git date head tail tr cat cut wc dirname basename stat mkdir uniq; do
+  real=$(type -P "$tool" 2>/dev/null) || continue
+  cat > "$SHIMS/$tool" <<EOF
+#!/bin/bash
+printf x >> "\$LAUNCH_LOG"
+exec "$real" "\$@"
+EOF
+  chmod +x "$SHIMS/$tool"
+done
+# cost_tree <dir> <n> — a committed tree of n workitems with a heading, a
+# checkbox and a status each, so that every signal has something to read.
+cost_tree() {
+  local i=1
+  mkdir -p "$1/tasks"
+  ( cd "$1" && git init -q . )
+  while [ "$i" -le "$2" ]; do
+    mkdir -p "$1/tasks/w$i"
+    printf -- '---\nstatus: ready\n---\n# W%s\n- [ ] x\n' "$i" > "$1/tasks/w$i/workitem.md"
+    i=$((i + 1))
+  done
+  commit_at "$1" 2026-06-06 base
+}
+scan_launches() {  # scan_launches <dir> — launches of one scan; output kept in $TMP_D/scan.out
+  : > "$TMP_D/launch.log"
+  ( cd "$1" && LAUNCH_LOG="$TMP_D/launch.log" PATH="$SHIMS:$PATH" bash "$SCAN" "$1/tasks" > "$TMP_D/scan.out" 2>/dev/null )
+  wc -c < "$TMP_D/launch.log" | tr -d ' '
+}
+cost_tree "$TMP_D/c2" 2
+cost_tree "$TMP_D/c20" 20
+c2=$(scan_launches "$TMP_D/c2")
+c20=$(scan_launches "$TMP_D/c20")
+if [ "${c2:-0}" -gt 0 ]; then PASS=$((PASS + 1)); printf '  ✓ canary: the counter sees the scan (%s launches for two files)\n' "$c2"
+else FAIL=$((FAIL + 1)); printf '  ✗ canary: the counter sees the scan (no launch counted)\n'; fi
+check "canary: the counted scan read all twenty, dated by git" "20 2026-06-06" \
+  "$(grep -vc '^#' "$TMP_D/scan.out") $(grep -v '^#' "$TMP_D/scan.out" | cut -f3 | sort -u)"
+check "RED: twenty files cost what two do" "$c2" "$c20"
+
+# ---------------------------------------------------------------------------
 echo ""
 printf 'crystal-migrate-scan: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
