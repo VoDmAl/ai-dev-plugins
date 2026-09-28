@@ -969,6 +969,24 @@ expect_exit "GREEN: a one-line goal ⇒ exit 0" 0 "$rc"
 printf -- '---\nsent: false\ngoal: |\n  know by Friday whether the room is ours,\n  and who asks the rector\n---\n\nHi.\n' > "$LF"
 run_skip "$LF"; rc=$?
 expect_exit "GREEN: a block goal, the form executor writes, ⇒ exit 0" 0 "$rc"
+
+# «Знаем сами» before the questions (hq, 2026-09-26): a colleague was asked
+# what the chats, tickets and meeting notes already held. A warning, not an
+# error — a question mark is a loose sign, and hq asked for a warning.
+printf '{\n  "comms": {\n    "letter-form": {"*": ["known"]}\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
+printf -- '---\ndraft: true\n---\n\n> service header\n\n---\n\nWhich Langfuse runs on prod? Where do the keys come from?\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "RED: questions with no «What we know» line are a warning, not a failure ⇒ exit 0" 0 "$rc"
+expect_says "…and the warning is there" "$OUT" "What we know"
+printf -- '---\ndraft: true\n---\n\n> **Знаем сами** (разбор 26.09): prod runs the corporate Langfuse, per the ticket.\n\n---\n\nWhere do the keys come from?\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_not_says "GREEN: the header says what we know ⇒ no warning" "$OUT" "What we know"
+printf -- '---\ndraft: true\n---\n\n> **What we know**: the ticket says corporate.\n\n---\n\nWhere do the keys come from?\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_not_says "GREEN: the English form counts too" "$OUT" "the text asks"
+printf -- '---\ndraft: true\n---\n\n> Why write this? A header question is not the text.\n\n---\n\nThe keys are rotated on Friday. Details: https://example.invalid/page?id=4 .\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_not_says "GREEN: no question in the text — a URL query and a header question do not count" "$OUT" "the text asks"
 rm -f "$FX/.claude/vdm-plugins.json" "$LF"
 
 echo ""

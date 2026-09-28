@@ -89,7 +89,13 @@ MD_LINK_RE = re.compile(r"\[([^\]]*)\]\(\s*<?([^)>]+?)>?\s*\)")
 WIKI_LINK_RE = re.compile(r"\[\[[^\]]+\]\]")
 
 # The form of an outgoing DRAFT, per channel (`comms.letter-form`).
-FORM_ELEMENTS = ("channel", "subject", "separator", "goal")
+FORM_ELEMENTS = ("channel", "subject", "separator", "goal", "known")
+# «What we know» before the questions: a header line such as
+# `> **Знаем сами** (разбор 26.09): …` — the form hq writes.
+KNOWN_RE = re.compile(r"^\s*(>\s*)?\*\*(знаем сами|what we know)\*\*", re.I)
+URL_RE = re.compile(r"\bhttps?://\S+")
+CODE_SPAN_RE = re.compile(r"`[^`]*`")
+QUESTION_RE = re.compile(r"\?(?=[\s\"'»)\]]|$)")
 CHANNEL_WORD_RE = re.compile(r"[^\W_][\w-]*")
 SUBJECT_RE = re.compile(r"^\*\*(Subject|Тема)\*\*:\s*\S")
 QUOTED_SUBJECT_RE = re.compile(r"^\s*>.*\*\*(Subject|Тема)\*\*:")
@@ -304,6 +310,14 @@ def _lint_letter_form(rep, keys, body, cfg, fm_text=""):
                       "send — everything after it is pasted as it stands")
         elif not "".join(lines[sep + 1:]).strip():
             rep.error("nothing after the `---` separator — the text to send goes there")
+    if "known" in need:
+        text = lines if sep is None else lines[sep + 1:]
+        asks = any(QUESTION_RE.search(CODE_SPAN_RE.sub("", URL_RE.sub("", line))) for line in text)
+        if asks and not any(KNOWN_RE.match(line) for line in head):
+            rep.warn("the text asks questions, and the header has no `**What we know**` / "
+                     "`**Знаем сами**` line — write down first what the sources already hold on "
+                     "the subject, with where it came from, and what they cannot show (the "
+                     "recipient's private mail and chats); then ask only for the gap")
     if "goal" in need and not _goal_text(keys, fm_text):
         rep.error("a draft with no `goal:` in its frontmatter — say what should change once "
                   "the letter is answered; if it does not fit in one sentence, the letter is "
@@ -783,6 +797,7 @@ def print_contract():
     print("draft\tsubject element: `**Subject**:` hidden inside the `>` header\terror")
     print("draft\tseparator element: no `---`, or nothing after it\terror")
     print("draft\tgoal element: no `goal:` in the frontmatter, or an empty one (any YAML form)\terror")
+    print("draft\tknown element: a question in the text, no `**What we know**` / `**Знаем сами**` line above the separator\twarning")
     print("draft\t`channel:` + a draft marker outside comms/ — not tracked there\terror")
     print("never\ta letter already sent (`sent:`) — history is not refitted")
 

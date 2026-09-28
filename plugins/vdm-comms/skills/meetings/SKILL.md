@@ -221,6 +221,7 @@ What each channel requires is the project's own, in `comms.letter-form`:
 | `subject` | a `**Subject**: …` line (or `**Тема**:`) **on its own line**, between the `>` service header and the separator — not inside the `>` quote, where it is neither seen nor copied with the letter |
 | `separator` | a `---` line after the service header, and the text to send after it — everything below the line is pasted as it stands |
 | `goal` | a non-empty `goal:` in the frontmatter: what should change once the letter is answered. Any YAML form — a multi-line block is read as text. If it does not fit in one sentence, the letter is not ready yet |
+| `known` | when the text below the separator asks a question: a `**What we know**` (or `**Знаем сами**`) line above the separator — what the sources already hold on the subject, where it came from, and what they cannot show. A **warning**, not a failure: a question mark is a loose sign |
 
 `*` applies to every draft, including one that declares no channel yet; a
 channel's own list adds to it. The default is only `{"email": ["subject"]}` —

@@ -27,7 +27,7 @@ Config lives in `.claude/vdm-plugins.json` (or `.qwen/…`) under `comms`:
     pending-draft-days unsent-draft age threshold, 0 = off   (default 3)
     pending-transcript-days  window for "held, no transcript", 0 = off (default 0)
     letter-form       per channel: what an outgoing DRAFT must carry — `channel`,
-                      `subject`, `separator`, `goal`; `*` applies to every draft; merged
+                      `subject`, `separator`, `goal`, `known`; `*` applies to every draft; merged
                       over the default key by key       (default {"email": ["subject"]})
     enabled           false switches the whole plugin off    (default true)
 
