@@ -19,7 +19,12 @@
 #
 # Fails open: without jq (registry is JSON) it exits silently. Skips $HOME and
 # / — those are not projects, and their basename would register as an agent.
-# Works in non-git directories (basename identity) — some projects have no git.
+# Registers only an identity sturdier than the directory's own name (a git
+# remote or toplevel, or `intercom.identity` in config). A directory that has
+# nothing but its name and no entry gets no word at all: vdx, 2026-09-28 — two
+# sessions in scratch directories became agents, and the incomplete-registration
+# notice would have had the assistant finish the job. A non-git project says it
+# is one with `/vdm:intercom register`; once registered, it is greeted here.
 #
 # Output: JSON hookSpecificOutput.additionalContext (same shape as
 # crystal-hydrate.sh). Not mirrored to vdm-git — intercom ships in vdm only.
@@ -49,10 +54,15 @@ case "$PWD" in
 esac
 
 # (1) Mechanical registration — idempotent, deterministic, no LLM involved.
-intercom_register >/dev/null 2>&1 || true
+# Implicit, like `check` and `send`: this session was opened here, which says
+# nothing about whether here is a project.
+intercom_register --implicit >/dev/null 2>&1 || true
 
 id="$(intercom_identity 2>/dev/null)"
 [ -n "$id" ] || exit 0
+if [ "$(intercom_identity_source)" = "cwd" ] && [ ! -f "$(intercom_registry_file "$id")" ]; then
+  exit 0
+fi
 
 names="$(intercom_registry_get "$id" '(.names // []) | join(", ")')"
 aliases="$(intercom_registry_get "$id" '(.aliases // []) | join(", ")')"

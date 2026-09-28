@@ -355,6 +355,27 @@ GHOSTDIR="$TMP/0.2.42"; mkdir -p "$GHOSTDIR"
 out="$(cd "$TMP/notes-vault" && bash "$IC" register 2>&1)"
 says "explicit register still works for a non-git project" "$out" "registered: notes-vault →"
 
+# Field report (vdx, 2026-09-28): a session opened in an empty scratch directory
+# became an agent — the SessionStart hook registered without --implicit. And
+# registering alone was not the whole hole: with no entry, the hook then asked
+# the assistant to COMPLETE the registration before any work, so the assistant
+# would have written the entry itself. A directory that has nothing but its
+# name, and that nobody registered, gets no word from the hook at all.
+SCRATCH="$TMP/aitest"; mkdir -p "$SCRATCH"
+out="$(cd "$SCRATCH" && printf '{}' | bash "$HOOK" 2>&1)"
+[ -f "$VDM_INTERCOM_ROOT/_registry/aitest.json" ] \
+  && bad "session start in a bare directory registers nothing" "aitest.json was created" \
+  || ok "session start in a bare directory registers nothing"
+eq "…and does not ask the assistant to complete a registration" "$out" ""
+out="$(cd "$TMP/notes-vault" && printf '{}' | bash "$HOOK" 2>&1)"
+says "a non-git project registered on purpose is still greeted" "$out" "You are \`notes-vault\`"
+# The guard is the default, not a flag a caller must remember: the hook forgot
+# it, and that was the whole bug. A caller that passes nothing is guarded.
+( cd "$SCRATCH" && . "$(dirname "$IC")/intercom-common.sh" && intercom_register ) >/dev/null 2>&1
+[ -f "$VDM_INTERCOM_ROOT/_registry/aitest.json" ] \
+  && bad "intercom_register with no flag is implicit — a bare directory is not registered" "aitest.json was created" \
+  || ok "intercom_register with no flag is implicit — a bare directory is not registered"
+
 printf '\n[an identity that is already a name is refused]\n'
 # Worse than a name clash, because intercom_resolve_target answers from
 # <registry>/<input>.json before it looks at names: the new entry does not tie,

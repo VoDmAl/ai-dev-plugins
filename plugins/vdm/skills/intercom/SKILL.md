@@ -135,13 +135,23 @@ was needed, and none was written.
 
 ### Two guards on registration
 
-**Implicit registration needs more than a cwd basename.** `check`, `send` and
-`claim` register along the way — the natural "I exist" moments — but they run
-from wherever the shell happens to sit. When the identity rests on nothing
+**Implicit registration needs more than a cwd basename.** `check`, `send`,
+`claim` and the session-start hook register along the way — the natural "I
+exist" moments — but they run from wherever the shell or the session happens to
+sit. When the identity rests on nothing
 sturdier than that basename (source `cwd`), they now register **nothing**. This
 is what stops a version folder or a browser-profile directory from becoming an
 agent. Explicit `/vdm:intercom register` is unaffected and remains the way to
 say "this really is a project" — the escape hatch for genuine non-git projects.
+
+The session-start hook joined this rule late (vdx, 2026-09-28): sessions opened
+in two empty scratch directories became agents, and so did a plugin's cache
+folder, `…/claude-smart/0.2.42`, where that plugin launches its own sessions.
+Registering was only half of it. With no entry, the hook then told the
+assistant that the registration was *incomplete* and must be finished before any
+work, so the assistant would have written the entry itself. Now a directory that
+has nothing but its name, and that nobody registered, gets no word from the
+hook. A non-git project registered on purpose is greeted as before.
 
 **An identity that is already someone's name is refused.** Worse than a name
 clash, because resolution answers from `<registry>/<input>.json` *before* it
@@ -242,6 +252,9 @@ at session start, and says nothing mid-session. What it does:
 
 1. **Registers the mechanical part** of this repo deterministically — identity,
    remote, auto-aliases, path. No assistant involvement, no memory to rely on.
+   Implicitly, like `check` and `send`: an identity resting on nothing but the
+   directory's name is not registered, and such a directory with no entry gets
+   no word from the hook at all (§ Two guards on registration).
 2. **Complete registration** → one line: *"You are `<identity>` — aka: <names>"*
    plus the pending-message count. That line is the answer to "what's your
    name?" — an agent that knows its own names can also tell a sender which to use.
@@ -278,7 +291,8 @@ Skipped in `$HOME` and `/` (not projects). This hook carried that guard alone
 for a long time while `check` / `send` / `claim` registered from any directory —
 the asymmetry is gone (§ Two guards on registration), and the predicate now
 lives with identity resolution rather than in one caller. Works without git
-(basename identity). Silent without `jq`. Opt out per project with
+once the project is registered on purpose; until then a bare directory is
+silent. Silent without `jq`. Opt out per project with
 `/vdm:intercom identity-check off`.
 
 ## Subcommands

@@ -410,7 +410,14 @@ intercom_remote_mismatch() {
 # Registry (DL #6): self-maintained who-is-who so a sender can address a
 # project by any alias. Needs jq; fails open (routing by canonical still works).
 #
-#   intercom_register [--name N]... [--describe D] [--same-project]
+#   intercom_register [--explicit] [--name N]... [--describe D] [--same-project]
+#
+# Implicit by default: an identity resting on nothing but the directory's name
+# is not registered. `--explicit` — the `register` subcommand, the one gesture
+# that asserts "this is a project" — lifts that. The default is the guarded side
+# on purpose: the guard was once opt-in, and the one caller that forgot the flag
+# (the session-start hook) turned scratch directories and a plugin's cache folder
+# into agents (vdx, 2026-09-28). A new caller is now safe without knowing.
 #
 # Mechanical part (always): identity, remote(s), auto-aliases, paths, timestamps.
 # Human part (only when asked): names + description — the part the session-start
@@ -434,7 +441,7 @@ _intercom_need_value() {
 
 intercom_register() {
   command -v jq >/dev/null 2>&1 || return 0
-  local same_project=0 implicit=0 desc="" names=() n
+  local same_project=0 implicit=1 desc="" names=() n
   while [ $# -gt 0 ]; do
     case "$1" in
       --name)          _intercom_need_value "$1" $# || return 2
@@ -443,7 +450,8 @@ intercom_register() {
       --describe)      _intercom_need_value "$1" $# || return 2; desc="$2"; shift 2 ;;
       --describe=*)    desc="${1#--describe=}"; shift ;;
       --same-project)  same_project=1; shift ;;
-      --implicit)      implicit=1; shift ;;
+      --implicit)      implicit=1; shift ;;   # the default; kept so old callers read the same
+      --explicit)      implicit=0; shift ;;
       *)               shift ;;
     esac
   done

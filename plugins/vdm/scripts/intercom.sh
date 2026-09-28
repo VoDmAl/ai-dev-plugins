@@ -123,7 +123,7 @@ _ic_print_unclaimed() {
 }
 
 cmd_register() {
-  intercom_register "$@" || exit 1
+  intercom_register --explicit "$@" || exit 1
   local id missing
   id="$(intercom_identity)"
   printf 'registered: %s → %s\n' "$id" "$(intercom_inbox_dir "$id")"
