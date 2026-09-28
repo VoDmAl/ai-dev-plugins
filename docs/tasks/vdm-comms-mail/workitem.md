@@ -5,7 +5,7 @@ description: "Скилл mail на gmail.readonly: отправленное и �
 status: ready
 session-type: prd-prep
 created: 2026-09-21
-last-updated: 2026-09-25
+last-updated: 2026-09-28
 relates-to:
   - "[[comms-plugin/workitem|comms-plugin]]"
   - "[[vdm-comms-core/workitem|vdm-comms-core]]"
@@ -90,12 +90,23 @@ MCP или скрипт с `gmail.readonly`-токеном (Google Workspace, в
 
 ## Sidetracks
 
-Пока нет.
+### #1. `mail_unfiled.py` из executor — почта из среза echelon без файла в `comms/`
+
+**Возникло в:** бриф program `common-layer-from-claude-md`, §4 (2026-09-28); бриф лежит в
+`docs/tasks/vdm-comms-letters/references/intercom-brief-program-common-layer.md`
+**Описание:** скрипт executor от 2026-09-27: письма из среза echelon, у которых нет файла в `comms/`;
+сверка по `message_id` во frontmatter, `--ack` для разобранного без файла. Код в
+`~/AI Projects/program/scripts/mail_unfiled.py`, работает у них. Это вторая половина этого
+кристалла (приём входящих), только транспортом служит echelon, а не свой readonly-токен. Решить при
+выборе транспорта: забрать как есть, взять идею сверки по `message_id` или оставить проекту.
+
+**Status:** open
 
 ## Next actions
 
 - [ ] Проверить коннектор Gmail из claude.ai в Claude Code: есть ли, какие инструменты, есть
       ли среди них отправка; записать `Basis: observed`
+- [ ] Sidetrack #1: судьба `mail_unfiled.py` — решить вместе с транспортом
 - [ ] Выбрать транспорт по результату: коннектор / локальный `readonly`-скрипт (stdlib +
       OAuth) / MCP; для коннектора с отправкой — `PreToolUse`-матчер на инструмент отправки
 - [ ] Синк «Отправленных»: сопоставление письма с `comms/*-out.md` (threadId / тема /
