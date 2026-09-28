@@ -303,6 +303,17 @@ cd "$TMP/widget-clone"
 out="$(bash "$IC" check)"
 says "check lists the pending briefs" "$out" "pending message(s) for \`widget\`"
 
+# Field case, product 2026-09-25: the user had been handed a commit, a push, an
+# MR and a Jira comment; a mail reminder arrived and the session switched to the
+# mail, and the user's steps scrolled away. A mid-session nudge says the mail
+# waits behind them. The reminder is opt-in, so it is switched on here.
+mkdir -p "$TMP/widget-clone/.claude"
+printf '{"intercom": {"enabled": true, "mode": "conditional"}}\n' > "$TMP/widget-clone/.claude/vdm-plugins.json"
+out="$(printf '{}' | bash "$(dirname "$IC")/intercom-reminder.sh" 2>&1)"
+says "the opt-in reminder fires on a non-empty inbox" "$out" "pending message(s)"
+says "…and puts the user's pending steps before the mail" "$out" "the user's pending steps come first"
+rm -f "$TMP/widget-clone/.claude/vdm-plugins.json"
+
 printf '\n[$HOME is not a project — and its basename is somebody'"'"'s name]\n'
 # Field report (executor, 2026-09-10): the SessionStart hook has always
 # skipped $HOME and /, but `send` / `check` / `claim` register from wherever the
@@ -687,6 +698,7 @@ says "a live session of the recipient is named" "$out" "hop-b-11 (idle)"
 says "…a busy one too — a pointer queues, it does not interrupt" "$out" "hop-b-22 (busy)"
 says "…and the tool that wakes it" "$out" "SendMessage"
 says "the pointer's first line names the slug and the sender" "$out" '📬 intercom: `body-live` from `hop-a` — Wake up'
+says "…and says the mail waits behind the user's steps (a woken session may be mid-handoff)" "$out" "the user's pending steps come first"
 says_not "a dead pid is not a live session" "$out" "hop-b-dead"
 says_not "a session without its socket is not live" "$out" "hop-b-nosock"
 says_not "a sync-conflict copy from another machine is not live" "$out" "hop-b-conflict"
@@ -737,6 +749,7 @@ says "sent lists a letter still lying in someone's inbox" "$out" "hop-c/old-one"
 says "…with its age in days" "$out" "14d  hop-c/old-one"
 says "…whatever its status value says (new is not picked up)" "$out" "An old one"
 says "…and a recipient who can be woken now" "$(printf '%s\n' "$out" | grep 'live now:' | head -1)" "hop-b-11"
+says "…with the same pointer as send, user's steps first" "$(printf '%s\n' "$out" | grep 'live now:' | head -1)" "the user's pending steps come first"
 says "…or that nobody can be" "$out" "no live session"
 says_not "a picked-up letter is not listed" "$out" "hop-b/body-live"
 says_not "a note to self is not listed" "$out" "self-note"

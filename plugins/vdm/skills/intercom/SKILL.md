@@ -402,6 +402,26 @@ pending messages:
      archive with `intercom.sh pickup <slug>` once grown. Use this for a brief
      that defines real ongoing work.
 
+**The user's pending steps come first.** Mail that arrives mid-session — a
+wake, the opt-in reminder, a receipt — is almost never urgent, and the user may
+be in the middle of steps you handed them: a commit to run, a push, a decision
+to make. Then, in that turn:
+
+- do only what needs no user: read the letter, `pickup`, a one-line receipt or
+  reply;
+- leave the full review — memory, docs, answers, new work — until the user has
+  closed their steps or tells you to switch;
+- end the reply with the user's open steps again, as ready commands, even when
+  the turn was about mail. A step that scrolled out of sight is a step the user
+  has to go and find.
+
+Field case (product, 2026-09-25): the user had been handed a commit, a push,
+an MR and a Jira comment; a mail reminder arrived, the session switched to the
+mail, and the steps ended up far up the screen. The owner: *"if something
+important is expected from the user — don't grab it; or do, but briefly, and
+only what needs no human."* That is why every wake pointer and the opt-in
+reminder end with "not urgent: the user's pending steps come first".
+
 ### Delivery is not receipt
 
 A letter in an inbox is read only when somebody runs `check`. Field case

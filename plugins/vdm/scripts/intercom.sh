@@ -625,7 +625,7 @@ cmd_send() {
       printf '         with your cross-session message tool (Claude Code: SendMessage).\n'
     fi
     printf '         It is a pointer; the inbox stays the truth. Text, first line self-contained:\n'
-    printf '         📬 intercom: `%s` from `%s` — %s. Read: /vdm:intercom check\n' "$slug" "$from" "$title"
+    printf '         📬 intercom: `%s` from `%s` — %s. Read: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first\n' "$slug" "$from" "$title"
   fi
 }
 
@@ -655,7 +655,7 @@ cmd_sent() {
     esac
     printf '  • %sd  %s/%s — %s\n' "$age" "$inbox" "$slug" "$title"
     if [ -n "$live" ]; then
-      printf '      live now: %s → wake with SendMessage: 📬 intercom: `%s` from `%s` — %s. Read: /vdm:intercom check\n' \
+      printf '      live now: %s → wake with SendMessage: 📬 intercom: `%s` from `%s` — %s. Read: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first\n' \
         "$live" "$slug" "$id" "$title"
     else
       printf '      no live session — it waits for their next `check`\n'

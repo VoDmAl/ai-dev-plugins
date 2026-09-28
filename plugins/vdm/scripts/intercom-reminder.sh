@@ -64,7 +64,7 @@ esac
 # JSON-escape the identity (backslash + double-quote) for safe embedding.
 id_esc=$(printf '%s' "$id" | sed 's/\\/\\\\/g; s/"/\\"/g')
 
-msg="[intercom] 📬 ${count} pending message(s) for \`${id_esc}\`.\n- Review: /vdm:intercom check\n- Pick up: /vdm:intercom pickup <slug>  (add --grow to promote into a workitem)"
+msg="[intercom] 📬 ${count} pending message(s) for \`${id_esc}\` — not urgent: the user's pending steps come first.\n- Review: /vdm:intercom check\n- Pick up: /vdm:intercom pickup <slug>  (add --grow to promote into a workitem)"
 
 # shellcheck disable=SC1091
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/reminder-emit.sh" 2>/dev/null \
