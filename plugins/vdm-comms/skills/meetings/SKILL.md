@@ -108,6 +108,12 @@ Every file named gets one of three answers, and they mean different things:
 | `ok` | checked against a rule, and clean |
 | `skipped (<why>)` | **nothing on this file was under a rule** — a letter already sent, a letter that attaches nothing, raw material, a file outside the meetings tree |
 
+After a write, the hook hands errors back as feedback (the write stands, the
+assistant is told to fix it) and warnings as context that arrives with the tool
+result — not blocking, but read. Until 0.9.1 warnings went to stderr, which the
+harness does not show the assistant on a successful hook: every warning was read
+by nobody.
+
 Read `skipped` as "not looked at", never as "passed". The distinction exists
 because a letter linted by hand used to come back empty — and 88 letters with a
 broken field were taken for checked.

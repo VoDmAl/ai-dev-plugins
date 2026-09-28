@@ -987,6 +987,22 @@ expect_not_says "GREEN: the English form counts too" "$OUT" "the text asks"
 printf -- '---\ndraft: true\n---\n\n> Why write this? A header question is not the text.\n\n---\n\nThe keys are rotated on Friday. Details: https://example.invalid/page?id=4 .\n' > "$LF"
 run_skip "$LF"; rc=$?
 expect_not_says "GREEN: no question in the text — a URL query and a header question do not count" "$OUT" "the text asks"
+
+# A warning is worth something only if the assistant reads it. PostToolUse shows
+# stderr to the model only on exit 2; on exit 0 it went to the transcript and
+# nowhere else — measured 2026-09-28: a Write the linter warned about reached the
+# session as silence. Warnings now travel as additionalContext on stdout.
+printf -- '---\ndraft: true\n---\n\n> service header\n\n---\n\nWhich Langfuse runs on prod?\n' > "$LF"
+OUT=$(payload Write "$LF" "x" | (cd "$FX" && bash "$LINTSH" --hook) 2>/dev/null); rc=$?
+expect_exit "HOOK: a warning does not block (exit 0)" 0 "$rc"
+if printf '%s' "$OUT" | python3 -c 'import json,sys; d=json.load(sys.stdin)["hookSpecificOutput"]; sys.exit(0 if d["hookEventName"]=="PostToolUse" and "What we know" in d["additionalContext"] else 1)' 2>/dev/null; then
+  ok "HOOK: …and reaches the assistant as additionalContext on stdout"
+else
+  bad "HOOK: …and reaches the assistant as additionalContext on stdout" "stdout was: ${OUT:-<empty>}"
+fi
+printf -- '---\ndraft: true\n---\n\n> **What we know**: the ticket says corporate.\n\n---\n\nWhich Langfuse runs on prod?\n' > "$LF"
+OUT=$(payload Write "$LF" "x" | (cd "$FX" && bash "$LINTSH" --hook) 2>&1); rc=$?
+expect_silent "HOOK: nothing to say ⇒ nothing on either stream" "$OUT"
 rm -f "$FX/.claude/vdm-plugins.json" "$LF"
 
 echo ""

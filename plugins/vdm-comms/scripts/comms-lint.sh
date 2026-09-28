@@ -125,9 +125,9 @@ case "$rc" in
   *)   lint_unverified "the linter exited $rc without reaching a verdict" ;;
 esac
 
-# Warnings without errors are printed but do not block: they name a divergence
-# (a `type` the shared contract does not use, a series file that does not exist
-# yet) whose resolution is a judgement call, not a defect.
+# Warnings without errors do not block: they name a divergence (a `type` the
+# shared contract does not use, a series file that does not exist yet, questions
+# with no «What we know» line) whose resolution is a judgement call, not a defect.
 if [ "$rc" -eq 1 ]; then
   {
     if case "$file_path" in */comms/*-out.md) true ;; *) false ;; esac ||
@@ -145,7 +145,17 @@ if [ "$rc" -eq 1 ]; then
   exit 2
 fi
 
+# Warnings go to the assistant as additionalContext on stdout. They used to go
+# to stderr, and on exit 0 the harness shows stderr only in the transcript —
+# measured 2026-09-28: a Write the linter warned about reached the session as
+# silence, so every warning this linter ever gave was read by nobody. python3 is
+# known to be here (checked above), and it builds the JSON: no escaping by hand.
 if [ -n "$out" ]; then
-  printf '%s\n' "$out" >&2
+  printf '%s' "$out" | python3 -c '
+import json, sys
+text = sys.stdin.read()
+print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse",
+    "additionalContext": "comms-lint (warnings, not blocking):\n" + text}}, ensure_ascii=False))
+' 2>/dev/null || printf '%s\n' "$out" >&2
 fi
 exit 0
