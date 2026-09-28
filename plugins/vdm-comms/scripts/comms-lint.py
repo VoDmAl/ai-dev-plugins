@@ -89,7 +89,7 @@ MD_LINK_RE = re.compile(r"\[([^\]]*)\]\(\s*<?([^)>]+?)>?\s*\)")
 WIKI_LINK_RE = re.compile(r"\[\[[^\]]+\]\]")
 
 # The form of an outgoing DRAFT, per channel (`comms.letter-form`).
-FORM_ELEMENTS = ("channel", "subject", "separator")
+FORM_ELEMENTS = ("channel", "subject", "separator", "goal")
 CHANNEL_WORD_RE = re.compile(r"[^\W_][\w-]*")
 SUBJECT_RE = re.compile(r"^\*\*(Subject|Тема)\*\*:\s*\S")
 QUOTED_SUBJECT_RE = re.compile(r"^\s*>.*\*\*(Subject|Тема)\*\*:")
@@ -241,7 +241,23 @@ def lint_file(path, cfg, project_root):
     return rep
 
 
-def _lint_letter_form(rep, keys, body, cfg):
+def _goal_text(keys, fm_text):
+    """The letter's goal, as text. The line reader sees a block (`goal: |`) as
+    its marker alone, so a block is read by the full parser — executor writes its
+    goals that way in over a hundred letters. A frontmatter the parser refuses
+    returns the marker: a shape it does not know is no verdict on the letter."""
+    value = keys.get("goal")
+    if isinstance(value, str) and value and value[0] in "|>":
+        try:
+            value = fm.parse(fm_text).get("goal")
+        except fm.FrontmatterError:
+            return value
+    if value in (None, False, True):
+        return ""
+    return str(value).strip()
+
+
+def _lint_letter_form(rep, keys, body, cfg, fm_text=""):
     """What a DRAFT owes for its channel, per `comms.letter-form`.
 
     Only drafts: a letter already sent is history, and fitting it to a form
@@ -288,6 +304,10 @@ def _lint_letter_form(rep, keys, body, cfg):
                       "send — everything after it is pasted as it stands")
         elif not "".join(lines[sep + 1:]).strip():
             rep.error("nothing after the `---` separator — the text to send goes there")
+    if "goal" in need and not _goal_text(keys, fm_text):
+        rep.error("a draft with no `goal:` in its frontmatter — say what should change once "
+                  "the letter is answered; if it does not fit in one sentence, the letter is "
+                  "not ready yet")
     return bool(need)
 
 
@@ -322,7 +342,7 @@ def _lint_letter(rep, path, cfg, outside=False):
         rep.skip("a letter already sent — the record is history")
         return rep
     is_draft = fm.marks_unsent(keys)
-    checked = _lint_letter_form(rep, keys, body, cfg) if is_draft else False
+    checked = _lint_letter_form(rep, keys, body, cfg, fm_text) if is_draft else False
     if outside:
         if not is_draft:
             rep.skip("declares a channel but is not a draft — nothing to check")
@@ -762,6 +782,7 @@ def print_contract():
     print("draft\tsubject element: no `**Subject**:` line before the separator\terror")
     print("draft\tsubject element: `**Subject**:` hidden inside the `>` header\terror")
     print("draft\tseparator element: no `---`, or nothing after it\terror")
+    print("draft\tgoal element: no `goal:` in the frontmatter, or an empty one (any YAML form)\terror")
     print("draft\t`channel:` + a draft marker outside comms/ — not tracked there\terror")
     print("never\ta letter already sent (`sent:`) — history is not refitted")
 

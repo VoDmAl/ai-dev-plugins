@@ -947,6 +947,28 @@ printf -- '---\ndraft: true\nchannel: email\n---\n\nHi.\n' > "$LF"
 run_skip "$LF"; rc=$?
 expect_exit "RED: an unknown element in the config ⇒ exit 1, not ignored" 1 "$rc"
 expect_says "…names it" "$OUT" "\`subjekt\`"
+
+# The letter's goal lives in `goal:` (owner, 2026-09-28). Any YAML form: executor
+# writes it as a block (`goal: |`) in 105 letters, and the reader takes that.
+printf '{\n  "comms": {\n    "letter-form": {"*": ["goal"]}\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
+printf -- '---\ndraft: true\n---\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "RED: 'goal' asked for, the draft has none ⇒ exit 1" 1 "$rc"
+expect_says "…says so" "$OUT" "no \`goal:\`"
+printf -- '---\ndraft: true\ngoal:\n---\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "RED: an empty goal: is no goal ⇒ exit 1" 1 "$rc"
+expect_says "…for that reason, not another" "$OUT" "no \`goal:\`"
+printf -- '---\ndraft: true\ngoal: |\n---\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "RED: a block marker with nothing under it is no goal ⇒ exit 1" 1 "$rc"
+expect_says "…for that reason, not another" "$OUT" "no \`goal:\`"
+printf -- '---\ndraft: true\ngoal: know by Friday whether the room is ours\n---\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "GREEN: a one-line goal ⇒ exit 0" 0 "$rc"
+printf -- '---\nsent: false\ngoal: |\n  know by Friday whether the room is ours,\n  and who asks the rector\n---\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "GREEN: a block goal, the form executor writes, ⇒ exit 0" 0 "$rc"
 rm -f "$FX/.claude/vdm-plugins.json" "$LF"
 
 echo ""
