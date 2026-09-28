@@ -174,7 +174,7 @@ codebase. Those go to the project's CLAUDE.md or `docs/llm/`, as below.
    it" does. A rule written only for the case that triggered it will not be
    recognised in the next domain.
 3. End with one origin line: project, date, the case in a sentence.
-4. Keep the whole file under **8 KB**. It rides in every session's context, and
+4. Keep the whole file under **12 KB**. It rides in every session's context, and
    the hook truncates beyond that (and says so).
 5. Do not copy the rule into the project's CLAUDE.md. If the project already
    carries a local copy, point it at the shared file — in **this** project only;

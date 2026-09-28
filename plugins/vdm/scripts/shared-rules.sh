@@ -34,8 +34,10 @@ cat >/dev/null 2>&1 || true   # drain the hook payload; nothing in it is needed
 
 RULES="$HOME/.claude/vdm/rules.md"
 # The layer rides in every session's context, so it has a ceiling. A rules file
-# that outgrows it has stopped being a list of rules.
-MAX_BYTES=8192
+# that outgrows it has stopped being a list of rules. 8 KB until 2026-09-28: the
+# layer then grew by two rules in a day from two sessions, an approved rule no
+# longer fitted, and the owner raised the ceiling rather than evict rules.
+MAX_BYTES=12288
 
 [ -e "$RULES" ] || exit 0
 if [ ! -f "$RULES" ] || [ ! -r "$RULES" ]; then

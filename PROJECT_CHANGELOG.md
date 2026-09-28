@@ -10,6 +10,19 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ## 2026-09-28
 
+### 🔧 TOOLING — слой общих правил: потолок 12 КБ вместо 8 (vdm 2.38.1)
+
+**Что было.** `~/.claude/vdm/rules.md` дошёл до 8 150 байт из 8 192: за 2026-09-28 туда легли четыре
+правила program и правило echelon. Одобренная владельцем строка о языке прозы (419 байт) уже не
+помещалась, а `shared-rules.sh` при превышении режет по целым строкам, то есть отрезал бы её
+оговорку. Решение владельца — поднять лимит (кристалл executor `claude-md-slimming`, DL #12, «Поднять
+лимит»); просьба executor через интерком 2026-09-28.
+
+**Что сделано.** `MAX_BYTES` 8192 → 12288 в `plugins/vdm/scripts/shared-rules.sh`, «8 KB» → «12 KB» в
+`skills/learn/SKILL.md`. Тест в `tests/shared-rules.test.sh`: файл между старым и новым потолком
+(9 716 байт, фикстура сама проверяет, что лежит в этом промежутке) грузится целиком, с последней
+строкой; на прежнем потолке красные 2. Шапку самого `rules.md` правит executor.
+
 ### ✨ FEATURE — vdm-comms: элемент `goal` в `comms.letter-form` (vdm-comms 0.8.0)
 
 **Что было.** Цель письма в проектах живёт по-разному: `goal:` во frontmatter (program) или

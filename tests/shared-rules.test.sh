@@ -67,6 +67,26 @@ else
 fi
 chmod 644 "$RULES"
 
+echo "== the ceiling is 12 KB (owner, 2026-09-28) =="
+# The layer grew by two rules in one day from two sessions and reached 8 150 of
+# 8 192 bytes; an approved rule of 419 bytes no longer fitted, and the cut would
+# have dropped exactly its last lines. The owner raised the ceiling rather than
+# evict rules. A file between the old and the new ceiling must load whole.
+{
+  printf '## Правило между старым и новым потолком\n\n'
+  i=0; while [ $i -lt 130 ]; do printf 'Строка правила номер %03d, файл больше 8 КБ.\n' "$i"; i=$((i+1)); done
+  printf 'LAST LINE OF THE FILE\n'
+} > "$RULES"
+size="$(wc -c < "$RULES" | tr -d ' ')"
+if [ "$size" -gt 8192 ] && [ "$size" -le 12288 ]; then
+  ok "fixture sits between the old and the new ceiling ($size bytes)"
+else
+  bad "fixture sits between the old and the new ceiling" "it is $size bytes"
+fi
+out="$(run "$TMP/project-a")"
+says_not "a file under 12 KB is not truncated" "$out" "Truncated"
+says "…its last line reaches the context" "$out" "LAST LINE OF THE FILE"
+
 echo "== the layer has a ceiling, and cuts on a line =="
 {
   printf '## Правило о кириллице\n\n'
