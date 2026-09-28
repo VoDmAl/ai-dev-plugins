@@ -76,6 +76,7 @@ repository does not use and the second one rewrites every generated file again.
 | `link-style` | `markdown` \| `wikilink` | `markdown` |
 | `registry-columns` | any of `date`, `meeting`, `series`, `people`, `tracks`, `topics`, `materials`, in the order wanted | `date`, `meeting`, `series`, `tracks` |
 | `series-columns` | the same set, for the table in each series file | `date`, `meeting` |
+| `generate` | which artefacts this plugin writes: any of `registry`, `series`, `pointers`; `[]` = none | all three |
 
 `wikilink` is for a repository kept as a note vault, where a code span or a
 markdown link is not an edge of the graph: the meeting, each track (its
@@ -114,6 +115,16 @@ table belongs inside those files is the project's call, so:
 - **first run on a repository that already generated its own tables** → the
   first `--write` reformats them to this plugin's columns. Expected, and worth
   saying out loud to the user before running it.
+- **a repository that keeps generating them itself** → name what is left to
+  this plugin in `comms.generate`. An artefact not named there is neither
+  rebuilt nor reported as behind, and a missing `INDEX.md` is no note. The
+  alternative is a signal that is on every session: another generator's table
+  never matches this one's byte for byte, even with the same columns — and
+  a signal that is always on is either ignored or obeyed, and obeyed it
+  reformats the project's table (field case, 2026-09-25: "79 artefacts
+  behind", 72 of them pointers the project never had). Pointers handed back
+  stay where they are, including ones this plugin wrote: the layer's owner
+  decides what to remove.
 
 ## Pointers
 

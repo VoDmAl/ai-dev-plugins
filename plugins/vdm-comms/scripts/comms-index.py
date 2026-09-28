@@ -71,6 +71,7 @@ COLUMNS = ("date", "meeting", "series", "people", "tracks", "topics", "materials
 REGISTRY_COLUMNS = ("date", "meeting", "series", "tracks")
 SERIES_COLUMNS = ("date", "meeting")
 LINK_STYLES = ("markdown", "wikilink")
+ARTEFACTS = ("registry", "series", "pointers")
 
 
 class Meeting:
@@ -213,6 +214,28 @@ def columns(cfg, key, default, notes):
         notes.append("comms.%s: unknown column(s) %s — known: %s"
                      % (key, ", ".join(map(str, unknown)), ", ".join(COLUMNS)))
     return [c for c in raw if c in COLUMNS] or list(default)
+
+
+def generated(cfg, notes):
+    """The artefacts this plugin writes here (`comms.generate`). Unset means all
+    three. One the project writes itself is neither rebuilt nor reported as
+    behind: a comparison with another generator's format is always "behind",
+    and a signal that is always on is one nobody reads — or worse, one that is
+    obeyed and reformats the project's table."""
+    raw = cfg.get("generate")
+    if raw is None:
+        return set(ARTEFACTS)
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list):
+        notes.append("comms.generate: expected a list of %s — nothing is generated "
+                     "until it is one" % ", ".join(ARTEFACTS))
+        return set()
+    unknown = [a for a in raw if a not in ARTEFACTS]
+    if unknown:
+        notes.append("comms.generate: unknown artefact(s) %s — known: %s"
+                     % (", ".join("`%s`" % a for a in unknown), ", ".join(ARTEFACTS)))
+    return {a for a in raw if a in ARTEFACTS}
 
 
 def collect(root, meetings_dir):
@@ -388,10 +411,14 @@ def plan(root, meetings_dir, meetings, cfg, lab):
         notes.append("comms.link-style: %r is not one of %s — markdown is used"
                      % (cfg.get("link-style"), ", ".join(LINK_STYLES)))
 
+    gen = generated(cfg, notes)
+
     # 1. Registry.
     index_path = os.path.join(root, meetings_dir, "INDEX.md")
-    table = registry_table(root, meetings_dir, meetings, cfg, lab, reg_cols)
-    if os.path.isfile(index_path):
+    if "registry" not in gen:
+        pass
+    elif os.path.isfile(index_path):
+        table = registry_table(root, meetings_dir, meetings, cfg, lab, reg_cols)
         with open(index_path, encoding="utf-8") as fh:
             current = fh.read()
         new, status = replace_between(current, REGISTRY_START, REGISTRY_END, table)
@@ -406,7 +433,8 @@ def plan(root, meetings_dir, meetings, cfg, lab):
                      % (meetings_dir, REGISTRY_START, REGISTRY_END))
 
     # 2. Series blocks.
-    for series in sorted({m.series for m in meetings if m.series}):
+    series_names = {m.series for m in meetings if m.series} if "series" in gen else set()
+    for series in sorted(series_names):
         spath = os.path.join(root, meetings_dir, "%s.md" % series)
         if not os.path.isfile(spath):
             continue  # a series file is written when it is needed (lint warns)
@@ -421,7 +449,10 @@ def plan(root, meetings_dir, meetings, cfg, lab):
         elif status == "replaced":
             actions.append(("series:%s" % series, spath, new))
 
-    # 3. Pointers.
+    # 3. Pointers. Handed back, they are the project's — including pointers this
+    # plugin wrote earlier: whoever owns the layer now decides what to remove.
+    if "pointers" not in gen:
+        return actions, notes
     wanted = {}
     for m in meetings:
         for track in m.tracks:

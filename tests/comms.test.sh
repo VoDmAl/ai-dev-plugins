@@ -784,6 +784,53 @@ OUT=$(cd "$FX" && CLAUDE_PROJECT_DIR="$FX" COMMS_TODAY="$TODAY" bash "$INDEXCHEC
 expect_says "RED: the signal lists a stale path, not only a count" "$OUT" "        update "
 
 echo ""
+echo "== comms.generate: an artefact the project writes itself is not ours to call stale =="
+# Field case, hq 2026-09-25: its own linter writes meetings/INDEX.md and the
+# series blocks, and every session start said "79 artefacts behind — rebuild",
+# a rebuild that would cut their table to this plugin's format. The fixture's
+# registry and series tables are hand-written, so without the key they ARE
+# behind — the control below proves it, or the silence after it proves nothing.
+GX="$TMP/gx"; mkdir -p "$GX/.claude" "$GX/meetings/2026-09-01-sync" "$GX/tracks/alpha/comms"
+GX=$(cd "$GX" && pwd -P); ( cd "$GX" && git init -q . ) >/dev/null 2>&1
+printf -- '---\ntype: meeting\ndate: 2026-09-01\nseries: sync\ntracks:\n  - tracks/alpha\n---\n\n# Sync\n' \
+  > "$GX/meetings/2026-09-01-sync/index.md"
+printf '# Registry\n\n<!-- registry:start -->\n| ours | seven | columns |\n<!-- registry:end -->\n' > "$GX/meetings/INDEX.md"
+printf -- '---\ntype: meeting-series\n---\n\n# sync\n\n<!-- meetings:start -->\n| ours |\n<!-- meetings:end -->\n' > "$GX/meetings/sync.md"
+cp "$GX/meetings/INDEX.md" "$TMP/gx-index.orig"; cp "$GX/meetings/sync.md" "$TMP/gx-sync.orig"
+gx_cfg() { printf '{"comms": {"series": ["sync"]%s}}\n' "$1" > "$GX/.claude/vdm-plugins.json"; }
+gx_check() { OUT=$(cd "$GX" && python3 "$INDEX" --check --project-root "$GX" 2>&1); }
+
+gx_cfg ""
+gx_check; rc=$?
+expect_says "CONTROL: without the key the hand-written registry is behind" "$OUT" "update meetings/INDEX.md"
+expect_says "CONTROL: …and so is the series table" "$OUT" "update meetings/sync.md"
+
+gx_cfg ', "generate": ["pointers"]'
+gx_check; rc=$?
+expect_not_says "RED: a registry the project writes is not proposed" "$OUT" "meetings/INDEX.md"
+expect_not_says "RED: nor are its series tables" "$OUT" "meetings/sync.md"
+expect_says "GREEN: the artefact still named ours is checked" "$OUT" "tracks/alpha/comms/2026-09-01-sync-meeting.md"
+OUT=$(cd "$GX" && python3 "$INDEX" --write --project-root "$GX" 2>&1)
+cmp -s "$GX/meetings/INDEX.md" "$TMP/gx-index.orig" && ok "RED: --write leaves the project's registry byte for byte" \
+  || bad "RED: --write leaves the project's registry byte for byte"
+cmp -s "$GX/meetings/sync.md" "$TMP/gx-sync.orig" && ok "RED: …and its series file" \
+  || bad "RED: …and its series file"
+rm -f "$GX/meetings/INDEX.md"
+gx_check
+expect_silent "RED: no INDEX.md is no note when the registry is not ours (the pointer is in sync)" "$OUT"
+
+gx_cfg ', "generate": []'
+rm -f "$GX/tracks/alpha/comms/2026-09-01-sync-meeting.md"
+gx_check; rc=$?
+expect_exit "RED: nothing named ours ⇒ nothing behind, exit 0" 0 "$rc"
+OUT=$(cd "$GX" && CLAUDE_PROJECT_DIR="$GX" bash "$INDEXCHECK" </dev/null 2>&1)
+expect_silent "RED: …and session start says nothing" "$OUT"
+
+gx_cfg ', "generate": ["registry", "indexes"]'
+gx_check
+expect_says "RED: an unknown artefact name is reported, not dropped" "$OUT" "\`indexes\`"
+
+echo ""
 echo "== a dated promise in a meeting record fires nowhere — when the summary is on =="
 # Field case, command-center 2026-09-23: `- [ ] ⏰ **Пересмотр 17.09**` in a
 # meeting record's «Our actions»; the summary reads tracks, nobody read the

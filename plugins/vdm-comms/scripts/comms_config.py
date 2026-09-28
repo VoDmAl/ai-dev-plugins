@@ -17,6 +17,8 @@ Config lives in `.claude/vdm-plugins.json` (or `.qwen/…`) under `comms`:
     link-style        markdown | wikilink, for generated links (default markdown)
     registry-columns  INDEX.md columns, in order             (default date, meeting, series, tracks)
     series-columns    a series file's columns, in order      (default date, meeting)
+    generate          which generated artefacts are this plugin's: registry,
+                      series, pointers; [] = none            (default: all three)
     meeting-rules     opt-in authoring rules for the linter  (default: none — see comms-lint.py)
     pending-paths     globs of files holding pending items   (default: none -> off)
     pending-sections  {"waiting": [...], "action": [...]}    (default: none)
@@ -52,6 +54,12 @@ DEFAULTS = {
     "link-style": "markdown",
     "registry-columns": [],
     "series-columns": [],
+    # Which of the three generated artefacts are this plugin's to write and to
+    # call stale. None = all of them; a project that writes its own registry
+    # (hq: its linter owns INDEX.md and the series blocks) names only what
+    # is left, and `[]` hands the whole layer back. Unlike the column lists, an
+    # empty list is an answer here, not "use the default".
+    "generate": None,
     # Opt-in authoring rules for the meetings linter — a project's own
     # conventions, named in its own config. Empty = the floor only.
     "meeting-rules": {},

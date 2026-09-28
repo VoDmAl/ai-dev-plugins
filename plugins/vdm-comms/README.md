@@ -60,6 +60,7 @@ is reported.
     "link-style": "markdown",
     "registry-columns": ["date", "meeting", "series", "tracks"],
     "series-columns": ["date", "meeting"],
+    "generate": ["registry", "series", "pointers"],
 
     "pending-paths": ["projects/*/index.md", "docs/tasks/*/*.md"],
     "pending-sections": { "waiting": ["Waiting on"], "action": ["Our actions"] },

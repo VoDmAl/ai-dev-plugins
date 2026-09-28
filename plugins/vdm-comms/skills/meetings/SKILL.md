@@ -172,7 +172,7 @@ history as a defect.
 | `topic-sections` | also check that the body has one topic section per topic — `## Topic N. <name>` or `## Тема N. <name>`. Default `false`: body conventions differ between projects. |
 | `meeting-rules` | the project's own conventions, off until named — see the section above. |
 | `labels` | wording of the files the GENERATOR writes into your repository: `"en"` (default), `"ru"`, or an object overriding individual keys, merged over English. |
-| `link-style`, `registry-columns`, `series-columns` | how the generated layer writes links and which columns it writes — see `/vdm-comms:index`. |
+| `link-style`, `registry-columns`, `series-columns`, `generate` | how the generated layer writes links, which columns it writes, and which of its three artefacts are this plugin's at all — see `/vdm-comms:index`. |
 | `letter-form` | what an outgoing **draft** must carry, per channel — see *The form of a draft* below. Merged over the default key by key. Default `{"email": ["subject"]}`. |
 | `enabled` | `false` switches the whole plugin off. |
 
