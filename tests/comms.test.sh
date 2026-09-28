@@ -873,6 +873,13 @@ printf -- '---\ndraft: true\n---\n\n---\n\nHi.\n' > "$LF"
 run_skip "$LF"; rc=$?
 expect_exit "RED: '*' asks for a channel, the draft declares none ⇒ exit 1" 1 "$rc"
 expect_says "…says so" "$OUT" "no \`channel:\`"
+# Field report 2026-09-26 (program): an SMS draft marked `sent: false`, the
+# project's way of saying "not gone yet", passed with exit 0 — the check looked
+# for `draft: true` only, and a skip read as "nothing wrong".
+printf -- '---\nsent: false\n---\n\n---\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "RED: a draft marked sent: false owes the same form ⇒ exit 1" 1 "$rc"
+expect_says "…says what is missing" "$OUT" "no \`channel:\`"
 printf -- '---\ndraft: true\nchannel: telegram\n---\n\n> header\n\nHi.\n' > "$LF"
 run_skip "$LF"; rc=$?
 expect_exit "RED: '*' asks for the separator, there is none ⇒ exit 1" 1 "$rc"
@@ -910,6 +917,9 @@ expect_says "…names why it matters" "$OUT" "outside comms/"
 OUT=$(payload Write "$GR" "x" | (cd "$FX" && bash "$LINTSH" --hook) 2>&1); rc=$?
 expect_exit "HOOK: comes back as feedback at write time (exit 2)" 2 "$rc"
 expect_says "HOOK: …headed as a letter" "$OUT" "this outgoing letter does not meet the contract"
+printf -- '---\nsent: false\nchannel: board\n---\n\n> for the security team\n\n---\n\nText.\n' > "$GR"
+run_skip "$GR"; rc=$?
+expect_exit "RED: channel + sent: false outside comms/ ⇒ exit 1 — the same draft, marked the other way" 1 "$rc"
 printf -- '---\nchannel: board\n---\n\nPublished notes.\n' > "$GR"
 run_skip "$GR"; rc=$?
 expect_exit "GREEN: a channel without draft: true outside comms/ ⇒ exit 0" 0 "$rc"

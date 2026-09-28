@@ -617,12 +617,13 @@ def letter_flags(path):
     except (OSError, UnicodeDecodeError, fmmod.FrontmatterError):
         return False, False
     keys = fmmod.scalar_keys(fm_text)
-    return keys.get("draft") is True, keys.get("sent") not in (None, "", False)
+    return fmmod.marks_unsent(keys), keys.get("sent") not in (None, "", False)
 
 
 def unsent_drafts(root, cfg, today):
     """Written and never sent: any `*.md` inside a `comms/` directory whose own
-    frontmatter says `draft: true` and carries no `sent:` value.
+    frontmatter says it has not gone out — `draft: true`, or `sent: false` —
+    and carries no `sent:` value (`comms_frontmatter.marks_unsent`).
 
     The file names itself a draft, so the name of the file is not asked. The
     first version asked it — `*-out.md` only — and a repository whose ticket
@@ -1047,7 +1048,7 @@ def print_contract():
     print("scope\telsewhere: only a line already carrying a marker is an item")
     print("scope\ta table row carrying a marker is an item, never a strict one")
     print("scope\t<meetings-dir>/<series>.md of every declared series is read too")
-    print("draft\tany */comms/*.md whose frontmatter says draft: true and has no sent: value")
+    print("draft\tany */comms/*.md whose frontmatter says draft: true or sent: false, and has no sent: value")
     print("skip\t- [x], ~~struck through~~, indented children, fenced code blocks")
     print("error\tbroken date marker")
     print("error\tno owner (declared section only)")

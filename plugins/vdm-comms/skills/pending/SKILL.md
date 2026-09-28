@@ -124,7 +124,7 @@ sensible default: three repositories keep them in three different shapes.
 | `pending-sections` | headings, matched by **prefix**, so `Ожидаем` covers `## Ожидаем ответы` |
 | `owners` | the names that count as owners; also the order groups appear in (your own name last) |
 | `people-dir` | where profiles live, for the wikilink form (default `people`) |
-| `pending-draft-days` | age at which an unsent draft is reported — any `*/comms/*.md` whose frontmatter says `draft: true` and carries no `sent:` value; `0` switches it off |
+| `pending-draft-days` | age at which an unsent draft is reported — any `*/comms/*.md` whose frontmatter says `draft: true` or `sent: false` and carries no `sent:` value; `0` switches it off |
 | `pending-transcript-days` | window for "held, no transcript yet": a meeting in the last N days (today's excluded) with no `transcript*` file beside it and no `transcript:` in its `index.md`. Default `0` — off |
 
 Once `pending-paths` is set, the **queue of every declared series**

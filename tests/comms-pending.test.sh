@@ -347,12 +347,15 @@ cat > "$FX/meetings/README.md" <<'EOF'
 - `index.md` — an obligation that came out of a topic carries a ⏰ review date
 EOF
 
-# Letters. Only the first four are unsent drafts.
+# Letters. Only the first five are unsent drafts. The fifth says so the other
+# way round — `sent: false` and no `draft:` at all — the way program marks
+# every draft (field report 2026-09-26: four of them invisible to this list).
 lt() { printf -- '---\n%s\n---\n\n# letter\n' "$2" > "$FX/tracks/alpha/comms/$1"; }
 lt 2026-09-01-ticket-task.md  $'draft: true\nfiled:\nsent:\nurl:\n\ntype: jira'
 lt 2026-09-02-spec-draft.md   $'draft: true\ntype: jira'
 lt 2026-09-03-emptysent-out.md $'draft: true\nsent:\nurl: '
 lt 2026-09-05-nullsent-out.md $'draft: true\nsent: null'
+lt 2026-09-07-sentfalse-out.md $'channel: sms\nsent: false'
 lt 2026-09-04-reply-in.md     $'type: letter\nsent: 2026-09-04'
 lt 2026-09-06-filed-task.md   $'filed: KEY-2\nsent: 2026-09-06'
 
@@ -400,6 +403,7 @@ expect_says "a *-task.md draft is written-and-never-sent" "$OUT" "2026-09-01-tic
 expect_says "a *-draft.md draft too" "$OUT" "2026-09-02-spec-draft.md"
 expect_says "an empty sent: followed by url: is NOT a send" "$OUT" "2026-09-03-emptysent-out.md"
 expect_says "sent: null is not a send either" "$OUT" "2026-09-05-nullsent-out.md"
+expect_says "sent: false with no draft: is a draft, marked the other way round" "$OUT" "2026-09-07-sentfalse-out.md"
 expect_not_says "an inbound letter's sent: is its date, not a draft" "$OUT" "reply-in.md"
 expect_not_says "a filed ticket is not a draft" "$OUT" "filed-task.md"
 expect_says "a held meeting with no transcript is reported" "$OUT" "meetings/2026-09-10-plc"

@@ -8,6 +8,29 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ---
 
+## 2026-09-28
+
+### 🐛 BUG — vdm-comms: черновик с `sent: false` тоже черновик (vdm-comms 0.6.6)
+
+**Что было.** Черновиком письма считался только файл с `draft: true`. В program черновик с
+первого дня помечается `sent: false`, а `draft:` нет ни в одном файле. Поэтому список «Written and
+never sent» в `pending`, проверка формы по каналу (`comms.letter-form`) и замечание о черновике вне
+`comms/` такие файлы молча пропускали, и пропуск выглядел как «замечаний нет». Письмо program
+`comms-draft-marker-and-channel-template`, п. 1; Sidetrack #22 в
+`docs/tasks/crystal-wake/workitem.md`.
+
+**Что сделано.**
+- Одно определение «письмо ещё не ушло» — `marks_unsent` в `comms_frontmatter.py`: `draft: true`
+  или явное `sent: false`. Его берут оба читателя, `comms-pending.py` и `comms-lint.py`. Гард
+  создания письма не менялся: он и раньше блокировал только `sent: <дата>`.
+- Тесты: `tests/comms-pending.test.sh` +1, `tests/comms.test.sh` +3 (форма по каналу, черновик вне
+  `comms/`); на прежнем коде красные 4.
+- Сверка на машине. Копия program с включённым `pending`: черновиков было 0, стало 1 (второе
+  письмо младше порога `pending-draft-days`); линтер называет пропущенный `channel:`, раньше
+  пропускал. В command-center список вырос с 13 до 18: пять мартовских файлов с `sent: false` без
+  `draft:`, один из них входящий (`2026-03-19-zaitsev-in.md`). Других репо с `sent: false` в
+  `comms/` нет.
+
 ## 2026-09-26
 
 ### 🐛 BUG — перевод строки заканчивает команду и для гардов (vdm-git 2.15.11, vdm-comms 0.6.5)

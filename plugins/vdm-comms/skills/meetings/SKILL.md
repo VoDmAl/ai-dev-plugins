@@ -188,6 +188,8 @@ Everything else is the floor, in code, identical everywhere.
 A `PreToolUse` guard refuses to **create** `*/comms/*-out.md` that already
 carries `sent: <date>`. A letter is sent by a person: until then the file is a
 draft (`draft: true`), and `sent:` is the record of what actually went out.
+A project that marks drafts the other way round, `sent: false` from the first
+day, is read the same: every check that asks "is this a draft?" takes both.
 
 The guard keys off the **path shape**, not a list of track prefixes. The field
 version matched one prefix, and by the time anyone measured it that repository
@@ -224,13 +226,13 @@ channel's own list adds to it. The default is only `{"email": ["subject"]}` —
 the one thing true of every email in every repository. A separator is a
 project's convention and is opted into.
 
-Checked **only for drafts** (`draft: true`, no `sent:`). A letter already sent is
+Checked **only for drafts** (`draft: true` or `sent: false`, no `sent:` date). A letter already sent is
 history: fitting it to a form written later would falsify the record. Each
 missing element comes back as feedback right after the write.
 
 ### Outgoing text outside comms/
 
-A file anywhere that declares `channel:` and `draft: true` is an outgoing draft
+A file anywhere that declares `channel:` and a draft marker is an outgoing draft
 by its own word, and its form is checked wherever it lives. But the draft guard
 and `pending` look only in `comms/`, so outside it the draft is not tracked —
 the linter says so at the write. Move the text to

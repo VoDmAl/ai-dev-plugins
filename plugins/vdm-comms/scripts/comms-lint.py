@@ -124,7 +124,7 @@ def _declared_letter(path):
     channel = channel_of(keys.get("channel"))
     if channel is None:
         return None
-    return channel, keys.get("draft") is True
+    return channel, fm.marks_unsent(keys)
 
 
 today = cfgmod.today
@@ -321,7 +321,7 @@ def _lint_letter(rep, path, cfg, outside=False):
     if keys.get("sent") not in (None, "", False):
         rep.skip("a letter already sent — the record is history")
         return rep
-    is_draft = keys.get("draft") is True
+    is_draft = fm.marks_unsent(keys)
     checked = _lint_letter_form(rep, keys, body, cfg) if is_draft else False
     if outside:
         if not is_draft:
@@ -755,14 +755,14 @@ def print_contract():
     print("letter\tattachments: in frontmatter without a `## 📎 …` section\terror")
     print("letter\ta 📎 section with no `- [ ]` items, or an item that is not a link\terror")
     print("letter\ta 📎 item linking a file that does not exist next to the letter\terror")
-    print("# outgoing drafts — `draft: true`, form per `channel:` (comms.letter-form)")
+    print("# outgoing drafts — `draft: true` or `sent: false`, form per `channel:` (comms.letter-form)")
     print("config\tletter-form\tdefault: {\"email\": [\"subject\"]}; `*` applies to every draft")
     print("draft\tchannel: first word, lowercase — `SMS (to Anna)` is sms")
     print("draft\tchannel element: no `channel:` in the frontmatter\terror")
     print("draft\tsubject element: no `**Subject**:` line before the separator\terror")
     print("draft\tsubject element: `**Subject**:` hidden inside the `>` header\terror")
     print("draft\tseparator element: no `---`, or nothing after it\terror")
-    print("draft\t`channel:` + `draft: true` outside comms/ — not tracked there\terror")
+    print("draft\t`channel:` + a draft marker outside comms/ — not tracked there\terror")
     print("never\ta letter already sent (`sent:`) — history is not refitted")
 
 

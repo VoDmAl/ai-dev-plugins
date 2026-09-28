@@ -375,6 +375,19 @@ def scalar_keys(fm_text):
     return out
 
 
+def marks_unsent(keys):
+    """Does a letter's frontmatter (from `scalar_keys`) say it has not gone out?
+
+    Two markings say it, and every reader must take both: `draft: true`, which
+    this plugin's templates write, and an explicit `sent: false`, which a project
+    that keeps the send as yes/no writes from the first day. Reading only the
+    first made every draft of the second kind invisible — to `pending`, to the
+    letter-form check — and a skip there reads as "nothing to report" (field
+    report 2026-09-26, program: four drafts, zero findings).
+    """
+    return keys.get("draft") is True or keys.get("sent") is False
+
+
 def read(path):
     """Read a file → (data, body). Missing frontmatter yields ({}, text)."""
     with open(path, encoding="utf-8") as fh:
