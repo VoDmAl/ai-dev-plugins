@@ -26,6 +26,9 @@ Config lives in `.claude/vdm-plugins.json` (or `.qwen/…`) under `comms`:
     people-dir        directory of people profiles           (default "people")
     pending-draft-days unsent-draft age threshold, 0 = off   (default 3)
     pending-transcript-days  window for "held, no transcript", 0 = off (default 0)
+    register          how requests are made to the usual reader: volunteer |
+                      executor | peer; a letter's own `register:` wins (default: none)
+    language          the language of outgoing letters, e.g. en, ru  (default: none)
     letter-form       per channel: what an outgoing DRAFT must carry — `channel`,
                       `subject`, `separator`, `goal`, `known`; `*` applies to every draft; merged
                       over the default key by key       (default {"email": ["subject"]})
@@ -84,7 +87,14 @@ DEFAULTS = {
     # half of command-center's letters do not), so it is opted into, not
     # imposed. `*` applies to every draft, including one with no channel yet.
     "letter-form": {"email": ["subject"]},
+    # Who the project usually writes to, and in what language (owner, 2026-09-28;
+    # skill `letters` § 6). Undeclared = no profile: the rules for every register
+    # apply. A letter to someone else carries its own `register:`.
+    "register": None,
+    "language": None,
 }
+
+REGISTERS = ("volunteer", "executor", "peer")
 
 # Wording for the files the generator writes INTO THE PROJECT. It is the one
 # part of this plugin that ends up in somebody else's document, so it cannot be

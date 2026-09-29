@@ -20,6 +20,7 @@ files. One home for a tool three repositories had each copied and drifted.
 | `/vdm-comms:meetings` | skill | the contract, configuration, onboarding |
 | `/vdm-comms:index` | skill | rebuild the registry, series lists and track pointers |
 | `/vdm-comms:pending` | skill | who owes what, to whom, and by when |
+| `/vdm-comms:letters` | skill | what an outgoing letter carries and what stays out of it |
 
 ## The model
 
@@ -68,7 +69,10 @@ is reported.
     "owners": ["executor", "legal", "Dmitry"],
     "people-dir": "people",
     "pending-draft-days": 3,
-    "pending-transcript-days": 0
+    "pending-transcript-days": 0,
+
+    "register": "peer",
+    "language": "en"
   }
 }
 ```

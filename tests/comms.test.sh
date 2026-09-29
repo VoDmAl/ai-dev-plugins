@@ -1055,6 +1055,28 @@ expect_says "…the heading carries the name" "$(cat "$SC" 2>/dev/null)" "# → 
 rm -f "$FX/.claude/vdm-plugins.json" "$FX"/gaps/alpha/comms/"$TODAY"-*-out.md
 
 echo ""
+echo "== register: the project's default, the letter's own when it differs =="
+# Owner, 2026-09-28: three profiles (volunteer / executor / peer); the project
+# declares its usual reader, a letter to someone else says so in `register:`.
+printf '{\n  "comms": {\n    "register": "volunteer"\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
+SC="$FX/gaps/alpha/comms/$TODAY-dana-out.md"; rm -f "$SC"
+run_new --channel telegram --to dana --track gaps/alpha
+expect_says "RED: the scaffold writes the project's register into the letter" "$(cat "$SC" 2>/dev/null)" "register: volunteer"
+printf -- '---\ndraft: true\nchannel: email\nregister: friend\n---\n\n**Subject**: x\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "RED: an unknown register in a draft ⇒ exit 1" 1 "$rc"
+expect_says "…and the known ones are named" "$OUT" "volunteer, executor, peer"
+printf -- '---\ndraft: true\nchannel: email\nregister: peer\n---\n\n**Subject**: x\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "GREEN: a letter overriding the project's register ⇒ exit 0" 0 "$rc"
+printf '{\n  "comms": {\n    "register": "boss"\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
+printf -- '---\ndraft: true\nchannel: email\n---\n\n**Subject**: x\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "RED: an unknown comms.register is reported on the draft it governs ⇒ exit 1" 1 "$rc"
+expect_says "…naming the key" "$OUT" "comms.register"
+rm -f "$FX/.claude/vdm-plugins.json" "$LF" "$SC"
+
+echo ""
 echo "== an outgoing draft declared outside comms/ =="
 # Field case, 2026-09-25 (hq): a board post for two outside readers lived a
 # day in a working file of its track, and no tool saw it — every one of them

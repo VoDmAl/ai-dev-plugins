@@ -12,6 +12,8 @@ reader the linter uses, so the scaffold and the check cannot disagree:
 
   * `draft: true` — the plugin's own draft marker;
   * `channel:` — declared at the one moment it is known;
+  * `register:` — the project's `comms.register`, when declared; a letter to a
+    different kind of reader changes it (skill `letters` § 6);
   * `goal:` — present and EMPTY. The goal is not something a scaffold can know;
     a project that switched on the `goal` element gets a reminder from the
     linter at the first edit, until the goal is written;
@@ -57,8 +59,10 @@ def slug_of(text):
 def render(cfg, channel, to, subject):
     lab = cfgmod.labels(cfg)
     need = cfgmod.form_need(cfg, channel) or []
-    lines = ["---", "draft: true", "channel: %s" % channel, "goal:", "---", "",
-             "# → %s" % to, ""]
+    lines = ["---", "draft: true", "channel: %s" % channel]
+    if cfg.get("register") in cfgmod.REGISTERS:
+        lines.append("register: %s" % cfg["register"])   # the project's; edit it for a different reader
+    lines += ["goal:", "---", "", "# → %s" % to, ""]
     if "subject" in need:
         lines += ["**%s**: %s" % (lab["letter-subject"], subject or ""), ""]
     if "separator" in need:

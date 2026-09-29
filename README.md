@@ -52,6 +52,7 @@ with agenda/prep/index, a file per series, and `comms/` letters beside each trac
 |-------|---------|-------------|
 | meetings | `/vdm-comms:meetings` | The contract over a meetings tree — what is checked, how to configure it, how to onboard a repo that already has one |
 | index | `/vdm-comms:index` | Rebuild the generated layer: the registry, the per-series lists, and the pointer each track's `comms/` gets for a meeting that touched it |
+| letters | `/vdm-comms:letters` | What an outgoing letter carries and what stays out: goal, one subject, channel, register, claims with a source, the sender's commitments, the cutting pass, replying in a thread |
 
 Three hooks: a `PostToolUse` contract linter, a `PreToolUse` guard that refuses to
 create an outgoing letter already claiming `sent:`, and a `SessionStart` drift
@@ -460,6 +461,7 @@ Three plugin namespaces:
 **`vdm-comms`** (optional):
 - `vdm-comms:meetings` — the contract over a meetings tree
 - `vdm-comms:index` — the generated registry, series lists and track pointers
+- `vdm-comms:letters` — what an outgoing letter carries and what stays out
 
 ## changelog Skill Quick Reference
 

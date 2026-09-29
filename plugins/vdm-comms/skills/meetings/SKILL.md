@@ -180,6 +180,7 @@ history as a defect.
 | `labels` | wording of the files the GENERATOR writes into your repository: `"en"` (default), `"ru"`, or an object overriding individual keys, merged over English. |
 | `link-style`, `registry-columns`, `series-columns`, `generate` | how the generated layer writes links, which columns it writes, and which of its three artefacts are this plugin's at all — see `/vdm-comms:index`. |
 | `letter-form` | what an outgoing **draft** must carry, per channel — see *The form of a draft* below. Merged over the default key by key. Default `{"email": ["subject"]}`. |
+| `register`, `language` | who the project usually writes to (`volunteer` \| `executor` \| `peer`) and in what language — see `/vdm-comms:letters`. A letter's own `register:` wins over the project's. |
 | `enabled` | `false` switches the whole plugin off. |
 
 Fill `track-roots` and `series` from what the repository actually contains. The

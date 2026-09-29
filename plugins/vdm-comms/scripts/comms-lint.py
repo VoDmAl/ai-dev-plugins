@@ -262,6 +262,14 @@ def _lint_letter_form(rep, keys, body, cfg, fm_text=""):
     Returns whether any element applied — a draft whose channel requires
     nothing was not checked, and must not read as `ok`."""
     channel = channel_of(keys.get("channel"))
+    own = keys.get("register")
+    if own not in (None, ""):
+        if str(own) not in cfgmod.REGISTERS:
+            rep.error("`register: %s` — the known registers are %s (skill `letters` § 6)"
+                      % (own, ", ".join(cfgmod.REGISTERS)))
+    elif cfg.get("register") not in (None, "") and cfg.get("register") not in cfgmod.REGISTERS:
+        rep.error("`comms.register: %s` in the project config — the known registers are %s"
+                  % (cfg.get("register"), ", ".join(cfgmod.REGISTERS)))
     need = cfgmod.form_need(cfg, channel)
     if need is None:
         rep.error("`comms.letter-form` must map a channel to a list of elements "
@@ -781,6 +789,7 @@ def print_contract():
     print("draft\tseparator element: no `---`, or nothing after it\terror")
     print("draft\tgoal element: no `goal:` in the frontmatter, or an empty one (any YAML form)\terror")
     print("draft\tknown element: a question in the text, no `**What we know**` / `**Знаем сами**` line above the separator\twarning")
+    print("draft\t`register:` (or comms.register) not one of volunteer, executor, peer\terror")
     print("draft\t`channel:` + a draft marker outside comms/ — not tracked there\terror")
     print("never\ta letter already sent (`sent:`) — history is not refitted")
 
