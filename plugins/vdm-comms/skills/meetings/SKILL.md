@@ -203,7 +203,9 @@ version matched one prefix, and by the time anyone measured it that repository
 had grown two more: nineteen letters sat outside the guard, and nothing said
 so — a narrowed guard looks exactly like a quiet one.
 
-Editing an existing letter is never blocked.
+Editing an existing letter is never blocked. A new draft that passes gets the
+checklist of `/vdm-comms:letters` as context — the skill's short form, at the
+moment of writing; never a block.
 
 ### Start a draft from the scaffold
 

@@ -115,6 +115,11 @@ def main(argv):
         fh.write(render(cfg, channel, args.name.strip() or args.to.strip(),
                         args.subject.strip()))
     print(os.path.relpath(path, root))
+    # Created through Bash, so no Write hook fires: the checklist the guard
+    # would have handed over is printed here instead.
+    import comms_checklist  # noqa: E402 — same directory, already on sys.path
+    print("")
+    print(comms_checklist.render(cfg))
     return 0
 
 

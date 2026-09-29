@@ -16,6 +16,9 @@
 # Editing an EXISTING file is allowed: fixing a typo in a letter that really
 # was sent is legitimate, and the guard has nothing to say about it.
 #
+# A new draft that passes gets the checklist of /vdm-comms:letters as context
+# (comms_checklist.py) — the skill's short form, at the moment of writing.
+#
 # Exit: 0 allow / 2 block (stderr returns to the assistant as feedback).
 # Fail-closed when the payload cannot be read — see lib/gate-guard.sh.
 
@@ -111,6 +114,14 @@ if printf '%s' "$content" | head -n 20 \
   Fix: replace `sent: YYYY-MM-DD` with `draft: true`, then write again.
 EOF
   exit 2
+fi
+
+# A new draft passed: hand over the checklist of /vdm-comms:letters, at the one
+# moment it is worth reading — as additionalContext, never a block. A reminder,
+# so it fails open: no python3, no checklist, the write goes through.
+CHECKLIST="$SELF_DIR/comms_checklist.py"
+if command -v python3 >/dev/null 2>&1 && [ -f "$CHECKLIST" ]; then
+  printf '%s' "$content" | python3 "$CHECKLIST" --hook --file "$file_path" 2>/dev/null || true
 fi
 
 exit 0

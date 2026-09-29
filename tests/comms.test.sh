@@ -219,9 +219,30 @@ expect_says "RED: the message says what to write instead" "$OUT" "draft: true"
 OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-y-out.md" "$DRAFT" | bash "$GUARD" 2>&1); rc=$?
 expect_exit "GREEN: a real draft passes" 0 "$rc"
 
+# The checklist arrives at the moment the draft is created (executor brief §1; owner
+# 13.09: «Скил не лечит — его тоже надо не забыть вызвать»). It rides on the
+# guard's own event, as additionalContext — never a block.
+OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-y-out.md" "$DRAFT" | bash "$GUARD" 2>/dev/null)
+ctx=$(printf '%s' "$OUT" | python3 -c 'import json,sys; d=json.load(sys.stdin)["hookSpecificOutput"]; print(d["hookEventName"]); print(d["additionalContext"])' 2>/dev/null)
+expect_says "RED: creating a draft brings the checklist, as PreToolUse context" "$ctx" "PreToolUse"
+expect_says "…the checklist itself" "$ctx" "Before showing this draft"
+expect_says "…with the decision-not-backstory line" "$ctx" "not the reader's own decisions retold"
+expect_not_says "…no register line when none is declared" "$ctx" "Register:"
+printf '{\n  "comms": {\n    "register": "peer",\n    "language": "en"\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
+OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-y-out.md" "$DRAFT" | bash "$GUARD" 2>/dev/null)
+expect_says "RED: the project's register is named" "$OUT" "Register: peer"
+expect_says "…and the language" "$OUT" "Language of the letter: en"
+OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-y-out.md" $'---\ndraft: true\nregister: volunteer\n---\n\nHi.\n' | bash "$GUARD" 2>/dev/null)
+expect_says "RED: the letter's own register wins" "$OUT" "Register: volunteer"
+rm -f "$FX/.claude/vdm-plugins.json"
+OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-x-out.md" "$SENT" | bash "$GUARD" 2>/dev/null); rc=$?
+expect_exit "GREEN: a blocked letter is still blocked" 2 "$rc"
+case "$OUT" in *"Before showing"*) bad "…and gets no checklist" "stdout: $OUT" ;; *) ok "…and gets no checklist" ;; esac
+
 printf '%s' "$SENT" > "$FX/gaps/alpha/comms/2026-09-21-z-out.md"
 OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-z-out.md" "$SENT" | bash "$GUARD" 2>&1); rc=$?
 expect_exit "GREEN: editing an existing sent letter passes" 0 "$rc"
+expect_silent "…and says nothing — the checklist is for a new draft" "$OUT"
 
 OUT=$(payload Write "$FX/gaps/alpha/notes.md" "$SENT" | bash "$GUARD" 2>&1); rc=$?
 expect_exit "GREEN: a file outside comms/ passes" 0 "$rc"
@@ -1017,6 +1038,7 @@ rm -f "$SC"
 run_new --channel email --to Anna --track gaps/alpha --subject "Access for the pilot"; rc=$?
 expect_exit "RED: an email draft is scaffolded ⇒ exit 0" 0 "$rc"
 expect_says "…and the path is printed" "$OUT" "gaps/alpha/comms/$TODAY-anna-out.md"
+expect_says "RED: …and the checklist, since a scaffold is created by Bash where no Write hook fires" "$OUT" "Before showing this draft"
 body="$(cat "$SC" 2>/dev/null)"
 expect_says "…a draft by the plugin's own marker" "$body" "draft: true"
 expect_says "…with its channel declared" "$body" "channel: email"

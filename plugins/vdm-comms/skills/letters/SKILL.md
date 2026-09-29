@@ -21,6 +21,12 @@ contract of `/vdm-comms:meetings` and its linter. This skill does not repeat it.
 Start a draft from the scaffold (`/vdm-comms:meetings` → *Start a draft from the
 scaffold*), not from a neighbouring letter.
 
+**The short form arrives by itself.** Creating a draft — with the scaffold, or
+with a write of a new `*/comms/*-out.md` — brings a fifteen-line checklist into
+the context, with the letter's register and the project's language when they are
+declared. It is this skill compressed to checks; go through it before the draft
+is shown to anyone, and open the sections below when a line does not settle.
+
 ## 1. Before the text: goal and one subject
 
 - **Name the goal before writing a word**: what changes, or what you learn, once
