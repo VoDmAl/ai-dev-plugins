@@ -227,6 +227,9 @@ ctx=$(printf '%s' "$OUT" | python3 -c 'import json,sys; d=json.load(sys.stdin)["
 expect_says "RED: creating a draft brings the checklist, as PreToolUse context" "$ctx" "PreToolUse"
 expect_says "…the checklist itself" "$ctx" "Before showing this draft"
 expect_says "…with the decision-not-backstory line" "$ctx" "not the reader's own decisions retold"
+# hq, 2026-09-29: «посмотрели… мы бы закрыли» — the owner's agent did it and
+# would do it; the owner sent «посмотрел… я бы закрыл». The pronoun names the actor.
+expect_says "…and the pronoun check: who really acts" "$ctx" "the pronoun names who really acts"
 expect_not_says "…no register line when none is declared" "$ctx" "Register:"
 printf '{\n  "comms": {\n    "register": "peer",\n    "language": "en"\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
 OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-y-out.md" "$DRAFT" | bash "$GUARD" 2>/dev/null)

@@ -156,6 +156,12 @@ For every register:
   to the substance of their position.
 - **A mistake is "I", a decision is "we"**: the sender names their own error in
   the first person, the wanted outcome as "we", "we need".
+- **The pronoun names who really acts.** In a text the owner sends as their own,
+  the work of the owner's agent is the owner's work — "I checked", "I would fix
+  it". "We" says a group did it or will; where none did, it is a false account
+  and a promise for people who never made one. "We" stays for what is truly
+  shared — a decision taken together. Check before showing the draft: who
+  actually did this, and who actually will?
 - **The opponent test**: if agreeing with a phrase costs the other side nothing,
   the argument is theirs — rewrite or drop it. The same test catches singling
   one person out in a group.
@@ -220,7 +226,8 @@ One promise in a draft is checked three times:
 
 1. **Did the owner give it?** A commitment or a date in an outgoing letter is
    only what the owner said. One that seems worth making is proposed to the owner
-   above the text, never inside it.
+   above the text, never inside it. "We would do it" is such a commitment when no
+   group has taken it on (§ 6, the pronoun).
 2. **Is it a fact with a date?** "I will prepare it by X", not "happy to provide
    if needed".
 3. **What carries it now?** Every "I'm discussing with X", "I'll come back with an

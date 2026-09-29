@@ -36,7 +36,7 @@ CHECKS = (
     "The decision and the request — not the reader's own decisions retold, not our own corrections.",
     "No exit: nothing lets them close or park it in one line (\"if not, fine\", \"let me know\", \"send X, then\").",
     "Everything needed to start is inside the letter; procedural asks run in parallel, not as a condition.",
-    "Every promise and date of ours was named by the owner; anything else goes above the separator, as a proposal.",
+    "Every promise and date of ours was named by the owner (others go above the separator, as a proposal); the pronoun names who really acts: the owner's and their agent's work is \"I\", \"we\" only for what is truly shared.",
     "No offers of help, no courtesies, no \"while we're at it\".",
     "Cut: what we already decided, our own status, what they already know.",
     "Questions only for the gap: a \"What we know\" line above the separator, with sources; not found = \"not seen in our sources\".",
