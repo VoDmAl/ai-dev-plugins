@@ -1,6 +1,6 @@
 ---
 name: intercom
-description: "Central cross-agent/cross-session message store with an agent directory. Leave a task brief or note for another repo's agent — or for a future clean session of your own — with /vdm:intercom send; list and consume your inbox with check/pickup. Every repo registers itself in a machine-level directory under its canonical identity PLUS the names the user actually says (\"vdm\", \"the intercom agent\"), so a brief addressed by any of them lands on the first try; a SessionStart hook keeps that registration complete. The store lives OUTSIDE all repos (no per-repo .gitignore), routed by git-remote-derived identity. Checking your inbox is an explicit action (/vdm:intercom check); an optional receiver-side reminder exists but is OFF by default."
+description: "Central cross-agent/cross-session message store with an agent directory. Leave a task brief or note for another repo's agent — or for a future clean session of your own — with /vdm:intercom send; list and consume your inbox with check/pickup, and close a brief with its outcome — what was done, the link, whose ball — with /vdm:intercom reply. Every repo registers itself in a machine-level directory under its canonical identity PLUS the names the user actually says (\"vdm\", \"the intercom agent\"), so a brief addressed by any of them lands on the first try; a SessionStart hook keeps that registration complete. The store lives OUTSIDE all repos (no per-repo .gitignore), routed by git-remote-derived identity. Checking your inbox is an explicit action (/vdm:intercom check); an optional receiver-side reminder exists but is OFF by default."
 license: MIT
 ---
 
@@ -319,7 +319,8 @@ re-derive its logic:
 | `send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--body FILE] [--to ID] [--first-contact]` | Scaffold an envelope message addressed to `<to>` (identity, alias or name) and print its path. Unknown / ambiguous target = **hard stop** with suggestions and the next command. `--to <identity>` delivers there and records `<to>` as that agent's name (the resend after the user said whom they meant). `--reply-to <ref>` records which letter this one continues (§ The relay form). `--body <file>` makes the file the letter's body, byte for byte (§ Sending a message). `--first-contact` creates a fresh inbox for a recipient that has never registered. |
 | `chain <slug>` | The relay chain behind a letter — every link it continues, and where each one lives right now. |
 | `claim <inbox> [--force]` | Move an unclaimed inbox (no registered agent) whose name matches one of your names/aliases into your own inbox; `to:` is rewritten to your identity, `to_input` stays as the trace, the name is recorded. `--force` for an orphan that matches none of your names. |
-| `pickup <slug> [--grow]` | Archive a message to `_done/` (or, with `--grow`, hand it to `/vdm:crystal-grow`). When the sender has a live session on this machine, prints the receipt to send it (§ Delivery is not receipt). |
+| `pickup <slug> [--grow]` | Archive a message to `_done/` (or, with `--grow`, hand it to `/vdm:crystal-grow`). When the sender has a live session on this machine, prints the receipt to send it (§ Delivery is not receipt). For a brief whose outcome has not gone back yet it prints the `reply` that closes it; with `--grow` it prints that as a Next action for the crystal (§ Closing a brief with its outcome). |
+| `reply <letter> (--done "<what>" [--link <url>]… --ball "<who — what ⏰ date>" \| --body FILE) [--title T] [--slug S]` | Close a letter **you received** with its outcome. It goes to the letter's sender as a `reply-to` link; recipient and link come from the envelope. Works on a letter in the inbox (archived in the same step) or in `_done/`. `--done` and `--ball` repeat; `--ball` is required — "nobody — closed" is an answer (§ Closing a brief with its outcome). |
 | `sent` (aka `outbox`) | Every letter **you** wrote that still lies unpicked in someone's inbox, oldest first, with its age and whether the recipient has a live session to wake now. |
 
 ### Sending a message
@@ -409,12 +410,15 @@ pending messages:
 1. `intercom.sh check` → list what's waiting.
 2. Read the message file(s).
 3. Then either:
-   - **Act now** → do the work, then `intercom.sh pickup <slug>` to archive it
-     to `_done/` (status flips to `done`).
+   - **Act now** → do the work, then `intercom.sh reply <slug> --done … --ball …`:
+     the outcome goes to the sender and the letter is archived in the same step.
+     A letter that asks for nothing — a note, an answer to yours — is archived
+     with `intercom.sh pickup <slug>` (status flips to `done`).
    - **Promote** → `intercom.sh pickup <slug> --grow`, then run
-     `/vdm:crystal-grow <slug>`, seed the workitem from the message body, and
-     archive with `intercom.sh pickup <slug>` once grown. Use this for a brief
-     that defines real ongoing work.
+     `/vdm:crystal-grow <slug>`, seed the workitem from the message body, add the
+     Next action it prints (the outcome owed to the sender), and archive with
+     `intercom.sh pickup <slug>` once grown. Use this for a brief that defines
+     real ongoing work.
 
 **The user's pending steps come first.** Mail that arrives mid-session — a
 wake, the opt-in reminder, a receipt — is almost never urgent, and the user may
@@ -435,6 +439,59 @@ mail, and the steps ended up far up the screen. The owner: *"if something
 important is expected from the user — don't grab it; or do, but briefly, and
 only what needs no human."* That is why every wake pointer and the opt-in
 reminder end with "not urgent: the user's pending steps come first".
+
+### Closing a brief with its outcome
+
+A brief is closed by its **outcome** reaching the sender, not by being picked
+up. Field case (product, 2026-09-29): a brief said "return nothing if you close
+it in the tickets"; the item was closed by a comment in the ticket, posted
+through the external-access tool, and the sender was told nothing. The sender's
+track kept the obligation on the owner, who had done their part. A collector
+that gathers ticket comments would have brought it in hours later, and not tied
+to the obligation it closed.
+
+So:
+
+- **An action here that closes an item of a brief** — a comment, a merge, a
+  deploy, an answer to a person — sends the outcome back **in the same turn**,
+  even when the brief asked for nothing back. A collector is the fallback, not
+  the channel.
+- **Partly done is still an outcome**: what is done, what remains, and whose
+  ball the rest is.
+- The outcome states three things: **what was done, where** (the link), and
+  **whose ball it is now, by when**. The last one is the one that gets forgotten,
+  and it is the one the sender's track needs.
+
+```bash
+intercom.sh reply <slug> --done "<what was done>" --link <url> \
+  --ball "<who holds the ball — what ⏰ YYYY-MM-DD>"
+intercom.sh reply <slug> --body <file>          # an outcome you wrote out in full
+```
+
+The recipient and the `reply-to` link come from the letter's own envelope, so
+there is nothing to look up. The letter may still be in the inbox (then it is
+archived in the same step) or already in `_done/` (the crystal path). `--done`
+and `--ball` repeat, one per item. Each `--ball` is rendered as an open item,
+`- [ ] <who — what ⏰ date>`, the shape of a pending line, so the sender can
+move it into its track as it stands. When nothing is left: `--ball "nobody —
+closed"`. A second outcome of the same brief gets a slug of its own.
+
+**One answer closing several briefs** names each of them in its text. `reply-to`
+holds one link, and intercom counts a brief as answered when **a letter from you
+to its sender names its slug** — measured on the store 2026-09-29, a third of the
+briefs that no `reply-to` pointed at had been answered in exactly that way.
+
+Where intercom sees a brief taken without its outcome, it says so:
+
+- **`pickup`** of a letter from someone else that is not itself an answer, and
+  that no letter of yours back to its sender names, prints the `reply` that closes
+  it.
+- **`pickup --grow`** prints the outcome as a Next action for the new crystal:
+  the work starts after the letter is archived, and a named checkbox is held by
+  the crystal's completion gate, not by memory.
+
+`reply` answers **your own inbox** only. Continuing someone else's letter is a
+relay: `send <to> <slug> --reply-to <ref>` (§ The relay form).
 
 ### Delivery is not receipt
 
@@ -600,7 +657,10 @@ for exactly that reason.
 
 ```
 /vdm:intercom check
-/vdm:intercom pickup media-metadata          # archive after acting
+/vdm:intercom reply media-metadata --done "Tags written for 214 photos" \
+  --link https://example.org/mr/42 --ball "sender — review the tag list ⏰ 2026-10-03"
+                                              # close a brief with its outcome
+/vdm:intercom pickup release-note             # archive a letter that asks for nothing
 /vdm:intercom pickup big-refactor --grow      # promote into a workitem
 ```
 

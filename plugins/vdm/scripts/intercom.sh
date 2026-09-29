@@ -15,6 +15,8 @@
 #   intercom send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--body FILE] [--to ID] [--first-contact]
 #   intercom claim <inbox> [--force]      move an unclaimed inbox addressed to one of your names home
 #   intercom pickup <slug> [--grow]       archive a message (or promote with --grow)
+#   intercom reply <letter> (--done T [--link U]... --ball T | --body F)
+#                                         close a letter you received with its outcome, to its sender
 #   intercom sent                         your letters still unpicked in other inboxes (aka: outbox)
 #
 # Routing is by CANONICAL IDENTITY (git remote slug), never directory basename
@@ -604,7 +606,12 @@ cmd_send() {
     printf '        in their .claude/vdm-plugins.json, or resend to the correct slug. Once they register\n'
     printf '        a name that matches "%s", their session-start check offers `intercom claim %s`.\n' "$canon" "$canon"
   fi
-  if [ "$body_set" -eq 1 ]; then
+  if [ "$body_set" -eq 1 ] && [ -n "${_IC_BODY_LABEL:-}" ]; then
+    # A body `reply` rendered from its flags: the temporary file's path would
+    # name a file that is gone by the time anyone reads this line.
+    printf '    body: %s — %s bytes, compared after writing.\n' \
+      "$_IC_BODY_LABEL" "$(wc -c < "$body_file" | tr -d ' ')"
+  elif [ "$body_set" -eq 1 ]; then
     printf '    body: %s — %s bytes, identical to the file (compared after writing).\n' \
       "$body_file" "$(wc -c < "$body_file" | tr -d ' ')"
   else
@@ -730,37 +737,15 @@ cmd_claim() {
   printf '    → intercom check\n'
 }
 
-cmd_pickup() {
-  local slug="" grow=0
-  slug="${1:-}"; [ $# -gt 0 ] && shift
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --grow) grow=1; shift ;;
-      # Refused before anything moves: an unknown flag here used to archive the
-      # letter and drop whatever the flag carried (field case: `pickup <slug>
-      # --done "…"`, product, 2026-09-29).
-      *)      _ic_die "pickup: unknown argument '$1' — nothing archived. Usage: intercom pickup <slug> [--grow]" ;;
-    esac
-  done
-  [ -n "$slug" ] || _ic_die "pickup: missing <slug>. Usage: intercom pickup <slug> [--grow]"
-  slug="$(_ic_sanitize_slug "$slug")"
-  local id inbox msg
-  id="$(intercom_identity)"
-  inbox="$(intercom_inbox_dir "$id")"
-  msg="$inbox/$slug.md"
-  [ -f "$msg" ] || _ic_die "pickup: no pending message '$slug' in your inbox ($inbox)."
-
-  if [ "$grow" -eq 1 ]; then
-    printf '🌱 intercom: promote message → workitem\n'
-    printf '    message: %s\n' "$msg"
-    printf '    next: run /vdm:crystal-grow %s, seed the workitem from the body above,\n' "$slug"
-    printf '          then archive with: /vdm:intercom pickup %s\n' "$slug"
-    return 0
-  fi
-
-  local donedir dest tmp
+# Move a pending letter to `_done/`, flipping `status: pending` → `done`.
+# Prints the archived path. Shared by `pickup` and by `reply`, which archives a
+# brief still lying in the inbox when its outcome goes out.
+_ic_archive() {
+  local msg="$1" inbox donedir dest tmp slug
+  inbox="$(dirname "$msg")"
+  slug="$(basename "$msg" .md)"
   donedir="$inbox/_done"
-  mkdir -p "$donedir" 2>/dev/null || _ic_die "pickup: cannot create $donedir"
+  mkdir -p "$donedir" 2>/dev/null || _ic_die "cannot create $donedir"
   tmp="$(mktemp 2>/dev/null || true)"
   if [ -n "$tmp" ]; then
     if sed 's/^status: pending$/status: done/' "$msg" > "$tmp" 2>/dev/null; then
@@ -773,13 +758,78 @@ cmd_pickup() {
   if [ -e "$dest" ]; then
     dest="$donedir/$slug.$(date +%s).md"
   fi
-  mv "$msg" "$dest" 2>/dev/null || _ic_die "pickup: failed to archive $msg"
+  mv "$msg" "$dest" 2>/dev/null || _ic_die "failed to archive $msg"
+  printf '%s\n' "$dest"
+}
+
+# Has an outcome of brief <slug> gone back to <sender>? Yes when any letter
+# from <me> in the sender's inbox or archive names the slug — in `reply-to:` or
+# in its text. Text counts because an answer often closes several briefs and
+# `reply-to:` holds one: measured 2026-09-29, 22 of the 60 briefs no `reply-to:`
+# pointed at had been answered that way. The slug must stand alone, so
+# `ask-one` is not found inside `ask-one-extra`.
+_ic_outcome_sent() {
+  local me="$1" sender="$2" slug="$3" dir re f
+  dir="$(intercom_inbox_dir "$sender")"
+  [ -d "$dir" ] || return 1
+  re="$(printf '%s' "$slug" | sed 's/\./\\./g')"
+  re="(^|[^A-Za-z0-9._-])${re}([^A-Za-z0-9._-]|\$)"
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    [ "$(intercom_fm_field "$f" from)" = "$me" ] && return 0
+  done < <(grep -lE "$re" "$dir"/*.md "$dir"/_done/*.md 2>/dev/null)
+  return 1
+}
+
+# The command that closes a brief, printed wherever intercom sees a brief being
+# taken without it.
+_ic_reply_hint() {
+  printf 'intercom reply %s --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"' "$1"
+}
+
+cmd_pickup() {
+  local slug="" grow=0
+  slug="${1:-}"; [ $# -gt 0 ] && shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --grow) grow=1; shift ;;
+      # Refused before anything moves: an unknown flag here used to archive the
+      # letter and drop whatever the flag carried (field case: `pickup <slug>
+      # --done "…"`, product, 2026-09-29). The outcome has its own verb.
+      *)      _ic_die "pickup: unknown argument '$1' — nothing archived. Usage: intercom pickup <slug> [--grow]. An outcome goes back with: intercom reply <slug> --done … --ball …" ;;
+    esac
+  done
+  [ -n "$slug" ] || _ic_die "pickup: missing <slug>. Usage: intercom pickup <slug> [--grow]"
+  slug="$(_ic_sanitize_slug "$slug")"
+  local id inbox msg sender
+  id="$(intercom_identity)"
+  inbox="$(intercom_inbox_dir "$id")"
+  msg="$inbox/$slug.md"
+  [ -f "$msg" ] || _ic_die "pickup: no pending message '$slug' in your inbox ($inbox)."
+  sender="$(intercom_fm_field "$msg" from)"
+
+  if [ "$grow" -eq 1 ]; then
+    printf '🌱 intercom: promote message → workitem\n'
+    printf '    message: %s\n' "$msg"
+    printf '    next: run /vdm:crystal-grow %s, seed the workitem from the body above,\n' "$slug"
+    # The outcome is owed after the work, and the brief is archived before it
+    # starts. Named as a Next action, the promise is held by the crystal-cut
+    # gate instead of by anyone's memory.
+    if [ -n "$sender" ] && [ "$sender" != "$id" ]; then
+      printf '          add the outcome you owe the sender to its Next actions:\n'
+      printf '            - [ ] Outcome to `%s`: %s\n' "$sender" "$(_ic_reply_hint "$slug")"
+    fi
+    printf '          then archive with: /vdm:intercom pickup %s\n' "$slug"
+    return 0
+  fi
+
+  local dest
+  dest="$(_ic_archive "$msg")" || exit 1
   printf '✅ intercom: archived → %s\n' "$dest"
 
   # The receipt: the sender otherwise learns "received" only by auditing the
   # store by hand. Offered only while the sender has a live session to tell.
-  local sender live
-  sender="$(intercom_fm_field "$dest" from)"
+  local live
   if [ -n "$sender" ] && [ "$sender" != "$id" ]; then
     live="$(intercom_live_sessions "$sender")"
     if [ -n "$live" ]; then
@@ -788,6 +838,135 @@ cmd_pickup() {
       printf '       → send a receipt with your cross-session message tool (Claude Code: SendMessage):\n'
       printf '         ✅ intercom: `%s` picked up by `%s`.\n' "$slug" "$id"
     fi
+  fi
+
+  # "Received" is not "done". A brief — a letter from someone else that is not
+  # itself an answer — owes its sender an outcome, and until a letter back names
+  # it, every pickup says so with the command that closes it.
+  if [ -n "$sender" ] && [ "$sender" != "$id" ] \
+     && [ -z "$(intercom_fm_field "$dest" reply-to)" ] \
+     && ! _ic_outcome_sent "$id" "$sender" "$slug"; then
+    printf '    ↩ no outcome has gone back to `%s` yet. Once this brief'"'"'s items are closed — even if it asks for nothing back:\n' "$sender"
+    printf '         %s\n' "$(_ic_reply_hint "$slug")"
+  fi
+}
+
+# `reply` — close a letter you received with its outcome: what was done, where,
+# and whose ball it is now. The recipient and the chain link come from the
+# letter's own envelope, so there is nothing to remember and nothing to mistype;
+# the letter may still be in the inbox (archived here, in the same step) or
+# already in `_done/` (the crystal path: picked up when the work started).
+cmd_reply() {
+  local ref="" title="" from_agent="" slug_out="" body_file="" body_set=0
+  local dones=() links=() balls=()
+  local usage='Usage: intercom reply <letter> (--done "<what>" [--link <url>]... --ball "<who — what ⏰ date>" | --body <file>) [--title T] [--slug S] [--from-agent A]'
+  ref="${1:-}"; [ $# -gt 0 ] && shift
+  case "$ref" in -*) _ic_die "reply: the first argument is the letter you answer. $usage" ;; esac
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --done|--link|--ball|--body|--title|--slug|--from-agent)
+                      _intercom_need_value "$1" $# || exit 2 ;;
+    esac
+    case "$1" in
+      --done)         dones+=("$2"); shift 2 ;;
+      --done=*)       dones+=("${1#--done=}"); shift ;;
+      --link)         links+=("$2"); shift 2 ;;
+      --link=*)       links+=("${1#--link=}"); shift ;;
+      --ball)         balls+=("$2"); shift 2 ;;
+      --ball=*)       balls+=("${1#--ball=}"); shift ;;
+      --body)         body_file="$2"; body_set=1; shift 2 ;;
+      --body=*)       body_file="${1#--body=}"; body_set=1; shift ;;
+      --title)        title="$2"; shift 2 ;;
+      --title=*)      title="${1#--title=}"; shift ;;
+      --slug)         slug_out="$2"; shift 2 ;;
+      --slug=*)       slug_out="${1#--slug=}"; shift ;;
+      --from-agent)   from_agent="$2"; shift 2 ;;
+      --from-agent=*) from_agent="${1#--from-agent=}"; shift ;;
+      *)              _ic_die "reply: unknown argument '$1' — nothing sent. $usage" ;;
+    esac
+  done
+  [ -n "$ref" ] || _ic_die "reply: missing <letter>. $usage"
+
+  # What goes back is decided before anything is looked up: an outcome is
+  # either written (--body) or stated (--done + --ball), and "whose ball" is the
+  # half that is forgotten — so it is required, even when the answer is "nobody".
+  if [ "$body_set" -eq 1 ] && [ ${#dones[@]} -gt 0 -o ${#links[@]} -gt 0 -o ${#balls[@]} -gt 0 ]; then
+    _ic_die "reply: --body, or --done/--link/--ball — not both. $usage"
+  fi
+  if [ "$body_set" -eq 0 ]; then
+    [ ${#dones[@]} -gt 0 ] || _ic_die "reply: say what was done — --done \"<what>\" (and --ball), or --body <file>. $usage"
+    [ ${#balls[@]} -gt 0 ] || _ic_die "reply: whose ball is it now? --ball \"<who — what ⏰ date>\"; when nothing is left: --ball \"nobody — closed\". $usage"
+  fi
+
+  # The letter answered is one YOU received: its sender is who gets the reply.
+  # Continuing someone else's letter is a relay, and that is `send --reply-to`.
+  local id inbox slug msg
+  id="$(intercom_identity)"
+  case "$ref" in
+    */*) [ "${ref%%/*}" = "$id" ] \
+           || _ic_die "reply: \`$ref\` is not a letter you received — reply answers your own inbox. To continue someone else's letter: intercom send <to> <slug> --reply-to $ref"
+         slug="${ref##*/}" ;;
+    *)   slug="$ref" ;;
+  esac
+  slug="$(_ic_sanitize_slug "${slug%.md}")"
+  inbox="$(intercom_inbox_dir "$id")"
+  msg=""
+  if [ -f "$inbox/$slug.md" ]; then
+    msg="$inbox/$slug.md"
+  elif [ -f "$inbox/_done/$slug.md" ]; then
+    msg="$inbox/_done/$slug.md"
+  fi
+  [ -n "$msg" ] || _ic_die "reply: no letter '$slug' in your inbox or its archive ($inbox)."
+  local sender
+  sender="$(intercom_fm_field "$msg" from)"
+  [ -n "$sender" ] || _ic_die "reply: '$slug' names no sender in its envelope — nothing to reply to."
+  [ "$sender" != "$id" ] || _ic_die "reply: '$slug' is a note from yourself — there is nobody to send an outcome to."
+
+  # A slug that is free in the recipient's inbox AND archive: a second outcome
+  # of the same brief is normal (items close at different times), and a slug
+  # taken in `_done/` would make the reference to it ambiguous later.
+  local rinbox base n
+  rinbox="$(intercom_inbox_dir "$sender")"
+  if [ -z "$slug_out" ]; then
+    base="$slug-outcome"; slug_out="$base"; n=2
+    while [ -e "$rinbox/$slug_out.md" ] || [ -e "$rinbox/_done/$slug_out.md" ]; do
+      slug_out="$base-$n"; n=$((n + 1))
+    done
+  fi
+  if [ -z "$title" ]; then
+    title="$(grep -m1 '^# ' "$msg" 2>/dev/null | sed 's/^# //')"
+    title="Outcome: ${title:-$slug}"
+  fi
+
+  # Global, not local: the EXIT trap runs after this function has returned —
+  # or from inside `cmd_send`, which exits on a refusal — and a local would be
+  # gone by then, leaving the file behind.
+  if [ "$body_set" -eq 0 ]; then
+    # An explicit template: a bare `mktemp` on macOS ignores $TMPDIR.
+    local tmpdir="${TMPDIR:-/tmp}"
+    _IC_REPLY_BODY="$(mktemp "${tmpdir%/}/intercom-reply.XXXXXX" 2>/dev/null)" \
+      || _ic_die "reply: cannot create a temporary body."
+    _IC_BODY_LABEL="rendered from --done/--link/--ball"
+    trap 'rm -f "$_IC_REPLY_BODY"' EXIT
+    {
+      printf '## Done\n\n'
+      local x
+      for x in "${dones[@]}"; do printf -- '- %s\n' "$x"; done
+      for x in "${links[@]+"${links[@]}"}"; do printf -- '- %s\n' "$x"; done
+      printf '\n## Ball\n\n'
+      for x in "${balls[@]}"; do printf -- '- [ ] %s\n' "$x"; done
+    } > "$_IC_REPLY_BODY"
+    body_file="$_IC_REPLY_BODY"
+  fi
+
+  local args=("$sender" "$slug_out" --title "$title" --reply-to "$id/$slug" --body "$body_file")
+  [ -n "$from_agent" ] && args+=(--from-agent "$from_agent")
+  cmd_send "${args[@]}"
+
+  if [ "$msg" = "$inbox/$slug.md" ]; then
+    local dest
+    dest="$(_ic_archive "$msg")" || exit 1
+    printf '✅ intercom: the brief is archived → %s\n' "$dest"
   fi
 }
 
@@ -806,6 +985,7 @@ case "$sub" in
   send)                       cmd_send "$@" ;;
   claim)                      cmd_claim "$@" ;;
   pickup)                     cmd_pickup "$@" ;;
+  reply)                      cmd_reply "$@" ;;
   sent|outbox)                cmd_sent "$@" ;;
   chain)                      cmd_chain "$@" ;;
   ""|-h|--help|help)
@@ -838,9 +1018,13 @@ intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
   intercom claim <inbox> [--force]      move an unclaimed inbox that was addressed to one of
                                         your names into your own inbox
   intercom pickup <slug> [--grow]       archive a message (or promote with --grow)
+  intercom reply <letter> (--done "<what>" [--link <url>]... --ball "<who — what ⏰ date>" | --body FILE)
+                                        close a letter you received with its outcome: it goes
+                                        to the letter's sender as a reply-to link; a letter
+                                        still in the inbox is archived in the same step
   intercom sent                         your letters still unpicked in other inboxes, with age
                                         and the recipient's live sessions (aka: outbox)
 HELP
     ;;
-  *) _ic_die "unknown subcommand '$sub' (try: identity|whoami|store|register|names|describe|unregister|directory|resolve|check|send|claim|pickup)" ;;
+  *) _ic_die "unknown subcommand '$sub' (try: identity|whoami|store|register|names|describe|unregister|directory|resolve|check|send|claim|pickup|reply|sent|chain)" ;;
 esac

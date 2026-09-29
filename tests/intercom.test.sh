@@ -811,5 +811,132 @@ says "…and names the oldest" "$out" "14d, hop-c/old-one"
 out="$( cd "$TMP/hop-a" && printf '{}' | VDM_INTERCOM_TODAY=2026-09-11 bash "$HOOK" )"
 says_not "a letter younger than three days is not shouted about" "$out" "unpicked for 3+ days"
 
+echo ""
+echo "== reply: a brief is closed with its outcome, not with a receipt =="
+# Field case (product, 2026-09-29): a brief's item was closed by a comment in a
+# ticket, and the sender learned of it hours later from a collector, if at all —
+# its track still showed the obligation on the owner. `pickup` could only say
+# "picked up". The rule "close an item → tell the sender what, where, whose ball"
+# lived in one agent's memory. And the outcome often comes AFTER pickup: a brief
+# promoted into a crystal is archived before the work starts.
+R="$VDM_INTERCOM_ROOT"
+printf 'Please ship X.\n' > "$B/ask.md"
+( cd "$TMP/hop-a" && bash "$IC" send hop-b ask-one --title "Ship X" --body "$B/ask.md" >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-b" && bash "$IC" reply ask-one --done "Shipped X" --link https://t.example/X-1 \
+          --ball "hop-a — review the rollout ⏰ 2026-10-01" 2>&1 )"; rc=$?
+eq "reply sends" "$rc" "0"
+L="$R/hop-a/ask-one-outcome.md"
+[ -f "$L" ] && ok "the outcome goes to the brief's sender, named after the brief" || bad "no outcome letter at $L" "$out"
+eq "…as a link in the chain: reply-to is the brief" "$(grep '^reply-to:' "$L" 2>/dev/null)" "reply-to: hop-b/ask-one"
+says "…titled as the brief's outcome" "$(cat "$L" 2>/dev/null)" "# Outcome: Ship X"
+says "…with what was done" "$(cat "$L" 2>/dev/null)" "- Shipped X"
+says "…the link" "$(cat "$L" 2>/dev/null)" "https://t.example/X-1"
+says "…and whose ball it is now, as an open item" "$(cat "$L" 2>/dev/null)" "- [ ] hop-a — review the rollout ⏰ 2026-10-01"
+[ -f "$R/hop-b/_done/ask-one.md" ] && [ ! -f "$R/hop-b/ask-one.md" ] \
+  && ok "a brief still in the inbox is archived by the same command" || bad "the brief was not archived"
+says "…and the reply says so" "$out" "archived"
+says_not "the output does not name the temporary body, gone by the time it is read" "$out" "intercom-reply."
+
+# The crystal path: picked up first, the outcome comes later.
+( cd "$TMP/hop-a" && bash "$IC" send hop-b ask-two --title "Build Y" --body "$B/ask.md" >/dev/null 2>&1 )
+( cd "$TMP/hop-b" && bash "$IC" pickup ask-two >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-b" && bash "$IC" reply ask-two --done "Built Y" --ball "nobody — closed" 2>&1 )"; rc=$?
+eq "reply works on a brief already archived" "$rc" "0"
+eq "…and chains to it" "$(grep '^reply-to:' "$R/hop-a/ask-two-outcome.md" 2>/dev/null)" "reply-to: hop-b/ask-two"
+( cd "$TMP/hop-a" && bash "$IC" pickup ask-two-outcome >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-b" && bash "$IC" reply ask-two --done "Y, part two" --ball "nobody — closed" 2>&1 )"; rc=$?
+eq "a second outcome for the same brief is sent too" "$rc" "0"
+[ -f "$R/hop-a/ask-two-outcome-2.md" ] && ok "…under a slug that is free in the recipient's inbox and archive" \
+  || bad "…under a slug that is free in the recipient's inbox and archive" "$(ls "$R/hop-a" "$R/hop-a/_done")"
+
+printf '## Done\n\n- Z, as agreed\n' > "$B/outcome.md"
+( cd "$TMP/hop-a" && bash "$IC" send hop-b ask-three --body "$B/ask.md" >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-b" && bash "$IC" reply ask-three --body "$B/outcome.md" 2>&1 )"; rc=$?
+eq "reply --body sends a written outcome" "$rc" "0"
+if tail -c "$(wc -c < "$B/outcome.md")" "$R/hop-a/ask-three-outcome.md" 2>/dev/null | cmp -s - "$B/outcome.md"; then
+  ok "…byte for byte"
+else
+  bad "…byte for byte"
+fi
+
+# The body stated in flags is rendered into a temporary file; it must not
+# outlive the call, whether the letter went out or `send` refused it.
+mkdir -p "$TMP/tmpdir"
+( cd "$TMP/hop-a" && bash "$IC" send hop-b ask-tmp --body "$B/ask.md" >/dev/null 2>&1 )
+( cd "$TMP/hop-b" && TMPDIR="$TMP/tmpdir" bash "$IC" reply ask-tmp --done "x" --ball "y" --slug ask-one-outcome >/dev/null 2>&1 ); rc=$?
+[ "$rc" -ne 0 ] && ok "a slug already taken in the recipient's inbox refuses" || bad "a taken --slug was accepted" "rc=$rc"
+( cd "$TMP/hop-b" && TMPDIR="$TMP/tmpdir" bash "$IC" reply ask-tmp --done "x" --ball "y" >/dev/null 2>&1 )
+eq "reply leaves no temporary body behind — sent or refused" "$(ls -A "$TMP/tmpdir")" ""
+
+# Every refusal writes nothing and archives nothing.
+( cd "$TMP/hop-a" && bash "$IC" send hop-b ask-four --body "$B/ask.md" >/dev/null 2>&1 )
+rrefuses() {  # rrefuses <desc> <expect-in-output> <reply args…>
+  local desc="$1" want="$2"; shift 2
+  local o r
+  o="$( cd "$TMP/hop-b" && bash "$IC" reply "$@" 2>&1 )"; r=$?
+  if [ "$r" -ne 0 ] && [ ! -e "$R/hop-a/ask-four-outcome.md" ] && [ -f "$R/hop-b/ask-four.md" ]; then
+    ok "$desc — refused, nothing sent, nothing archived"
+  else
+    bad "$desc — refused, nothing sent, nothing archived" "rc=$r"
+  fi
+  says "$desc — says why" "$o" "$want"
+}
+rrefuses "no outcome at all"               "--done"      ask-four
+rrefuses "--done without whose ball it is" "--ball"      ask-four --done "half of it"
+rrefuses "--ball without --done"           "--done"      ask-four --ball "hop-a"
+rrefuses "--body together with --done"     "not both"    ask-four --done "x" --ball "y" --body "$B/outcome.md"
+rrefuses "an unknown flag"                 "--dnoe"      ask-four --dnoe "x"
+rrefuses "a dangling value flag"           "--done needs a value" ask-four --done
+rrefuses "a letter that does not exist"    "no letter"   no-such-brief --done "x" --ball "y"
+rrefuses "someone else's letter"           "send"        hop-c/relay-two --done "x" --ball "y"
+printf -- '---\nintercom: v1\nfrom: hop-b\nto: hop-b\nslug: note-self\nstatus: pending\n---\n\n# Note\n' > "$R/hop-b/note-self.md"
+rrefuses "a note to self"                  "yourself"    note-self --done "x" --ball "y"
+rm -f "$R/hop-b/note-self.md"
+
+echo "-- pickup reminds that the outcome has not gone back"
+out="$( cd "$TMP/hop-b" && bash "$IC" pickup ask-four 2>&1 )"
+says "a bare pickup of a brief names the command that closes it" "$out" "intercom reply ask-four --done"
+( cd "$TMP/hop-a" && bash "$IC" send hop-b ask-five --body "$B/ask.md" >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-b" && bash "$IC" pickup ask-five 2>&1 )"
+says "…every time until an outcome exists" "$out" "intercom reply ask-five"
+# A bundled answer names one brief in reply-to and the others in its text
+# (measured 2026-09-29: 22 of 60 "unanswered" briefs were answered this way).
+printf 'Closes `ask-six` and more.\n' > "$B/bundle.md"
+( cd "$TMP/hop-a" && bash "$IC" send hop-b ask-six --body "$B/ask.md" >/dev/null 2>&1 )
+( cd "$TMP/hop-b" && bash "$IC" send hop-a bundle-one --body "$B/bundle.md" >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-b" && bash "$IC" pickup ask-six 2>&1 )"
+says_not "a brief named in a letter back to its sender is answered" "$out" "intercom reply"
+# The differing fixtures: a longer slug that CONTAINS the brief's, and the
+# brief's slug in a letter to somebody else. Neither is an answer.
+printf 'About `ask-seven-extra` only.\n' > "$B/near.md"
+( cd "$TMP/hop-a" && bash "$IC" send hop-b ask-seven --body "$B/ask.md" >/dev/null 2>&1 )
+( cd "$TMP/hop-b" && bash "$IC" send hop-a near-one --body "$B/near.md" >/dev/null 2>&1 )
+printf 'Told C about `ask-seven`.\n' > "$B/elsewhere.md"
+( cd "$TMP/hop-b" && bash "$IC" send hop-c elsewhere-one --body "$B/elsewhere.md" >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-b" && bash "$IC" pickup ask-seven 2>&1 )"
+says "a longer slug containing the brief's, or a letter to someone else, is not an answer" "$out" "intercom reply ask-seven"
+# …and a letter in the sender's inbox that names the brief but comes from a
+# third agent is not our answer either.
+printf 'C heard about `ask-ten`.\n' > "$B/third.md"
+( cd "$TMP/hop-a" && bash "$IC" send hop-b ask-ten --body "$B/ask.md" >/dev/null 2>&1 )
+( cd "$TMP/hop-c" && bash "$IC" send hop-a third-one --body "$B/third.md" >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-b" && bash "$IC" pickup ask-ten 2>&1 )"
+says "a third agent's letter naming the brief is not the answer" "$out" "intercom reply ask-ten"
+( cd "$TMP/hop-a" && bash "$IC" send hop-b ask-eight --reply-to hop-a/bundle-one --body "$B/ask.md" >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-b" && bash "$IC" pickup ask-eight 2>&1 )"
+says_not "a letter that is itself a reply is not asked for an outcome" "$out" "intercom reply"
+# No `slug:` in the envelope (older letters have none): otherwise the archived
+# note itself — a letter from me, in my inbox, naming the slug — would pass for
+# an answer, and the explicit self check would go untested.
+printf -- '---\nintercom: v1\nfrom: hop-b\nto: hop-b\nstatus: pending\n---\n\n# Note\n' > "$R/hop-b/note-self2.md"
+out="$( cd "$TMP/hop-b" && bash "$IC" pickup note-self2 2>&1 )"
+says_not "a note to self is not asked for an outcome" "$out" "intercom reply"
+
+( cd "$TMP/hop-a" && bash "$IC" send hop-b ask-nine --body "$B/ask.md" >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-b" && bash "$IC" pickup ask-nine --grow 2>&1 )"
+says "pickup --grow hands the crystal a Next action for the outcome" "$out" '- [ ] Outcome to `hop-a`'
+says "…with the command that discharges it" "$out" "intercom reply ask-nine"
+[ -f "$R/hop-b/ask-nine.md" ] && ok "…and still archives nothing" || bad "pickup --grow archived the brief"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

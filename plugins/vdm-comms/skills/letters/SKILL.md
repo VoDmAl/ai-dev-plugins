@@ -327,6 +327,10 @@ And around them:
   gets only a decision on substance, one in their name, or an irreversible one —
   not the other session's question retold.
 - **An unhandled agent message is the same debt as an unanswered letter.**
+- **A brief closed here goes back with its outcome** — what was done, the link,
+  whose ball it is now — in the same turn as the action that closed it, even when
+  the brief asked for nothing back. A collector of ticket comments is the
+  fallback, not the channel (`/vdm:intercom` → *Closing a brief with its outcome*).
 - **A brief to an agent**: a link to the letter it continues, and only what is
   added (`/vdm:intercom` → *The relay form*). Where a project keeps its letters as
   files, a message to an agent is one too — `channel: intercom` in `comms/`.
