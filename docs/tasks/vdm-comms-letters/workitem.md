@@ -2,7 +2,7 @@
 title: "vdm-comms: скилл писем — что писать в исходящем, и чеклист в момент черновика"
 slug: vdm-comms-letters
 description: "Скилл писем в vdm-comms с хуком-чеклистом при создании черновика; регистр и язык — параметры проекта"
-status: in-progress
+status: dormant
 session-type: prd-prep
 created: 2026-09-28
 last-updated: 2026-09-29
@@ -295,7 +295,7 @@ frontmatter, а не строкой `> Зачем:` — от этого не з�
 
 ### #6. intercom: закрытие брифа с итогом — что сделано, ссылка, у кого мяч
 
-**Возникло в:** письмо product `outcome-receipt` (intercom, 2026-09-29), `references/intercom-brief-product-outcome-receipt.md`
+**Возникло в:** письмо product `outcome-receipt` (intercom, 2026-09-29), теперь `[[intercom-outcome-receipt/workitem|intercom-outcome-receipt]]` → `references/`
 **Описание:** `pickup` шлёт отправителю квитанцию «получил», а не «сделал, вот итог». Действие, закрывшее
 пункт брифа (комментарий в тикете, мерж, ответ человеку), доходит до штаба только через сбор echelon, через
 часы, и не связано с обязательством. Предложено: `pickup <slug> --done "<что>" --link <url> --ball "<у кого>
@@ -304,7 +304,7 @@ frontmatter, а не строкой `> Зачем:` — от этого не з�
 у product это правило в памяти агента — ровно то, от чего владелец хочет уйти. Не про письма: работа по
 intercom, свой кристалл при старте.
 
-**Status:** open
+**Status:** migrated → intercom-outcome-receipt (2026-09-29)
 
 ## Next actions
 
@@ -330,8 +330,8 @@ intercom, свой кристалл при старте.
 - [x] Правило product «задачу — полным ключом, внутри самой задачи — «задача»»: в `~/.claude/vdm/rules.md` через `/vdm:learn` → 2026-09-29, файл 9 278 байт, установленный хук 2.38.2 грузит его целиком; в скилле писем § 7 — строка
 - [x] Отправить ответы executor, hq, product после push (черновики готовы); product — что дубль в памяти можно снимать → 2026-09-29, `letters-skill-shipped`, `letters-rules-shipped`, `reply-and-ticket-shipped`; product снял дубль
 - [x] Письмо hq `pronoun-names-the-actor`: правило «A commitment…» в `rules.md` расширено, скилл § 6 и § 8, строка 6 чеклиста → vdm-comms 0.12.1
-- [ ] Ответить hq на `pronoun-names-the-actor` после push; забрать письмо
-- [ ] Sidetrack #6: закрытие брифа с итогом (`pickup --done …`) — свой кристалл; забрать письмо product, когда заведён
+- [x] Ответить hq на `pronoun-names-the-actor` после push; забрать письмо → `pronoun-rule-shipped`, 2026-09-29
+- [x] Sidetrack #6: закрытие брифа с итогом (`pickup --done …`) — свой кристалл; забрать письмо product, когда заведён → `intercom-outcome-receipt`, 2026-09-29
 - [x] `comms.register` и `comms.language` в `comms_config.py`: значения, умолчания, что их читает; профили в скилле → vdm-comms 0.11.0 (`language` прочтёт хук)
 - [x] Скилл `skills/letters/SKILL.md`: 13 разделов, механика — ссылкой на `/vdm-comms:meetings`; правила hq (канал из слова владельца, «Знаем сами», покрытие вместо вывода) и product (ответ на последнее сообщение, отправка, когда сказанное правда) → 14 разделов, vdm-comms 0.11.0
 - [ ] Проверки при сохранении черновика, которые механически возможны: вопросы в тексте без раздела «Знаем сами» (hq) — решить, линтер или только скилл
@@ -353,7 +353,7 @@ intercom, свой кристалл при старте.
   решений; строка в хуке записи
 - `references/intercom-brief-product-ticket-full-key.md` — задача полным ключом; место — `rules.md`
 - `references/intercom-brief-hq-pronoun.md` — местоимение называет того, кто действует
-- `references/intercom-brief-product-outcome-receipt.md` — закрытие брифа с итогом (Sidetrack #6)
+- Письмо product `outcome-receipt` (Sidetrack #6) переехало в `[[intercom-outcome-receipt/workitem|intercom-outcome-receipt]]` → `references/`
 - Синтез и инвентари executor — не скопированы: 163 КБ живого документа в соседнем репо владельца, по
   нему ещё идёт работа. Адрес: `~/AI Projects/program/docs/tasks/claude-md-slimming/references/`
   (`synthesis.md`, `inventory-*.md`), прочитано 2026-09-28.

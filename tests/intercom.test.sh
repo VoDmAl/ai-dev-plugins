@@ -681,6 +681,31 @@ out="$( cd "$TMP/hop-a" && bounded bash "$IC" describe --for 2>&1 )"; rc=$?
 if [ "$rc" -ne 0 ] && [ "$rc" -ne 142 ]; then ok "describe --for (no value) refuses"; else bad "describe --for (no value) refuses" "rc=$rc"; fi
 
 echo ""
+echo "== a command that writes refuses what it does not understand =="
+# `send` learned this from `--reply-too`; the other writers still shifted past
+# anything unknown. The case that made it urgent (product, 2026-09-29): a brief
+# proposed `pickup <slug> --done "…"`, and on a version without that flag the
+# call archives the brief and drops the outcome — success-shaped silence.
+( cd "$TMP/hop-a" && bash "$IC" send hop-b strict-one --body "$B/plain.md" >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-b" && bash "$IC" pickup strict-one --done "shipped" 2>&1 )"; rc=$?
+if [ "$rc" -ne 0 ]; then ok "pickup with an unknown flag refuses"; else bad "pickup with an unknown flag refuses" "rc=$rc"; fi
+says "…and names the flag" "$out" "--done"
+[ -f "$VDM_INTERCOM_ROOT/hop-b/strict-one.md" ] && ok "…and archives nothing" || bad "pickup archived despite the unknown flag"
+out="$( cd "$TMP/hop-b" && bash "$IC" pickup strict-one stray 2>&1 )"; rc=$?
+if [ "$rc" -ne 0 ] && [ -f "$VDM_INTERCOM_ROOT/hop-b/strict-one.md" ]; then ok "pickup with a stray argument refuses and archives nothing"; else bad "pickup with a stray argument refuses and archives nothing" "rc=$rc"; fi
+out="$( cd "$TMP/hop-a" && bash "$IC" send hop-b strict-two "A title without --title" 2>&1 )"; rc=$?
+if [ "$rc" -ne 0 ] && [ ! -e "$VDM_INTERCOM_ROOT/hop-b/strict-two.md" ]; then ok "send with a stray argument refuses and writes no letter"; else bad "send with a stray argument refuses and writes no letter" "rc=$rc"; fi
+says "…and names the argument" "$out" "A title without --title"
+before="$(cat "$VDM_INTERCOM_ROOT/_registry/hop-a.json")"
+out="$( cd "$TMP/hop-a" && bash "$IC" register --nmae "typo name" 2>&1 )"; rc=$?
+if [ "$rc" -ne 0 ]; then ok "register with an unknown flag refuses"; else bad "register with an unknown flag refuses" "rc=$rc"; fi
+says "…and names the flag" "$out" "--nmae"
+eq "…and leaves the registry as it was" "$(cat "$VDM_INTERCOM_ROOT/_registry/hop-a.json")" "$before"
+out="$( cd "$TMP/hop-a" && bash "$IC" claim some-inbox --forse 2>&1 )"; rc=$?
+if [ "$rc" -ne 0 ]; then ok "claim with an unknown flag refuses"; else bad "claim with an unknown flag refuses" "rc=$rc"; fi
+says "…and names the flag, not some other reason" "$out" "--forse"
+
+echo ""
 echo "== delivery is not receipt: live sessions, the sender's view, the receipt =="
 # Field case (hq → product, 2026-09-14): a reply lay unread while the
 # recipient's session was alive and working; a brief beside it lay for three

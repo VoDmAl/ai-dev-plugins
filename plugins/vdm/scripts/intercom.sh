@@ -407,7 +407,10 @@ cmd_send() {
       # reads as success. Caught on the first real use of `--reply-to`, against
       # an installed version that predated the flag.
       -*)               _ic_die "send: unknown option '$1'. Usage: intercom send <target> <slug> [--title T] [--from-agent A] [--reply-to <ref>] [--body <file>] [--to <identity>] [--first-contact]" ;;
-      *)                shift ;;
+      # A stray word after <slug> is almost always a value whose flag was
+      # forgotten — a title without --title — and dropping it sends a letter
+      # that is not the one the sender wrote.
+      *)                _ic_die "send: unexpected argument '$1' — after <target> <slug> every value takes a flag. Usage: intercom send <target> <slug> [--title T] [--from-agent A] [--reply-to <ref>] [--body <file>] [--to <identity>] [--first-contact]" ;;
     esac
   done
   [ -n "$to" ]   || _ic_die "send: missing <target>. Usage: intercom send <target> <slug> [--title T] [--from-agent A] [--reply-to <ref>] [--body <file>] [--to <identity>] [--first-contact]"
@@ -669,7 +672,7 @@ cmd_claim() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --force) force=1; shift ;;
-      *)       shift ;;
+      *)       _ic_die "claim: unknown argument '$1'. Usage: intercom claim <inbox> [--force]" ;;
     esac
   done
   [ -n "$inbox" ] || _ic_die "claim: missing <inbox>. Usage: intercom claim <inbox> [--force]"
@@ -733,7 +736,10 @@ cmd_pickup() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --grow) grow=1; shift ;;
-      *)      shift ;;
+      # Refused before anything moves: an unknown flag here used to archive the
+      # letter and drop whatever the flag carried (field case: `pickup <slug>
+      # --done "…"`, product, 2026-09-29).
+      *)      _ic_die "pickup: unknown argument '$1' — nothing archived. Usage: intercom pickup <slug> [--grow]" ;;
     esac
   done
   [ -n "$slug" ] || _ic_die "pickup: missing <slug>. Usage: intercom pickup <slug> [--grow]"

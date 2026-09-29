@@ -452,7 +452,10 @@ intercom_register() {
       --same-project)  same_project=1; shift ;;
       --implicit)      implicit=1; shift ;;   # the default; kept so old callers read the same
       --explicit)      implicit=0; shift ;;
-      *)               shift ;;
+      # Refused before the registry is touched: `--nmae X` used to register
+      # without the name and report success.
+      *)               printf 'intercom: register: unknown option %s — nothing written. Usage: intercom register [--name N]... [--describe D] [--same-project]\n' "$1" >&2
+                       return 2 ;;
     esac
   done
 
