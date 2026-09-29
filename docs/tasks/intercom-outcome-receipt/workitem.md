@@ -198,8 +198,9 @@ actions. Хук SessionStart не трогается.
 - [x] `SKILL.md` intercom: раздел о закрытии брифа итогом — правило, команда, echelon как запасной путь → «Closing a brief with its outcome»; README
 - [x] vdm-comms letters § 14: одна строка со ссылкой на intercom (DL #1) → vdm-comms 0.12.2
 - [x] Бамп `vdm` (и `vdm-comms`, если тронут), marketplace, `PROJECT_CHANGELOG.md`, дрейф `docs/model/suite.md` → 2.39.0 / 0.12.2; suite.md: строка закона, строка детектора, связь intercom → crystal-grow
-- [ ] Ответить product на `outcome-receipt` командой `reply` после push: где что легло, можно снимать `feedback_close_loop_with_hq`; установленная версия у них ≥ 2.39.0 — проверить до письма
-- [ ] Sidetrack #2: решить про напоминание после записи echelon
+- [x] Ответить product на `outcome-receipt` командой `reply` после push: где что легло, можно снимать `feedback_close_loop_with_hq`; установленная версия у них ≥ 2.39.0 — проверить до письма → 2026-09-29, `product/outcome-receipt-outcome`, отправлено `reply --body` из дерева разработки; на машине пока 2.38.2, в письме это сказано; живая сессия `product-1b` разбужена
+- [ ] Sidetrack #2: решить про напоминание после записи echelon — вопрос владельцу задан 2026-09-29, ответа нет
+- [ ] Живая проверка на установленной vdm ≥ 2.39.0: голый `pickup` чужого брифа печатает `reply`; `reply` по брифу в `_done/` доходит
 
 ## References
 
