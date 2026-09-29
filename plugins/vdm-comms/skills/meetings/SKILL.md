@@ -204,6 +204,28 @@ so — a narrowed guard looks exactly like a quiet one.
 
 Editing an existing letter is never blocked.
 
+### Start a draft from the scaffold
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/comms-new.py" --channel email --to <slug> --name "<how you address them>" --track <track> --subject "<subject>"
+```
+
+`--to` is the file-name slug, in latin letters as in `people/`; `--name` is what
+the heading says. A non-latin `--to` is refused rather than turned into a
+file name.
+
+It writes `<track>/comms/<today>-<slug>-out.md` with the header this project's
+`comms.letter-form` asks of that channel — `draft: true`, `channel:`, an empty
+`goal:`, the subject line and the separator where they are owed — and prints the
+path. Then write the goal and the text into that file. Do not copy the header of
+a neighbouring letter instead: a neighbour shows what someone once wrote, not
+what the project asks for, and the copy carries its habits along. An existing
+file is never overwritten.
+
+The empty `goal:` is deliberate: the goal is the one thing a scaffold cannot
+know, and in a project that switched on the `goal` element the linter reminds
+you of it at the first edit.
+
 ### The form of a draft, per channel
 
 A letter says which channel it goes out through — `channel:` in its frontmatter

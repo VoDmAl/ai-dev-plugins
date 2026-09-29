@@ -115,6 +115,8 @@ LABELS = {
         "pointer-record": "record",
         "pointer-materials": "Materials: %(list)s",
         "pointer-topics": "Topics on this track:",
+        "letter-subject": "Subject",
+        "letter-text": "Text to send, as it will go out.",
     },
     "ru": {
         "col-date": "Дата",
@@ -132,8 +134,43 @@ LABELS = {
         "pointer-record": "протокол",
         "pointer-materials": "Материалы: %(list)s",
         "pointer-topics": "Темы этого трека:",
+        "letter-subject": "Тема",
+        "letter-text": "Текст к отправке — так, как он уйдёт.",
     },
 }
+
+
+CHANNEL_WORD_RE = re.compile(r"[^\W_][\w-]*")
+
+
+def channel_of(value):
+    """The channel a letter declares, normalised to its first word, lowercase.
+
+    Measured 2026-09-25 across three repositories: `channel:` was already in 46
+    letters, written as free text — `SMS` and `sms`, `eXpress` and `express`,
+    `intercom (~/.claude/…/letter.md)`, a whole sentence about the thread. The
+    field is recognised as people write it rather than re-specified: its first
+    word is the channel, the rest is their note."""
+    if value in (None, "", False, True):
+        return None
+    m = CHANNEL_WORD_RE.search(str(value).strip().lower())
+    return m.group(0) if m else None
+
+
+def form_need(cfg, channel):
+    """What a draft on `channel` owes, per `comms.letter-form`: the `*` list, then
+    the channel's own, without repeats. One reader for the linter that checks a
+    draft and the scaffold that writes one — two readers would be two answers
+    the day one of them is edited. None when the config is not a mapping."""
+    form = cfg.get("letter-form") or {}
+    if not isinstance(form, dict):
+        return None
+    need = []
+    for key in ("*", channel):
+        elements = form.get(key) if key else None
+        if isinstance(elements, list):
+            need += [e for e in elements if e not in need]
+    return need
 
 
 def labels(cfg):

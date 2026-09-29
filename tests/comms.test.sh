@@ -1006,6 +1006,55 @@ expect_silent "HOOK: nothing to say ⇒ nothing on either stream" "$OUT"
 rm -f "$FX/.claude/vdm-plugins.json" "$LF"
 
 echo ""
+echo "== a draft starts from the scaffold, not from a neighbour's file =="
+# Field report 2026-09-26 (program): with no scaffold, an SMS draft was made
+# by copying a neighbouring letter's header — and the copy carried that letter's
+# habits along. The scaffold writes the header the PROJECT's letter-form asks for.
+NEW="${COMMS_NEW_BIN:-$P/scripts/comms-new.py}"
+run_new() { OUT=$(cd "$FX" && COMMS_TODAY="$TODAY" python3 "$NEW" --project-root "$FX" "$@" 2>&1); return $?; }
+SC="$FX/gaps/alpha/comms/$TODAY-anna-out.md"
+rm -f "$SC"
+run_new --channel email --to Anna --track gaps/alpha --subject "Access for the pilot"; rc=$?
+expect_exit "RED: an email draft is scaffolded ⇒ exit 0" 0 "$rc"
+expect_says "…and the path is printed" "$OUT" "gaps/alpha/comms/$TODAY-anna-out.md"
+body="$(cat "$SC" 2>/dev/null)"
+expect_says "…a draft by the plugin's own marker" "$body" "draft: true"
+expect_says "…with its channel declared" "$body" "channel: email"
+expect_says "…with the goal field waiting to be filled" "$body" "goal:"
+expect_says "…and the subject line an email owes" "$body" "**Subject**: Access for the pilot"
+run_skip "$SC"; rc=$?
+expect_exit "GREEN: the scaffold meets the default letter-form ⇒ exit 0" 0 "$rc"
+printf 'hand-written\n' > "$SC"
+run_new --channel email --to anna --track gaps/alpha; rc=$?
+expect_exit "RED: an existing letter is never overwritten ⇒ exit 1" 1 "$rc"
+expect_says "…the file is untouched" "$(cat "$SC")" "hand-written"
+rm -f "$SC"
+run_new --channel sms --to anna --track org/roles; rc=$?
+expect_exit "RED: a track that is a FILE has no comms/ ⇒ exit 1" 1 "$rc"
+printf '{\n  "comms": {\n    "labels": "ru",\n    "letter-form": {"*": ["channel", "separator"]}\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
+SC="$FX/gaps/alpha/comms/$TODAY-boris-out.md"; rm -f "$SC"
+run_new --channel telegram --to boris --track gaps/alpha; rc=$?
+body="$(cat "$SC" 2>/dev/null)"
+expect_exit "GREEN: a messenger draft ⇒ exit 0" 0 "$rc"
+expect_not_says "…no subject line where the channel asks none" "$body" "Subject"
+expect_says "…the separator the project asks for" "$body" $'\n---\n'
+run_skip "$SC"; rc=$?
+expect_exit "GREEN: …and it meets the project's letter-form ⇒ exit 0" 0 "$rc"
+SC="$FX/gaps/alpha/comms/$TODAY-vera-out.md"; rm -f "$SC"
+run_new --channel email --to vera --track gaps/alpha --subject "Доступ"
+expect_says "RED: the project's wording — ru ⇒ **Тема**:" "$(cat "$SC" 2>/dev/null)" "**Тема**: Доступ"
+# The file name is a latin slug, as in people/ — a Cyrillic name made a Cyrillic
+# file name on the first field try (hq names its letters in latin).
+run_new --channel email --to "Пётр Коваленко" --track gaps/alpha; rc=$?
+expect_exit "RED: a non-latin --to is refused ⇒ exit 2" 2 "$rc"
+expect_says "…and says how to write it" "$OUT" "--name"
+SC="$FX/gaps/alpha/comms/$TODAY-kovalenko-out.md"; rm -f "$SC"
+run_new --channel email --to kovalenko --name "Пётр Коваленко" --track gaps/alpha; rc=$?
+expect_exit "GREEN: slug for the file, name for the heading ⇒ exit 0" 0 "$rc"
+expect_says "…the heading carries the name" "$(cat "$SC" 2>/dev/null)" "# → Пётр Коваленко"
+rm -f "$FX/.claude/vdm-plugins.json" "$FX"/gaps/alpha/comms/"$TODAY"-*-out.md
+
+echo ""
 echo "== an outgoing draft declared outside comms/ =="
 # Field case, 2026-09-25 (hq): a board post for two outside readers lived a
 # day in a working file of its track, and no tool saw it — every one of them

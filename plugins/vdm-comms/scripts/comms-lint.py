@@ -96,25 +96,13 @@ KNOWN_RE = re.compile(r"^\s*(>\s*)?\*\*(знаем сами|what we know)\*\*", 
 URL_RE = re.compile(r"\bhttps?://\S+")
 CODE_SPAN_RE = re.compile(r"`[^`]*`")
 QUESTION_RE = re.compile(r"\?(?=[\s\"'»)\]]|$)")
-CHANNEL_WORD_RE = re.compile(r"[^\W_][\w-]*")
 SUBJECT_RE = re.compile(r"^\*\*(Subject|Тема)\*\*:\s*\S")
 QUOTED_SUBJECT_RE = re.compile(r"^\s*>.*\*\*(Subject|Тема)\*\*:")
 SEPARATOR_RE = re.compile(r"^\s{0,3}(-{3,}|\*{3,}|_{3,})\s*$")
 
 KNOWN_TYPES = ("meeting", "meeting-series", "index", "readme", "meeting-link")
 
-def channel_of(value):
-    """The channel a letter declares, normalised to its first word, lowercase.
-
-    Measured 2026-09-25 across three repositories: `channel:` was already in 46
-    letters, written as free text — `SMS` and `sms`, `eXpress` and `express`,
-    `intercom (~/.claude/…/letter.md)`, a whole sentence about the thread. The
-    field is recognised as people write it rather than re-specified: its first
-    word is the channel, the rest is their note."""
-    if value in (None, "", False, True):
-        return None
-    m = CHANNEL_WORD_RE.search(str(value).strip().lower())
-    return m.group(0) if m else None
+channel_of = cfgmod.channel_of
 
 
 def _declared_letter(path):
@@ -273,17 +261,12 @@ def _lint_letter_form(rep, keys, body, cfg, fm_text=""):
 
     Returns whether any element applied — a draft whose channel requires
     nothing was not checked, and must not read as `ok`."""
-    form = cfg.get("letter-form") or {}
-    if not isinstance(form, dict):
+    channel = channel_of(keys.get("channel"))
+    need = cfgmod.form_need(cfg, channel)
+    if need is None:
         rep.error("`comms.letter-form` must map a channel to a list of elements "
                   "(%s)" % ", ".join(FORM_ELEMENTS))
         return True
-    channel = channel_of(keys.get("channel"))
-    need = []
-    for key in ("*", channel):
-        elements = form.get(key) if key else None
-        if isinstance(elements, list):
-            need += [e for e in elements if e not in need]
     unknown = [e for e in need if e not in FORM_ELEMENTS]
     if unknown:
         rep.error("`comms.letter-form` names %s — the known elements are %s"

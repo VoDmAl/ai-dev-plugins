@@ -10,6 +10,25 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ## 2026-09-28
 
+### ✨ FEATURE — vdm-comms: заготовка черновика под канал, `comms-new.py` (vdm-comms 0.10.0)
+
+**Что было.** Плагин перечислял, что должно быть у черновика по каналу, и проверял это после записи,
+но заготовки не было. program сделал SMS-черновик, скопировав шапку соседнего письма, и вместе с
+ней переехали чужие привычки. Письмо executor `comms-draft-marker-and-channel-template`, п. 2; кристалл
+`docs/tasks/vdm-comms-letters/workitem.md`, DL #7.
+
+**Что сделано.**
+- `scripts/comms-new.py --channel <c> --to <slug> [--name <имя>] --track <трек> [--subject <тема>]` пишет
+  `<трек>/comms/<сегодня>-<slug>-out.md`: `draft: true`, `channel:`, пустой `goal:`, строка темы и черта
+  — там, где их требует `comms.letter-form` проекта, подписи — по `comms.labels`. Существующий файл не
+  перезаписывается, трек-файл отклоняется, `--to` не латиницей отклоняется с подсказкой про `--name`.
+- Разбор канала и список нужных элементов вынесены в `comms_config.py` (`channel_of`, `form_need`); их
+  берут и линтер, и заготовка, так что правило о форме — одно.
+- `skills/meetings/SKILL.md` — «Start a draft from the scaffold»; README — строка компонента.
+- Тесты: `tests/comms.test.sh` +19 (email, мессенджер с чертой по конфигу, ru-подписи, отказ перезаписать,
+  трек-файл, латинский слаг и `--name`); заготовка проходит линтер проекта. Первая полевая проверка на
+  копии hq дала кириллическое имя файла — отсюда правило про слаг.
+
 ### 🐛 BUG — vdm-comms: предупреждения линтера доходят до ассистента (vdm-comms 0.9.1)
 
 **Что было.** `comms-lint.sh --hook` печатал предупреждения в stderr и выходил с 0. У PostToolUse при
