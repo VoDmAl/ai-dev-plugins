@@ -186,7 +186,13 @@ actions. Хук SessionStart не трогается.
 внешние системы — через echelon), и intercom о ней не знает. Решить: предлагать ли echelon
 напоминание после записи, со ссылкой на команду итога.
 
-**Status:** open
+Владелец 2026-09-29: «да, предложи echelon». Отправлен бриф `echelon/outcome-reminder-on-write` (reply-to
+`ai-dev-plugins/outcome-receipt`), живая сессия `echelon-55` разбужена. В брифе: что уже есть в intercom
+(`reply`, признак «итог ушёл», правило в скилле), чего нет (команды «какие брифы ждут итога») и просьба
+— после успешного `call_write` одна строка о `reply`. Где её выводить — в ответе `call_write` или хуком
+плагина — решает echelon. Своих обязательств в брифе нет.
+
+**Status:** resolved
 
 ## Next actions
 
@@ -199,7 +205,8 @@ actions. Хук SessionStart не трогается.
 - [x] vdm-comms letters § 14: одна строка со ссылкой на intercom (DL #1) → vdm-comms 0.12.2
 - [x] Бамп `vdm` (и `vdm-comms`, если тронут), marketplace, `PROJECT_CHANGELOG.md`, дрейф `docs/model/suite.md` → 2.39.0 / 0.12.2; suite.md: строка закона, строка детектора, связь intercom → crystal-grow
 - [x] Ответить product на `outcome-receipt` командой `reply` после push: где что легло, можно снимать `feedback_close_loop_with_hq`; установленная версия у них ≥ 2.39.0 — проверить до письма → 2026-09-29, `product/outcome-receipt-outcome`, отправлено `reply --body` из дерева разработки; на машине пока 2.38.2, в письме это сказано; живая сессия `product-1b` разбужена
-- [ ] Sidetrack #2: решить про напоминание после записи echelon — вопрос владельцу задан 2026-09-29, ответа нет
+- [x] Sidetrack #2: решить про напоминание после записи echelon — вопрос владельцу задан 2026-09-29, ответа нет → владелец: «да, предложи echelon»; бриф `echelon/outcome-reminder-on-write`, 2026-09-29
+- [ ] Разобрать ответ echelon на `outcome-reminder-on-write`, когда придёт
 - [ ] Живая проверка на установленной vdm ≥ 2.39.0: голый `pickup` чужого брифа печатает `reply`; `reply` по брифу в `_done/` доходит
 
 ## References
