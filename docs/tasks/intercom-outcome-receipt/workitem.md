@@ -2,10 +2,10 @@
 title: "intercom: закрытие брифа итогом — что сделано, ссылка, у кого мяч"
 slug: intercom-outcome-receipt
 description: "Бриф закрывается письмом-итогом отправителю одной командой, а не правилом в памяти агента"
-status: in-progress
+status: done
 session-type: prd-work
 created: 2026-09-29
-last-updated: 2026-09-29
+last-updated: 2026-09-30
 relates-to:
   - "[[vdm-comms-letters/workitem|vdm-comms-letters]]"
   - "[[intercom-live-delivery/workitem|intercom-live-delivery]]"
@@ -13,6 +13,9 @@ relates-to:
 ---
 
 # intercom: закрытие брифа итогом — что сделано, ссылка, у кого мяч
+
+> **Закрыт 2026-09-30.** `bb10116` (vdm 2.38.3), `9fc908a` (vdm 2.39.0, vdm-comms 0.12.2), `2ab7e93`
+> (vdm 2.39.1). product переходит на `reply`, echelon выводит строку итога в ответе `call_write`.
 
 > Письмо product `outcome-receipt` (2026-09-29). Сейчас `pickup` может выдать только квитанцию
 > «забрано». Действие, которое закрыло пункт брифа (комментарий в тикете, мерж, ответ человеку),
@@ -37,7 +40,7 @@ echelon — запасной путь» записано в скилле, а н�
 
 ## Текущая модель
 
-Состояние на 2026-09-29, после vdm 2.39.0 (не запушено):
+Состояние на 2026-09-30, vdm 2.39.1 — кристалл закрыт:
 
 - **`intercom reply <letter> --done … [--link …] --ball … | --body FILE`** (DL #4). Получатель — `from:`
   письма, ссылка — `reply-to: <я>/<slug>`: ни то ни другое набирать не нужно. Работает по письму в
