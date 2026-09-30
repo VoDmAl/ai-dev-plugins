@@ -469,6 +469,30 @@ def pending_files(root, cfg):
     return out
 
 
+# A block id closes the line — ` ^a3f` (Obsidian). now.md links to an item by it
+# and the owner names an item by it in the chat (workitem vdm-comms-live-now,
+# DL #2, #4). One pattern for the linter and for the builder.
+BLOCK_ID_RE = re.compile(r"\s\^([A-Za-z0-9-]+)\s*$")
+
+
+def block_ids(root, cfg):
+    """→ {id: [(file, line_no)]} over every line of the homes — an id is taken
+    wherever it stands, not only on an open item."""
+    ids = {}
+    for path in pending_files(root, cfg):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                lines = fh.read().splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        rel = os.path.relpath(path, root)
+        for lineno, line in enumerate(lines, 1):
+            m = BLOCK_ID_RE.search(line)
+            if m:
+                ids.setdefault(m.group(1), []).append((rel, lineno))
+    return ids
+
+
 def in_scope(root, cfg, path):
     return os.path.abspath(path) in set(pending_files(root, cfg))
 
@@ -1008,9 +1032,26 @@ def lint(root, cfg, items, changed_only=False, cap=None):
                 kept.append(it)
         items = kept
 
+    # A project with now.md needs every item it shows to carry a block id, and
+    # the id to be the only one of its kind — "a3f" in the chat must name one
+    # line. Only there: elsewhere an id is nobody's business.
+    wants_ids = isinstance(cfg.get("now"), dict)
+    ids = block_ids(root, cfg) if wants_ids else {}
+
     problems, printed, suppressed = 0, 0, 0
     for it in items:
         warns = []
+        if wants_ids and it["strict"]:
+            m = BLOCK_ID_RE.search(it["line"])
+            if not m:
+                warns.append("no block id (` ^a3f` at the end) — now.md cannot link to it; take one: "
+                             "\"${CLAUDE_PLUGIN_ROOT}/scripts/comms-now.sh\" --new-id")
+            else:
+                elsewhere = ["%s:%d" % loc for loc in ids.get(m.group(1), [])
+                             if loc != (it["file"], it["line_no"])]
+                if elsewhere:
+                    warns.append("block id ^%s is also at %s — an id names one item in the project"
+                                 % (m.group(1), ", ".join(elsewhere)))
         if it["date_kind"] == "broken":
             warns.append("broken date marker — invisible to every detector, so it promises nothing")
         if it["strict"]:

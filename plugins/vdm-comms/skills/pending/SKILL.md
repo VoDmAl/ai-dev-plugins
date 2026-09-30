@@ -242,8 +242,25 @@ hand: an item's text lives in its home.
 **Block ids.** An item links to its line when the line ends with a block id —
 `^a3f`: a letter, then two letters or digits, unique in the project, so the
 owner can write "a3f: …" in the chat. When you write or edit an item in a
-project with `comms.now`, end it with one; check first that it is free (search
-the homes for `^a3f`). An item without an id shows as `file:line`.
+project with `comms.now`, end it with one:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/comms-now.sh" --new-id        # a free one; --new-id 5 for five
+```
+
+The linter names a new or edited item without an id, and an id used twice in
+the project. An item without an id shows in `now.md` as `file:line`.
+
+The items that are already open are marked once, **on the owner's word** — it
+writes the homes, and the diff shows every line it touched:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/comms-now.sh" --assign-ids --dry-run   # how many, where
+"${CLAUDE_PLUGIN_ROOT}/scripts/comms-now.sh" --assign-ids
+```
+
+Only the lines that get an id change; a closed item and a table row are left
+alone.
 
 **Replies.** The owner may answer straight in `now.md`: a line starting `>>@ai`
 under an item. A rebuild keeps it under the item with the same id; when that

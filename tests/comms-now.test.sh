@@ -267,6 +267,86 @@ build >/dev/null
 expect_not_says "echelon switched off for the project — not asked, not mentioned" "$(block "$N" "Твой ход")" "echelon"
 export ECHELON_BIN="$TMP/no-echelon-here"
 
+echo "== block ids: taken by the session, named by the linter, the backlog marked once =="
+# Owner, 2026-09-30 (DL #2): the session that writes an item ends it with a block
+# id; the linter names a new item without one; the items already open are marked
+# once, by a command, on the owner's word — the diff shows what it did.
+PEND="$P/scripts/comms-pending.py"
+F2="$TMP/ids"; mkdir -p "$F2/.claude" "$F2/tracks/gamma"
+git -C "$F2" init -q   # a project is a checkout: `--lint <file>` finds its root by .git
+cat > "$F2/tracks/gamma/index.md" <<'EOF2'
+# Gamma
+
+Текст трека, не пункт.
+
+## Наши действия
+
+- [ ] **владелец** — первый пункт без метки ⏰ 2026-10-06
+- [ ] **product** — второй пункт с меткой ⏰ 2026-10-07 ^q1w
+- [x] **владелец** — закрытый пункт без метки
+- [ ] **штаб** — третий пункт без метки ⏰ after: ответ product
+
+| Кто | Что | Срок |
+|---|---|---|
+| product | строка таблицы ⏰ 2026-10-08 | — |
+EOF2
+printf '{"comms": {"pending-paths": ["tracks/*/index.md"], "pending-sections": {"action": ["Наши действия"]}, "owners": ["владелец", "product", "штаб"], "now": {"owner": ["владелец"]}}}\n' > "$F2/.claude/vdm-plugins.json"
+cp "$F2/tracks/gamma/index.md" "$TMP/gamma.before"
+
+id="$(python3 "$NOW" --project-root "$F2" --new-id 2>&1)"; rc=$?
+expect_exit "--new-id answers" 0 "$rc"
+case "$id" in [a-z][a-z0-9][a-z0-9]) ok "…a letter, then two letters or digits" ;; *) bad "…a letter, then two letters or digits" "got: $id" ;; esac
+[ "$id" != "q1w" ] && ok "…not one the project already uses" || bad "…not one the project already uses"
+
+# Uniqueness, deterministically: every id but one is taken — the one left is
+# the only answer. Random ids would let a broken check pass by luck.
+last="$(python3 - "$NOW" <<'EOF2'
+import importlib.util, random, sys
+spec = importlib.util.spec_from_file_location("comms_now", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+taken = {a + b + c for a in m.ID_FIRST for b in m.ID_REST for c in m.ID_REST} - {"z9x"}
+print(m.new_id(taken, random.Random(1)))
+EOF2
+)"
+expect_says "with every id but one taken, the one left is the answer" "$last" "z9x"
+out="$(python3 "$NOW" --project-root "$F2" --assign-ids --dry-run 2>&1)"; rc=$?
+expect_exit "--assign-ids --dry-run answers" 0 "$rc"
+expect_says "…says how many items it would mark" "$out" "2"
+cmp -s "$TMP/gamma.before" "$F2/tracks/gamma/index.md" && ok "…and writes nothing" || bad "…and writes nothing"
+
+out="$(python3 "$NOW" --project-root "$F2" --assign-ids 2>&1)"; rc=$?
+expect_exit "--assign-ids marks the backlog" 0 "$rc"
+G="$(cat "$F2/tracks/gamma/index.md")"
+expect_says "an open item without an id gets one" "$(grep 'первый пункт' "$F2/tracks/gamma/index.md")" "2026-10-06 ^"
+expect_says "…so does one dated by an event" "$(grep 'третий пункт' "$F2/tracks/gamma/index.md")" "product ^"
+expect_says "an item that has one keeps it" "$G" "2026-10-07 ^q1w"
+expect_not_says "a closed item is left alone" "$(grep 'закрытый пункт' "$F2/tracks/gamma/index.md")" "^"
+expect_not_says "a table row is left alone — a block id cannot mark one row" "$(grep 'строка таблицы' "$F2/tracks/gamma/index.md")" "^"
+ids="$(grep -oE '\^[a-z][a-z0-9]{2}$' "$F2/tracks/gamma/index.md" | sort)"
+[ "$(printf '%s\n' "$ids" | uniq -d)" = "" ] && ok "…every id in the project is unique" || bad "…every id in the project is unique" "$ids"
+diff <(grep -v 'первый пункт\|третий пункт' "$TMP/gamma.before") <(grep -v 'первый пункт\|третий пункт' "$F2/tracks/gamma/index.md") >/dev/null \
+  && ok "…and every other line is byte for byte as it was" || bad "…and every other line is byte for byte as it was"
+out="$(python3 "$NOW" --project-root "$F2" --assign-ids 2>&1)"
+expect_says "a second run has nothing to mark" "$out" "0"
+
+# The linter, on a new line. A project with comms.now: an item without an id is
+# named, with the command that gives one; a reused id is named too.
+printf -- '- [ ] **владелец** — новый пункт без метки ⏰ 2026-10-09\n' >> "$F2/tracks/gamma/index.md"
+out="$(python3 "$PEND" --lint "$F2/tracks/gamma/index.md" 2>&1)"; rc=$?
+expect_exit "a new item without an id is outside the contract of a now.md project" 1 "$rc"
+expect_says "…the linter says so" "$out" "block id"
+expect_says "…and how to take one" "$out" "--new-id"
+sed -i.bak 's/новый пункт без метки ⏰ 2026-10-09/новый пункт с чужой меткой ⏰ 2026-10-09 ^q1w/' "$F2/tracks/gamma/index.md" && rm -f "$F2/tracks/gamma/index.md.bak"
+out="$(python3 "$PEND" --lint "$F2/tracks/gamma/index.md" 2>&1)"
+expect_says "an id already used in the project is named" "$out" "q1w"
+python3 - "$F2/.claude/vdm-plugins.json" <<'EOF2'
+import json, sys
+p = sys.argv[1]; c = json.load(open(p)); del c["comms"]["now"]; json.dump(c, open(p, "w"))
+EOF2
+sed -i.bak 's/ ^q1w$//' "$F2/tracks/gamma/index.md" && rm -f "$F2/tracks/gamma/index.md.bak"
+out="$(python3 "$PEND" --lint "$F2/tracks/gamma/index.md" 2>&1)"; rc=$?
+expect_exit "a project without now.md is not asked for ids — the same file lints clean" 0 "$rc"
+
 echo "== english labels, markdown links =="
 cfg '{"owner": ["владелец"]}'
 python3 - "$FX/.claude/vdm-plugins.json" <<'EOF'

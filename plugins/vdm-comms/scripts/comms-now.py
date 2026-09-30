@@ -40,6 +40,7 @@ import datetime
 import importlib.util
 import json
 import os
+import random
 import re
 import subprocess
 import sys
@@ -51,8 +52,6 @@ import comms_config as cfgmod  # noqa: E402
 DEFAULT_PATH = "signals/now.md"
 LINK_STYLES = ("markdown", "wikilink")
 
-# An Obsidian block id ends the line: ` ^a3f`.
-ID_RE = re.compile(r"\s\^([A-Za-z0-9-]+)\s*$")
 # The id an item line of now.md links to: `#^a3f|` (wikilink) or `#^a3f)` (markdown).
 LINKED_ID_RE = re.compile(r"#\^([A-Za-z0-9-]+)[|)]")
 # A reply: `>>@ai` at the start of the line (list indentation allowed), any case.
@@ -62,11 +61,72 @@ FENCE_RE = re.compile(r"^\s*(```|~~~)")
 
 def load_pending():
     """comms-pending, loaded by path — its name has a hyphen. Its definition of
-    an item is the one this build must use, not a second copy of it."""
+    an item, and of a block id, is the one this build must use, not a copy."""
     spec = importlib.util.spec_from_file_location("comms_pending", os.path.join(HERE, "comms-pending.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+PENDING = load_pending()
+# An Obsidian block id ends the line: ` ^a3f`.
+ID_RE = PENDING.BLOCK_ID_RE
+ID_FIRST = "abcdefghijklmnopqrstuvwxyz"
+ID_REST = ID_FIRST + "0123456789"
+
+
+def new_id(taken, rng):
+    """A letter, then two letters or digits (DL #4): short enough to type in the
+    chat, and a letter first — a bare number there already means a task key."""
+    for _ in range(100000):
+        cand = rng.choice(ID_FIRST) + rng.choice(ID_REST) + rng.choice(ID_REST)
+        if cand not in taken:
+            taken.add(cand)
+            return cand
+    raise RuntimeError("no free block id left in the project")
+
+
+def assign_ids(root, cfg, today, dry_run):
+    """Mark every open item of the homes that has no block id — the backlog, once,
+    on the owner's word (DL #2). Only the lines that get an id change. A table row
+    is never a strict item (comms-pending), so it is not marked — a block id cannot
+    mark one row of a table anyway."""
+    taken = set(PENDING.block_ids(root, cfg))
+    rng = random.Random()
+    todo = {}
+    for item in PENDING.collect(root, cfg, today):
+        if not item.get("strict") or ID_RE.search(item.get("line") or ""):
+            continue
+        todo.setdefault(item["file"], []).append(item)
+    marked, files = 0, 0
+    for rel in sorted(todo):
+        path = os.path.join(root, rel)
+        with open(path, encoding="utf-8", newline="") as fh:
+            lines = fh.read().splitlines(keepends=True)
+        changed = 0
+        for item in todo[rel]:
+            idx = item["line_no"] - 1
+            if idx >= len(lines):
+                continue
+            raw = lines[idx]
+            body = raw.rstrip("\r\n")
+            if body.strip() != (item.get("line") or "").strip():
+                continue
+            ending = raw[len(body):]
+            lines[idx] = body.rstrip() + " ^" + new_id(taken, rng) + ending
+            changed += 1
+        if changed and not dry_run:
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8", newline="") as fh:
+                fh.write("".join(lines))
+            os.replace(tmp, path)
+        if changed:
+            files += 1
+            marked += changed
+            print("  %s: %d" % (rel, changed))
+    verb = "would mark" if dry_run else "marked"
+    print("comms-now: %s %d item(s) in %d file(s)" % (verb, marked, files))
+    return 0
 
 
 def link(style, here_dir, root, relpath, text, anchor=None):
@@ -435,6 +495,11 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Build signals/now.md from the project's homes.")
     ap.add_argument("--project-root", default=None)
     ap.add_argument("--stdout", action="store_true", help="print instead of writing the file")
+    ap.add_argument("--new-id", nargs="?", const=1, type=int, metavar="N",
+                    help="print N block ids free in the project (default 1)")
+    ap.add_argument("--assign-ids", action="store_true",
+                    help="mark every open item without a block id — the backlog, on the owner's word")
+    ap.add_argument("--dry-run", action="store_true", help="with --assign-ids: say what would change, write nothing")
     args = ap.parse_args(argv)
 
     root = os.path.abspath(args.project_root or cfgmod.project_root_of(os.getcwd()))
@@ -448,6 +513,14 @@ def main(argv=None):
               "Set it in .claude/vdm-plugins.json: {\"comms\": {\"now\": {\"owner\": [\"<the owner's name in items>\"]}}}"
               % root, file=sys.stderr)
         return 2
+    if args.new_id:
+        taken = set(PENDING.block_ids(root, cfg))
+        rng = random.Random()
+        for _ in range(max(1, args.new_id)):
+            print(new_id(taken, rng))
+        return 0
+    if args.assign_ids:
+        return assign_ids(root, cfg, cfgmod.today(), args.dry_run)
     if not now_cfg.get("owner"):
         print("comms-now: comms.now.owner is empty — which names in the items mean the owner? Nothing built.",
               file=sys.stderr)
@@ -457,8 +530,7 @@ def main(argv=None):
               file=sys.stderr)
         return 2
 
-    pending = load_pending()
-    out_path, text, n = build(root, cfg, cfgmod.today(), now_cfg, pending)
+    out_path, text, n = build(root, cfg, cfgmod.today(), now_cfg, PENDING)
     if args.stdout:
         sys.stdout.write(text)
         return 0
