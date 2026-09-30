@@ -34,16 +34,16 @@ CHECKS = (
     "Goal: what changes once it is answered — in `goal:`, one sentence. A likely answer of \"yes\" or \"we'll see\" → do not write it.",
     "One subject: one request or one statement; every sentence carries it.",
     "The decision and the request — not the reader's own decisions retold, not our own corrections.",
-    "No exit: nothing lets them close or park it in one line (\"if not, fine\", \"let me know\", \"send X, then\").",
+    "No exit: nothing lets them close or park it in one line (\"if not, fine\", \"let me know when convenient\", \"send X, then\"); the request ends with what happens once it is done — our next step goes to the owner above the separator, as a proposal.",
     "Everything needed to start is inside the letter; procedural asks run in parallel, not as a condition.",
     "Every promise and date of ours was named by the owner (others go above the separator, as a proposal); the pronoun names who really acts: the owner's and their agent's work is \"I\", \"we\" only for what is truly shared.",
-    "No offers of help, no courtesies, no \"while we're at it\".",
+    "No obliging extras: no help nobody asked for, no \"happy to\", no \"while we're at it\" — \"please\" and \"thanks\" are the register's, not extras.",
     "Cut: what we already decided, our own status, what they already know.",
     "Questions only for the gap: a \"What we know\" line above the separator, with sources; not found = \"not seen in our sources\".",
     "Every fact about their system or a person has a source; \"always\" / \"any\" holds in every case.",
     "Their field is not explained to them; nothing is prescribed inside their zone.",
     "Recipients' profiles read and applied; no reproach for a past silence.",
-    "Subject: the same thread keeps `RE:`; a new matter gets a new subject.",
+    "The channel's form: an email has a subject (the same thread keeps `RE:`, a new matter a new one), a greeting on its own line, a paragraph per thought.",
     "Attachments: the text says \"attached\", and the file has a 📎 section.",
     "After sending: who has the ball, and where the waiting item with a review date lives.",
 )
@@ -51,7 +51,7 @@ CHECKS = (
 REGISTER_LINES = {
     "volunteer": "ask, don't assign — what, by when, what counts as done, and what we take off them if the date is tight",
     "executor": "direct, no hedging about our own actions — the need and the outcome; where and how is theirs",
-    "peer": "a request, not an order — no imperatives, no order of steps, no deadline for their answer",
+    "peer": "a request, not an order — no imperatives, no order of steps, no deadline for their answer; a favour outside their queue gets a please and a thanks",
 }
 
 

@@ -38,6 +38,9 @@ is shown to anyone, and open the sections below when a line does not settle.
   half. A half with no sentence is either written or dropped.
 - **One subject per letter**: one request or one statement, fixed before the
   first sentence. Every sentence carries it or goes.
+- **Ask for the whole reach of the change.** A manual workaround is asked for
+  every environment the same change will reach, not only the one where it broke.
+  Test: where else will this be needed once the change lands?
 - **Answering a letter, name in the header which of its points you leave
   unanswered on purpose** — above the separator, so the owner sees the choice;
   not in the text that goes out.
@@ -57,6 +60,11 @@ is shown to anyone, and open the sections below when a line does not settle.
   people with no named shared chat: email. One person with a thread already
   running: the channel of that thread. Ask only when both are silent.
 - Declare it as `channel:` in the draft the moment you create it.
+- **The channel sets the body's form too.** An email: a greeting on its own line,
+  a paragraph per thought — the fact, the request, the question, the close — and
+  thanks at the end where the register calls for it (§ 6). An email assembled as
+  one block, like a chat message, is a defect of form even when every word is
+  right. A messenger message may be one block.
 
 ## 3. What does not go into the letter
 
@@ -98,6 +106,11 @@ is shown to anyone, and open the sections below when a line does not settle.
 - **Exit test**: the reader cannot close or park the subject with one line —
   no "if it doesn't suit, also good to know", no "let me know when convenient".
   On silence, a sentence that closes the silence, not one that invites it.
+- **End the request with what happens once it is done**: "let me know when it is
+  done — I'll check that the tools are found" gives the reader a finish and a
+  reason to reply; "let me know when it is ready" leaves them to guess what for.
+  The step after is the sender's commitment: propose it to the owner above the
+  separator (§ 8), never write it in.
 - **Pre-empt the legitimate "it depends"**: name it, offer two cheap options,
   take away the fear of choosing wrong — in the same sentence.
 - **Offering to take something over, name three things**: what I do · what I need
@@ -117,6 +130,9 @@ is shown to anyone, and open the sections below when a line does not settle.
   the consequence that changes their next step.
 - **Do not write the wording for their zone.** Describe what we have and ask
   "does this apply?".
+- **What their own task will do is asked of them, not told**: "will X solve
+  this?", not "X will close this" — our reading of their ticket is not a source
+  for its assignee. Nor do we tell them what they do in the meantime.
 - **A request is addressed to a person**, chosen for the competence — an open
   call ("any takers?") is not a request. Check: is there a sentence that starts
   with a name? Offer a choice only when the candidates are equal.
@@ -137,7 +153,7 @@ skill can tell a volunteer from a contractor. Three profiles:
 |---|---|---|
 | `volunteer` | helps because they want to; refusing costs them nothing | concrete and bounded: what, by when, what counts as done — and what we take off them if the date is tight. Asked, not assigned: "your experience would help here", never "this is your task" or "this is your field". A refusal means the ask was cut wrong |
 | `executor` | does the work in their own zone (a contractor, the team that owns the system) | direct, active verbs, no hedging about our own actions ("maybe", "if we manage"). State the need and the outcome; where and how is up to them — do not prescribe inside their zone, do not pre-fill their fields |
-| `peer` | an equal: another team, a partner | a request, not an order: no imperatives ("how can we get this?" rather than "send"), no assigned order of steps, no deadline for their answer, and no "up to you" formula. Urgency created by a third party is not backed with our deadline |
+| `peer` | an equal: another team, a partner | a request, not an order: no imperatives ("how can we get this?" rather than "send"), no assigned order of steps, no deadline for their answer, and no "up to you" formula. Urgency created by a third party is not backed with our deadline. A favour outside their queue gets a "please" and a closing "thanks" |
 
 Two cases look like a conflict and are not: the date of **the work our event
 depends on** can be named to a volunteer; a **deadline for a peer's reply** is
@@ -237,8 +253,9 @@ One promise in a draft is checked three times:
 And around them:
 
 - **The least surface for moving work onto us**: no help where none was asked,
-  no courtesies, no "while we're at it". A good question is one I am not the one
-  to answer.
+  no obliging extras ("happy to", "anything else you need"), no "while we're at
+  it". A good question is one I am not the one to answer. "Please" and "thanks"
+  are not extras — they belong to the register (§ 6).
 - **Nothing stale**: after a significant meeting, walk the open requests; what
   the meeting closed and "I'll send X" already done are not repeated.
 - **No question without substance**: first a request for the facts, and the wait

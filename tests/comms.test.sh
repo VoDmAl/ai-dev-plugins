@@ -230,10 +230,18 @@ expect_says "…with the decision-not-backstory line" "$ctx" "not the reader's o
 # hq, 2026-09-29: «посмотрели… мы бы закрыли» — the owner's agent did it and
 # would do it; the owner sent «посмотрел… я бы закрыл». The pronoun names the actor.
 expect_says "…and the pronoun check: who really acts" "$ctx" "the pronoun names who really acts"
+# hq, 2026-09-29 (letters-email-form-and-scope): the owner ended a request
+# with «Дай знать, пожалуйста, как сделаешь, проверю…» and added «Спасибо!». Two
+# checklist lines, compressed past the skill, forbade both: a bare "let me know"
+# as an exit, and "courtesies" read as politeness rather than obliging extras.
+expect_says "…an exit is putting it off, not a signal that it is done" "$ctx" "let me know when convenient"
+expect_not_says "…a courtesy is an obliging extra, not a please or a thanks" "$ctx" "no courtesies"
+expect_says "…and the channel sets the body's form" "$ctx" "a greeting on its own line"
 expect_not_says "…no register line when none is declared" "$ctx" "Register:"
 printf '{\n  "comms": {\n    "register": "peer",\n    "language": "en"\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
 OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-y-out.md" "$DRAFT" | bash "$GUARD" 2>/dev/null)
 expect_says "RED: the project's register is named" "$OUT" "Register: peer"
+expect_says "…a peer doing a favour outside their queue gets a please and a thanks" "$OUT" "please"
 expect_says "…and the language" "$OUT" "Language of the letter: en"
 OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-y-out.md" $'---\ndraft: true\nregister: volunteer\n---\n\nHi.\n' | bash "$GUARD" 2>/dev/null)
 expect_says "RED: the letter's own register wins" "$OUT" "Register: volunteer"
