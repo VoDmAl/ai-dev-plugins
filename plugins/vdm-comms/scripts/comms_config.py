@@ -32,6 +32,9 @@ Config lives in `.claude/vdm-plugins.json` (or `.qwen/…`) under `comms`:
     letter-form       per channel: what an outgoing DRAFT must carry — `channel`,
                       `subject`, `separator`, `goal`, `known`; `*` applies to every draft; merged
                       over the default key by key       (default {"email": ["subject"]})
+    now               the live signals/now.md (comms-now.py): {"owner": [names
+                      that mean the owner], "instructions": path, "path":
+                      output, default "signals/now.md"}  (default: none -> off)
     enabled           false switches the whole plugin off    (default true)
 
 Only what genuinely differed between the three field repositories is
@@ -92,6 +95,9 @@ DEFAULTS = {
     # apply. A letter to someone else carries its own `register:`.
     "register": None,
     "language": None,
+    # The live signals/now.md (comms-now.py, workitem vdm-comms-live-now). Off
+    # until a project says which names in its items mean the owner.
+    "now": None,
 }
 
 REGISTERS = ("volunteer", "executor", "peer")
@@ -127,6 +133,19 @@ LABELS = {
         "pointer-topics": "Topics on this track:",
         "letter-subject": "Subject",
         "letter-text": "Text to send, as it will go out.",
+        "now-instructions": "How to work with this file",
+        "now-no-instructions": "No instructions yet — set `comms.now.instructions` to the file that says how to work with now.md.",
+        "now-orphans": "Replies without an item",
+        "now-mine": "Your move",
+        "now-soon": "Today and tomorrow",
+        "now-others": "Led by others",
+        "now-lifted": "overdue since %(due)s, was %(owner)s's",
+        "now-draft": "draft not sent",
+        "now-us": "us",
+        "now-no-owner": "no owner",
+        "now-today": "today",
+        "now-tomorrow": "tomorrow",
+        "now-empty": "nothing",
     },
     "ru": {
         "col-date": "Дата",
@@ -146,6 +165,19 @@ LABELS = {
         "pointer-topics": "Темы этого трека:",
         "letter-subject": "Тема",
         "letter-text": "Текст к отправке — так, как он уйдёт.",
+        "now-instructions": "Как работать с этим файлом",
+        "now-no-instructions": "Инструкции пока нет — задайте `comms.now.instructions`: файл о том, как работать с now.md.",
+        "now-orphans": "Реплики без пункта",
+        "now-mine": "Твой ход",
+        "now-soon": "Сегодня и завтра",
+        "now-others": "Ведут другие",
+        "now-lifted": "срок %(due)s прошёл, вёл %(owner)s",
+        "now-draft": "черновик не отправлен",
+        "now-us": "мы",
+        "now-no-owner": "без владельца",
+        "now-today": "сегодня",
+        "now-tomorrow": "завтра",
+        "now-empty": "пусто",
     },
 }
 

@@ -193,6 +193,50 @@ blocking one fails **closed**: if it could not run, it says `NOT CHECKED` and
 blocks rather than exiting quietly, because "the check failed" and "the check
 did not run" are different events and only the first is what a clean exit means.
 
+## The live `now.md`
+
+A project that declares `comms.now` gets `signals/now.md` — the owner's state,
+rebuilt from the same items this skill reads, so the owner opens one file instead
+of asking what hangs:
+
+```json
+{ "comms": { "now": {
+    "owner": ["владелец"],
+    "instructions": "docs/how-to-work.md",
+    "path": "signals/now.md"
+} } }
+```
+
+`owner` names what the items call the owner — the one thing the order of
+`owners` cannot tell. `instructions` is the file that says how to work with
+`now.md`; it becomes the first line. `path` defaults to `signals/now.md`.
+
+What goes where:
+
+- **Your move** — items owned by the owner; another owner's item whose date has
+  passed, lifted and saying whose it was; every unsent draft, since what goes out
+  in the owner's name waits for the owner.
+- **Today and tomorrow** — every item due on those two days.
+- **Led by others** — the rest, by owner.
+
+Build it with `"${CLAUDE_PLUGIN_ROOT}/scripts/comms-now.sh"` (`--stdout` to look
+without writing). It is a command, not a hook — the plugin's hooks write no
+project files: the collector runs it after a pass (`after_pass` of the project),
+and a session runs it after editing a home. The frontmatter carries `built:` and
+`your-move:`, which the session-start line reads. `now.md` is never edited by
+hand: an item's text lives in its home.
+
+**Block ids.** An item links to its line when the line ends with a block id —
+`^a3f`: a letter, then two letters or digits, unique in the project, so the
+owner can write "a3f: …" in the chat. When you write or edit an item in a
+project with `comms.now`, end it with one; check first that it is free (search
+the homes for `^a3f`). An item without an id shows as `file:line`.
+
+**Replies.** The owner may answer straight in `now.md`: a line starting `>>@ai`
+under an item. A rebuild keeps it under the item with the same id; when that
+item is gone, it moves to the top, under «replies without an item». Answer it as
+a chat message about that item, then delete the line.
+
 ## What it does not do
 
 - **It does not read your tracker.** A ticket status on the line is what was

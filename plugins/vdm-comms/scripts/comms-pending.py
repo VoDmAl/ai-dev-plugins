@@ -620,7 +620,7 @@ def letter_flags(path):
     return fmmod.marks_unsent(keys), keys.get("sent") not in (None, "", False)
 
 
-def unsent_drafts(root, cfg, today):
+def unsent_drafts(root, cfg, today, min_age=None):
     """Written and never sent: any `*.md` inside a `comms/` directory whose own
     frontmatter says it has not gone out — `draft: true`, or `sent: false` —
     and carries no `sent:` value (`comms_frontmatter.marks_unsent`).
@@ -636,12 +636,17 @@ def unsent_drafts(root, cfg, today):
     inbound letter carries `sent:` legitimately (the day the other side sent
     it — a quarter of the inbound letters in the repository measured). Here the
     question is the opposite one, and the frontmatter answers it directly."""
-    try:
-        threshold = int(cfg.get("pending-draft-days", 3))
-    except (TypeError, ValueError):
-        threshold = 3
-    if threshold <= 0:
-        return []
+    # `min_age` is for a caller whose question is not "forgotten?" but "waiting
+    # for the owner?" — now.md lists a draft from its first day (0).
+    if min_age is not None:
+        threshold = min_age
+    else:
+        try:
+            threshold = int(cfg.get("pending-draft-days", 3))
+        except (TypeError, ValueError):
+            threshold = 3
+        if threshold <= 0:
+            return []
     out = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in PRUNE_DIRS]
