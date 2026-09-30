@@ -376,6 +376,23 @@ says "a non-git project registered on purpose is still greeted" "$out" "You are 
   && bad "intercom_register with no flag is implicit — a bare directory is not registered" "aitest.json was created" \
   || ok "intercom_register with no flag is implicit — a bare directory is not registered"
 
+printf '\n[a sender that is only a directory name cannot be answered — send refuses]\n'
+# Field case (echelon, 2026-09-29/30): two letters went out with `from: letters`
+# — `send` was run from a directory named `letters` outside the echelon checkout,
+# and the identity fell back to the directory's name. No agent answers to it, so
+# `reply` to either letter had nowhere to go. The recipient side of the envelope
+# was a hard stop since the directory existed; the sender side was not.
+LETTERSDIR="$TMP/letters"; mkdir -p "$LETTERSDIR"
+printf 'A body.\n' > "$TMP/sender-body.md"
+out="$(cd "$LETTERSDIR" && bash "$IC" send widget from-a-bare-dir --body "$TMP/sender-body.md" 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ]; then ok "send from an unregistered bare directory refuses"; else bad "send from an unregistered bare directory refuses" "rc=$rc"; fi
+[ ! -e "$VDM_INTERCOM_ROOT/widget/from-a-bare-dir.md" ] && ok "…and writes no letter" || bad "…and writes no letter" "a letter from \`letters\` was delivered"
+says "…naming the directory it would have signed with" "$out" "would be signed \`letters\`"
+says "…and the way out: the project's checkout, or register" "$out" "intercom register"
+out="$(cd "$TMP/notes-vault" && bash "$IC" send widget from-a-registered-vault --body "$TMP/sender-body.md" 2>&1)"; rc=$?
+eq "a non-git project registered on purpose still sends" "$rc" "0"
+eq "…signed with its own identity" "$(grep '^from:' "$VDM_INTERCOM_ROOT/widget/from-a-registered-vault.md" 2>/dev/null)" "from: notes-vault"
+
 printf '\n[an identity that is already a name is refused]\n'
 # Worse than a name clash, because intercom_resolve_target answers from
 # <registry>/<input>.json before it looks at names: the new entry does not tie,
@@ -920,6 +937,16 @@ rrefuses "someone else's letter"           "send"        hop-c/relay-two --done 
 printf -- '---\nintercom: v1\nfrom: hop-b\nto: hop-b\nslug: note-self\nstatus: pending\n---\n\n# Note\n' > "$R/hop-b/note-self.md"
 rrefuses "a note to self"                  "yourself"    note-self --done "x" --ball "y"
 rm -f "$R/hop-b/note-self.md"
+# A letter whose envelope names a sender no agent answers to (the echelon case:
+# `from: letters`). The refusal is reply's own — send's advice about --to and
+# --first-contact does not apply to an answer.
+printf -- '---\nintercom: v1\nfrom: letters\nto: hop-b\nslug: from-nobody\nstatus: pending\n---\n\n# From nobody\n' > "$R/hop-b/from-nobody.md"
+out="$( cd "$TMP/hop-b" && bash "$IC" reply from-nobody --done "x" --ball "y" 2>&1 )"; rc=$?
+if [ "$rc" -ne 0 ] && [ -f "$R/hop-b/from-nobody.md" ]; then ok "reply to a letter whose sender answers to nothing refuses, archives nothing"; else bad "reply to a letter whose sender answers to nothing refuses, archives nothing" "rc=$rc"; fi
+says "…says the envelope's sender is the problem" "$out" "no agent answers to"
+says "…and how to answer once the writer is known" "$out" "--reply-to hop-b/from-nobody"
+says_not "…without send's advice for a recipient" "$out" "--first-contact"
+rm -f "$R/hop-b/from-nobody.md"
 
 echo "-- pickup reminds that the outcome has not gone back"
 out="$( cd "$TMP/hop-b" && bash "$IC" pickup ask-four 2>&1 )"

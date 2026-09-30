@@ -337,6 +337,14 @@ re-derive its logic:
 3. Report the path to the user. **Do not commit anything** — the store is
    outside all repos.
 
+**Send from the project.** The sender in the envelope is this directory's
+identity. Outside a project it falls back to the directory's name, and unless
+that directory was registered on purpose no agent answers to it — a reply
+could never come back. So `send` refuses there, the same way it refuses a
+recipient nobody answers to: run it from the project's checkout, or register the
+directory as a project first. Field case (2026-09-29): two letters signed
+`from: letters`, sent from a directory of that name outside the checkout.
+
 **The body already exists as a file?** — typically because the project keeps a
 copy of every outgoing letter and audits against it. Then send it with
 `--body <file>` instead of step 2: the letter's body is that file byte for byte,
@@ -498,7 +506,10 @@ Where intercom sees a brief taken without its outcome, it says so:
   the crystal's completion gate, not by memory.
 
 `reply` answers **your own inbox** only. Continuing someone else's letter is a
-relay: `send <to> <slug> --reply-to <ref>` (§ The relay form).
+relay: `send <to> <slug> --reply-to <ref>` (§ The relay form). A letter whose
+envelope names a sender no agent answers to is refused with its own message,
+nothing archived: find out who wrote it, then answer with `send <identity> …
+--reply-to <you>/<slug>`.
 
 ### Delivery is not receipt
 

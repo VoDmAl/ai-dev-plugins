@@ -420,6 +420,20 @@ cmd_send() {
   slug="$(_ic_sanitize_slug "$slug")"
   [ -n "$slug" ] || _ic_die "send: slug is empty after sanitization."
 
+  # The sender side of the envelope gets the same law as the recipient side: a
+  # letter nobody can answer is as broken as a letter to nobody. Outside a
+  # project the identity falls back to the directory's name, and unless that
+  # directory was registered on purpose no agent answers to it. Field case
+  # (echelon, 2026-09-29/30): two letters signed `from: letters`, run from a
+  # directory of that name outside the checkout; `reply` had nowhere to go.
+  local sender_id
+  sender_id="$(intercom_identity)"
+  if [ "$(intercom_identity_source)" = "cwd" ] && [ ! -f "$(intercom_registry_file "$sender_id")" ]; then
+    printf 'intercom: ✗ send: %s is not a project — the letter would be signed `%s`, a name no agent answers to, so no reply could come back. Not sending.\n' "$PWD" "$sender_id" >&2
+    printf '   Send from the project'"'"'s checkout, or make this directory a project: intercom register --name "<how the user calls it>" --describe "<one-liner>"\n' >&2
+    exit 2
+  fi
+
   # record_hint: 0 = nothing to learn, 1 = record <to> as a name of the
   # recipient after delivery, 2 = <to> routes to a DIFFERENT agent (deliver as
   # told, warn, do not touch the directory).
@@ -944,6 +958,12 @@ cmd_reply() {
   sender="$(intercom_fm_field "$msg" from)"
   [ -n "$sender" ] || _ic_die "reply: '$slug' names no sender in its envelope — nothing to reply to."
   [ "$sender" != "$id" ] || _ic_die "reply: '$slug' is a note from yourself — there is nobody to send an outcome to."
+  # Checked here, not left to send: send's refusal is written for a recipient
+  # the sender typed, and its advice (--to, --first-contact) does not fit an
+  # answer to a letter whose envelope is wrong.
+  if ! intercom_resolve_target "$sender" >/dev/null 2>&1; then
+    _ic_die "reply: '$slug' names \`$sender\` as its sender, and no agent answers to that name — nothing sent, nothing archived. Such a letter was sent from outside its project, so the envelope carries a directory's name. Once you know who wrote it: intercom send <identity> $slug-outcome --reply-to $id/$slug --body <file>" 2
+  fi
 
   # A slug that is free in the recipient's inbox AND archive: a second outcome
   # of the same brief is normal (items close at different times), and a slug
