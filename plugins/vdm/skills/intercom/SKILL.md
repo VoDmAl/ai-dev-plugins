@@ -671,6 +671,10 @@ for exactly that reason.
 # self-addressed; the next session in this repo sees it in the session-start line and via check.
 ```
 
+Leaving for a clean session? `/vdm:wrap` decides whether the note is needed at
+all, and what goes into the crystal instead. The note is one of its three
+carriers, and it points to the crystal rather than retelling it.
+
 ### Consume your inbox
 
 ```
