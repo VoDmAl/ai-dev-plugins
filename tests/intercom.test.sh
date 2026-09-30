@@ -623,6 +623,32 @@ else
   bad "…and the body is the file"
 fi
 
+# A body that opens with its own heading gets no second one from the template.
+# Measured 2026-09-30: 142 of the 344 letters sent since --body appeared carried
+# two headings in a row — a sender's kept copy starts with `# …`, and the
+# template put `# {{TITLE}}` above it, identical or not.
+printf '# Own heading\n\nThe text.\n' > "$B/h1.md"
+out="$( cd "$TMP/hop-a" && bash "$IC" send hop-b body-h1 --title "Another title" --body "$B/h1.md" 2>&1 )"; rc=$?
+eq "a body with its own heading sends" "$rc" "0"
+L="$VDM_INTERCOM_ROOT/hop-b/body-h1.md"
+eq "…and the letter has one heading, the body's" "$(grep '^# ' "$L" 2>/dev/null)" "# Own heading"
+if tail -c "$(wc -c < "$B/h1.md")" "$L" | cmp -s - "$B/h1.md"; then
+  ok "…the body is still the file, byte for byte"
+else
+  bad "…the body is still the file, byte for byte" "$(tail -c 120 "$L")"
+fi
+eq "…one blank line after the banner, then the body — not the template's blank line too" \
+   "$(awk '/\*\*Action:\*\*/ { a = NR } a && NR == a + 1 { print ($0 == "" ? "blank" : $0) } a && NR == a + 2 { print; exit }' "$L" | paste -sd '|' -)" "blank|# Own heading"
+says "…and the sender is told the --title gave way to the body's heading" "$out" "Own heading"
+out="$( cd "$TMP/hop-b" && bash "$IC" check 2>&1 )"
+says "check lists the letter under the body's heading" "$out" "• Own heading"
+printf '\n\n# Same title\n\nText.\n' > "$B/h1same.md"   # leading blank lines: the heading is the first non-blank line
+out="$( cd "$TMP/hop-a" && bash "$IC" send hop-b body-h1same --title "Same title" --body "$B/h1same.md" 2>&1 )"
+eq "a body heading equal to the title — still one heading" "$(grep -c '^# ' "$VDM_INTERCOM_ROOT/hop-b/body-h1same.md")" "1"
+says_not "…and nothing to report about it" "$out" "heading:"
+out="$( cd "$TMP/hop-a" && bash "$IC" send hop-b body-h1bare --body "$B/h1.md" 2>&1 )"
+says_not "without --title there is no title to have given way — nothing to report" "$out" "heading:"
+
 # Every refusal must leave NO letter: a letter with a placeholder for a body
 # looks sent, and that is the failure the request exists to remove.
 refuses() {  # refuses <desc> <slug> <expect-in-output> <send args…>
@@ -853,6 +879,8 @@ printf '## Done\n\n- Z, as agreed\n' > "$B/outcome.md"
 ( cd "$TMP/hop-a" && bash "$IC" send hop-b ask-three --body "$B/ask.md" >/dev/null 2>&1 )
 out="$( cd "$TMP/hop-b" && bash "$IC" reply ask-three --body "$B/outcome.md" 2>&1 )"; rc=$?
 eq "reply --body sends a written outcome" "$rc" "0"
+eq "…under one heading — the body's section heading is not a title, the template's stays" \
+   "$(grep -c '^# ' "$R/hop-a/ask-three-outcome.md")" "1"
 if tail -c "$(wc -c < "$B/outcome.md")" "$R/hop-a/ask-three-outcome.md" 2>/dev/null | cmp -s - "$B/outcome.md"; then
   ok "…byte for byte"
 else

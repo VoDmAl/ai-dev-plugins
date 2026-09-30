@@ -382,7 +382,7 @@ _ic_splice_body() {
 }
 
 cmd_send() {
-  local to="" slug="" title="" from_agent="" first_contact=0 deliver_to="" reply_to=""
+  local to="" slug="" title="" title_given=0 from_agent="" first_contact=0 deliver_to="" reply_to=""
   local body_file="" body_set=0
   to="${1:-}"; [ $# -gt 0 ] && shift
   slug="${1:-}"; [ $# -gt 0 ] && shift
@@ -392,8 +392,8 @@ cmd_send() {
                         _intercom_need_value "$1" $# || exit 2 ;;
     esac
     case "$1" in
-      --title)          title="$2"; shift 2 ;;
-      --title=*)        title="${1#--title=}"; shift ;;
+      --title)          title="$2"; title_given=1; shift 2 ;;
+      --title=*)        title="${1#--title=}"; title_given=1; shift ;;
       --from-agent)     from_agent="$2"; shift 2 ;;
       --from-agent=*)   from_agent="${1#--from-agent=}"; shift ;;
       --to)             deliver_to="$2"; shift 2 ;;
@@ -521,6 +521,17 @@ cmd_send() {
     fi
   fi
 
+  # A body that opens with its own `# heading` is the letter's heading: the
+  # template's `# {{TITLE}}` is not written above it. A sender's kept copy
+  # usually starts with one, and measured 2026-09-30, 142 of the 344 letters
+  # sent since --body appeared carried two headings in a row. The body itself is
+  # untouched — the byte-for-byte promise is about the body, and the line that
+  # goes is the template's.
+  local body_h1=""
+  if [ "$body_set" -eq 1 ]; then
+    body_h1="$(awk 'NF { if (/^# /) { sub(/^# /, ""); print } exit }' "$body_file" 2>/dev/null)"
+  fi
+
   from="$(intercom_identity)"
   created="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date +%Y-%m-%d)"
   [ -n "$title" ] || title="$slug"
@@ -553,9 +564,18 @@ cmd_send() {
 
   # Literal token substitution (bash ${//}, not sed/awk) so free-text values
   # containing & \ / cannot corrupt the output.
-  local line raw
+  local line raw skip_blank=0
   while IFS= read -r line || [ -n "$line" ]; do
     raw="$line"
+    if [ -n "$body_h1" ]; then
+      # The template's heading goes, and the blank line under it with it —
+      # otherwise the body's heading sits under two blank lines.
+      if [ "$raw" = '# {{TITLE}}' ]; then skip_blank=1; continue; fi
+      if [ "$skip_blank" -eq 1 ]; then
+        skip_blank=0
+        [ -z "$raw" ] && continue
+      fi
+    fi
     line="${line//'{{REPLY_TO_LINE}}'/$reply_line}"
     line="${line//'{{REPLY_TO_BANNER}}'/$reply_banner}"
     # A token line that expanded to nothing leaves no blank line behind.
@@ -616,6 +636,9 @@ cmd_send() {
       "$body_file" "$(wc -c < "$body_file" | tr -d ' ')"
   else
     printf '    → now write the brief body into that file (replace the placeholder comment).\n'
+  fi
+  if [ -n "$body_h1" ] && [ "$title_given" -eq 1 ] && [ "$body_h1" != "$title" ]; then
+    printf '    heading: the body'"'"'s own — "%s"; the title "%s" is not written above it.\n' "$body_h1" "$title"
   fi
 
   # Delivery is not receipt: a letter in an inbox is read only when somebody

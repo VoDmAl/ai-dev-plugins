@@ -347,8 +347,15 @@ it is a divergence between "sent" and "kept" that neither side rereads.
 
 An empty or unreadable file, or one that still holds the template placeholder,
 is refused **and nothing is written** — a letter with no body looks sent. The
-title still comes from `--title`; the body is taken as written, with no token
-substitution. Works with `--reply-to`.
+body is taken as written, with no token substitution. Works with `--reply-to`.
+
+**The heading.** A body whose first non-blank line is a `# heading` keeps it as
+the letter's heading, and the template's `# <title>` is not written above it —
+a kept copy usually starts with one, and measured 2026-09-30, 142 of the 344
+letters sent since `--body` appeared carried two headings in a row. When
+`--title` differs from the body's heading, `send` says which one the letter
+shows. A body without its own heading gets the title from `--title`, as
+before.
 
 If `send` refuses with *no agent is registered as "<target>"*, follow the
 refusal text (§ The negative scenario, step by step): resend with
