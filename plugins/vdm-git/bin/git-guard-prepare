@@ -442,6 +442,74 @@ branch_safe=$(printf '%s' "$branch" \
   | sed -e 's|[^A-Za-z0-9_-]|-|g' -e 's|-\{2,\}|-|g' -e 's|^-||' -e 's|-$||')
 [ -z "$branch_safe" ] && branch_safe=detached
 
+# ------------------------------------------------ Syncthing conflict copies
+# Syncthing syncs working folders together with .git, and one repo is worked
+# from two machines at once (owner's decision, vdx DL #17, 2026-09-30). When
+# both machines write one file in .git, Syncthing keeps one version and lays
+# the other beside it as `*.sync-conflict-*`. Nobody sees it: a copy of a
+# branch ref can hold a commit that dropped out of the branch (hq,
+# 11.09), a copy of the index means the live index lost an update (vdx, 30.09).
+# A new commit on top of a dropped one is the harm, and this is the last moment
+# before it — so the prep refuses and names each copy. objects/ is not walked:
+# objects are immutable, and walking thousands of them would tax every prep.
+sync_dirs=$(git rev-parse --absolute-git-dir 2>/dev/null || true)
+sync_common=$(git rev-parse --git-common-dir 2>/dev/null || true)
+if [ -n "$sync_common" ]; then
+  case "$sync_common" in
+    /*) ;;
+    *)  sync_common=$(cd "$sync_common" 2>/dev/null && pwd -P || true) ;;
+  esac
+fi
+sync_found=""
+for gd in "$sync_common" "$sync_dirs"; do
+  [ -n "$gd" ] && [ -d "$gd" ] || continue
+  hits=$(find "$gd" -path "$gd/objects" -prune -o -name '*.sync-conflict-*' -print 2>/dev/null)
+  [ -n "$hits" ] && sync_found="$sync_found$hits
+"
+done
+sync_found=$(printf '%s' "$sync_found" | sed '/^$/d' | sort -u)
+if [ -n "$sync_found" ]; then
+  base="${sync_common:-$sync_dirs}"
+  {
+    echo "git-guard-prepare: ✗ Syncthing conflict copies inside .git — nothing prepared."
+    echo "  Two machines wrote the same file in .git; one version stayed, the other lies beside it:"
+    printf '%s\n' "$sync_found" | while IFS= read -r copy; do
+      [ -n "$copy" ] || continue
+      rel="${copy#"$base"/}"
+      echo "  • $rel"
+      case "$rel" in
+        refs/heads/*.sync-conflict-*)
+          ref_branch="${rel#refs/heads/}"; ref_branch="${ref_branch%%.sync-conflict-*}"
+          sha=$(head -n 1 "$copy" 2>/dev/null | tr -d '[:space:]')
+          if [ -n "$sha" ] && git cat-file -e "$sha^{commit}" 2>/dev/null; then
+            short=$(git rev-parse --short "$sha")
+            subject=$(git log -1 --format=%s "$sha" 2>/dev/null)
+            if ! git show-ref --verify --quiet "refs/heads/$ref_branch"; then
+              echo "      → commit $short \"$subject\" — branch $ref_branch no longer exists; recover it: git branch <name> $short, then delete the copy"
+            elif git merge-base --is-ancestor "$sha" "refs/heads/$ref_branch" 2>/dev/null; then
+              echo "      → commit $short \"$subject\" — in $ref_branch: nothing lost; delete the copy"
+            else
+              echo "      → commit $short \"$subject\" — not in $ref_branch: a dropped commit. Bring it back before a new one lands on top:"
+              echo "          git cherry-pick $short   (or git merge $short), then delete the copy"
+            fi
+          else
+            echo "      → holds no commit this repository knows; compare it with refs/heads/$ref_branch, then delete it"
+          fi
+          ;;
+        index.sync-conflict-*|worktrees/*/index.sync-conflict-*)
+          echo "      → a copy of the index: the live index may have lost an update. Compare \`git status\` with what"
+          echo "        you staged, \`git reset -- <path>\` an entry that should not be there, then delete the copy"
+          ;;
+        *)
+          echo "      → compare it with ${rel%%.sync-conflict-*}, keep the right version, then delete the copy"
+          ;;
+      esac
+    done
+    echo "  Then run git-guard-prepare again."
+  } >&2
+  exit 1
+fi
+
 # ---------------------------------------------------------------- path list
 #
 # Explicit `-- <paths>` wins; otherwise snapshot the index.

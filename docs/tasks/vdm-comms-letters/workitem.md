@@ -2,7 +2,7 @@
 title: "vdm-comms: скилл писем — что писать в исходящем, и чеклист в момент черновика"
 slug: vdm-comms-letters
 description: "Скилл писем в vdm-comms с хуком-чеклистом при создании черновика; регистр и язык — параметры проекта"
-status: in-progress
+status: dormant
 session-type: prd-prep
 created: 2026-09-28
 last-updated: 2026-09-30

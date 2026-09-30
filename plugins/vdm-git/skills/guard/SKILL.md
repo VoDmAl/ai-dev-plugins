@@ -176,6 +176,18 @@ staged hunks, and falling back to the bare form would resurrect the defect
 above. Both degradations are silent; the refusal is loud and is fixed by one
 `git add` (or `git checkout --`). Do not work around it.
 
+**Syncthing conflict copies inside `.git`.** When a repository is synced between
+machines together with its `.git`, and both machines write the same file there,
+one version stays and the other lies beside it as `*.sync-conflict-*`. Nothing
+announces it: a copy of a branch ref can hold a commit that has dropped out of
+the branch, a copy of the index means the live index lost an update. The helper
+refuses while any such copy exists (outside `objects/`), and names each one. For
+a copy of a branch ref it names the commit and says whether it is in the branch;
+a commit that is not is a dropped commit — bring it back (`git cherry-pick`)
+before a new commit lands on top of it. For a copy of the index: compare
+`git status` with what was staged, fix the entry, delete the copy. Then prepare
+again. Field cases and the owner's decision: vdx, 2026-09-30.
+
 **Committing a subset.** When you want fewer paths than are staged, name them:
 
     git-guard-prepare "[+] Add foo helper" -- src/foo.ts

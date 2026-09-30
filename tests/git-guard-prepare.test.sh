@@ -741,6 +741,74 @@ do
   fi
 done
 
+printf '\n=== Syncthing conflict copies inside .git ===\n'
+# vdx, 2026-09-30 (owner's decision, vdx DL #17): Syncthing syncs the working
+# folders WITH .git, and the owner works in one repo from two machines at once.
+# When both write one file in .git, one version stays and the other is laid
+# beside it as `*.sync-conflict-*`. Field cases: hq 11.09 — a copy of
+# refs/heads/main held commit b15fb45, which had dropped out of main; vdx 30.09
+# — a copy of the index, and the live index kept a stale entry. Nobody saw
+# either. A new commit on top of a dropped one is the harm, so the prep refuses.
+nothing_prepared() { [ -z "$(find "$1/tmp" -name '*-commit-*' 2>/dev/null)" ]; }
+
+d=$(new_repo syncref); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+br=$(git symbolic-ref --short HEAD)
+printf 'x\n' > lost.txt; git add lost.txt; git commit -qm "the lost one"
+lost=$(git rev-parse HEAD)
+git reset -q --hard HEAD~1          # what a lost race leaves: the branch no longer has it
+printf '%s\n' "$lost" > ".git/refs/heads/$br.sync-conflict-20260911-095658-N223K43"
+printf 'c\n' > c.txt; git add c.txt
+out=$("$PREP" "[*] on top" 2>&1); rc=$?
+expect_exit "a conflict copy of a branch ref → refused" 1 "$rc"
+nothing_prepared "$d" && ok "…and nothing is prepared" || bad "…and nothing is prepared" "$(find "$d/tmp" -name '*-commit-*')"
+expect_says "…the copy is named" "$out" "$br.sync-conflict-20260911-095658-N223K43"
+expect_says "…with the commit it holds" "$out" "$(git rev-parse --short "$lost")"
+expect_says "…and its subject" "$out" "the lost one"
+expect_says "…which is not in the branch" "$out" "not in $br"
+expect_says "…and how to bring it back before a new commit lands on top" "$out" "cherry-pick"
+
+d=$(new_repo syncrefin); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+br=$(git symbolic-ref --short HEAD)
+git rev-parse HEAD > ".git/refs/heads/$br.sync-conflict-20260930-100000-N223K43"
+printf 'c\n' > c.txt; git add c.txt
+out=$("$PREP" "[*] on top" 2>&1); rc=$?
+expect_exit "a copy whose commit IS in the branch is still refused — the copy has to go" 1 "$rc"
+expect_says "…and says the commit is in the branch" "$out" "in $br"
+expect_not_says "…without calling it lost" "$out" "not in $br"
+
+d=$(new_repo syncindex); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+cp .git/index ".git/index.sync-conflict-20260930-120918-N223K43"
+printf 'c\n' > c.txt; git add c.txt
+out=$("$PREP" "[*] on top" 2>&1); rc=$?
+expect_exit "a conflict copy of the index → refused" 1 "$rc"
+expect_says "…named" "$out" "index.sync-conflict-20260930-120918-N223K43"
+expect_says "…with how to check the live index" "$out" "git status"
+nothing_prepared "$d" && ok "…and nothing is prepared" || bad "…and nothing is prepared"
+rm -f .git/index.sync-conflict-*
+out=$("$PREP" "[*] on top" 2>&1); rc=$?
+expect_exit "the copy removed → the prep works as before" 0 "$rc"
+expect_says "…and emits the command" "$out" "git commit -F"
+
+d=$(new_repo syncobj); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+mkdir -p .git/objects/aa && : > ".git/objects/aa/bb.sync-conflict-20260930-100000-N223K43"
+printf 'c\n' > c.txt; git add c.txt
+out=$("$PREP" "[*] on top" 2>&1); rc=$?
+expect_exit "objects/ is not walked — immutable, and thousands of files" 0 "$rc"
+
+d=$(new_repo syncwt); cd "$d" || exit 1
+br=$(git symbolic-ref --short HEAD)
+git worktree add -q -b side "$TMP/syncwt-side" 2>/dev/null
+git rev-parse HEAD > ".git/refs/heads/$br.sync-conflict-20260930-100000-N223K43"
+cd "$TMP/syncwt-side" || exit 1
+mkdir -p tmp; export TMPDIR="$TMP/syncwt-side/tmp"
+printf 'c\n' > c.txt; git add c.txt
+out=$("$PREP" "[*] on top" 2>&1); rc=$?
+expect_exit "from a linked worktree, a copy in the common .git is seen too" 1 "$rc"
+
 # ---------------------------------------------------------------------------
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
