@@ -2,7 +2,7 @@
 title: "git-guard-prepare: отказ, пока в .git лежат конфликтные копии Syncthing"
 slug: git-guard-sync-conflicts
 description: "Подготовка коммита отказывает и называет копии *.sync-conflict-* в .git; для копии ссылки — выпавший коммит"
-status: in-progress
+status: done
 session-type: prd-work
 created: 2026-09-30
 last-updated: 2026-09-30
@@ -11,6 +11,8 @@ relates-to:
 ---
 
 # git-guard-prepare: отказ, пока в .git лежат конфликтные копии Syncthing
+
+> **Закрыт 2026-09-30.** `40db4d3` (vdm-git 2.16.0), ответ vdx отправлен.
 
 > Письмо vdx `git-guard-sync-conflicts` (2026-09-30), решение владельца — vdx DL #17. Syncthing
 > синхронизирует `~/AI Projects` и `~/PhpstormProjects` вместе с `.git`, владелец работает в одном репо с
@@ -32,10 +34,10 @@ relates-to:
 
 ## Текущая модель
 
-Состояние на 2026-09-30, до кода:
+Состояние на 2026-09-30, vdm-git 2.16.0 — кристалл закрыт:
 
-- `git-guard-prepare` (`plugins/vdm-git/bin/`, 680 строк) отказывает при пустом сообщении, вне репозитория,
-  при расхождении индекса и рабочего дерева на путях, при U+FFFD. Про Syncthing не знает.
+- `git-guard-prepare` отказывает при конфликтных копиях Syncthing в `.git` (вне `objects/`), называет каждую;
+  для копии ссылки — коммит и «в ветке / не в ветке». Тесты: `tests/git-guard-prepare.test.sh` 118.
 - **Замер 2026-09-30 на этой машине (`executor`)**: копий `*.sync-conflict-*` внутри `.git` нет ни в
   одном репозитории `~/AI Projects/*` и `~/PhpstormProjects/**`. vdx насчитал 22 копии в 6 репо на машине
   lft — это их замер, не проверял.
@@ -67,7 +69,7 @@ relates-to:
 - [x] Red-тесты в `tests/git-guard-prepare.test.sh`: копия ссылки с выпавшим коммитом, с коммитом в ветке, копия индекса, копий нет — как раньше → +14, плюс `objects/` и worktree
 - [x] Проверка в `git-guard-prepare`; `objects/` не обходится → vdm-git 2.16.0; 11–13 мс на `.git` этого репо и hq
 - [x] Бамп vdm-git, marketplace, `PROJECT_CHANGELOG.md`, дрейф `docs/model/suite.md`
-- [ ] Ответить vdx командой `reply` после push; забрать письмо
+- [x] Ответить vdx командой `reply` после push; забрать письмо → 2026-09-30, `vdx/git-guard-sync-conflicts-outcome`; бриф заархивирован тем же `reply`
 
 ## References
 

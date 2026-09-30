@@ -385,7 +385,7 @@ intercom, свой кристалл при старте.
 - [ ] Проверки при сохранении черновика, которые механически возможны: вопросы в тексте без раздела «Знаем сами» (hq) — решить, линтер или только скилл
 - [x] Заготовка черновика под канал (executor п. 2): шаблон или команда, шапка по `letter-form` проекта, `goal:`, пометка черновика → `comms-new.py`, vdm-comms 0.10.0
 - [x] Письмо hq `letters-connect-dont-relay` (DL #11): § 1, § 5, § 12, строка 15 чеклиста; red-тест; vdm-comms 0.16.1 → сделано
-- [ ] Ответить hq на `letters-connect-dont-relay` командой `reply` после push: версия и где легло
+- [x] Ответить hq на `letters-connect-dont-relay` командой `reply` после push: версия и где легло → 2026-09-30, `hq/letters-connect-dont-relay-outcome`
 - [ ] Sidetrack #1: решить судьбу `check-inbox-applied.py`
 - [ ] Бамп vdm-comms, `PROJECT_CHANGELOG.md`, `docs/model/suite.md`
 - [ ] Ответить program, hq, product: что где легло, в какой версии; забрать их письма
