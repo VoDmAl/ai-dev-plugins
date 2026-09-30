@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import hashlib
 import importlib.util
 import json
 import os
@@ -73,6 +74,58 @@ PENDING = load_pending()
 ID_RE = PENDING.BLOCK_ID_RE
 ID_FIRST = "abcdefghijklmnopqrstuvwxyz"
 ID_REST = ID_FIRST + "0123456789"
+
+
+REBUILD = '"${CLAUDE_PLUGIN_ROOT}/scripts/comms-now.sh"'
+
+
+def homes_digest(items, drafts):
+    """What now.md was built from, as a short digest: every open item's line and
+    every unsent draft. By content, not by time — a touch changes nothing here, a
+    box ticked in Obsidian does (DL #9)."""
+    rows = sorted("%s\t%s" % (i["file"], (i.get("line") or "").strip()) for i in items)
+    rows += sorted("draft\t%s" % d["file"] for d in drafts)
+    return hashlib.sha1("\n".join(rows).encode("utf-8")).hexdigest()[:12]
+
+
+def frontmatter_of(path):
+    """→ {key: value} of the scalar keys in now.md's frontmatter, {} when absent."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read(4096)
+    except OSError:
+        return {}
+    m = re.match(r"---\n(.*?)\n---", text, re.S)
+    out = {}
+    for line in (m.group(1).splitlines() if m else []):
+        if ":" in line:
+            k, v = line.split(":", 1)
+            out[k.strip()] = v.strip()
+    return out
+
+
+def check(root, cfg, now_cfg, today, file_path=None):
+    """Silent (0) when now.md is current or the file cannot feed it; one line and
+    1 otherwise. The hooks call this — they never rebuild (DL #1)."""
+    if file_path:
+        real = os.path.abspath(file_path)
+        feeds = real in set(PENDING.pending_files(root, cfg)) or (
+            (os.sep + "comms" + os.sep) in real and real.endswith(".md"))
+        if not feeds:
+            return 0
+    out_rel = str(now_cfg.get("path") or DEFAULT_PATH)
+    out_path = os.path.join(root, out_rel)
+    if not os.path.isfile(out_path):
+        print("comms-now: %s is not built yet — build it: %s" % (out_rel, REBUILD))
+        return 1
+    front = frontmatter_of(out_path)
+    items = PENDING.collect(root, cfg, today)
+    drafts = PENDING.unsent_drafts(root, cfg, today, min_age=0)
+    if front.get("homes") == homes_digest(items, drafts):
+        return 0
+    print("comms-now: %s is behind the homes (built %s) — rebuild it: %s"
+          % (out_rel, front.get("built") or "?", REBUILD))
+    return 1
 
 
 def new_id(taken, rng):
@@ -393,7 +446,9 @@ def build(root, cfg, today, now_cfg, pending):
             others.setdefault(owner_label(item), []).append((due or datetime.date.max, render(item)))
     mine.sort(key=lambda t: (t[0], t[1]))
     mine_lines = [t[2] for t in mine]
-    for draft in pending.unsent_drafts(root, cfg, today, min_age=0):
+    drafts = pending.unsent_drafts(root, cfg, today, min_age=0)
+    digest = homes_digest(items, drafts)
+    for draft in drafts:
         name = os.path.basename(draft["file"])[:-3] if draft["file"].endswith(".md") else draft["file"]
         mine_lines.append("- ✉ %s: %s" % (lab["now-draft"], link(style, here, root, draft["file"], name)))
 
@@ -487,7 +542,7 @@ def build(root, cfg, today, now_cfg, pending):
         body.append("")
 
     built = datetime.datetime.now().astimezone().replace(microsecond=0).isoformat()
-    front = ["---", "built: %s" % built, "your-move: %d" % len(mine_lines), "---", ""]
+    front = ["---", "built: %s" % built, "your-move: %d" % len(mine_lines), "homes: %s" % digest, "---", ""]
     return out_path, "\n".join(front + body).rstrip("\n") + "\n", len(mine_lines)
 
 
@@ -500,10 +555,18 @@ def main(argv=None):
     ap.add_argument("--assign-ids", action="store_true",
                     help="mark every open item without a block id — the backlog, on the owner's word")
     ap.add_argument("--dry-run", action="store_true", help="with --assign-ids: say what would change, write nothing")
+    ap.add_argument("--check", action="store_true",
+                    help="is now.md behind the homes? silent when current or not configured; for the hooks")
+    ap.add_argument("--file", default=None, help="with --check: the file just written; silent unless it feeds now.md")
     args = ap.parse_args(argv)
 
-    root = os.path.abspath(args.project_root or cfgmod.project_root_of(os.getcwd()))
+    root = os.path.abspath(args.project_root or cfgmod.project_root_of(args.file or os.getcwd()))
     cfg, err = cfgmod.load(root)
+    if args.check:
+        now_cfg = cfg.get("now") if not err else None
+        if not isinstance(now_cfg, dict) or not now_cfg.get("owner") or not cfg.get("pending-paths"):
+            return 0
+        return check(root, cfg, now_cfg, cfgmod.today(), args.file)
     if err:
         print("comms-now: %s — nothing built." % err, file=sys.stderr)
         return 2

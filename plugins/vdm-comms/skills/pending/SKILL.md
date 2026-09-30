@@ -235,9 +235,16 @@ cannot be reached the build still runs and the file says what is missing.
 Build it with `"${CLAUDE_PLUGIN_ROOT}/scripts/comms-now.sh"` (`--stdout` to look
 without writing). It is a command, not a hook — the plugin's hooks write no
 project files: the collector runs it after a pass (`after_pass` of the project),
-and a session runs it after editing a home. The frontmatter carries `built:` and
-`your-move:`, which the session-start line reads. `now.md` is never edited by
-hand: an item's text lives in its home.
+and a session runs it when told `now.md` is behind. The frontmatter carries
+`built:` and `your-move:`, which the session-start line reads, and `homes:` — a
+digest of the open items and drafts it was built from. `now.md` is never edited
+by hand: an item's text lives in its home.
+
+**Behind.** After a write that changed the items of a home, the hook says
+`now.md is behind the homes — rebuild it`; session start says the same when the
+homes changed outside a session (a box ticked in Obsidian). Rebuild when told.
+The comparison is by content: touching a file, or editing prose that holds no
+item, is not a change. `comms-now.sh --check` asks the same question by hand.
 
 **Block ids.** An item links to its line when the line ends with a block id —
 `^a3f`: a letter, then two letters or digits, unique in the project, so the

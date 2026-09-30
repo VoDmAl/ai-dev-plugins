@@ -44,10 +44,18 @@ LINTER="$SELF_DIR/comms-pending.py"
 
 out=$(python3 "$LINTER" --brief --project-root "$root" 2>/dev/null)
 rc=$?
-[ "$rc" -eq 1 ] || exit 0
-[ -n "$out" ] || exit 0
 
-printf '%s\n' "$out"
-printf '        Who owes what: /vdm-comms:pending — or by owner:\n'
-printf '        "${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh" --owner\n'
+# The live now.md falls behind outside any session too — a box ticked in
+# Obsidian, a pass that could not build. Session start is where that is said.
+nowline=""
+if [ -f "$SELF_DIR/comms-now.py" ]; then
+  nowline=$(python3 "$SELF_DIR/comms-now.py" --check --project-root "$root" 2>/dev/null)
+fi
+
+if [ "$rc" -eq 1 ] && [ -n "$out" ]; then
+  printf '%s\n' "$out"
+  printf '        Who owes what: /vdm-comms:pending — or by owner:\n'
+  printf '        "${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh" --owner\n'
+fi
+[ -n "$nowline" ] && printf '%s\n' "$nowline"
 exit 0

@@ -123,6 +123,15 @@ case "$rc" in
   *)   pending_unverified "the linter exited $rc without reaching a verdict" ;;
 esac
 
+# The live now.md, when the project has one: is it behind what was just written?
+# Said, never done — the plugin's hooks write no project files (workitem
+# vdm-comms-live-now, DL #1, #9); the assistant runs the rebuild. A reminder, so
+# it fails open: no builder, no line.
+stale=""
+if [ -f "$SELF_DIR/comms-now.py" ]; then
+  stale=$(python3 "$SELF_DIR/comms-now.py" --check --file "$file_path" 2>/dev/null)
+fi
+
 if [ "$rc" -eq 1 ]; then
   {
     printf '🚫 comms-pending: new open items outside the contract:\n'
@@ -131,8 +140,16 @@ if [ "$rc" -eq 1 ]; then
     printf 'An item needs an owner and a date to be a signal rather than a note.\n'
     printf 'Print the contract with:\n'
     printf '  "${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh" --print-contract\n'
+    [ -n "$stale" ] && printf '\n%s\n' "$stale"
   } >&2
   exit 2
 fi
 
+if [ -n "$stale" ]; then
+  printf '%s' "$stale" | python3 -c '
+import json, sys
+print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse",
+    "additionalContext": sys.stdin.read()}}, ensure_ascii=False))
+' 2>/dev/null || printf '%s\n' "$stale" >&2
+fi
 exit 0

@@ -347,6 +347,62 @@ sed -i.bak 's/ ^q1w$//' "$F2/tracks/gamma/index.md" && rm -f "$F2/tracks/gamma/i
 out="$(python3 "$PEND" --lint "$F2/tracks/gamma/index.md" 2>&1)"; rc=$?
 expect_exit "a project without now.md is not asked for ids — the same file lints clean" 0 "$rc"
 
+echo "== now.md behind the homes: said by the hook and at session start, never rebuilt by them =="
+# DL #1, #9: the plugin's hooks write no project files. They compare what now.md
+# was built from — a digest of the open items and drafts in its frontmatter —
+# with the homes as they are, and say "behind" with the command that rebuilds.
+# By content, not by time: a touch is not a change, an edit of prose is not one
+# either, and a box ticked in Obsidian is.
+F3="$TMP/stale"; mkdir -p "$F3/.claude" "$F3/tracks/delta/comms"
+git -C "$F3" init -q
+printf '# Delta\n\nПроза трека.\n\n## Наши действия\n\n- [ ] **владелец** — пункт один ⏰ 2026-10-06 ^s1a\n- [ ] **product** — пункт два ⏰ 2026-10-07 ^s2b\n' > "$F3/tracks/delta/index.md"
+printf '{"comms": {"pending-paths": ["tracks/*/index.md"], "pending-sections": {"action": ["Наши действия"]}, "owners": ["владелец", "product"], "now": {"owner": ["владелец"], "echelon": false}}}\n' > "$F3/.claude/vdm-plugins.json"
+chk() { python3 "$NOW" --project-root "$F3" --check "$@" 2>&1; }
+out="$(chk)"; rc=$?
+expect_exit "no now.md yet — the check says so" 1 "$rc"
+expect_says "…with the command that builds it" "$out" "comms-now.sh"
+python3 "$NOW" --project-root "$F3" >/dev/null 2>&1
+expect_says "the build records what it was built from" "$(cat "$F3/signals/now.md")" "homes: "
+out="$(chk)"; rc=$?
+expect_exit "fresh — the check is silent, exit 0" 0 "$rc"
+[ -z "$out" ] && ok "…and prints nothing" || bad "…and prints nothing" "$out"
+touch "$F3/tracks/delta/index.md"
+out="$(chk)"; rc=$?
+[ "$rc" -eq 0 ] && [ -z "$out" ] && ok "a touch without a change is not a change" || bad "a touch without a change is not a change" "rc=$rc $out"
+sed -i.bak 's/Проза трека./Проза трека, поправленная./' "$F3/tracks/delta/index.md" && rm -f "$F3/tracks/delta/index.md.bak"
+out="$(chk)"; rc=$?
+[ "$rc" -eq 0 ] && [ -z "$out" ] && ok "an edit of prose, no item touched, is not behind" || bad "an edit of prose, no item touched, is not behind" "rc=$rc $out"
+sed -i.bak 's/^- \[ \] \*\*владелец\*\* — пункт один/- [x] **владелец** — пункт один/' "$F3/tracks/delta/index.md" && rm -f "$F3/tracks/delta/index.md.bak"
+out="$(chk)"; rc=$?
+expect_exit "a box ticked in the home — now.md is behind" 1 "$rc"
+expect_says "…the check says so" "$out" "behind"
+expect_says "…with the command that rebuilds it" "$out" "comms-now.sh"
+python3 "$NOW" --project-root "$F3" >/dev/null 2>&1
+printf -- '---\ndraft: true\n---\n\nТекст.\n' > "$F3/tracks/delta/comms/2026-09-30-x-out.md"
+out="$(chk)"; rc=$?
+expect_exit "a new unsent draft — behind too: the owner's move changed" 1 "$rc"
+# While now.md IS behind: a write to a file that feeds nothing must still be
+# silent — otherwise every note in the tree would repeat the same line.
+printf '# Notes\n' > "$F3/tracks/delta/notes.md"
+out="$(chk --file "$F3/tracks/delta/notes.md")"; rc=$?
+[ "$rc" -eq 0 ] && [ -z "$out" ] && ok "--file on a file that feeds no now.md is silent, even with now.md behind" || bad "--file on a file that feeds no now.md is silent, even with now.md behind" "rc=$rc $out"
+python3 "$NOW" --project-root "$F3" >/dev/null 2>&1
+
+HOOK="$P/scripts/comms-pending.sh"
+payload() { python3 -c 'import json,sys; print(json.dumps({"tool_name": "Edit", "tool_input": {"file_path": sys.argv[1]}}))' "$1"; }
+sed -i.bak 's/^- \[ \] \*\*product\*\* — пункт два/- [x] **product** — пункт два/' "$F3/tracks/delta/index.md" && rm -f "$F3/tracks/delta/index.md.bak"
+out="$(payload "$F3/tracks/delta/index.md" | (cd "$F3" && bash "$HOOK" --hook) 2>/dev/null)"; rc=$?
+expect_exit "the hook after an edit of a home does not block" 0 "$rc"
+if printf '%s' "$out" | python3 -c 'import json,sys; d=json.load(sys.stdin)["hookSpecificOutput"]; sys.exit(0 if d["hookEventName"]=="PostToolUse" and "behind" in d["additionalContext"] else 1)' 2>/dev/null; then
+  ok "…and tells the assistant now.md is behind, as additionalContext"
+else
+  bad "…and tells the assistant now.md is behind, as additionalContext" "stdout: ${out:-<empty>}"
+fi
+out="$(payload "$F3/tracks/delta/notes.md" | (cd "$F3" && bash "$HOOK" --hook) 2>&1)"
+[ -z "$out" ] && ok "the hook on a file that feeds no now.md says nothing" || bad "the hook on a file that feeds no now.md says nothing" "$out"
+out="$(cd "$F3" && printf '{}' | CLAUDE_PROJECT_DIR="$F3" bash "$P/scripts/comms-pending-check.sh" 2>&1)"
+expect_says "session start names a now.md that fell behind outside the session" "$out" "behind"
+
 echo "== english labels, markdown links =="
 cfg '{"owner": ["владелец"]}'
 python3 - "$FX/.claude/vdm-plugins.json" <<'EOF'
