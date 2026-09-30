@@ -38,8 +38,10 @@ from __future__ import annotations
 import argparse
 import datetime
 import importlib.util
+import json
 import os
 import re
+import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -90,6 +92,52 @@ def item_text(item):
     return ID_RE.sub("", item.get("text") or "").strip()
 
 
+SHORT_MAX = 200
+SHORT_MIN = 60
+# A sentence ends at . ! ? followed by a space; "15.09", "v1.2" inside a clause
+# do not end one, the space after the stop does. An initial — "Смирнов В. 30.09"
+# — does not end one either (measured on hq's homes, 2026-09-30).
+SENTENCE_END_RE = re.compile(r"(?<!\s[A-ZА-ЯЁ])(?<!^[A-ZА-ЯЁ])(?<!\([A-ZА-ЯЁ])[.!?…](?=\s)")
+
+
+def shorten(text, due=None):
+    """The start of an item, not its paragraph (owner, 2026-09-30, DL #8): the
+    first sentence, at most ~SHORT_MAX characters, cut at a word and marked «…».
+    The date is kept when it was in the part cut off; a code span or emphasis cut
+    in half is closed, so the cut does not leak markup into the next line."""
+    if len(text) <= SHORT_MAX and not SENTENCE_END_RE.search(text[:-1] if text else ""):
+        return text
+    # The first sentence — unless it is too short to say what the item is about
+    # ("⏰ Отправлено 21.09."), then up to the next one, within SHORT_MAX.
+    end = None
+    for m in SENTENCE_END_RE.finditer(text):
+        if m.end() > SHORT_MAX:
+            break
+        end = m.end()
+        if end >= SHORT_MIN:
+            break
+    if end and end >= SHORT_MIN and end < len(text.rstrip()):
+        cut = text[:end]
+    elif len(text) > SHORT_MAX:
+        cut = text[:SHORT_MAX]
+        if " " in cut:
+            cut = cut[:cut.rfind(" ")]
+    else:
+        return text
+    cut = cut.rstrip()
+    if cut.count("`") % 2:
+        cut += "`"
+    stars = cut.count("*") - 2 * cut.count("**")
+    if cut.count("**") % 2:
+        cut += "**"
+    if stars % 2:
+        cut += "*"
+    cut += " …"
+    if due and due.isoformat() not in cut:
+        cut += " ⏰ %s" % due.isoformat()
+    return cut
+
+
 def due_of(item):
     value = item.get("due")
     if not value:
@@ -98,6 +146,106 @@ def due_of(item):
         return datetime.date.fromisoformat(str(value))
     except ValueError:
         return None
+
+
+MSK = datetime.timezone(datetime.timedelta(hours=3))
+
+
+def echelon_bin(now_cfg):
+    """→ path of echelon's `bin/echelon`, or None when the project switched it off.
+
+    `ECHELON_BIN` wins (tests, an unusual install); then `comms.now.echelon` as a
+    path; then `ECHELON_HOME` — echelon's own convention, the one its sheet skill
+    uses — with its default checkout."""
+    setting = now_cfg.get("echelon", True)
+    if setting is False:
+        return None
+    if os.environ.get("ECHELON_BIN"):
+        return os.environ["ECHELON_BIN"]
+    if isinstance(setting, str) and setting.strip():
+        return os.path.expanduser(setting.strip())
+    home = os.environ.get("ECHELON_HOME") or os.path.join(os.path.expanduser("~"), "AI Projects", "echelon")
+    return os.path.join(home, "bin", "echelon")
+
+
+def echelon_json(binary, command, root):
+    """→ (data, None) or (None, why). echelon exits 0 on an incomplete slice too;
+    incompleteness is in `complete` / `errors`, and the build shows it."""
+    if not (os.path.isfile(binary) and os.access(binary, os.X_OK)):
+        return None, "no %s" % binary
+    try:
+        run = subprocess.run([binary, command, "--project", root, "--json"],
+                             capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, "%s %s: %s" % (os.path.basename(binary), command, exc)
+    if run.returncode != 0:
+        tail = (run.stderr or "").strip().splitlines()
+        return None, "%s %s: %s" % (os.path.basename(binary), command, tail[-1] if tail else "exit %d" % run.returncode)
+    try:
+        return json.loads(run.stdout), None
+    except ValueError:
+        return None, "%s %s: not JSON" % (os.path.basename(binary), command)
+
+
+def mentions(ref, text):
+    return re.search(r"(?<![\w-])%s(?![\w-])" % re.escape(ref), text or "") is not None
+
+
+def event_line(event, lab, today):
+    """`- 🗓 today 15:00–16:00 (MSK 18:00–19:00) **Title**` — the machine's zone
+    first, Moscow in brackets when the machine is elsewhere (the sheet's rule).
+    The project's meetings in bold, the rest dimmed; a cancelled one struck."""
+    try:
+        start = datetime.datetime.fromisoformat(event["start"]).astimezone()
+        end = datetime.datetime.fromisoformat(event["end"]).astimezone() if event.get("end") else None
+    except (KeyError, TypeError, ValueError):
+        return None
+    span = start.strftime("%H:%M") + ("–" + end.strftime("%H:%M") if end else "")
+    if start.utcoffset() != datetime.timedelta(hours=3):
+        m_start = start.astimezone(MSK)
+        m_span = m_start.strftime("%H:%M") + ("–" + end.astimezone(MSK).strftime("%H:%M") if end else "")
+        span += " (%s %s)" % (lab["now-msk"], m_span)
+    title = str(event.get("title") or "").strip()
+    if event.get("canceled"):
+        title = "~~%s~~" % title
+    elif event.get("relevant"):
+        title = "**%s**" % title
+    else:
+        title = "_%s_" % title
+    day = start.date()
+    if day == today:
+        when = lab["now-today"]
+    elif day == today + datetime.timedelta(days=1):
+        when = lab["now-tomorrow"]
+    else:
+        when = day.isoformat()
+    return start, "- 🗓 %s %s %s" % (when, span, title)
+
+
+def task_line(task):
+    """One line for an echelon task. A Jira key or an MR is its `ref` beside the
+    title; where the title already says the ref — a letter's subject is both, a
+    chat's title names the chat — it is said once. The link is the `url`; a chat
+    without one (anything but a Telegram supergroup) links to its anchor in the
+    project's mirror, which Obsidian resolves by name (echelon, 2026-09-30)."""
+    ref = str(task.get("ref") or "").strip()
+    title = str(task.get("title") or "").strip()
+    url = str(task.get("url") or "").strip()
+    mirror = str(task.get("mirror") or "").strip()
+    if ref and title and ref not in title:
+        label, rest = ref, " · " + title
+    else:
+        label, rest = title or ref, ""
+    if url:
+        head = "[%s](%s)" % (label, url)
+    elif mirror:
+        head = "[[%s|%s]]" % (mirror, label)
+    else:
+        head = label
+    line = "- ↗ %s%s" % (head, rest)
+    if task.get("why"):
+        line += " — %s" % task["why"]
+    return line
 
 
 def old_replies(path):
@@ -152,7 +300,7 @@ def build(root, cfg, today, now_cfg, pending):
 
     def render(item, suffix=""):
         bid = block_id(item)
-        text = item_text(item)
+        text = shorten(item_text(item), due_of(item))
         if bid:
             line = "- %s · %s · %s" % (link(style, here, root, item["file"], bid, bid), home_of(item), text)
         else:
@@ -189,7 +337,38 @@ def build(root, cfg, today, now_cfg, pending):
         name = os.path.basename(draft["file"])[:-3] if draft["file"].endswith(".md") else draft["file"]
         mine_lines.append("- ✉ %s: %s" % (lab["now-draft"], link(style, here, root, draft["file"], name)))
 
-    soon_lines = []
+    # echelon: the owner's tasks bypass the filter (ТЗ §2), and the calendar
+    # fills «today and tomorrow». A task an owner's home item already carries is
+    # not doubled — the home's text is the session's, and richer.
+    notes_mine, notes_soon, events = [], [], []
+    binary = echelon_bin(now_cfg)
+    if binary:
+        owner_texts = [item_text(i) for i in items if is_mine(i)]
+        mine_data, why = echelon_json(binary, "mine", root)
+        soon_data, why_soon = echelon_json(binary, "soon", root)
+        if why and why_soon:
+            notes_mine.append("- ⚠ " + lab["now-echelon-missing"] % {"why": why})
+        if mine_data is not None:
+            if mine_data.get("complete") is False and mine_data.get("errors"):
+                notes_mine.append("- ⚠ " + lab["now-incomplete"] % {"errors": "; ".join(map(str, mine_data["errors"]))})
+            for task in mine_data.get("items") or []:
+                ref = str(task.get("ref") or "")
+                if task.get("turn") == "owner":
+                    if ref and any(mentions(ref, t) for t in owner_texts):
+                        continue
+                    mine_lines.append(task_line(task))
+                else:
+                    others.setdefault(lab["now-echelon-others"], []).append((datetime.date.max, task_line(task)))
+        if soon_data is not None:
+            if soon_data.get("complete") is False and soon_data.get("errors"):
+                notes_soon.append("- ⚠ " + lab["now-incomplete"] % {"errors": "; ".join(map(str, soon_data["errors"]))})
+            for event in soon_data.get("events") or []:
+                got = event_line(event, lab, today)
+                if got:
+                    events.append(got)
+    events.sort(key=lambda t: t[0])
+
+    soon_lines = [line for _, line in events]
     for item in sorted(items, key=lambda i: (due_of(i) or datetime.date.max)):
         due = due_of(item)
         if due == today:
@@ -219,8 +398,8 @@ def build(root, cfg, today, now_cfg, pending):
                 placed.add(m.group(1))
         return res
 
-    sections = [("now-mine", with_replies(mine_lines))]
-    sections.append(("now-soon", with_replies(soon_lines)))
+    sections = [("now-mine", notes_mine + with_replies(mine_lines))]
+    sections.append(("now-soon", notes_soon + with_replies(soon_lines)))
     other_lines = []
     for owner in sorted(others, key=lambda o: (o in (lab["now-us"], lab["now-no-owner"]), pending.fold(o))):
         other_lines.append("### %s" % owner)

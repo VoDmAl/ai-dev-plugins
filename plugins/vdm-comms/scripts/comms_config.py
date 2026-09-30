@@ -34,7 +34,8 @@ Config lives in `.claude/vdm-plugins.json` (or `.qwen/…`) under `comms`:
                       over the default key by key       (default {"email": ["subject"]})
     now               the live signals/now.md (comms-now.py): {"owner": [names
                       that mean the owner], "instructions": path, "path":
-                      output, default "signals/now.md"}  (default: none -> off)
+                      output, default "signals/now.md", "echelon": false | path
+                      to its bin/echelon}                 (default: none -> off)
     enabled           false switches the whole plugin off    (default true)
 
 Only what genuinely differed between the three field repositories is
@@ -139,13 +140,17 @@ LABELS = {
         "now-mine": "Your move",
         "now-soon": "Today and tomorrow",
         "now-others": "Led by others",
-        "now-lifted": "overdue since %(due)s, was %(owner)s's",
+        "now-lifted": "overdue since %(due)s · %(owner)s",
         "now-draft": "draft not sent",
         "now-us": "us",
         "now-no-owner": "no owner",
         "now-today": "today",
         "now-tomorrow": "tomorrow",
         "now-empty": "nothing",
+        "now-echelon-missing": "echelon not reached (%(why)s) — no calendar and no tasks from it in this build",
+        "now-incomplete": "echelon's collection is incomplete: %(errors)s",
+        "now-echelon-others": "echelon: waiting for others",
+        "now-msk": "MSK",
     },
     "ru": {
         "col-date": "Дата",
@@ -171,13 +176,17 @@ LABELS = {
         "now-mine": "Твой ход",
         "now-soon": "Сегодня и завтра",
         "now-others": "Ведут другие",
-        "now-lifted": "срок %(due)s прошёл, вёл %(owner)s",
+        "now-lifted": "срок %(due)s прошёл · %(owner)s",
         "now-draft": "черновик не отправлен",
         "now-us": "мы",
         "now-no-owner": "без владельца",
         "now-today": "сегодня",
         "now-tomorrow": "завтра",
         "now-empty": "пусто",
+        "now-echelon-missing": "echelon недоступен (%(why)s) — календаря и задач от него в этой сборке нет",
+        "now-incomplete": "сбор echelon неполон: %(errors)s",
+        "now-echelon-others": "echelon: ждут других",
+        "now-msk": "МСК",
     },
 }
 

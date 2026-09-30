@@ -215,9 +215,22 @@ What goes where:
 
 - **Your move** — items owned by the owner; another owner's item whose date has
   passed, lifted and saying whose it was; every unsent draft, since what goes out
-  in the owner's name waits for the owner.
-- **Today and tomorrow** — every item due on those two days.
+  in the owner's name waits for the owner; and the collector's tasks on the
+  owner's turn (`echelon mine`: Jira mentions, MRs, chats, letters) — they bypass
+  the homes. A task an owner's item already carries is not shown twice.
+- **Today and tomorrow** — the calendar (`echelon soon`): the machine's time
+  first, Moscow in brackets; the project's meetings in bold, the rest dimmed, a
+  cancelled one struck; then every item due on those two days.
 - **Led by others** — the rest, by owner.
+
+An item shows its start, not its paragraph (owner, 2026-09-30): the first
+sentence, at most about 200 characters, marked «…», its date kept — the full text
+is one click away, in the home. An incomplete collection says so in its block;
+an empty calendar from an incomplete collection is not "no meetings".
+
+echelon is found at `ECHELON_BIN`, else `comms.now.echelon` (a path; `false`
+switches it off for the project), else `$ECHELON_HOME/bin/echelon`. When it
+cannot be reached the build still runs and the file says what is missing.
 
 Build it with `"${CLAUDE_PLUGIN_ROOT}/scripts/comms-now.sh"` (`--stdout` to look
 without writing). It is a command, not a hook — the plugin's hooks write no
