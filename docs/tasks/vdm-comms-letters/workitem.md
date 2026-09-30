@@ -374,7 +374,7 @@ intercom, свой кристалл при старте.
 - [x] Хук чеклиста: событие и форма вывода (контекст при создании `*/comms/*-out.md`), 15 строк без номеров К, учёт `comms.register`; red-тест → vdm-comms 0.12.0: гард создания (`additionalContext`) и заготовка (печать)
 - [x] Правило hq «адресату — решение и просьба…»: раздел скилла (общей формулировкой, таблица жанров) → § 3, vdm-comms 0.11.0
 - [x] То же правило — одна строка в хуке записи исходящего → третья строка чеклиста, vdm-comms 0.12.0
-- [ ] Ответить hq на `letter-decision-not-backstory` и `comms-channel-from-owner-word` после push
+- [x] Ответить hq на `letter-decision-not-backstory` и `comms-channel-from-owner-word` после push → `hq/_done/letters-rules-shipped` (2026-09-29): `reply-to` первого, второе названо в тексте; сверено 2026-09-30
 - [x] Правило product «задачу — полным ключом, внутри самой задачи — «задача»»: в `~/.claude/vdm/rules.md` через `/vdm:learn` → 2026-09-29, файл 9 278 байт, установленный хук 2.38.2 грузит его целиком; в скилле писем § 7 — строка
 - [x] Отправить ответы executor, hq, product после push (черновики готовы); product — что дубль в памяти можно снимать → 2026-09-29, `letters-skill-shipped`, `letters-rules-shipped`, `reply-and-ticket-shipped`; product снял дубль
 - [x] Письмо hq `pronoun-names-the-actor`: правило «A commitment…» в `rules.md` расширено, скилл § 6 и § 8, строка 6 чеклиста → vdm-comms 0.12.1

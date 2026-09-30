@@ -269,7 +269,7 @@ command-center — `владелец` (22 из 355). Сборке нужно з�
 - [x] Сигнал «`now.md` отстал»: хук записи дома и старт сессии; сравнение с `built` / содержимым домов → vdm-comms 0.16.0 (DL #9): `homes:`, `--check`, `comms-pending.sh --hook`, `comms-pending-check.sh`
 - [x] Скилл: как подключить `now.md` (`comms.now`, `after_pass`); письмо echelon с именем команды → скилл `pending` «The live now.md» (0.13–0.16); `echelon/live-now-hook-line-ready-outcome`, 2026-09-30
 - [x] Ответить hq: формат `^id`, как проект подключает пересборку, версия vdm-comms, когда проверять → `hq/live-now-comms-outcome`, 2026-09-30
-- [ ] Разобрать приёмку hq по ТЗ §7 (п. 1–3, 6), когда придёт их ответ; ждёт автообновления до vdm-comms 0.16.0 и их `comms.now`
+- [ ] Разобрать приёмку hq по ТЗ §7 (п. 1–3, 6), когда придёт их ответ; автообновление прошло 30.09 (vdm-comms 0.16.1 установлен, сказано `hq/versions-installed`), ждём их `comms.now`
 
 ## References
 
