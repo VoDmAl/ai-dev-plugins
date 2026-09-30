@@ -45,7 +45,7 @@ CHECKS = (
     "Recipients' profiles read and applied; no reproach for a past silence.",
     "The channel's form: an email has a subject (the same thread keeps `RE:`, a new matter a new one), a greeting on its own line, a paragraph per thought.",
     "Attachments: the text says \"attached\", and the file has a 📎 section.",
-    "After sending: who has the ball, and where the waiting item with a review date lives.",
+    "After sending: who has the ball, and where the waiting item with a review date lives; whoever else waits on this subject is in copy — not us in the middle.",
 )
 
 REGISTER_LINES = {

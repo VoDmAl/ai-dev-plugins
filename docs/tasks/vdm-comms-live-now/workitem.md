@@ -2,7 +2,7 @@
 title: "vdm-comms: живой now.md — сборка из домов по владельцу пункта, вместо листа дня"
 slug: vdm-comms-live-now
 description: "Собирает signals/now.md из открытых пунктов домов: твой ход, сегодня-завтра, ведут другие"
-status: in-progress
+status: dormant
 session-type: prd-prep
 created: 2026-09-28
 last-updated: 2026-09-30

@@ -41,6 +41,11 @@ is shown to anyone, and open the sections below when a line does not settle.
 - **Ask for the whole reach of the change.** A manual workaround is asked for
   every environment the same change will reach, not only the one where it broke.
   Test: where else will this be needed once the change lands?
+- **What is already in flight on this subject**, before the first word: letters
+  sent where one part was asked and another done, open items in the track, other
+  people's requests to the same person. A finding such as "it does not work on
+  prod" is first the unfinished half of an open request, and only then a fact for
+  a third person.
 - **Answering a letter, name in the header which of its points you leave
   unanswered on purpose** — above the separator, so the owner sees the choice;
   not in the text that goes out.
@@ -133,6 +138,13 @@ is shown to anyone, and open the sections below when a line does not settle.
 - **What their own task will do is asked of them, not told**: "will X solve
   this?", not "X will close this" — our reading of their ticket is not a source
   for its assignee. Nor do we tell them what they do in the meantime.
+- **Connect, do not relay.** When two people outside need each other on one
+  subject — one does the work, the other waits for it — put them in one channel:
+  a copy in the letter, a mention in the ticket, one line "I am writing to X, you
+  are in copy". Then they meet without us: no "we'll check and let you know", no
+  item on the sender to publish it when ready, no one of ours timing the hand-over.
+  Test: after this message, is anyone of ours needed for the news to get from one
+  to the other? If so, the construction is wrong.
 - **A request is addressed to a person**, chosen for the competence — an open
   call ("any takers?") is not a request. Check: is there a sentence that starts
   with a name? Offer a choice only when the candidates are equal.
@@ -308,7 +320,10 @@ And around them:
 ## 12. After the letter
 
 - **Who has the ball now, and is that recorded where it will surface** — the
-  waiting item with a review date in the track's pending section.
+  waiting item with a review date in the track's pending section. And who else
+  waits on this subject: they are in copy, not waiting on us to pass it on (§ 5,
+  connect, do not relay). Our waiting item is then one, on the one who does the
+  work, with a date.
 - **`sent: <date>` is set by an edit once the owner confirms the letter left
   their hands** — sent, or scheduled in the mail client. The date is the day of
   confirmation. Until then it is a draft.
