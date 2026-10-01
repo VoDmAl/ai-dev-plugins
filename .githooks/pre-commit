@@ -239,7 +239,7 @@ fi
 # hooks of its own, the gate went on passing without covering any of them — and
 # that silence is indistinguishable from a clean run. Breadth costs a few
 # seconds on a plugin edit; the enumeration cost coverage without saying so.
-if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|tests/(hook-fail-closed|symlink-scope|comms|comms-pending|reminder-throttle|reminders-dispatch|shared-rules|hook-commands|crystal-lint|shell-syntax-check)\.test\.sh$)'; then
+if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|tests/(hook-fail-closed|symlink-scope|comms|comms-pending|reminder-throttle|reminders-dispatch|shared-rules|hook-commands|hook-index-writes|crystal-lint|shell-syntax-check)\.test\.sh$)'; then
   echo "gates: a plugin hook changed — re-running the shipped hooks' red tests (~40s)…"
   run_suite hook-fail-closed
   # Same subject, second question: a hook that CAN run still has to agree with
@@ -266,6 +266,11 @@ if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|test
   # every hook exited 127 — the blocking ones silently open (echelon,
   # 2026-09-25). This runs the strings themselves.
   run_suite hook-commands
+  # A hook that only reads git must not rewrite .git/index: the owner's
+  # repos travel between machines with Syncthing, `.git` included, and a
+  # write while the other machine commits is a conflict copy (vdx,
+  # 2026-09-30). Every registered hook, run against a stat-dirty fixture.
+  run_suite hook-index-writes
   # The two PostToolUse write checks, whose suites no gate ran until vdm 2.36.0:
   # crystal-lint's (the canon, and since then the sidetrack a change leaves
   # without a checkbox) and the shell parse check's.

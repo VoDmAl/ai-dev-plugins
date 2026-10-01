@@ -532,6 +532,7 @@ If you forget, a SessionStart hook in `.claude/settings.json` prints a one-line 
 | harness asserts | `tests/harness-asserts.test.sh` | any test file is staged — every suite's `says_not` / `expect_not_says` is run against an empty haystack and must FAIL there: "does not mention X" is true of nothing, so a negative check on an output that came back empty passes whatever the code did (~1s) |
 | hook fail-closed | `tests/hook-fail-closed.test.sh` | a blocking hook the plugins ship, or `lib/gate-guard.sh`, is staged (~5s) |
 | hook commands | `tests/hook-commands.test.sh` | same trigger — every `hooks.json` command run through `/bin/sh -c` from a plugin root with a space (~15s) |
+| hook index writes | `tests/hook-index-writes.test.sh` | same trigger — every `hooks.json` command run against a stat-dirty fixture must leave `.git/index` untouched; RED: each `GIT_OPTIONAL_LOCKS` guard, cut out of a copy, makes some hook write (~20s) |
 | write checks | `tests/crystal-lint.test.sh` + `tests/shell-syntax-check.test.sh` | same trigger — the suites of the two PostToolUse checks, which no gate ran before vdm 2.36.0 (~5s) |
 | snippet red-tests | `tests/githook-snippets.test.sh` | anything under a plugin's `skills/` is staged — the git-hook blocks a SKILL hands to a user's own pre-commit, read out of the SKILL and run against fake installs (~5s) |
 | shell-syntax | `plugins/vdm/scripts/shell-syntax-check.sh --staged` | unconditionally — every staged shell file must parse under the interpreter it will meet (the shebang's; for bash also the PATH one), read from the staged blob |
@@ -565,6 +566,7 @@ bash tests/hook-fail-closed.test.sh        # blocking hooks with python3 strippe
 bash tests/reminder-throttle.test.sh       # the two-axis reminder window, and the hooks that print a measurement instead of a verdict
 bash tests/reminders-dispatch.test.sh      # the six vdm reminders composed into one ranked section; deadline, crash, plugin-cache silence
 bash tests/hook-commands.test.sh           # hooks.json commands as the harness runs them, from a plugin root with a space: start, agree with a plain root, still block
+bash tests/hook-index-writes.test.sh       # no hook rewrites .git/index (git status refresh); a guard cut out of a copy must go red
 bash tests/githook-snippets.test.sh        # vdm-git's pre-commit snippets as pasted: registered clone over an abandoned one, no guessing between two
 ```
 

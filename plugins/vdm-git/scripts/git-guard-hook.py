@@ -141,6 +141,15 @@ def _command_invokes(command, op_subcommand, depth=0):
     return False
 
 
+# Every git call in this hook is a read, and a read must not rewrite
+# .git/index: `git status` refreshes stat data and writes the index back, and
+# on a repo Syncthing carries between two machines that write is a conflict
+# copy (vdx, 2026-09-30). Does NOT cover `git diff` without a revision — see
+# tests/hook-index-writes.test.sh.
+_GIT_ENV = dict(os.environ)
+_GIT_ENV["GIT_OPTIONAL_LOCKS"] = "0"
+
+
 def run_git(args, cwd=None):
     """Run a git command quickly; return stdout on success, '' on failure.
 
@@ -162,6 +171,7 @@ def run_git(args, cwd=None):
             errors="replace",
             timeout=2,
             cwd=cwd,
+            env=_GIT_ENV,
         )
         return r.stdout.rstrip("\n") if r.returncode == 0 else ""
     except Exception:

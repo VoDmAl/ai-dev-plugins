@@ -30,6 +30,13 @@
 # shellcheck disable=SC1091
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/reminder-throttle.sh" 2>/dev/null || true
 
+# Every git call here is a read, and a read must not rewrite .git/index:
+# `git status` refreshes stat data and writes the index back, and on a repo
+# that Syncthing carries between two machines that write is a conflict copy
+# (vdx, 2026-09-30). Does NOT cover `git diff` without a revision — see
+# tests/hook-index-writes.test.sh.
+export GIT_OPTIONAL_LOCKS=0
+
 vdm_is_enabled "git-guard" || exit 0
 
 # No git work tree → no commits possible → reminder is pure noise.
