@@ -5,7 +5,7 @@ description: "Срок на строке-продолжении, пауза с �
 status: dormant
 session-type: prd-work
 created: 2026-09-25
-last-updated: 2026-09-28
+last-updated: 2026-10-01
 relates-to:
   - "[[../checkbox-decay-signal/workitem|checkbox-decay-signal]]"
 ---
@@ -38,7 +38,9 @@ relates-to:
   2.24.0 показывал сам шаблон (DL #6). `pending` из vdm-comms остаётся построчным (DL #7).
 - **При старте сессии говорит только активный кристалл.** `crystal-hydrate.sh` фильтрует
   `in-progress`; `pre-work` и `paused` молчат, даже с просроченным. `crystal-cave` считает просрочку
-  у всех, но его зовут руками.
+  у всех, но его зовут руками. Цена в поле (2026-10-01, этот репо): у `hook-timeout-fail-open` остался
+  один пункт — перемер `(due: 2026-10-08)`, обещанный executor, — и владелец оставил кристалл
+  активным вопреки singleton (там DL #7): в `dormant` о дате при старте никто бы не сказал.
 - **`deferred (deadline: …)` — надпись без кода.** Обещано в crystal-cut и в сообщении guard'а;
   по машине 22 отложенные карточки, ни одной с датой.
 - **`crystal-hydrate` печатает slug и путь в JSON сырыми** — тот же класс, что уронил reminders.sh.
