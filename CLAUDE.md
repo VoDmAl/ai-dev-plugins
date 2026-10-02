@@ -157,5 +157,10 @@ If you see `[vdm-dev] Dev hooks not active in this clone…`, run the command ab
 - `scripts/check-lib-sync.sh` — manual run of the drift check
 - `.githooks/pre-commit` — runs the drift check before any commit that stages `plugins/*/lib/**`
 - `scripts/ensure-githooks.sh` — SessionStart warner (warn-only check that `core.hooksPath=.githooks`)
+- `scripts/pii-scan.py` — finds people, work identifiers and agent names in what this repo publishes
+  (`tree`, `index`, `history`, `files <path>`), against the owner's address books read at run time.
+  Check a file that quotes anyone with `uv run scripts/pii-scan.py files <path>` — never by grepping
+  for names you already know. `scripts/pii-allow.txt` is its public allowlist, grown by review.
+  Crystal `public-repo-cleanup`.
 
 See `README.md` → Development for the full developer protocol.

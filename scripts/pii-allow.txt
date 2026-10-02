@@ -1,0 +1,117 @@
+# pii-allow.txt — what scripts/pii-scan.py lets through. One entry per line: <kind> <value>.
+#
+# This file is PUBLIC and grows only by review: nothing here may identify anyone.
+# A real person's name, a work tracker's key prefix or a working address never goes
+# here — it goes out of the text. The kinds are listed in pii-scan.py (ALLOW_KINDS).
+
+# --- public: the owner's own public identity (marketplace.json, plugin.json, README)
+public Vorobyev
+public Vorobiev
+
+# --- common: an ordinary word that is also an agent's name. Roles are named by role
+# (public-repo-cleanup DL #2), so the role words themselves stay.
+common space
+common workspace
+common gap
+common штаб
+common программа
+common контент
+
+# --- word: jargon the morphology reads as a name
+word Алиас
+word Бамп
+word Блок
+word Бриф
+word Виргин
+word Гейт
+word Докуменировано
+word Инлайн
+word Интерком
+word Коммит
+word Коммитится
+word Конфиг
+word Конформанс
+word Лист
+word Ось
+word Пересборка
+word Пол
+word Полнофункциональный
+word Починка
+word Префильтр
+word Провенанс
+word Разблокируется
+word Разовой
+word Резолв
+word Резолвер
+word Референс
+word Самозаживление
+word Скаффолд
+word Скил
+word Скилл
+word Слаг
+word Сниппет
+word Сопоставитель
+word Специмен
+word Суита
+word Токен
+word Транскрипт
+word Триггер
+word Троттл
+word Троттлинг
+word Фенс
+word Фикстура
+word Форк
+word Форматтер
+word Хазард
+word Харвест
+word Хардкод
+word Хардкодим
+word Харнес
+word Харнесс
+word Хелпер
+word Чекбокс
+word Чеклист
+
+# --- word: fictional examples. The book layer ignores this list, so a name here
+# that belongs to a real person in the address books is still reported.
+word Котов
+word Петров
+word Сидоров
+
+# --- key: shapes of a task key that are no tracker
+key ABC
+key KEY
+key PDF
+key PROJ
+key UTF
+
+# --- login: placeholders inside [~…]
+login login
+login …
+
+# --- email, host: reserved and public domains
+email example
+email invalid
+email test
+email localhost
+email example.com
+email example.org
+email example.net
+email dmitry@vorobyev.org
+host example
+host invalid
+host test
+host localhost
+host example.com
+host example.org
+host example.net
+host vorobyev.org
+host vorobyev.name
+host github.com
+host github.io
+host githubusercontent.com
+host anthropic.com
+host claude.ai
+host claude.com
+host python.org
+host google.com
