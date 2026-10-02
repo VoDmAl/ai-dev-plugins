@@ -238,7 +238,7 @@ _is_template() {
 find_synthesis_docs() {
   # Prints paths of documents that declare `covers:` — i.e. the synthesis tier.
   #
-  # Two passes, because this runs from a UserPromptSubmit hook on a 5s budget
+  # Two passes, because this runs from a UserPromptSubmit hook on every prompt
   # and a vault can hold thousands of markdown files (the same scale that forced
   # memoization into crystal-path.sh):
   #   1. one grep across all candidates — cheap, and narrows to a handful;

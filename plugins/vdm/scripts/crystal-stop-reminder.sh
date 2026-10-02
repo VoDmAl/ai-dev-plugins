@@ -12,7 +12,10 @@
 #   multi-root:  group-by-root summary (slug only, fewer chars per row)
 # Audit line appended when non-canonical drift detected.
 #
-# Budget: 5s. Must be silent (zero output) when there's nothing to report.
+# Must be cheap — it runs at the end of every turn — and silent (zero output)
+# when there's nothing to report. Cheap is the script's job; the 30 s `timeout`
+# in hooks.json is only a ceiling against a hang. At 5 s that ceiling dropped
+# this reminder on 24 % of turns under load (hook-timeout-fail-open, 2026-10-01).
 
 set -u
 

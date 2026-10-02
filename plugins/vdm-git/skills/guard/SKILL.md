@@ -79,7 +79,10 @@ It is a **discipline**, not a boundary. The rule lived in the prompt first, prov
 unreliable there, and moved up to a hook, which makes it markedly harder to forget.
 It does not make it impossible to circumvent: the matcher inspects the command
 string, so any commit reached indirectly — through a script, a wrapper, a test
-harness — passes without being seen.
+harness — passes without being seen. And it holds only if the hook finishes: a
+hook the harness cancels at its `timeout` does not block the call, it lets it
+through. On a machine under heavy load a 0.2 s guard has been cancelled at a 5 s
+ceiling, which is why the hook is registered with 60 s and on `Bash` only.
 
 That is stated plainly rather than left to be discovered, because the discovery is
 cheap and the false impression is expensive. And it follows from something more

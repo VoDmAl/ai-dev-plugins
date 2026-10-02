@@ -3,11 +3,12 @@
   "hooks": {
     "PreToolUse": [
       {
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-hook.sh\"",
-            "timeout": 5
+            "timeout": 60
           }
         ]
       }
@@ -18,7 +19,7 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-reminder.sh\"",
-            "timeout": 5
+            "timeout": 30
           }
         ]
       }

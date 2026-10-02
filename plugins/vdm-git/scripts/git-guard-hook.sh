@@ -22,6 +22,14 @@
 # That is the correct direction to be wrong in — the alternative is a guard
 # that silently is not there.
 #
+# Fail-closed covers a guard that RUNS. One that is cancelled is a different
+# failure and nothing in here can catch it: the harness cancels a hook at its
+# `timeout` and lets the call through. Measured 2026-10-01 — 20 cancellations of
+# the suite's blocking guards on one loaded machine since 2026-09-03, the call
+# ran every time. Hence the registration in hooks.json: a 60 s ceiling, and
+# matcher `Bash`, the only tool the guard reads — without one it ran, and timed
+# out, on Edit and MCP calls too. Both are held by tests/hook-commands.test.sh.
+#
 # Hook protocol (Claude Code):
 #   stdin   JSON {"tool_name": "...", "tool_input": {...}, "cwd": "..."}
 #   exit 0  allow

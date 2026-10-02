@@ -7,17 +7,17 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-hydrate.sh\"",
-            "timeout": 5
+            "timeout": 30
           },
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/intercom-identity-check.sh\"",
-            "timeout": 5
+            "timeout": 30
           },
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/shared-rules.sh\"",
-            "timeout": 5
+            "timeout": 30
           }
         ]
       }
@@ -40,7 +40,7 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-completion-guard.sh\"",
-            "timeout": 5
+            "timeout": 60
           }
         ]
       }
@@ -52,17 +52,17 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/orphan-guard-hook.sh\"",
-            "timeout": 5
+            "timeout": 30
           },
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh\" --hook",
-            "timeout": 5
+            "timeout": 30
           },
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/shell-syntax-check.sh\" --hook",
-            "timeout": 5
+            "timeout": 30
           }
         ]
       }
@@ -73,7 +73,7 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-stop-reminder.sh\"",
-            "timeout": 5
+            "timeout": 30
           }
         ]
       }

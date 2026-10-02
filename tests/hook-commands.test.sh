@@ -167,6 +167,108 @@ else
   done
 fi
 
+# CEILINGS AND SCOPE — the config half of "a blocking hook that cannot finish is
+# simply off". The harness cancels a hook that reaches its `timeout`, and on
+# PreToolUse the call then goes through: "A timed-out command … hook doesn't
+# block the tool call … don't count on a stalled hook to act as a gate"
+# (code.claude.com/docs/en/hooks, read 2026-10-01). Measured on this machine the
+# same day: 20 cancellations of the suite's four blocking guards since
+# 2026-09-03, in seven projects, and the tool call ran in all 20. The guards are
+# not slow — the machine was (load ~50, swap full): one cancel was noticed 16 s
+# after a 5 s ceiling.
+#
+# So a ceiling is a hang detector, not a latency budget; it costs nothing while
+# the script is fast, and it is explicit — the harness default is its business:
+#   GUARD_FLOOR  every PreToolUse hook (each is a blocking guard) ≥ 60 s — three
+#                times the slowest PreToolUse hook on record here, 19 s
+#   HOOK_FLOOR   every other hook ≥ 30 s — a cancelled reminder is a lost one:
+#                crystal-stop-reminder lost 24 % of its turns at 5 s
+#   SCOPE        every PreToolUse group names its tools — git-guard ran, and
+#                timed out, on Edit and on a Jira MCP call it never looks at
+#   COVERAGE     git-guard's matcher still covers Bash: a matcher narrowed past
+#                its tool is the same guard switched off by other means
+#
+# @see docs/tasks/hook-timeout-fail-open/workitem.md
+echo "── ceilings and scope"
+GUARD_FLOOR=60
+HOOK_FLOOR=30
+
+# ceiling_report <hooks.json> — one line per violation, nothing when clean.
+ceiling_report() {
+  jq -r --argjson gf "$GUARD_FLOOR" --argjson hf "$HOOK_FLOOR" '
+    .hooks | to_entries[] | .key as $ev | .value[] | . as $g | .hooks[]
+    | select(.type == "command")
+    | (if $ev == "PreToolUse" then $gf else $hf end) as $floor
+    | ( if (.timeout // 0) < $floor
+          then "\($ev) \(.command): timeout \(.timeout // "unset") < \($floor)" else empty end ),
+      ( if $ev == "PreToolUse" and ((($g.matcher // "") | gsub("\\s"; "")) as $m | $m == "" or $m == "*")
+          then "\($ev) \(.command): no matcher — runs on every tool" else empty end )
+  ' "$1"
+}
+
+# matcher_covers <matcher> <tool> — the harness rule: only letters, digits,
+# `_ - space , |` → a list of exact names split on `|` or `,`; anything else →
+# an unanchored regex. An empty matcher or `*` covers every tool.
+matcher_covers() {
+  local m=$1 t=$2
+  case "$m" in ''|'*') return 0 ;; esac
+  if printf '%s' "$m" | grep -qE '^[A-Za-z0-9_ ,|-]+$'; then
+    printf '%s\n' "$m" | tr '|,' '\n\n' | sed 's/^ *//; s/ *$//' | grep -qxF -- "$t"
+  else
+    printf '%s' "$t" | grep -qE -- "$m"
+  fi
+}
+
+for p in "${plugins[@]}"; do
+  report=$(ceiling_report "$REPO_ROOT/plugins/$p/hooks/hooks.json")
+  if [ -z "$report" ]; then
+    ok "$p: guards ≥ ${GUARD_FLOOR}s with a matcher, other hooks ≥ ${HOOK_FLOOR}s"
+  else
+    bad "$p: guards ≥ ${GUARD_FLOOR}s with a matcher, other hooks ≥ ${HOOK_FLOOR}s" \
+        "$(printf '%s' "$report" | tr '\n' ';' | sed 's/;$//; s/;/; /g')"
+  fi
+done
+
+gg_groups=$(jq '[.hooks.PreToolUse[]? | select(any(.hooks[]?; .command | test("git-guard-hook")))] | length' \
+              "$REPO_ROOT/plugins/vdm-git/hooks/hooks.json" 2>/dev/null)
+gg_matcher=$(jq -r '[.hooks.PreToolUse[]? | select(any(.hooks[]?; .command | test("git-guard-hook"))) | .matcher // ""][0]' \
+               "$REPO_ROOT/plugins/vdm-git/hooks/hooks.json" 2>/dev/null)
+if [ "$gg_groups" = 1 ] && matcher_covers "$gg_matcher" Bash; then
+  ok "git-guard's matcher (\"$gg_matcher\") covers Bash"
+else
+  bad "git-guard's matcher covers Bash" "groups: ${gg_groups:-none}, matcher: \"$gg_matcher\""
+fi
+
+# RED half — the checks must see what they exist to see. The fixture is the
+# shape the suite had until 2026-10-01: a 5 s guard without a matcher, a 5 s
+# Stop reminder, and one hook that leaves the ceiling to the harness.
+cat >"$TMP/old-hooks.json" <<'JSON'
+{"hooks": {
+  "PreToolUse": [{"hooks": [{"type": "command", "command": "guard.sh", "timeout": 5}]}],
+  "Stop": [{"hooks": [{"type": "command", "command": "stop.sh", "timeout": 5}]}],
+  "SessionStart": [{"hooks": [{"type": "command", "command": "start.sh"}]}]
+}}
+JSON
+red=$(ceiling_report "$TMP/old-hooks.json")
+for want in 'PreToolUse guard.sh: timeout 5 < 60' 'PreToolUse guard.sh: no matcher' \
+            'Stop stop.sh: timeout 5 < 30' 'SessionStart start.sh: timeout unset < 30'; do
+  if printf '%s\n' "$red" | grep -qF -- "$want"; then
+    ok "red: reported — $want"
+  else
+    bad "red: reported — $want" "report was: $(printf '%s' "$red" | tr '\n' ';')"
+  fi
+done
+for c in 'Bash:Bash:yes' 'Write|Bash:Bash:yes' 'Write, Bash:Bash:yes' '^Ba:Bash:yes' \
+         'bash:Bash:no' 'Write|Edit|MultiEdit:Bash:no' 'BashOutput:Bash:no'; do
+  m=${c%%:*}; rest=${c#*:}; t=${rest%%:*}; want=${rest#*:}
+  if matcher_covers "$m" "$t"; then got=yes; else got=no; fi
+  if [ "$got" = "$want" ]; then
+    ok "matcher \"$m\" covers $t: $want"
+  else
+    bad "matcher \"$m\" covers $t: $want" "got $got"
+  fi
+done
+
 echo
 echo "hook-commands: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

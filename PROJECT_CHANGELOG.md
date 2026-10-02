@@ -8,6 +8,33 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ---
 
+## 2026-10-01
+
+### 🐛 BUG — блокирующий гард, отменённый по таймауту, пропускал вызов: потолки 60/30 с и matcher у git-guard (vdm 2.40.2, vdm-git 2.16.2, vdm-comms 0.16.2)
+
+**Что было.** Бриф executor `git-guard-hook-timeouts`: на перегруженной машине (load ~50, своп полон)
+`git-guard-hook.sh` отменён харнесом по таймауту 5 с — и Bash-вызов выполнился. Это поведение харнеса, и
+оно задокументировано: «A timed-out … hook doesn't block the tool call… don't count on a stalled hook to act
+as a gate» (code.claude.com/docs/en/hooks). Перемерено здесь по всем транскриптам машины: с 03.09 —
+20 отмен четырёх блокирующих гардов суиты в семи проектах, вызов прошёл во всех 20. Скрипты не тяжёлые: одну
+отмену харнес заметил через 16 с при потолке 5 с. У `git-guard-hook.sh` не было matcher — он запускался (и
+таймаутил) на Edit и на MCP-вызове Jira, которые не читает. Советующие хуки на 5 с теряли вывод:
+`crystal-stop-reminder` — 24 % ходов, `crystal-hydrate` — 16 % стартов сессии.
+
+**Что сделано.**
+- Все PreToolUse-хуки суиты (это четыре блокирующих гарда) — `timeout` 60 с: втрое больше самого долгого
+  PreToolUse-хука в записях машины (19 с). Остальные хуки — 30 с, как у харнеса по умолчанию для
+  UserPromptSubmit. Потолок — детектор зависания, а не бюджет: пока скрипт быстрый, он ничего не стоит.
+- `git-guard-hook.sh` — matcher `Bash`: гард читает только Bash, и обёртка, и python.
+- `tests/hook-commands.test.sh` (gate 7) держит конфиг по всем плагинам без списка: гарды ≥ 60 с и с
+  matcher, остальное ≥ 30 с, matcher git-guard покрывает Bash по правилу харнеса. Красная половина —
+  фикстура старой формы и таблица matcher-случаев; вручную проверено, что тест краснеет на `hooks.json` из
+  HEAD и на matcher `bash`.
+- Шапки `git-guard-hook.sh`, `crystal-stop-reminder.sh` и раздел «What this guard is — and is not» скила
+  `guard` говорят, что гард держит, только пока хук успевает.
+
+Кристалл: `docs/tasks/hook-timeout-fail-open/workitem.md`.
+
 ## 2026-09-30
 
 ### 🐛 BUG — хуки, которые только читают git, больше не пишут `.git/index` (vdm 2.40.1, vdm-git 2.16.1)

@@ -7,7 +7,7 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/comms-index-check.sh\"",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       },
@@ -16,7 +16,7 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending-check.sh\"",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       }
@@ -28,7 +28,7 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/comms-draft-guard.sh\"",
-            "timeout": 5
+            "timeout": 60
           }
         ]
       },
@@ -38,7 +38,7 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/comms-eml-guard.sh\"",
-            "timeout": 5
+            "timeout": 60
           }
         ]
       }
@@ -50,7 +50,7 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh\" --hook",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       },
@@ -60,7 +60,7 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh\" --hook",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       }
