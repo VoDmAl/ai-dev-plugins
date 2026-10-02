@@ -17,6 +17,10 @@ common штаб
 common программа
 common контент
 
+# --- agent: an agent the owner allowed to be named, by its registry identity
+# (public-repo-cleanup DL #15). All its names pass, in any form.
+agent echelon
+
 # --- word: jargon the morphology reads as a name
 word Алиас
 word Бамп

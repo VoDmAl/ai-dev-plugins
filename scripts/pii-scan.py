@@ -78,6 +78,7 @@ LAYERS = ("identity", "book", "pattern", "morph", "ner")
 ALLOW_KINDS = {
     "word": "morph/ner: a word that names no one — jargon, a fictional example",
     "common": "book: an ordinary word that happens to be someone's surname or an agent's name",
+    "agent": "book: a registry identity the owner allowed to be named — every name of that agent",
     "public": "every layer: the owner's own public identity",
     "key": "pattern: a task-key prefix that is no tracker (UTF-8, PROJ-123)",
     "login": "pattern: a placeholder inside [~…]",
@@ -210,7 +211,7 @@ class Allow:
             if kind not in ALLOW_KINDS or not value:
                 die(f"{path}:{n}: expected '<kind> <value>', kind one of: {', '.join(ALLOW_KINDS)}")
             self.count += 1
-            if kind in ("key", "login"):
+            if kind in ("key", "login", "agent"):
                 self.values[kind].add(value)
             elif kind in ("email", "host"):
                 self.values[kind].add(fold(value))
@@ -520,7 +521,7 @@ def load_agents(entries: list[dict], own: list[dict], morph: Morph, allow: Allow
     own_tokens = {squash(t) for e in own for t in entry_tokens(e)}
     names = Names(morph)
     for e in entries:
-        if e in own:
+        if e in own or (e.get("identity") or "") in allow.values["agent"]:
             continue
         for t in entry_tokens(e):
             if squash(t) in own_tokens or allow.common(t):
