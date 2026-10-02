@@ -1306,5 +1306,103 @@ printf 'cp %s gaps/alpha/comms/\necho done\n' "'$TMP/letter.eml'" > "$TMP/cmd-nl
 eml_run "$(bash_payload "$(cat "$TMP/cmd-nl2.txt")")"; rc=$?
 expect_exit "RED: the next line does not become the copy's destination ⇒ exit 2" 2 "$rc"
 
+echo ""
+echo "== people/: may this project write to a person, and from which address =="
+# Owner with echelon, 2026-10-01 (echelon DL #75; vdm-comms-outward-checks DL #2):
+# an HQ keeps people/, a hand reads its HQ's from disk and names it in comms.hq;
+# `trust` in a profile says who may write, and anyone unmarked counts as careful.
+PEOPLE="${COMMS_PEOPLE_BIN:-$P/scripts/comms-people.py}"
+HQ="$TMP/hq"; HAND="$TMP/hand"; STORE="$TMP/store"
+mkdir -p "$HQ/.git" "$HQ/.claude" "$HQ/crew" "$HAND/.git" "$HAND/.claude" "$STORE/_registry"
+# The HQ keeps its people under a name of its own: the hand must take it from
+# the HQ's config, not assume `people/`.
+printf '{"comms": {"people-dir": "crew"}}\n' > "$HQ/.claude/vdm-plugins.json"
+printf '{"identity": "hq-proj", "aliases": [], "names": ["the hq"], "paths": ["%s/gone", "%s"]}\n' "$TMP" "$HQ" > "$STORE/_registry/hq-proj.json"
+printf -- '---\nslug: anna\ntrust: team\nidentity:\n  jira: anna_k\n---\n# Anna\n' > "$HQ/crew/anna.md"
+printf -- '---\ntrust: Peer\nmail_from:\n  - to: boris@their.example\n    from: Owner <me@ours.example>\n---\n# Boris\n' > "$HQ/crew/boris.md"
+printf -- '---\ntrust: carefull\n---\n# Vera — writes to anna_k often\n' > "$HQ/crew/vera.md"
+printf -- '---\ntrust: top\n---\n# Gleb\n' > "$HQ/crew/gleb.md"
+printf '# Dina\n\n**Email**: dina@their.example\nWorks with Al on payments.\n' > "$HQ/crew/dina.md"   # no frontmatter at all
+printf -- '---\ntrust: peer\nlinks:\n  blocks:\n    - x: 1\nmail_from:\n  - to: e@their.example\n    from: me@ours.example\n---\n# Egor\n' > "$HQ/crew/egor.md"
+printf -- '---\ntrust: peer\n---\n# Another Anna\n' > "$HQ/crew/anna-k.md"
+printf -- '---\nreports: [anna-k]\n---\n# Lead\n' > "$HQ/crew/lead.md"   # names anna-k in ITS frontmatter
+run_people() { OUT=$(VDM_INTERCOM_ROOT="$STORE" python3 "$PEOPLE" "$@" 2>&1); return $?; }
+
+printf '{"comms": {"hq": "hq-proj"}}\n' > "$HAND/.claude/vdm-plugins.json"
+run_people where --project-root "$HAND"; rc=$?
+expect_exit "RED: a hand finds its HQ's people through the intercom directory ⇒ exit 0" 0 "$rc"
+expect_says "…the HQ's own people-dir, past a checkout that is gone" "$OUT" "$HQ/crew"
+run_people show anna --project-root "$HAND"; rc=$?
+expect_exit "RED: a profile by its file name ⇒ exit 0" 0 "$rc"
+expect_says "…its level" "$OUT" "trust: team"
+expect_says "…and the hand writes to team itself" "$OUT" "hand of \`hq-proj\`: write it yourself"
+run_people show anna_k --project-root "$HAND"; rc=$?
+expect_exit "RED: a profile by the login a hand meets in its ticket ⇒ exit 0" 0 "$rc"
+expect_says "…the one whose frontmatter holds it, though another profile mentions it in prose" "$OUT" "profile: crew/anna.md"
+run_people show ANNA_K --project-root "$HAND"; rc=$?
+expect_exit "…case does not matter for a login ⇒ exit 0" 0 "$rc"
+printf -- '---\nidentity:\n  jira: anna_k\n---\n# A namesake\n' > "$HQ/crew/anna-2.md"
+run_people show anna_k --project-root "$HAND"; rc=$?
+expect_exit "RED: one login in two profiles' frontmatter is ambiguous ⇒ exit 3" 3 "$rc"
+expect_says "…and both files are named" "$OUT" "crew/anna-2.md"
+rm -f "$HQ/crew/anna-2.md"
+run_people show boris --project-root "$HAND"; rc=$?
+expect_says "RED: a level is read case-blind" "$OUT" "trust: peer"
+expect_says "RED: the owner's From pair is printed for the mail" "$OUT" "mail_from: to boris@their.example → from Owner <me@ours.example>"
+run_people show vera --project-root "$HAND"; rc=$?
+expect_says "RED: an unknown level reads as careful" "$OUT" "trust: careful"
+expect_says "…and names the typo, not just the default" "$OUT" "unknown \`trust: carefull\`"
+expect_says "…and a hand does not write to careful: it briefs the HQ" "$OUT" "do not write — brief the HQ"
+run_people show gleb --project-root "$HAND"; rc=$?
+expect_says "RED: top goes through the HQ as well" "$OUT" "do not write — brief the HQ"
+run_people show dina@their.example --project-root "$HAND"; rc=$?
+expect_exit "RED: a profile with no frontmatter is found by the address in its body ⇒ exit 0" 0 "$rc"
+expect_says "…and, with no trust field, it is careful" "$OUT" "careful (no \`trust:\` in the profile)"
+run_people show egor --project-root "$HAND"; rc=$?
+expect_says "RED: trust survives frontmatter the reader cannot parse" "$OUT" "trust: peer"
+expect_says "…while mail_from there is reported, not guessed" "$OUT" "mail_from unreadable"
+run_people show nobody-here --project-root "$HAND"; rc=$?
+expect_exit "RED: not in people/ ⇒ exit 2" 2 "$rc"
+expect_says "…and counts as careful" "$OUT" "trust: careful"
+run_people show anna-k --project-root "$HAND"; rc=$?
+expect_exit "GREEN: the file name wins over a token found in another profile ⇒ exit 0" 0 "$rc"
+expect_says "…that file" "$OUT" "crew/anna-k.md"
+run_people show al --project-root "$HAND"; rc=$?
+expect_exit "GREEN: a two-letter search finds nobody rather than everybody ⇒ exit 2" 2 "$rc"
+
+printf '{"comms": {"hq": "The HQ"}}\n' > "$HAND/.claude/vdm-plugins.json"
+run_people where --project-root "$HAND"; rc=$?
+expect_exit "RED: comms.hq may be a name the HQ goes by, folded as intercom folds ⇒ exit 0" 0 "$rc"
+printf '{"comms": {"hq": "no-such-hq"}}\n' > "$HAND/.claude/vdm-plugins.json"
+run_people show anna --project-root "$HAND"; rc=$?
+expect_exit "RED: an HQ nobody is registered as ⇒ exit 1" 1 "$rc"
+expect_says "…says so, and that everyone counts as careful meanwhile" "$OUT" "everyone counts as careful"
+printf '{"identity": "far-hq", "paths": ["%s/elsewhere"]}\n' "$TMP" > "$STORE/_registry/far-hq.json"
+printf '{"comms": {"hq": "far-hq"}}\n' > "$HAND/.claude/vdm-plugins.json"
+run_people where --project-root "$HAND"; rc=$?
+expect_exit "RED: an HQ with no checkout on this machine ⇒ exit 1" 1 "$rc"
+expect_says "…named as such" "$OUT" "none of its checkouts is on this machine"
+rm -f "$HAND/.claude/vdm-plugins.json"
+run_people where --project-root "$HAND"; rc=$?
+expect_exit "RED: no people/ and no comms.hq ⇒ exit 1" 1 "$rc"
+expect_says "…and the fix is named" "$OUT" "comms.hq"
+
+run_people show gleb --project-root "$HQ"; rc=$?
+expect_exit "GREEN: the HQ reads its own people/ ⇒ exit 0" 0 "$rc"
+expect_says "…and for top it asks the owner first" "$OUT" "ask the owner whether to write at all"
+run_people show vera --project-root "$HQ"; rc=$?
+expect_says "…and careful is a draft the owner reads" "$OUT" "the owner reads it before it goes"
+
+mkdir -p "$HAND/gaps/alpha"
+printf '{"comms": {"hq": "hq-proj"}}\n' > "$HAND/.claude/vdm-plugins.json"
+OUT=$(cd "$HAND" && COMMS_TODAY="$TODAY" VDM_INTERCOM_ROOT="$STORE" python3 "$NEW" --project-root "$HAND" --channel email --to gleb --track gaps/alpha 2>&1); rc=$?
+expect_exit "RED: the scaffold still writes the draft ⇒ exit 0" 0 "$rc"
+expect_says "RED: …and tells the hand who the recipient is, at the moment the letter is born" "$OUT" "Recipient \`gleb\`:"
+expect_says "…with the next step" "$OUT" "do not write — brief the HQ"
+rm -f "$HAND/.claude/vdm-plugins.json"
+OUT=$(cd "$HAND" && COMMS_TODAY="$TODAY" VDM_INTERCOM_ROOT="$STORE" python3 "$NEW" --project-root "$HAND" --channel email --to boris --track gaps/alpha 2>&1); rc=$?
+expect_exit "GREEN: a project with no people/ at all still gets its draft ⇒ exit 0" 0 "$rc"
+expect_says "…and is told why the recipient counts as careful" "$OUT" "people: unresolved"
+
 printf '\ncomms: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

@@ -1,6 +1,6 @@
 ---
 name: letters
-description: "What an outgoing letter carries and what stays out of it — goal, one subject, the addressee, register, claims with a source, the sender's commitments, the cutting pass, replying in a thread, incoming mail, other agents as addressees. Use before and while drafting any text a person outside this session will read: a letter, a chat message, a ticket comment, a brief to another agent — and when reviewing one before it goes. The file mechanics (draft marker, sent:, form per channel, attachments) are /vdm-comms:meetings. Triggers include: «письмо», «написать», «ответить», «черновик», «сообщение в чат», «комментарий в тикет», «бриф агенту», draft a letter, write to, reply, message, ticket comment."
+description: "What an outgoing letter carries and what stays out of it — goal, one subject, the addressee, register, claims with a source, the sender's commitments, who may write to a person (`trust` in the HQ's people/), the cutting pass, replying in a thread, incoming mail, other agents as addressees. Use before and while drafting any text a person outside this session will read: a letter, a chat message, a ticket comment, a brief to another agent — and when reviewing one before it goes. The file mechanics (draft marker, sent:, form per channel, attachments) are /vdm-comms:meetings. Triggers include: «письмо», «написать», «ответить», «черновик», «сообщение в чат», «комментарий в тикет», «бриф агенту», draft a letter, write to, reply, message, ticket comment."
 license: MIT
 ---
 
@@ -70,6 +70,14 @@ is shown to anyone, and open the sections below when a line does not settle.
   thanks at the end where the register calls for it (§ 6). An email assembled as
   one block, like a chat message, is a defect of form even when every word is
   right. A messenger message may be one block.
+- **In a ticket system, a person is addressed by a mention**, never by a name in
+  plain text: `[~login]` in Jira Server and Data Center, `@login` in GitLab.
+  Everyone whose answer the comment needs is mentioned too. A name in prose
+  notifies nobody, and the owner ends up fixing it after it is published. The
+  login is in the person's profile (`people/`) or among the ticket's
+  participants. Where a tool on the write path suggests the mention, the rule
+  still holds: it is needed in the channels that bypass that tool, and for the
+  text before the call.
 
 ## 3. What does not go into the letter
 
@@ -125,8 +133,36 @@ is shown to anyone, and open the sections below when a line does not settle.
 
 ## 5. The addressee
 
-- **Read the recipients' profiles first** (`people/`), and apply their patterns —
-  what they take, how they answer, what triggers them — to the actual wording.
+- **Who may write to this person is settled before a word of the text.** The
+  profile's `trust:` decides it, together with the project's role:
+
+  | `trust` | A hand (declares `comms.hq`) | The HQ |
+  |---|---|---|
+  | `team` | writes itself | writes |
+  | `peer` | writes itself, tone by this skill | writes |
+  | `careful` | does not write — briefs the HQ | a draft only, every word checked; the owner reads it before it goes |
+  | `top` | does not write — briefs the HQ | asks the owner whether to write at all, before any draft |
+
+  No profile, no field, or a value outside these four counts as `careful`. Look
+  the person up by profile file name, login or address:
+
+  ```bash
+  "${CLAUDE_PLUGIN_ROOT}/scripts/comms-people.py" show <slug | login | address>
+  ```
+
+  A draft started from the scaffold prints the same answer under its checklist.
+- **The roles.** An HQ keeps `people/` and writes everything in its zone. A hand
+  keeps none. It writes its own: its tickets, MRs and branches, answers to the
+  people in its tickets. It reads the HQ's `people/` from disk, and anyone else
+  goes through the HQ. **A new person in a hand's own ticket is a reason to brief
+  the HQ** (`/vdm:intercom send <hq> <slug>`): who they are, where they turned
+  up, what the ticket needs from them. The HQ adds the profile and its `trust`.
+- **Then read the profile and apply its patterns** — what they take, how they
+  answer, what triggers them — to the actual wording.
+- **From is the profile's when it has a pair.** A `mail_from` pair — this person's
+  address, our sender for it — is the owner's word on the sender. Pass its
+  `from` when the draft is made (echelon's `mail_draft` takes it as `from`). With
+  no pair, From is left to the project's and echelon's own rules, not guessed.
 - **Someone who was in the room gets it short**: the letter or ticket is a
   formality. Full context only for new readers.
 - **Two antagonists in one letter** — consider two parallel letters instead.
@@ -375,6 +411,7 @@ And around them:
 |-----|--------|---------|
 | `register` | `volunteer` \| `executor` \| `peer` — how requests are made to this project's usual reader (§ 6) | not declared: the rules for every register apply, no profile |
 | `language` | the language of outgoing letters, e.g. `en`, `ru` | not declared: the recipient's language, decided per letter |
+| `hq` | a hand's HQ: the intercom identity (or a name it goes by) of the project whose `people/` this one reads | not declared: the project is its own HQ, and reads its own `people-dir` |
 
 A letter to a different kind of reader says so in its own frontmatter —
 `register: peer` in a project whose default is `volunteer` — and that letter is
@@ -382,10 +419,33 @@ judged by its own register. The scaffold writes the project's value into a new
 draft; change it there when the reader differs. The linter knows the three
 values and names any other.
 
+### People profiles
+
+The two fields this skill and echelon read from a profile's frontmatter, in
+`<people-dir>/<slug>.md` of the HQ. A profile with no frontmatter gets one;
+every other key stays as the HQ keeps it.
+
+```yaml
+---
+trust: peer                       # team | peer | careful | top; none = careful
+mail_from:                        # the owner's word on From, per address of theirs
+  - to: ivan@their.example
+    from: Our Name <me@ours.example>
+---
+```
+
+`trust` is not `register` (§ 6). The register says how a request is made; trust
+says who may write at all, and how much checking the text takes. `peer` is a
+value of both and means different things on each.
+
+A hand finds the HQ through the intercom directory, so `comms.hq` names a
+project, not a path. The people directory is the HQ's own `comms.people-dir`.
+`comms-people.py where` prints what it resolved to, or what is missing.
+
 ## Integration
 
 | Other skill | Interaction |
 |-------------|-------------|
 | `/vdm-comms:meetings` | the file of a letter: draft marker, `sent:`, form per channel (`comms.letter-form`, including `goal` and `known`), 📎, `.eml`, the scaffold |
 | `/vdm-comms:pending` | the waiting item "after the letter" (§ 12) lives there |
-| `/vdm:intercom` | letters to other agents; the relay form |
+| `/vdm:intercom` | letters to other agents; the relay form; a hand's brief to its HQ (§ 5); the directory that resolves `comms.hq` |

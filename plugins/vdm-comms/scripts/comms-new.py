@@ -31,6 +31,10 @@ field try passed a Cyrillic name to `--to` and got a Cyrillic file name — a
 repository that names its letters in latin now has one that sorts, greps and
 lists differently from the rest.
 
+After the checklist it prints what `people/` says about the recipient — `trust`,
+the From pairs, the next step (`comms_people.py`). That is the moment a hand
+finds out the letter is not its to write, before a word of it exists.
+
 An existing file is never overwritten, and a track that is a FILE (it has no
 `comms/`) is refused. Exit: 0 written, 1 refused, 2 bad arguments.
 """
@@ -118,8 +122,11 @@ def main(argv):
     # Created through Bash, so no Write hook fires: the checklist the guard
     # would have handed over is printed here instead.
     import comms_checklist  # noqa: E402 — same directory, already on sys.path
+    import comms_people  # noqa: E402
     print("")
     print(comms_checklist.render(cfg))
+    print("")
+    print(comms_people.recipient_line(root, cfg, to))
     return 0
 
 

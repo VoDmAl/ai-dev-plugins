@@ -12,7 +12,8 @@ files. One home for a tool three repositories had each copied and drifted.
 | attachment checklist of a letter | same linter | after a write to an unsent `*/comms/*-out.md` that attaches something |
 | pending-item linter | `PostToolUse` hook + CLI | after a write into a `pending-paths` file — **new lines only** |
 | outgoing-draft guard | `PreToolUse` hook | when creating `*/comms/*-out.md`: refuses a letter already claiming `sent:`, and hands a new draft the checklist of `/vdm-comms:letters` |
-| draft scaffold | `scripts/comms-new.py` | on request: a new `*/comms/*-out.md` with the header the project's `letter-form` asks of the channel |
+| draft scaffold | `scripts/comms-new.py` | on request: a new `*/comms/*-out.md` with the header the project's `letter-form` asks of the channel, and what `people/` says about the recipient |
+| who may write to a person | `scripts/comms-people.py` | on request: `trust` and the From pairs from the profile, and the next step for this project — a hand writes to `team` and `peer` only |
 | form of an outgoing draft | the meeting linter | after a write to a draft (`draft: true` or `sent: false`) — per `channel:`, from `comms.letter-form`; a declared draft outside `comms/` is named |
 | raw `.eml` guard | `PreToolUse` hook | a `Write`, or a `cp`/`mv`/`>`/… in Bash, that puts an `.eml` into `comms/` or the meetings tree |
 | generated-layer drift signal | `SessionStart` hook | once per session, and only when something is behind |
@@ -68,6 +69,7 @@ is reported.
     "pending-sections": { "waiting": ["Waiting on"], "action": ["Our actions"] },
     "owners": ["executor", "legal", "Dmitry"],
     "people-dir": "people",
+    "hq": "ops-hq",
     "pending-draft-days": 3,
     "pending-transcript-days": 0,
 
@@ -95,6 +97,14 @@ repositories keep their open items in `gaps|org|incidents/*/index.md`, in
 `tracks/*/index.md` and in `docs/tasks/<key>/<slug>.md`. Declaring a section in
 `pending-sections` is what makes everything under that heading an obligation —
 elsewhere, only a line already carrying a date marker is an item at all.
+
+`hq` is set by a **hand** — a project that keeps no `people/` and reads its
+HQ's. It names the HQ by its intercom identity, not by a path, so it holds on
+every machine and clone; the checkout comes from the intercom directory, the
+directory name from the HQ's own `people-dir`. Without `hq` a project is its
+own HQ. Two fields in a profile decide who may write and from which address —
+`trust: team | peer | careful | top` (none = `careful`) and `mail_from` pairs;
+the format is in `/vdm-comms:letters` → *People profiles*.
 
 `labels` is the wording of the files the generator writes **into your
 repository** — `"en"` (default), `"ru"`, or an object overriding individual
@@ -124,4 +134,6 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/comms-index.py --write          # rebuild, printin
 ${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh               # what is overdue, due soon, waiting on an event
 ${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh --owner       # …grouped by who owes it
 ${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh --lint        # items outside the contract
+${CLAUDE_PLUGIN_ROOT}/scripts/comms-people.py where          # whose people/ this project reads
+${CLAUDE_PLUGIN_ROOT}/scripts/comms-people.py show <who>     # may we write to them, and from which address
 ```

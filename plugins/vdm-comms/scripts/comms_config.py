@@ -24,6 +24,9 @@ Config lives in `.claude/vdm-plugins.json` (or `.qwen/…`) under `comms`:
     pending-sections  {"waiting": [...], "action": [...]}    (default: none)
     owners            accepted owner names, in report order  (default: none)
     people-dir        directory of people profiles           (default "people")
+    hq                a hand's HQ: the intercom identity of the project whose
+                      people/ this one reads (comms_people.py) (default: none —
+                      the project is its own HQ)
     pending-draft-days unsent-draft age threshold, 0 = off   (default 3)
     pending-transcript-days  window for "held, no transcript", 0 = off (default 0)
     register          how requests are made to the usual reader: volunteer |
@@ -80,6 +83,9 @@ DEFAULTS = {
     "pending-sections": {},
     "owners": [],
     "people-dir": "people",
+    # A hand keeps no people/ and reads its HQ's (owner with echelon,
+    # 2026-10-01; comms_people.py). Unset: this project is its own HQ.
+    "hq": None,
     "pending-draft-days": 3,
     # Off by default: a repository that keeps no transcripts would be told
     # about every meeting it holds, for a reason it never chose.
