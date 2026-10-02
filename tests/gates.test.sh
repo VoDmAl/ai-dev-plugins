@@ -537,6 +537,21 @@ expect_exit "RED: status:done + unchecked under a Cyrillic slug ⇒ exit 1" 1 "$
 expect_says "RED: …and the slug is named as itself" "$out" "zz-gate-кристалл"
 restore
 
+# A workitem larger than the pipe buffer, with SIGPIPE ignored — as it was in a
+# `!` commit from Claude Code's prompt. awk stops at the status line, and
+# `printf | awk` left printf writing into a closed pipe: "write error: Broken
+# pipe" beside a correct verdict (2026-10-02, a 98 KB crystal-wake). No
+# processes in the filler loop: echo is a builtin.
+mkdir -p docs/tasks/zz-gate-test
+{ printf -- '---\ntitle: "gate test"\nslug: zz-gate-test\nstatus: done\ncreated: 2026-07-14\nlast-updated: 2026-07-14\n---\n# gate test\n'
+  i=0; while [ $i -lt 3000 ]; do echo "filler line $i of a workitem that outgrows a pipe buffer"; i=$((i+1)); done
+  printf '## Next actions\n- [ ] an obligation nobody addressed\n'; } > docs/tasks/zz-gate-test/workitem.md
+git add docs/tasks/zz-gate-test/workitem.md
+out=$( (trap '' PIPE; bash scripts/check-crystal-completion.sh) 2>&1); rc=$?
+expect_exit "RED: a workitem past the pipe buffer, SIGPIPE ignored, still blocks" 1 "$rc"
+expect_not_says "RED: …with no broken-pipe error beside the verdict" "$out" "Broken pipe"
+restore
+
 # ---------------------------------------------------------------------------
 echo ""
 echo "== crystal-canon (crystal-lint.sh --staged) =="

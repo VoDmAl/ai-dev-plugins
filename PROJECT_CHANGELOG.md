@@ -8,6 +8,24 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ---
 
+## 2026-10-02
+
+### 🐛 BUG — гейт завершения печатал `Broken pipe` рядом с верным вердиктом (vdm-git 2.16.5)
+
+**Что было.** `scripts/check-crystal-completion.sh` и его копия в vdm-git (`crystal-precommit-check.sh`) читали
+`status:` конвейером `printf "$staged_content" | awk '… exit'`. Awk выходит на строке статуса, и если workitem больше
+буфера канала, а SIGPIPE проигнорирован, `printf` печатает `write error: Broken pipe`. Так было на коммитах `b0e8599`
+(29.09) и `4e40d92` (02.10) — оба запущены `!` из промпта Claude Code, crystal-wake весит 98 КБ. Вердикт не менялся:
+`pipefail` нет ни в одном shell-скрипте суиты. Но гейт, печатающий ошибку на успехе, учит не читать его вывод.
+Bash-инструмент сессии и git, запуская хук сам (`git hook run`), оставляют SIGPIPE по умолчанию — там строки нет.
+
+**Что сделано.**
+- Оба гейта читают `status:` из here-string; второй awk и `grep -c` дочитывают вход до конца и не задеты.
+- Red-тесты на stderr под `trap '' PIPE` с workitem больше буфера: `tests/crystal-precommit-check.test.sh` (на прежней
+  копии красный — проверено) и `tests/gates.test.sh`.
+- Соседи в хуках (около 25 мест `printf "$payload" | grep -q`) не тронуты: в выводе хуков эта строка не встречалась ни
+  в одном транскрипте машины. Разбор — `docs/tasks/crystal-wake/workitem.md`, Sidetrack #25.
+
 ## 2026-10-01
 
 ### 🐛 BUG — ветка доехала раньше своего коммита: prep называл её пропавшей, а без копии готовил строку (vdm-git 2.16.4)

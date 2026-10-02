@@ -150,5 +150,24 @@ workitem_in "$R" projects/b/tasks yb done '- [x]'
 gate "$R"
 eq "done with every item checked passes under any root" 0 "$RC"
 
+# ---------------------------------------------------------------------------
+printf '\na workitem past the pipe buffer, with SIGPIPE ignored\n'
+# ---------------------------------------------------------------------------
+# As it was in a `!` commit from Claude Code's prompt. awk stops at the status line,
+# and `printf | awk` left printf writing into a closed pipe: "write error:
+# Broken pipe" beside a correct verdict (2026-10-02, a 98 KB workitem).
+R=$(fixture bigpipe)
+mkdir -p "$R/docs/tasks/big"
+{ printf -- '---\nslug: big\nstatus: done\n---\n\n'
+  i=0; while [ $i -lt 3000 ]; do echo "filler line $i of a workitem that outgrows a pipe buffer"; i=$((i+1)); done
+  printf '## Next actions\n\n- [ ] item\n'; } > "$R/docs/tasks/big/workitem.md"
+( cd "$R" && git add -- docs/tasks/big/workitem.md 2>/dev/null )
+OUT=$(cd "$R" && trap '' PIPE && LC_ALL=en_US.UTF-8 bash "$GATE" 2>&1); RC=$?
+eq "RED: done with an open item is still blocked" 1 "$RC"
+case "$OUT" in
+  *"Broken pipe"*) bad "RED: …with no broken-pipe error beside the verdict" "output: $(printf '%s' "$OUT" | head -n 1)" ;;
+  *)               ok "RED: …with no broken-pipe error beside the verdict" ;;
+esac
+
 printf '\ncrystal-precommit-check: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

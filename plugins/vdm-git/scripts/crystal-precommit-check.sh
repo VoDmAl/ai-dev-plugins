@@ -90,8 +90,12 @@ EOF
   # Read STAGED content (git show :path) — this is what's about to commit.
   staged_content=$(git show ":$f" 2>/dev/null) || continue
 
-  # Extract status from frontmatter.
-  status=$(printf '%s\n' "$staged_content" | awk '
+  # Extract status from frontmatter. A here-string, not `printf | awk`: awk
+  # exits at the status line, and where SIGPIPE is ignored — seen 2026-10-02 on
+  # a `!` commit from Claude Code's prompt — a printf still writing a workitem
+  # larger than the pipe buffer prints "write error: Broken pipe" beside a
+  # correct verdict.
+  status=$(awk '
     BEGIN { c = 0 }
     /^---[[:space:]]*$/ { c++; if (c == 2) exit; next }
     c == 1 {
@@ -103,7 +107,7 @@ EOF
         exit
       }
     }
-  ')
+  ' <<<"$staged_content")
   [ "$status" = "done" ] || continue
 
   unchecked_count=$(printf '%s\n' "$staged_content" \

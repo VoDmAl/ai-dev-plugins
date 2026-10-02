@@ -48,7 +48,14 @@ while IFS= read -r f; do
 
   staged_content=$(git show ":$f" 2>/dev/null) || continue
 
-  status=$(printf '%s\n' "$staged_content" | awk '
+  # A here-string, not `printf | awk`: awk exits at the status line, and where
+  # SIGPIPE is ignored a printf still writing a workitem larger than the pipe
+  # buffer prints "write error: Broken pipe" beside a correct verdict. Seen
+  # 2026-10-02 on a `!` commit from Claude Code's prompt (a 98 KB crystal-wake);
+  # the Bash tool and git's own hook runner leave SIGPIPE at its default. The
+  # verdict never changed — no pipefail here — but a gate that prints an error
+  # on success teaches its reader to skip its output.
+  status=$(awk '
     BEGIN { c = 0 }
     /^---[[:space:]]*$/ { c++; if (c == 2) exit; next }
     c == 1 {
@@ -60,7 +67,7 @@ while IFS= read -r f; do
         exit
       }
     }
-  ')
+  ' <<<"$staged_content")
   [ "$status" = "done" ] || continue
 
   # A DELIBERATE third copy of "what is an unchecked obligation", not an
