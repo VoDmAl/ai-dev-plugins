@@ -155,8 +155,8 @@ git-guard — на Edit и на MCP-вызове Jira.
 - [x] Советующие хуки (`git-guard-reminder.sh`, `crystal-stop-reminder.sh`): отмена безвредна — решить, нужен ли
       им запас (DL #4)
 - [ ] Решить судьбу `git commit` через `Monitor` (Sidetrack #1)
-- [ ] Перемерить отмены через неделю после раскатки (Sidetrack #2)
-- [ ] Outcome to `executor`: intercom reply git-guard-hook-timeouts --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
+- [ ] Перемерить отмены через неделю после раскатки ⏰ 2026-10-08 — срок назван executor (Sidetrack #2)
+- [x] Outcome to `executor`: `git-guard-hook-timeouts-outcome-2` (2026-10-01, коммит `59b6de3`), бриф в `_done/`
 
 ## References
 
