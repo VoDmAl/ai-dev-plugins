@@ -12,7 +12,8 @@ covers:
   - plugins/vdm-comms/
   - plugins/vdm/lib/
   - plugins/vdm/templates/
-  - scripts/
+  - scripts/*.sh
+  - scripts/*.py
   - tests/
   - .githooks/pre-commit
   - docs/llm/soft-guidance-vs-deterministic-gates.md
