@@ -42,7 +42,10 @@ echelon и за проектами. Упоминания в тикетных с�
 - **Кто вправе писать — в скилле с 0.17.0** (DL #2): `trust` и `mail_from` в профиле штаба, `comms.hq` у руки,
   `comms-people.py`, строка получателя в заготовке. Разметки ещё нет ни у одного штаба, `hq` — ни у одной руки.
   **`comms.hq` отменён владельцем 02.10** (DL #4): штаб руки хранится только у echelon (`head` в `mcp.yaml`);
-  скилл будет спрашивать его командой — форма предложена echelon, ответа нет.
+  скилл будет спрашивать его командой. **Форма согласована 02.10** (`people-hq-command-form-outcome`):
+  `"<echelon>/bin/echelon" hq <корень проекта>` → строка — identity штаба; пусто и код 0 — сам себе штаб; код 1 и
+  причина в stderr — штаб неизвестен (ошибка в `mcp.yaml`); каталог внутри проекта и worktree — по ближайшему
+  проекту; ~0,3 с. Все семь рук отвечают; сверку `comms.hq` echelon из `echelon check` убрал.
 - **Разделение зон — решение владельца, передано echelon** (DL #1): echelon — машинные проверки формы на пути
   записи (обращение без упоминания — он сам смотрит участников тикета и подсказывает упоминание; дубль; From по
   `send_as`) и сверка после отправки в каналах, которые он везёт: Jira, черновики почты, доски Space. Скилл
@@ -168,8 +171,9 @@ echelon и за проектами. Упоминания в тикетных с�
 - [ ] Сверка после отправки: в каналах echelon — его; что может скилл для остальных и как урок от echelon
       доходит до скилла
 - [ ] «Кто пишет» — фактура по агентам и субагентам вместе с echelon (журнал у него); дождаться его итога
-- [ ] Штаб из команды echelon вместо `comms.hq` (DL #4): форма предложена — `people-hq-command-form`; после ответа —
-      `comms_people.py`, тесты, § 5 скилла, README; vdm-comms MINOR
+- [ ] Штаб из команды echelon вместо `comms.hq` (DL #4): форма согласована — `people-hq-command-form-outcome`;
+      `comms_people.py`, тесты, § 5 скилла, README; vdm-comms MINOR. Кто и где прописывает `comms.hq-command` в
+      глобальном конфиге машины — спросить владельца (настройка машины, не плагина)
 - [ ] Outcome to `vdx`: intercom reply people-wiring-hq-decision --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
 - [x] Outcome to `hq`: letters-jira-mention-form — ушёл `letters-jira-mention-form-outcome` 2026-10-01
 - [x] Outcome to `hq`: comments-system-vdm — ушёл `comments-system-vdm-outcome` 2026-10-01

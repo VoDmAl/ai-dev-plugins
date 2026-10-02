@@ -5,7 +5,7 @@ description: "Не готовить коммит и не делать вывод
 status: in-progress
 session-type: prd-prep
 created: 2026-10-01
-last-updated: 2026-10-01
+last-updated: 2026-10-02
 relates-to:
   - "[[git-guard-sync-conflicts/workitem|git-guard-sync-conflicts]]"
 ---
@@ -111,8 +111,10 @@ echelon — решить вместе с executor, владелец спраши
 Не наше:
 4. Синк `.git` — решение владельца (vdx DL #17, 30.09: `.git` ездит); пересмотреть его — его дело, не предложение
    плагина; проверку проволоченности держит vdx.
-5. Общий для машин сигнал «здесь идёт работа с git» — нужен тот, кто видит обе машины; lock-файл, который везёт
-   тот же Syncthing, опоздает так же, как ссылка. Кандидат — echelon; спрошено письмом.
+5. Общий для машин сигнал «здесь идёт работа с git» — **не покрыт**. echelon держать его не может
+   (`git-syncthing-split-roles-outcome`, 02.10): он работает на каждой машине отдельно из launchd, общее хранилище
+   `data/` едет тем же Syncthing, замки — локальные, машины разводит расписанием. Вне Syncthing у машин общие только
+   внешние сервисы и remote'ы git.
 
 ## Next actions
 
@@ -127,7 +129,7 @@ echelon — решить вместе с executor, владелец спраши
       пропавшей (DL #2, vdm-git 2.16.4)
 - [x] Раскладка `git-syncthing-split` с echelon: письмо — ушло `git-syncthing-split-roles` 2026-10-01; бриф executor
       в `_done/`
-- [ ] Предложение владельцу по `git-syncthing-split`: пп. 2 и 3 — его решение; п. 5 — по ответу echelon
+- [ ] Предложение владельцу по `git-syncthing-split`: пп. 2 и 3 — его решение; п. 5 — непокрыт (ответ echelon 02.10)
 - [ ] Outcome to `executor`: intercom reply git-syncthing-split --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
 - [ ] Outcome to `echelon`: intercom reply syncthing-lag-false-absence --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
 
