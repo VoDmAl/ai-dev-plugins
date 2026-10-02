@@ -5,7 +5,7 @@ description: "Тексты людям от агентов: форма по ка�
 status: in-progress
 session-type: prd-prep
 created: 2026-10-01
-last-updated: 2026-10-01
+last-updated: 2026-10-02
 relates-to:
   - "[[vdm-comms-letters/workitem|vdm-comms-letters]]"
   - "[[vdm-comms-letter-mechanics/workitem|vdm-comms-letter-mechanics]]"
@@ -41,6 +41,8 @@ echelon и за проектами. Упоминания в тикетных с�
   в GitLab), строка чеклиста о форме канала его называет. До того о тикетах не было нигде (grep 2026-10-01).
 - **Кто вправе писать — в скилле с 0.17.0** (DL #2): `trust` и `mail_from` в профиле штаба, `comms.hq` у руки,
   `comms-people.py`, строка получателя в заготовке. Разметки ещё нет ни у одного штаба, `hq` — ни у одной руки.
+  **`comms.hq` отменён владельцем 02.10** (DL #4): штаб руки хранится только у echelon (`head` в `mcp.yaml`);
+  скилл будет спрашивать его командой — форма предложена echelon, ответа нет.
 - **Разделение зон — решение владельца, передано echelon** (DL #1): echelon — машинные проверки формы на пути
   записи (обращение без упоминания — он сам смотрит участников тикета и подсказывает упоминание; дубль; From по
   `send_as`) и сверка после отправки в каналах, которые он везёт: Jira, черновики почты, доски Space. Скилл
@@ -131,6 +133,22 @@ echelon и за проектами. Упоминания в тикетных с�
 включать отказ после разметки (`echelon/outward-writes-decision-outcome`). Кто и когда размечает штабы — мяч у
 владельца, в том же письме.
 
+### #4 / 2026-10-02 / Штаб руки — только у echelon; `comms.hq` уходит, скилл спрашивает штаб командой
+
+**Source:** user
+**Basis:** user-stated
+**Basis-detail:** решение владельца 02.10, передал vdx письмом `people-wiring-hq-decision` (ответ на наш
+`people-wiring-hq`); тот же текст echelon получил как `people-hq-single-source`. Отклонён вариант «только
+`comms.hq`, echelon читает его»: параметр запрета жил бы в репозитории той руки, которую запрет ограничивает.
+**Context:** DL #2 ввёл `comms.hq` у руки; echelon держит то же как `head` у пяти рук и сверяет их в `echelon check`.
+Две записи одного факта приходится сторожить.
+**Why:** одна запись не требует сверки, и проверка у vdx (DL #3) становится не нужна. Скиллу остаётся способ узнать
+штаб по корню проекта, не зная про устройство echelon.
+**Implication:** предложено echelon (`people-hq-command-form`, 2026-10-02): `comms.hq-command` в глобальном
+`~/.claude/vdm-plugins.json`, вызов `<команда> <корень проекта>`, ответ — identity штаба или пусто; нет ответа —
+«штаб неизвестен» и `careful`. После согласия — убрать `comms.hq` (не объявлен ни у одной из семи рук, переносить
+нечего), читать штаб из команды; vdm-comms MINOR.
+
 ## Sidetracks
 
 Пока нет.
@@ -150,6 +168,9 @@ echelon и за проектами. Упоминания в тикетных с�
 - [ ] Сверка после отправки: в каналах echelon — его; что может скилл для остальных и как урок от echelon
       доходит до скилла
 - [ ] «Кто пишет» — фактура по агентам и субагентам вместе с echelon (журнал у него); дождаться его итога
+- [ ] Штаб из команды echelon вместо `comms.hq` (DL #4): форма предложена — `people-hq-command-form`; после ответа —
+      `comms_people.py`, тесты, § 5 скилла, README; vdm-comms MINOR
+- [ ] Outcome to `vdx`: intercom reply people-wiring-hq-decision --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
 - [x] Outcome to `hq`: letters-jira-mention-form — ушёл `letters-jira-mention-form-outcome` 2026-10-01
 - [x] Outcome to `hq`: comments-system-vdm — ушёл `comments-system-vdm-outcome` 2026-10-01
 - [x] Outcome to `echelon`: outward-writes-split — ушёл `outward-writes-split-outcome` 2026-10-01
