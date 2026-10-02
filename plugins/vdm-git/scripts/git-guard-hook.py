@@ -26,6 +26,15 @@ BLOCKED_OPERATIONS = [
     ("push",   "git push",   "affects remote"),
 ]
 
+# Every harness tool whose `command` is handed to a shell. Monitor runs its
+# command "in the same shell environment as Bash", so a commit sent there is the
+# same string by another door — not an indirection the guard cannot see, only a
+# door it was not watching (Sidetrack #1, docs/tasks/hook-timeout-fail-open).
+# The matcher in hooks.json and the fail-closed grep in git-guard-hook.sh name
+# the same tools; tests/hook-commands.test.sh and tests/hook-fail-closed.test.sh
+# read this tuple and hold both to it.
+SHELL_TOOLS = ("Bash", "Monitor")
+
 
 # git's own options that take the next word as their value: `git -C <dir> commit`.
 _GIT_OPTS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace",
@@ -610,10 +619,11 @@ def main():
     tool_name = input_data.get("tool_name", "")
     tool_input = input_data.get("tool_input", {})
 
-    if tool_name != "Bash":
+    if tool_name not in SHELL_TOOLS:
         sys.exit(0)
 
-    command = tool_input.get("command", "")
+    # Monitor may carry a WebSocket instead of a command — nothing to parse then.
+    command = tool_input.get("command") or ""
 
     for op_subcommand, op_name, reason in BLOCKED_OPERATIONS:
         if _command_invokes(command, op_subcommand):

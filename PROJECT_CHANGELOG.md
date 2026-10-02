@@ -10,6 +10,29 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ## 2026-10-01
 
+### 🐛 BUG — git-guard не читал `git commit`, пришедший через `Monitor` (vdm-git 2.16.3)
+
+**Что было.** `Monitor` исполняет свою `command` «в том же shell-окружении, что Bash», а гард читал только
+`tool_name == "Bash"` — всегда, а не с утренним matcher `Bash` (59b6de3): до него хук запускался и на Monitor,
+но выходил с 0. Тот же коммит через `Monitor` проходил незамеченным.
+Это не косвенный путь вроде скрипта или обёртки: та же строка, которую гард уже разбирает, пришла в другом
+поле. Замер по всем транскриптам машины (`references/shell-doors.py`): строку в shell передают ровно два
+инструмента — Bash (50 тыс. вызовов) и Monitor (60, первый 2026-09-14). Все 60 команд Monitor, прогнанные
+через разбор гарда, прошли бы без блока: обход был открыт, но им не пользовались.
+
+**Что сделано.**
+- `git-guard-hook.py`: список `SHELL_TOOLS = ("Bash", "Monitor")`; Monitor с WebSocket вместо команды
+  пропускается. Matcher — `Bash|Monitor`; fail-closed-ветка обёртки называет те же два имени.
+- Тесты берут список из гарда, а не повторяют: `hook-commands` — matcher покрывает каждый инструмент из
+  `SHELL_TOOLS`, и в нём есть Bash и Monitor; `hook-fail-closed` — коммит через каждый из них блокируется и с
+  python3, и без него. Четыре мутации (matcher, grep обёртки, кортеж, проверка в `main`) — каждую ловит хотя
+  бы один тест.
+- `guard` SKILL.md («What this guard is — and is not») и `docs/model/suite.md`: средняя строка таблицы
+  отделимости — не один инструмент, а класс, и пополняет его харнес. Там же исправлено устаревшее
+  «`vdm-git` регистрируется без матчера».
+
+Кристалл: `docs/tasks/hook-timeout-fail-open/workitem.md`, DL #6.
+
 ### ✨ FEATURE — кто вправе писать человеку: `trust` и пары From в `people/` штаба, `comms.hq` у рук (vdm-comms 0.17.0)
 
 **Откуда.** Итог echelon `outward-writes-decision` (его DL #75, разбор с владельцем 01.10): штабы держат

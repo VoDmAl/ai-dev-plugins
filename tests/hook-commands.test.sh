@@ -185,8 +185,11 @@ fi
 #                crystal-stop-reminder lost 24 % of its turns at 5 s
 #   SCOPE        every PreToolUse group names its tools — git-guard ran, and
 #                timed out, on Edit and on a Jira MCP call it never looks at
-#   COVERAGE     git-guard's matcher still covers Bash: a matcher narrowed past
-#                its tool is the same guard switched off by other means
+#   COVERAGE     git-guard's matcher covers every tool the guard reads — its
+#                SHELL_TOOLS, read from the guard rather than restated here: a
+#                matcher narrowed past its tool is the same guard switched off by
+#                other means. And SHELL_TOOLS keeps Bash and Monitor, the two
+#                tools that hand a command to a shell (Sidetrack #1).
 #
 # @see docs/tasks/hook-timeout-fail-open/workitem.md
 echo "── ceilings and scope"
@@ -233,11 +236,27 @@ gg_groups=$(jq '[.hooks.PreToolUse[]? | select(any(.hooks[]?; .command | test("g
               "$REPO_ROOT/plugins/vdm-git/hooks/hooks.json" 2>/dev/null)
 gg_matcher=$(jq -r '[.hooks.PreToolUse[]? | select(any(.hooks[]?; .command | test("git-guard-hook"))) | .matcher // ""][0]' \
                "$REPO_ROOT/plugins/vdm-git/hooks/hooks.json" 2>/dev/null)
-if [ "$gg_groups" = 1 ] && matcher_covers "$gg_matcher" Bash; then
-  ok "git-guard's matcher (\"$gg_matcher\") covers Bash"
-else
-  bad "git-guard's matcher covers Bash" "groups: ${gg_groups:-none}, matcher: \"$gg_matcher\""
-fi
+gg_tools=$(python3 - "$REPO_ROOT/plugins/vdm-git/scripts/git-guard-hook.py" 2>/dev/null <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("git_guard_hook", sys.argv[1])
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+print(" ".join(m.SHELL_TOOLS))
+PY
+)
+for t in Bash Monitor; do
+  case " $gg_tools " in
+    *" $t "*) ok "git-guard reads $t (SHELL_TOOLS: $gg_tools)" ;;
+    *)        bad "git-guard reads $t" "SHELL_TOOLS: \"${gg_tools:-unreadable}\"" ;;
+  esac
+done
+for t in $gg_tools; do
+  if [ "$gg_groups" = 1 ] && matcher_covers "$gg_matcher" "$t"; then
+    ok "git-guard's matcher (\"$gg_matcher\") covers $t"
+  else
+    bad "git-guard's matcher covers $t" "groups: ${gg_groups:-none}, matcher: \"$gg_matcher\""
+  fi
+done
 
 # RED half — the checks must see what they exist to see. The fixture is the
 # shape the suite had until 2026-10-01: a 5 s guard without a matcher, a 5 s
@@ -259,7 +278,8 @@ for want in 'PreToolUse guard.sh: timeout 5 < 60' 'PreToolUse guard.sh: no match
   fi
 done
 for c in 'Bash:Bash:yes' 'Write|Bash:Bash:yes' 'Write, Bash:Bash:yes' '^Ba:Bash:yes' \
-         'bash:Bash:no' 'Write|Edit|MultiEdit:Bash:no' 'BashOutput:Bash:no'; do
+         'bash:Bash:no' 'Write|Edit|MultiEdit:Bash:no' 'BashOutput:Bash:no' \
+         'Bash|Monitor:Monitor:yes' 'Bash:Monitor:no'; do
   m=${c%%:*}; rest=${c#*:}; t=${rest%%:*}; want=${rest#*:}
   if matcher_covers "$m" "$t"; then got=yes; else got=no; fi
   if [ "$got" = "$want" ]; then

@@ -27,8 +27,10 @@
 # `timeout` and lets the call through. Measured 2026-10-01 — 20 cancellations of
 # the suite's blocking guards on one loaded machine since 2026-09-03, the call
 # ran every time. Hence the registration in hooks.json: a 60 s ceiling, and
-# matcher `Bash`, the only tool the guard reads — without one it ran, and timed
-# out, on Edit and MCP calls too. Both are held by tests/hook-commands.test.sh.
+# matcher `Bash|Monitor`, the tools whose command reaches a shell (SHELL_TOOLS in
+# the guard) — without one it ran, and timed out, on Edit and MCP calls too.
+# Both are held by tests/hook-commands.test.sh; the grep below names the same
+# tools, held by tests/hook-fail-closed.test.sh.
 #
 # Hook protocol (Claude Code):
 #   stdin   JSON {"tool_name": "...", "tool_input": {...}, "cwd": "..."}
@@ -48,7 +50,7 @@ payload=$(cat)
 [ -z "$payload" ] && exit 0
 
 guard_in_scope() {
-  printf '%s' "$payload" | grep -qE '"tool_name"[[:space:]]*:[[:space:]]*"Bash"' 2>/dev/null || return 1
+  printf '%s' "$payload" | grep -qE '"tool_name"[[:space:]]*:[[:space:]]*"(Bash|Monitor)"' 2>/dev/null || return 1
   printf '%s' "$payload" | grep -qE 'git[^"]{0,200}(commit|push)' 2>/dev/null || return 1
   return 0
 }

@@ -148,9 +148,9 @@ printf '#!/bin/bash\nif true; then\n  echo hi\n' > "$FX/scripts/broken.sh"
 
 # --- payloads ----------------------------------------------------------------
 # Built with python3 from THIS shell (the farms' python3 is what is under test).
-"$PY" - "$TMP" "$FX" "$WI" <<'PY'
-import json, os, sys
-tmp, fx, wi = sys.argv[1], sys.argv[2], sys.argv[3]
+"$PY" - "$TMP" "$FX" "$WI" "$REPO_ROOT/plugins/vdm-git/scripts/git-guard-hook.py" <<'PY'
+import importlib.util, json, os, sys
+tmp, fx, wi, gg = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 src = open(wi, encoding="utf-8").read()
 
 def put(name, obj):
@@ -176,11 +176,27 @@ put("p-readme.json", write(os.path.join(fx, "README.md"), "# readme\n"))
 # in scope for shell-syntax: a shell script that does not parse (the source
 # file above is the out-of-scope case)
 put("p-sh.json", write(os.path.join(fx, "scripts/broken.sh"), "#!/bin/bash\nif true; then\n"))
-# in scope for git-guard
-put("p-commit.json", {"tool_name": "Bash", "tool_input": {"command": "git " + "commit -m x"}, "cwd": fx})
+# in scope for git-guard: a commit through every tool the guard reads. The tools
+# come from the guard's SHELL_TOOLS, not a list kept here — the wrapper's
+# fail-closed grep must name each of them, and a list restated in this file
+# would keep agreeing with the grep after both had drifted from the guard.
+spec = importlib.util.spec_from_file_location("git_guard_hook", gg)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+with open(os.path.join(tmp, "shell-tools"), "w") as fh:
+    fh.write(" ".join(mod.SHELL_TOOLS) + "\n")
+for t in mod.SHELL_TOOLS:
+    put("p-commit-%s.json" % t, {"tool_name": t, "tool_input": {"command": "git " + "commit -m x"}, "cwd": fx})
 # out of scope for git-guard
 put("p-ls.json", {"tool_name": "Bash", "tool_input": {"command": "ls -la"}, "cwd": fx})
+# a Monitor that watches a WebSocket carries no command at all
+put("p-monitor-ws.json", {"tool_name": "Monitor", "tool_input": {"ws": {"url": "wss://example.invalid/x"}, "description": "x"}, "cwd": fx})
 PY
+SHELL_TOOLS=$(cat "$TMP/shell-tools" 2>/dev/null)
+case " $SHELL_TOOLS " in
+  *" Bash "*) ;;
+  *) bad "git-guard's SHELL_TOOLS is readable and includes Bash" "got: \"$SHELL_TOOLS\"" ;;
+esac
 
 GUARD="$REPO_ROOT/plugins/vdm/scripts/crystal-completion-guard.sh"
 LINT="$REPO_ROOT/plugins/vdm/scripts/crystal-lint.sh"
@@ -204,8 +220,11 @@ run full p-inprogress.json "bash '$GUARD'"; expect_exit "completion-guard silent
 run full p-llm.json "bash '$ORPHAN'"; expect_exit "orphan-guard blocks a real orphan" 2 "$?"
 run full p-sh.json "bash '$SHELLSYN' --hook"; expect_exit "shell-syntax blocks a script that does not parse" 2 "$?"
 expect_says "  and it is the real verdict" "$OUT" "does not parse"
-run full p-commit.json "bash '$GITGUARD'"; expect_exit "git-guard blocks a commit" 2 "$?"
+for t in $SHELL_TOOLS; do
+  run full "p-commit-$t.json" "bash '$GITGUARD'"; expect_exit "git-guard blocks a commit via $t" 2 "$?"
+done
 run full p-ls.json "bash '$GITGUARD'"; expect_exit "git-guard allows an ordinary command" 0 "$?"
+run full p-monitor-ws.json "bash '$GITGUARD'"; expect_exit "git-guard allows a Monitor with no command" 0 "$?"
 
 for e in nopy crashpy; do
   echo ""
@@ -229,9 +248,11 @@ for e in nopy crashpy; do
   run "$e" p-sh.json "bash '$SHELLSYN' --hook"
   expect_exit "shell-syntax: .sh write ⇒ exit 2 (blocked either way)" 2 "$?"
 
-  run "$e" p-commit.json "bash '$GITGUARD'"
-  expect_exit "git-guard: commit-shaped command ⇒ exit 2" 2 "$?"
-  expect_says "git-guard: says NOT CHECKED" "$OUT" "NOT CHECKED"
+  for t in $SHELL_TOOLS; do
+    run "$e" "p-commit-$t.json" "bash '$GITGUARD'"
+    expect_exit "git-guard: commit-shaped command via $t ⇒ exit 2" 2 "$?"
+    expect_says "git-guard: says NOT CHECKED ($t)" "$OUT" "NOT CHECKED"
+  done
 
   echo ""
   echo "== GREEN: same broken env, OUT-of-scope calls must stay silent (env: $e) =="
