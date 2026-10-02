@@ -195,6 +195,17 @@ before a new commit lands on top of it. For a copy of the index: compare
 `git status` with what was staged, fix the entry, delete the copy. Then prepare
 again. Field cases and the owner's decision: vdx, 2026-09-30.
 
+**A branch that arrived before its commit.** Syncthing carries `.git` file by
+file, so a commit made on the other machine can land as its branch ref first and
+as its object minutes later (executor, 2026-10-01: about fifteen). In
+between, HEAD names a commit this repository does not have, and nothing about
+the branch can be judged. The helper refuses with the commit's id and the check
+that tells when it is here — `git cat-file -e <sha>` — and says how many
+conflict copies wait for the next run. The branch is not gone and nothing is
+lost: do not recreate it, do not reset it; wait, then prepare again. The same
+holds for a conflict copy of another branch whose live ref is ahead of its
+object — the helper says so instead of calling that branch gone.
+
 **Committing a subset.** When you want fewer paths than are staged, name them:
 
     git-guard-prepare "[+] Add foo helper" -- src/foo.ts

@@ -10,6 +10,28 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ## 2026-10-01
 
+### 🐛 BUG — ветка доехала раньше своего коммита: prep называл её пропавшей, а без копии готовил строку (vdm-git 2.16.4)
+
+**Что было.** Бриф executor `git-syncthing-split`: Syncthing возит `.git` пофайлово, и коммит со второй машины
+пришёл ссылкой `refs/heads/master` примерно за 15 минут до своего объекта. `git-guard-prepare` отказал из-за
+конфликтной копии, но подсказка была ложной: «branch master no longer exists; recover it: git branch <name> …», и
+рядом протёк `fatal: git show-ref: bad ref`. Причина — `show-ref --verify` падает и на ветке, чей коммит ещё не
+доехал, а `--quiet` его `fatal` не глушит. Без конфликтной копии prep и вовсе выдавал строку коммита поверх
+родителя, которого в репозитории нет. Оба случая воспроизведены на фикстуре без коммитов: настоящие объекты взяты
+через `objects/info/alternates`, ссылка указывает на несуществующий sha.
+
+**Что сделано.**
+- Новый отказ до разбора копий: HEAD называет коммит, которого нет (`rev-parse --verify` находит ссылку,
+  `cat-file -e <sha>^{commit}` не находит объект). Сообщение: ветка не пропала, ничего не потеряно, ждать, пока
+  `git cat-file -e <sha>` не пройдёт; сколько копий ждут следующего прогона.
+- В разборе копии ветки — существование через `rev-parse --verify`; ветка, чей объект не доехал, названа ждущей,
+  а не пропавшей.
+- `tests/git-guard-prepare.test.sh` — три случая: форма из брифа, отставание без копии, копия чужой ветки; на
+  старой версии третий даёт `fatal` и «no longer exists» — проверено.
+- `guard` SKILL.md — абзац «A branch that arrived before its commit»; `docs/model/suite.md` — строка сигналов.
+
+Кристалл: `docs/tasks/git-guard-sync-lag/workitem.md`, DL #2.
+
 ### 🐛 BUG — git-guard не читал `git commit`, пришедший через `Monitor` (vdm-git 2.16.3)
 
 **Что было.** `Monitor` исполняет свою `command` «в том же shell-окружении, что Bash», а гард читал только

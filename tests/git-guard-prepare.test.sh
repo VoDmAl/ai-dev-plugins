@@ -809,6 +809,44 @@ printf 'c\n' > c.txt; git add c.txt
 out=$("$PREP" "[*] on top" 2>&1); rc=$?
 expect_exit "from a linked worktree, a copy in the common .git is seen too" 1 "$rc"
 
+printf '\n=== A branch ref that arrived before its commit ===\n'
+# executor, 2026-10-01: the other machine's commit reached refs/heads/<br>
+# about fifteen minutes before its object did. The prep listed the conflict copy
+# beside it, but called the branch gone — "recover it: git branch <name> …" —
+# with `fatal: git show-ref: bad ref` leaking through; and with no copy at all
+# it handed out a commit line on top of a parent the repository did not have.
+missing=c31f4703c31f4703c31f4703c31f4703c31f4703
+
+d=$(new_repo synclag); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+br=$(git symbolic-ref --short HEAD)
+git rev-parse HEAD > ".git/refs/heads/$br.sync-conflict-20261001-184527-N223K43"
+printf '%s\n' "$missing" > ".git/refs/heads/$br"
+printf 'c\n' > c.txt; git add c.txt
+out=$("$PREP" "[*] on top" 2>&1); rc=$?
+expect_exit "the field shape: HEAD's commit not here, a copy beside it → refused" 1 "$rc"
+nothing_prepared "$d" && ok "…and nothing is prepared" || bad "…and nothing is prepared"
+expect_says "…it says the commit has not arrived" "$out" "not in this repository yet"
+expect_says "…and how to see it arrive" "$out" "git cat-file -e $missing"
+expect_says "…and that a copy waits for the next run" "$out" "1 Syncthing conflict copy also lies"
+expect_not_says "RED: the branch is not called gone" "$out" "no longer exists"
+expect_not_says "RED: no fatal leaks into the advice" "$out" "fatal:"
+rm -f ".git/refs/heads/$br.sync-conflict-"*
+out=$("$PREP" "[*] on top" 2>&1); rc=$?
+expect_exit "RED: no copy at all — still refused, no commit line on a parent that is not here" 1 "$rc"
+expect_not_says "…the line is not handed out" "$out" "git commit -F"
+
+d=$(new_repo synclagother); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+git rev-parse HEAD > ".git/refs/heads/other.sync-conflict-20261001-184527-N223K43"
+printf '%s\n' "$missing" > ".git/refs/heads/other"
+printf 'c\n' > c.txt; git add c.txt
+out=$("$PREP" "[*] on top" 2>&1); rc=$?
+expect_exit "a copy of another branch whose commit has not arrived → refused" 1 "$rc"
+expect_says "…the live branch is named as waiting for its commit" "$out" "branch other points to c31f470, which has not arrived yet"
+expect_not_says "RED: …not as gone" "$out" "no longer exists"
+expect_not_says "RED: …and no fatal leaks" "$out" "fatal:"
+
 # ---------------------------------------------------------------------------
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

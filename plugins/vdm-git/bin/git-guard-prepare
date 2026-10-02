@@ -468,6 +468,37 @@ for gd in "$sync_common" "$sync_dirs"; do
 "
 done
 sync_found=$(printf '%s' "$sync_found" | sed '/^$/d' | sort -u)
+
+# --------------------------------------- HEAD's commit not delivered yet
+# Syncthing carries .git file by file, so a commit made on the other machine
+# can land as its branch ref first and as its object later — executor,
+# 2026-10-01: about fifteen minutes. In between HEAD names a commit this
+# repository does not have: `git log` says "bad object HEAD", `git show-ref`
+# calls the ref bad, and a prep would hand out a commit line on top of a parent
+# it cannot read. Nothing can be judged until the object is here — not even the
+# conflict copies found above, whose verdict needs the branch's history — so
+# this is decided before they are listed. `rev-parse --verify` resolves the ref
+# without looking for its object, which is exactly the distinction needed; an
+# unborn branch resolves to nothing and passes.
+head_lag=$(git rev-parse --verify -q HEAD 2>/dev/null || true)
+if [ -n "$head_lag" ] && ! git cat-file -e "$head_lag^{commit}" 2>/dev/null; then
+  lag_copies=$(printf '%s\n' "$sync_found" | grep -c . || true)
+  {
+    echo "git-guard-prepare: ✗ $branch points to commit ${head_lag:0:7}, which is not in this repository yet — nothing prepared."
+    echo "  On a .git that Syncthing carries between machines, a branch ref can arrive before its"
+    echo "  commit does. The branch is not gone and nothing is lost: wait until"
+    echo "      git cat-file -e $head_lag"
+    echo "  succeeds, then run git-guard-prepare again."
+    if [ "${lag_copies:-0}" -gt 0 ]; then
+      if [ "$lag_copies" -eq 1 ]; then lag_what="1 Syncthing conflict copy also lies"
+      else lag_what="$lag_copies Syncthing conflict copies also lie"; fi
+      echo "  $lag_what in .git; once the branch's history can be read, the"
+      echo "  next run names each one with what to do."
+    fi
+  } >&2
+  exit 1
+fi
+
 if [ -n "$sync_found" ]; then
   base="${sync_common:-$sync_dirs}"
   {
@@ -484,8 +515,15 @@ if [ -n "$sync_found" ]; then
           if [ -n "$sha" ] && git cat-file -e "$sha^{commit}" 2>/dev/null; then
             short=$(git rev-parse --short "$sha")
             subject=$(git log -1 --format=%s "$sha" 2>/dev/null)
-            if ! git show-ref --verify --quiet "refs/heads/$ref_branch"; then
+            # Existence by `rev-parse --verify`, not `show-ref --verify`: the
+            # latter also fails — loudly, past --quiet — on a branch whose own
+            # commit has not arrived yet, and that is not a branch that is gone.
+            live=$(git rev-parse --verify -q "refs/heads/$ref_branch" 2>/dev/null || true)
+            if [ -z "$live" ]; then
               echo "      → commit $short \"$subject\" — branch $ref_branch no longer exists; recover it: git branch <name> $short, then delete the copy"
+            elif ! git cat-file -e "$live^{commit}" 2>/dev/null; then
+              echo "      → commit $short \"$subject\" — branch $ref_branch points to ${live:0:7}, which has not arrived yet:"
+              echo "          wait until \`git cat-file -e $live\` succeeds and run again; only then can this copy be judged"
             elif git merge-base --is-ancestor "$sha" "refs/heads/$ref_branch" 2>/dev/null; then
               echo "      → commit $short \"$subject\" — in $ref_branch: nothing lost; delete the copy"
             else
