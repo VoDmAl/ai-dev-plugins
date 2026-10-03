@@ -78,7 +78,7 @@ cat > "$FX/.claude/vdm-plugins.json" <<'JSON'
       "waiting": ["Ожидаем"],
       "action": ["Наши действия"]
     },
-    "owners": ["executor", "product", "Accounting"],
+    "owners": ["research team", "product", "Accounting"],
     "people-dir": "people",
     "pending-draft-days": 3
   }
@@ -129,7 +129,7 @@ title: beta
 
 ## Ожидаем ответы
 
-- [ ] **executor** — details on KEY-579494 ⏰ 2026-09-24
+- [ ] **research team** — details on KEY-579494 ⏰ 2026-09-24
 - [ ] ⏰ 30.09 — **[[../../people/olga-sidorova|Сидоровой]]** — the dd.mm form
 - [ ] **product** — reply to the brief ⏰ after: the transcript arrives
 - [ ] bump до 8.19.1 is what we are tracking ⏰ and no date behind it
@@ -208,7 +208,7 @@ echo "== dates: two markers, one detector =="
 run
 expect_says "an ISO clock date in the past is overdue" "$OUT" "2026-09-15 · Петров"
 expect_says "a (due:) date in the past is overdue too" "$OUT" "an out-of-section obligation"
-expect_says "a date inside the week is 'next 7 days'" "$OUT" "2026-09-24 · executor"
+expect_says "a date inside the week is 'next 7 days'" "$OUT" "2026-09-24 · research team"
 expect_says "an event item is its own bucket" "$OUT" "on an event"
 run --json
 expect_says "dd.mm is read, and flagged as non-ISO later" "$OUT" '"date_kind": "dmy"'
@@ -231,7 +231,7 @@ expect_says "owner inside the bold, before the separator" "$OUT" '"owner": "Пе
 expect_says "an escaped pipe in the wikilink still resolves" "$OUT" '"owner": "Петрову"'
 expect_says "…and both fold onto one group key" "$OUT" '"owner_key": "person:ivan-petrov"'
 expect_says "an unmarked owner at the head of the line is found" "$OUT" '"owner": "Accounting"'
-expect_says "a declared name in the emphasis is found" "$OUT" '"owner": "executor"'
+expect_says "a declared name in the emphasis is found" "$OUT" '"owner": "research team"'
 expect_says "a bold SUBJECT is not an owner" "$OUT" '"owner_kind": "missing"'
 
 run --owner
@@ -240,8 +240,8 @@ run --owner
 # assertion used to read `expect_says "## us ("` under the name "'us' is the
 # first group" — it checked presence, never order, and would have passed with
 # the groups in any sequence.
-expect_before "a person comes before the declared owners" "$OUT" "## Петров (" "## executor ("
-expect_before "the declared owners come in config order" "$OUT" "## executor (" "## product ("
+expect_before "a person comes before the declared owners" "$OUT" "## Петров (" "## research team ("
+expect_before "the declared owners come in config order" "$OUT" "## research team (" "## product ("
 expect_before "…and all of them before us" "$OUT" "## product (" "## us ("
 expect_before "us comes before the items nobody owns" "$OUT" "## us (" "## (no owner) ("
 expect_says "the two declensions land in one person group" "$OUT" "## Петров ("

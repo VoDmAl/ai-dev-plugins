@@ -175,7 +175,7 @@ def strip_emoji(text):
 def _boundary_find(hay, needle):
     """Index of `needle` in `hay`, both folded, not glued to a word.
 
-    `executor` must match `executor-агент` and must not match inside a longer word:
+    `backend` must match `backend-агент` and must not match inside a longer word:
     a two-letter team name in the whitelist would otherwise claim every item
     whose text happens to contain those letters.
     """
@@ -273,7 +273,7 @@ def lead_segment(body):
     """The head of the item — the only place an owner can be.
 
     Measured, not assumed. Searching the whole line for a known name attributed
-    `- [ ] Завершить миграцию пользователей Alpha → executor` to the executor team
+    `- [ ] Завершить миграцию пользователей Alpha → Beta` to the Beta team
     and `- [ ] Реактивировать диалог с СБ` to security: in both the name is the
     SUBJECT, and the owner is whoever the section says. Sixty-one such
     misattributions in one repository of 304 items — a report that confident and
@@ -342,7 +342,7 @@ def _emphasis_candidates(lead):
 
 
 def _match_role_named(candidate, owners):
-    """`**agent product**`, `**команда executor**` — one word naming a role,
+    """`**agent product**`, `**команда backend**` — one word naming a role,
     then a declared name. Only inside emphasis: bold is a label someone chose,
     while the same two words in running text are as often a verb and its
     object («Спросить product»), which is the misattribution this whole rule

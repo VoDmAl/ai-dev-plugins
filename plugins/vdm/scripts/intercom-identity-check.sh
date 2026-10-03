@@ -119,7 +119,7 @@ Right now other agents can reach this repo only as ${reach} — those are machin
   # names from the README / the directory name / how the user refers to it; if
   # unsure, ask once". The agent deferred it to the end of the session and then
   # asked the user — who replied «Странно, что он тебе не предложил дефолт по
-  # названию папки». The directory was literally called `executor`.
+  # названию папки». The directory was literally named after the project.
   #
   # The diagnosis is about the FORM of the notice, not the agent: a command an
   # agent can execute gets executed; a request to derive one, hedged with "if

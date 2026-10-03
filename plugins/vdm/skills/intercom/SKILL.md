@@ -113,7 +113,7 @@ from outside.
 **Names cannot be derived — only descriptions partly can.** Field pass,
 2026-09-10: eleven entries were named in one sweep, and eight of the names came
 from each repository's own README title. The other three came only from the user
-(`executor` for a executor appears in no file anywhere). Plan the step as
+(the short name the user gave a demo project appears in no file anywhere). Plan the step as
 a confirmation pass with the user, not as automation; propose what the
 repositories say about themselves and let the user correct it.
 
@@ -189,7 +189,7 @@ the same name (hand-edited registry), resolution reports *ambiguous* and `send`
 refuses until it is fixed.
 
 Names are compared after **folding**: lowercase, whitespace and `_` → `-`. So
-`"VDM Plugins"`, `vdm_plugins` and `vdm-plugins` are the same name; `executor`
+`"VDM Plugins"`, `vdm_plugins` and `vdm-plugins` are the same name; `www.example.org`
 and `owner/repo` survive unchanged. Lowercasing is ASCII-only on both sides, so a
 non-ASCII name (`интерком`) matches case-exactly — register it lowercase. The
 fold has one implementation (in `jq`, inside `intercom-common.sh`); without `jq`
@@ -660,8 +660,8 @@ for exactly that reason.
 ### Send a cross-repo brief
 
 ```
-/vdm:intercom send executor media-metadata --title "Render 4 media fields" --from-agent "content agent"
-# → staged <store>/executor/media-metadata.md ; then edit the body, report the path.
+/vdm:intercom send www.example.org media-metadata --title "Render 4 media fields" --from-agent "content agent"
+# → staged <store>/www.example.org/media-metadata.md ; then edit the body, report the path.
 ```
 
 ### Note to a future clean session of your own repo
@@ -692,7 +692,7 @@ carriers, and it points to the crystal rather than retelling it.
 /vdm:intercom directory
 # 📇 intercom directory — 18 agent(s)
 #   • ai-dev-plugins   aka: vdm, intercom, cc-vdm-plugins, vodmal/ai-dev-plugins   — Claude Code plugin suite …   [📬 2 pending]
-#   • executor   — (no description)   ⚠ unnamed
+#   • home-server   — (no description)   ⚠ unnamed
 ```
 
 ## Integration with other skills

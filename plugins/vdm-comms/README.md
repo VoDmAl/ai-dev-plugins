@@ -67,7 +67,7 @@ is reported.
 
     "pending-paths": ["projects/*/index.md", "docs/tasks/*/*.md"],
     "pending-sections": { "waiting": ["Waiting on"], "action": ["Our actions"] },
-    "owners": ["executor", "legal", "Dmitry"],
+    "owners": ["research team", "legal", "John"],
     "people-dir": "people",
     "hq": "ops-hq",
     "pending-draft-days": 3,

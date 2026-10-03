@@ -313,7 +313,7 @@ intercom_chain() {
 # Name folding. A human says "VDM plugins", "vdm_plugins" or "vdm-plugins" and
 # means the same agent; every comparison in the registry goes through this
 # fold on BOTH sides. Lowercase (ASCII); runs of whitespace/underscore → "-";
-# trim "-". Dots and slashes survive (executor, owner/repo are real names).
+# trim "-". Dots and slashes survive (www.example.org, owner/repo are real names).
 #
 # ONE implementation, in jq — the bash side calls it rather than restating it.
 # A second formulation of the same rule is a second copy of the rule, and a

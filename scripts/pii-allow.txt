@@ -50,6 +50,7 @@ word Резолв
 word Резолвер
 word Референс
 word Самозаживление
+word Самописное
 word Скаффолд
 word Скил
 word Скилл
@@ -77,11 +78,27 @@ word Хелпер
 word Чекбокс
 word Чеклист
 
-# --- word: fictional examples. The book layer ignores this list, so a name here
-# that belongs to a real person in the address books is still reported.
+# --- word: fictional examples and the replacements of public-repo-cleanup (DL #13, #15). The book
+# layer ignores this list, so a name here that belongs to a real person in the address books is still
+# reported.
+word Белых
+word Бондаренко
+word Волков
+word Зайцев
+word Иван
+word Коваленко
+word Ковальчук
+word Козлов
 word Котов
+word Лебедев
+word Мария
+word Маша
+word Морозов
 word Петров
+word Петя
 word Сидоров
+word Смирнов
+word Соколов
 
 # --- key: shapes of a task key that are no tracker
 key ABC

@@ -30,7 +30,7 @@ comparison, and this tool is that comparison.
 (`**[[../../people/ivan-petrov|Petrov]]**` — a person is always written this
 way, so the summary groups by *person* rather than by how the sentence
 declined their name), an emphasised name from `comms.owners`
-(`**executor**`, `` `product` ``, `**agent product**`, `**legal**`), or
+(`**research team**`, `` `product` ``, `**agent product**`, `**legal**`), or
 "we"/"мы" for something on our side (`**We (platform team)**` — the parenthesis
 qualifies, it does not rename).
 
@@ -110,7 +110,7 @@ sensible default: three repositories keep them in three different shapes.
       "waiting": ["Ожидаем"],
       "action": ["Наши действия", "Требует действий"]
     },
-    "owners": ["executor", "legal", "product", "Dmitry"],
+    "owners": ["research team", "legal", "product", "John"],
     "people-dir": "people",
     "pending-draft-days": 3,
     "pending-transcript-days": 45
