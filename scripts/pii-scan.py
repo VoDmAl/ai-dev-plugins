@@ -859,6 +859,8 @@ def main() -> int:
     ap.add_argument("--report", help="where the JSON report goes; must be outside the repository")
     ap.add_argument("--allow", help="allowlist (default: scripts/pii-allow.txt next to this script)")
     ap.add_argument("--registry", help="intercom registry dir (default: as intercom resolves it)")
+    ap.add_argument("--own", help="this repository's registry identity, when the scan runs in a clone whose path "
+                                  "the registry does not know (default: the entry whose paths include this checkout)")
     ap.add_argument("--terms", default=os.environ.get("PII_SCAN_TERMS") or default_terms(),
                     help=f"private terms file, outside the repo (default: $PII_SCAN_TERMS, else {DEFAULT_TERMS} if present)")
     ap.add_argument("--identity", help='public identity "Name <email>" (default: this clone\'s user.name/user.email)')
@@ -891,7 +893,10 @@ def main() -> int:
     t0 = time.time()
     allow = Allow(args.allow or os.path.join(os.path.dirname(os.path.abspath(__file__)), "pii-allow.txt"), morph)
     entries = load_registry(registry_dir(args.registry))
-    own = [e for e in entries if any(os.path.realpath(p) == real_root for p in e.get("paths") or [])]
+    own = [e for e in entries if any(os.path.realpath(p) == real_root for p in e.get("paths") or [])
+           or (args.own and e.get("identity") == args.own)]
+    if args.own and not own:
+        die(f"--own {args.own}: no such identity in the registry")
     book = Book(entries, morph, allow)
     if not book.profiles:
         die("no people/ profiles found through the intercom registry — the exact layer would be empty")
