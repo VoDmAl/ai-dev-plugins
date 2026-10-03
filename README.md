@@ -505,7 +505,7 @@ See `plugins/vdm/skills/learn/SKILL.md` for full documentation.
 
 ## Development
 
-This repo carries deterministic gates that enforce structural invariants the project has chosen to hold. Each gate is a pure-shell script with a remediation message; CLAUDE.md describes the rule, the gate enforces it. See `docs/llm/soft-guidance-vs-deterministic-gates.md` for why we layer rules and gates rather than relying on either alone.
+This repo carries deterministic gates that enforce structural invariants the project has chosen to hold. Each gate is a script with a remediation message — shell, except the PII gate's scanner; CLAUDE.md describes the rule, the gate enforces it. See `docs/llm/soft-guidance-vs-deterministic-gates.md` for why we layer rules and gates rather than relying on either alone.
 
 ### Activate the dev hooks
 
@@ -516,6 +516,12 @@ git config core.hooksPath .githooks
 ```
 
 If you forget, a SessionStart hook in `.claude/settings.json` prints a one-line `[vdm-dev]` reminder at the top of each Claude Code session in this repo. The warner is **idempotent and warn-only** — it never modifies your `.git/config`. To opt out, point `core.hooksPath` somewhere else (e.g. `git config core.hooksPath .git/hooks`); the warner only stays quiet when it's exactly `.githooks`.
+
+The PII gate (below) runs `scripts/pii-scan.py` through `uv`, which installs the scanner's two dependencies into its own cache on the first commit. Install it once per machine:
+
+```bash
+brew install uv
+```
 
 ### Pre-commit gates
 
@@ -538,6 +544,7 @@ If you forget, a SessionStart hook in `.claude/settings.json` prints a one-line 
 | shell-syntax | `plugins/vdm/scripts/shell-syntax-check.sh --staged` | unconditionally — every staged shell file must parse under the interpreter it will meet (the shebang's; for bash also the PATH one), read from the staged blob |
 | owned suites | `scripts/suites-for.sh` → `tests/<name>.test.sh`, plus `tests/suite-wiring.test.sh` | a staged file under a plugin's `scripts/`, `lib/` or `bin/` runs the suite it is named after (`intercom-common.sh` → `intercom`, `fffd-precommit-check.sh` → `fffd`), and a staged suite runs itself. `suite-wiring` runs on every commit (~1s) and fails if any suite under `tests/` has no trigger at all — until 2026-09-25, nine of twenty-one had none. Each suite runs once per commit, however many gates name it |
 | git path lists | `tests/git-path-lists.test.sh` | unconditionally — every path list a script under `plugins/*/{scripts,lib,bin}/`, `scripts/` or `.githooks/` reads from git is read with `-z` and turned back into lines in the C locale. In line form git quotes any name with a byte outside ASCII, and the quoted form is no path; raw, a name that is not UTF-8 makes macOS `tr` stop in a UTF-8 locale. The same defect was fixed in three places before this check existed (~0.1s) |
+| pii | `scripts/pii-gate.sh index`; its other half, `scripts/pii-gate.sh message`, runs from `.githooks/commit-msg` | unconditionally, before the suites run — what the commit adds, its message and its signature name no person, no work identifier and no agent. Red tests `tests/pii-scan.test.sh` (~20s) when the scanner, the wrapper or either hook is staged (~1s) |
 | suite runner | `scripts/run-suites.sh` + `tests/run-suites.test.sh` | the suites every gate above names are queued and run side by side after the last gate, each with a TMPDIR of its own; a passing suite prints its summary line, a failing one everything it printed. The runner's own suite runs first, directly, when the runner or the hook is staged — a runner that swallowed a failure would turn every gate behind it green |
 
 The suites no longer run one after another (2026-09-26): eighteen of them took 89 s one at a time and 30 s side by side in the same measurement, at load 12–45 on 8 cores. The queue starts in the order the gates name the suites, so the long ones are named early.
@@ -568,6 +575,8 @@ bash tests/reminders-dispatch.test.sh      # the six vdm reminders composed into
 bash tests/hook-commands.test.sh           # hooks.json commands as the harness runs them, from a plugin root with a space: start, agree with a plain root, still block
 bash tests/hook-index-writes.test.sh       # no hook rewrites .git/index (git status refresh); a guard cut out of a copy must go red
 bash tests/githook-snippets.test.sh        # vdm-git's pre-commit snippets as pasted: registered clone over an abandoned one, no guessing between two
+bash scripts/pii-gate.sh index             # 0 = clean, 1 = what is staged would publish a person, a work identifier or an agent
+bash tests/pii-scan.test.sh                # the PII gate against fixture address books and a fake Jev (needs uv)
 ```
 
 **lib-sync.** The two plugins ship duplicated copies of `lib/config-path.sh` and `lib/config-read.sh` (each plugin must be self-contained for independent installation). The check normalizes the cross-reference comments that name the opposite plugin (`plugins/vdm/lib` ↔ `plugins/vdm-git/lib`); everything else must match byte-for-byte. A GitHub Actions workflow running the same check on PRs is planned but not yet wired up (the file `.github/workflows/lib-sync.yml` was blocked by a local security hook during a prior commit).
@@ -592,6 +601,8 @@ Why it exists: the orphan audit shipped **blind**. `grep -rlF -- "$needle" --inc
 The harness materializes the **working tree** (not `git clone` of HEAD — pre-commit runs the scripts on disk, so a HEAD-based harness is blind to the regression you just wrote) and drops `tests/` from the copy (the harness names its own fixtures in plain text, and `.sh` counts as a source-code hook — left in place it would hook every fixture it creates and whitewash its own red tests). The observer must not sit inside the observed tree.
 
 **crystal.** Backup to the `crystal-completion-guard` runtime hook (which catches the assistant flipping `status: done` mid-edit). The pre-commit variant catches IDE-direct edits that bypass the assistant — by the time it fires, the runtime hook already missed it, which is exactly when a deterministic check earns its keep. Reads the STAGED version of each workitem (`git show :path`) so the gate sees what's about to commit, not whatever sits on disk. Hardcoded to `docs/tasks/` (this repo doesn't override the default crystal root). The downstream-shipped equivalent — `vdm-git/scripts/crystal-precommit-check.sh` — checks every crystal root the suite resolves (`crystal.paths` or `crystal.path` in `.claude/vdm-plugins.json`, otherwise each `tasks/` directory in the repository).
+
+**pii.** The repository is public, and its history keeps whatever was ever committed (crystal `public-repo-cleanup`). The gate runs `scripts/pii-scan.py` in two hooks: the pre-commit checks what the commit adds, lines and paths; `.githooks/commit-msg`, the only hook shown the message, checks the message and the author and committer. The exact layer reads the owner's address books and the intercom registry at run time, outside the repository, so no name is written here; morphology and NER catch the names the books do not know; patterns catch task keys, tracker mentions, addresses, hosts and phones. Every finding blocks, with its remedy. A word that names no one passes by a line in `scripts/pii-allow.txt`, and the gate reads the allowlist **staged** with the commit, so the line lands with the word. A disputed finding — a possible name neither the books nor the allowlist know — goes to Jev through the access layer (`echelon jev`): the candidate and at most 200 characters of its line, at most five per commit. The answer picks the remedy, a fictional name or the allowlist line, and never lets the commit through: what passes is what the allowlist names, so the next scan of the whole tree still finds nothing.
 
 ### Runtime hooks (ship with the plugin)
 

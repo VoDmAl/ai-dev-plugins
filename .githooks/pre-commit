@@ -2,7 +2,7 @@
 # Local pre-commit hook. Activated by:
 #     git config core.hooksPath .githooks
 #
-# Runs eleven independent gates. Each fails fast — failure in any gate blocks
+# Runs thirteen independent gates. Each fails fast — failure in any gate blocks
 # the commit.
 #
 # The timings below are rough figures for an idle machine. Under load they
@@ -82,8 +82,14 @@
 #                       and turned back into lines in the C locale
 #                       (tests/git-path-lists.test.sh). Unconditional; one awk
 #                       pass over the scripts.
+#  13. pii            — what the commit adds names no person, no work
+#                       identifier and no agent (scripts/pii-gate.sh index).
+#                       Unconditional, ~1s; placed before the suite queue, so a
+#                       finding costs a second, not the suites' wait. Its other
+#                       half, the message and the signature, is in
+#                       .githooks/commit-msg — the only hook shown the message.
 #
-# The suites that gates 6–9, 11 and 12 name are not run where they are named:
+# The suites that gates 6–9 and 11–13 name are not run where they are named:
 # they are queued, and the queue runs side by side after the last gate
 # (scripts/run-suites.sh), each suite with a TMPDIR of its own. The runner's own
 # suite, tests/run-suites.test.sh, runs first and directly when the runner or
@@ -350,6 +356,21 @@ done
 # docs/tasks/crystal-wake/workitem.md). One awk pass over the scripts; every
 # commit, because a new reader can arrive in any of them.
 run_suite_quiet git-path-lists
+
+# Gate 13 — pii: what this commit adds names no person, no work identifier and
+# no agent (crystal public-repo-cleanup). The repository is public and its
+# history keeps whatever was ever committed; the soft rule "may you keep it?"
+# failed six times, and two manual passes in a row missed people a detector then
+# found. Unconditional: any staged line can carry a name. The scanner reads the
+# index git hands this hook — for a pathspec commit, the temporary one — so it
+# checks exactly the tree about to be committed. Its red tests run when the
+# scanner, the wrapper or either hook changes; the allowlist is data, and a
+# malformed line in it fails the gate itself.
+if printf '%s\n' "$staged" | grep -qE '^(scripts/pii-(scan\.py|gate\.sh)|\.githooks/(pre-commit|commit-msg))$'; then
+  echo "gates: the PII gate changed — re-running its red tests (~20s)…"
+  run_suite pii-scan
+fi
+bash scripts/pii-gate.sh index
 
 # The runner that runs every queued suite is itself the subject of a suite, and
 # a broken runner could report a failed suite as passed — every gate behind it

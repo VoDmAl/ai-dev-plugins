@@ -201,6 +201,32 @@ catches it, restore. Without that, "we added a gate" is an assertion of
 compliance, not evidence of it — the same epistemic error the `Basis:` taxonomy
 exists to prevent one layer up.
 
+### Published text: people, work identifiers, agent names (2026-10-03)
+
+**Soft form that failed.** The `crystal-grow` "Store" rule told the assistant to
+copy an artifact into `references/`. A veto, "may you keep it?", was added in
+vdm 2.21.2, and six of the seven copies that carried third-party data were made
+after it. Prose, test fixtures and code comments were outside the veto
+altogether. Two manual passes with grep in a row missed people that a detector
+then found: grep finds only what you already know.
+
+**Deterministic form that holds.** `scripts/pii-scan.py`, run by
+`scripts/pii-gate.sh` as gate 13 of the pre-commit (what the commit adds) and
+from `.githooks/commit-msg` (the message, the author, the committer). Who may
+not be named is read at run time from the owner's address books and the intercom
+registry, outside the repository: a list of names kept here would itself be the
+publication. A word that looks like a name blocks the commit until a line in
+`scripts/pii-allow.txt`, staged in the same commit, names it jargon or a made-up
+example. A model (Jev, through the access layer) is asked about the disputed
+words; its answer picks the remedy and never lets the commit through. Red tests:
+`tests/pii-scan.test.sh`. Rationale and measurements: crystal
+`public-repo-cleanup`, DL #6–#9, #21, #22.
+
+The lesson: when nobody may list the rule's subject inside the repository, the
+gate's second operand lives outside the tree. Such a gate has to print its
+coverage, and it has to block when the coverage is empty. An empty address book
+must stop the commit, not pass it in silence.
+
 ## Anti-patterns to avoid
 
 **More text in the same surface that just failed.** When SKILL.md already

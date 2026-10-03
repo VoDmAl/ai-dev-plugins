@@ -1,0 +1,14 @@
+#!/bin/bash
+# Local commit-msg hook. Activated together with the pre-commit by:
+#     git config core.hooksPath .githooks
+#
+# One gate: the second half of the PII gate (crystal public-repo-cleanup). The
+# pre-commit's gate 13 checks what the commit adds; this hook checks what only it
+# is shown — the message, which is published with the commit and stays in the
+# history like any line of a file, and the author and committer git settled on.
+#
+# @see scripts/pii-gate.sh, tests/pii-scan.test.sh
+
+set -eu
+
+exec bash scripts/pii-gate.sh message "$1"

@@ -43,12 +43,28 @@ collides with a real person's surname is a finding — pick another surname.
 MODES
   tree      tracked and untracked-but-not-ignored files, and their paths
   index     lines the staged diff adds, and the paths it adds
+  message   a commit message file, and the author and committer git will record
   history   every unique line of every blob reachable from any ref, every commit
             message, every path, every author and committer
   files     the files named on the command line
 
 The full report goes OUTSIDE the repository (default: under $TMPDIR): it holds
 the very strings it found. stdout carries a summary grouped by value.
+
+THE GATE (--gate; modes index and message)
+
+scripts/pii-gate.sh runs `index --gate` from the pre-commit (gate 13) and
+`message <file> --gate` from the commit-msg hook — the only hook that sees the
+message. With the flag:
+  * every finding blocks, and each is printed with its remedy; no report file;
+  * the allowlist is the one this commit carries — the staged blob, not the file
+    on disk — so the line that lets a word through lands in the commit with the
+    word (DL #8);
+  * a disputed finding — morph or ner: a possible name neither the books nor the
+    allowlist know — goes to Jev through the access layer: the candidate and at
+    most JEV_LINE characters around it, nothing else (DL #7, #10). The answer
+    picks the remedy and never lets the commit through: what passes is what the
+    allowlist names, so the next scan of the tree still finds nothing (DL #21).
 
 Exit: 0 = clean, 1 = findings, 2 = setup error (a dependency, no address books,
 a report path inside the repository), 3 = a line of --expect found nothing.
@@ -191,17 +207,30 @@ class Morph:
 # Allowlist (public, in the repo)
 # ---------------------------------------------------------------------------
 
+def allow_lines(root: str, path: str, staged: bool) -> tuple[list[str], str]:
+    """The allowlist's lines and where they came from. For the gate, the one this
+    commit carries: a word let through by a line that stays on disk would be
+    published while the line that names it is not."""
+    if staged:
+        rel = os.path.relpath(os.path.realpath(path), os.path.realpath(root))
+        try:
+            blob = git("-C", root, "cat-file", "blob", f":{rel}")
+            return blob.decode("utf-8", "replace").splitlines(), f"{rel} (staged)"
+        except subprocess.CalledProcessError:
+            pass  # not in the index (a clone that never tracked it): the file on disk
+    try:
+        return open(path, encoding="utf-8").read().splitlines(), path
+    except FileNotFoundError:
+        die(f"allowlist not found: {path}")
+
+
 class Allow:
-    def __init__(self, path: str, morph: Morph) -> None:
+    def __init__(self, lines: list[str], source: str, morph: Morph) -> None:
         self.morph = morph
-        self.path = path
+        self.source = source
         self.values: dict[str, set[str]] = defaultdict(set)
         self.norms: dict[str, set[str]] = defaultdict(set)
         self.count = 0
-        try:
-            lines = open(path, encoding="utf-8").read().splitlines()
-        except FileNotFoundError:
-            die(f"allowlist not found: {path}")
         for n, line in enumerate(lines, 1):
             line = line.strip()
             if not line or line.startswith("#"):
@@ -209,7 +238,7 @@ class Allow:
             kind, _, value = line.partition(" ")
             value = value.strip()
             if kind not in ALLOW_KINDS or not value:
-                die(f"{path}:{n}: expected '<kind> <value>', kind one of: {', '.join(ALLOW_KINDS)}")
+                die(f"{source}:{n}: expected '<kind> <value>', kind one of: {', '.join(ALLOW_KINDS)}")
             self.count += 1
             if kind in ("key", "login", "agent"):
                 self.values[kind].add(value)
@@ -713,6 +742,165 @@ class Scanner:
 
 
 # ---------------------------------------------------------------------------
+# The gate: a remedy per finding, and Jev on the disputed ones
+# ---------------------------------------------------------------------------
+
+# The agent that holds the Jev key and runs the call. Named by name: the owner
+# allowed it (DL #15); found through the registry, so no path of a machine is
+# written here (DL #22). By role once the registry knows roles (Sidetrack #5).
+ACCESS_LAYER = "echelon"
+JEV_LINE = 200      # characters around the candidate; the access layer refuses a state over 400
+JEV_MAX = 5         # questions per run: what leaves the machine stays small on a large commit
+JEV_TIMEOUT = 20    # seconds; the access layer itself gives TypeSafe 10
+JEV_OPTIONS = {
+    "person": "the name of a real person",
+    "example": "a made-up name of the kind documentation uses as an example",
+    "term": "a technical term, jargon or an ordinary word",
+    "system": "the name of a product, system, team, company or software agent",
+}
+JEV_INSTRUCTIONS = ("A scanner flagged the candidate as a possible personal name in a line about to be "
+                    "committed to a public open-source repository of developer tooling, written in "
+                    "Russian and English. What is the candidate in this line?")
+JEV_EXIT = {1: "TypeSafe is unavailable", 2: "the question was refused", 3: "no right from this checkout"}
+
+
+def jev_binary(entries: list[dict]) -> str | None:
+    for e in entries:
+        if e.get("identity") == ACCESS_LAYER:
+            for p in e.get("paths") or []:
+                b = os.path.join(p, "bin", ACCESS_LAYER)
+                if os.path.isfile(b) and os.access(b, os.X_OK):
+                    return b
+    return None
+
+
+def window(text: str, value: str, size: int = JEV_LINE) -> str:
+    """At most `size` characters of the line, centred on the value."""
+    text = " ".join(text.split())
+    if len(text) <= size:
+        return text
+    i = max(text.find(value), 0)
+    a = max(0, min(i - (size - len(value)) // 2, len(text) - size))
+    return text[a:a + size]
+
+
+class Jev:
+    """A second opinion on a disputed finding, asked through the access layer.
+
+    One question per finding — findings are grouped by value, so per distinct
+    value — at most JEV_MAX per run, and none after the first failure: the next
+    would fail the same way and cost the same wait. The call leaves the commit's
+    git session behind: git exports it to the hook, and a git command of the
+    access layer would follow GIT_INDEX_FILE into the commit being made
+    (githooks(5); tests/gates.test.sh)."""
+
+    def __init__(self, binary: str | None, root: str) -> None:
+        self.binary, self.root = binary, root
+        self.down = None if binary else (f"not asked — the intercom registry has no {ACCESS_LAYER} "
+                                         f"with bin/{ACCESS_LAYER}")
+        self.asked = 0
+        self._env: dict[str, str] | None = None
+
+    def verdict(self, value: str, context: str) -> tuple[str, float] | str:
+        """→ (choice, confidence), or why there is none."""
+        if self.down:
+            return self.down
+        if self.asked >= JEV_MAX:
+            return f"not asked — at most {JEV_MAX} questions per run"
+        self.asked += 1
+        return self._ask(value[:100], context)
+
+    def _ask(self, value: str, context: str) -> tuple[str, float] | str:
+        question = {"state": f"candidate: {value}\nline: {window(context, value)}",
+                    "instructions": JEV_INSTRUCTIONS, "options": JEV_OPTIONS}
+        if self._env is None:
+            local = set(git("rev-parse", "--local-env-vars").decode().split())
+            self._env = {k: v for k, v in os.environ.items() if k not in local}
+        try:
+            r = subprocess.run([self.binary, "jev"], input=json.dumps(question, ensure_ascii=False).encode(),
+                               capture_output=True, cwd=self.root, env=self._env, timeout=JEV_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            self.down = f"no answer in {JEV_TIMEOUT} s"
+            return self.down
+        except OSError as exc:
+            self.down = f"could not run it: {exc}"
+            return self.down
+        if r.returncode:
+            err = r.stderr.decode("utf-8", "replace").strip().splitlines()
+            self.down = (f"{JEV_EXIT.get(r.returncode, 'it failed')} (exit {r.returncode}"
+                         + (f": {err[-1]}" if err else "") + ")")
+            return self.down
+        try:
+            answer = json.loads(r.stdout.decode("utf-8", "replace").strip().splitlines()[-1])
+            choice, confidence = answer["choice"], float(answer["confidence"])
+        except (ValueError, KeyError, IndexError, TypeError):
+            choice, confidence = None, 0.0
+        if choice not in JEV_OPTIONS:
+            self.down = "an answer outside the agreed form"
+            return self.down
+        return choice, confidence
+
+
+def remedy(g: dict, jev: Jev, allow_file: str) -> str:
+    layer, kind, value = g["layer"], g["kind"], g["value"]
+    label = f" ({g['label']})" if g.get("label") else ""
+    fictional = "replace it with a fictional name no address book holds"
+    let_through = f"allow it: `word {value}` in {allow_file}"
+    if any(w in ("author", "committer") for w in g["where"]):
+        return "the commit's signature — user.name and user.email of this clone must be the public identity"
+    if layer in ("morph", "ner"):
+        v = jev.verdict(value, g["context"])
+        if isinstance(v, str):
+            return f"Jev: {v}. A real person: {fictional}; jargon or a made-up example: {let_through}"
+        choice, confidence = v
+        return {
+            "person": f"Jev: a real person ({confidence:.2f}) — {fictional}",
+            "example": f"Jev: a made-up example ({confidence:.2f}) — {let_through}",
+            "term": f"Jev: a technical term ({confidence:.2f}) — {let_through}",
+            "system": (f"Jev: a system or agent name ({confidence:.2f}) — an internal one: say what it is "
+                       f"instead, and add it to the private terms; a public one: {let_through}"),
+        }[choice]
+    prefix = value.split("-", 1)[0]
+    return {
+        ("book", "person"): f"a person from the address books{label} — {fictional}",
+        ("book", "email"): f"an address from the address books{label} — write one at example.com",
+        ("book", "phone"): f"a phone number from the address books{label} — remove it",
+        ("book", "login"): f"a login from the address books{label} — write a placeholder",
+        ("book", "agent"): (f"an agent's name{label} — name its role: hq, program, command-center, "
+                            f"access-layer, product, executor"),
+        ("book", "term"): "an internal name from the private terms — say what it is instead",
+        ("pattern", "task-key"): (f"a task key — write PROJ-123; a prefix that is no tracker is allowed as "
+                                  f"`key {prefix}` in {allow_file}"),
+        ("pattern", "mention"): "a tracker mention — write [~login]",
+        ("pattern", "email"): (f"an address — write one at example.com; one that may be published is allowed "
+                               f"as `email {value}` in {allow_file}"),
+        ("pattern", "host"): (f"a host — write example.com; one that may be published is allowed as "
+                              f"`host {value}` in {allow_file}"),
+        ("pattern", "phone"): "a phone number — remove it",
+    }.get((layer, kind), "remove it")
+
+
+GATE_WHAT = {"index": "what this commit adds", "message": "the commit message and signature"}
+
+
+def gate_report(mode: str, items: list[Item], groups: list[dict], jev: Jev, allow_file: str,
+                seconds: float) -> int:
+    what = GATE_WHAT[mode]
+    if not groups:
+        print(f"pii: {what} — {len(items)} lines, nothing found ({seconds:.1f}s)")
+        return 0
+    n = len(groups)
+    print(f"pii: {what} would publish {n} value{'s' if n > 1 else ''} — the commit is blocked")
+    for g in groups:
+        where = ", ".join(g["where"][:3]) + (", …" if len(g["where"]) > 3 else "")
+        print(f"  {g['layer']:<8} {g['kind']:<9} {g['value']}  {where}")
+        print(f"           {remedy(g, jev, allow_file)}")
+    print(f"Fix the text and stage it again. A line that lets a word through goes into this same commit: "
+          f"the gate reads the staged {allow_file} (crystal public-repo-cleanup, DL #8).")
+    return 1
+
+
+# ---------------------------------------------------------------------------
 # Sources of text, per mode
 # ---------------------------------------------------------------------------
 
@@ -785,6 +973,41 @@ def index_items(root: str) -> list[Item]:
     return items
 
 
+SCISSORS_RE = re.compile(r"^# -+ >8 -+$")
+IDENT_TAIL_RE = re.compile(r"\s+\d+\s+[-+]\d{4}$")
+
+
+def message_items(root: str, path: str) -> list[Item]:
+    """The message as git will record it, and the signature it will carry.
+
+    Git drops its comment lines, and the diff `commit -v` puts below the
+    scissors line, only when an editor is opened — and it runs the commit hooks
+    with GIT_EDITOR=: when none is (githooks(5)). So under `-F` or `-m` every
+    line counts; under an editor those do not: the template lists the paths the
+    commit deletes, and a cleanup that removes a name would be blocked by it."""
+    try:
+        text = open(path, encoding="utf-8", errors="replace").read()
+    except OSError as exc:
+        die(f"cannot read {path}: {exc}")
+    edited = os.environ.get("GIT_EDITOR") != ":"
+    items = []
+    for n, line in enumerate(text.splitlines(), 1):
+        if edited and SCISSORS_RE.match(line):
+            break
+        if line.strip() and not (edited and line.startswith("#")):
+            items.append(Item(line, [f"commit message:{n}"]))
+    # git exports the author it settled on (config, GIT_AUTHOR_*, --author) to the
+    # commit hooks (builtin/commit.c, determine_author_info), and `git var` reads
+    # the environment before the config.
+    for role, var in (("author", "GIT_AUTHOR_IDENT"), ("committer", "GIT_COMMITTER_IDENT")):
+        try:
+            ident = git("-C", root, "var", var).decode("utf-8", "replace").strip()
+        except subprocess.CalledProcessError:
+            continue  # no identity at all: git refuses the commit itself
+        items.append(Item(IDENT_TAIL_RE.sub("", ident), [role]))
+    return items
+
+
 def history_items(root: str, reflog: bool) -> tuple[list[Item], dict]:
     revs = ["--all"] + (["--reflog"] if reflog else [])
     objects = git("-C", root, "rev-list", *revs, "--objects").decode("utf-8", "replace").splitlines()
@@ -854,8 +1077,8 @@ def history_items(root: str, reflog: bool) -> tuple[list[Item], dict]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    ap.add_argument("mode", choices=("tree", "index", "history", "files"))
-    ap.add_argument("paths", nargs="*", help="files to scan (mode files)")
+    ap.add_argument("mode", choices=("tree", "index", "message", "history", "files"))
+    ap.add_argument("paths", nargs="*", help="files to scan (mode files); the message file (mode message)")
     ap.add_argument("--report", help="where the JSON report goes; must be outside the repository")
     ap.add_argument("--allow", help="allowlist (default: scripts/pii-allow.txt next to this script)")
     ap.add_argument("--registry", help="intercom registry dir (default: as intercom resolves it)")
@@ -869,6 +1092,9 @@ def main() -> int:
                                      "value — the recall check that makes a later zero mean something")
     ap.add_argument("--no-ner", action="store_true", help="skip the natasha layer (the slow one)")
     ap.add_argument("--quiet", action="store_true", help="no per-value lines on stdout, only the totals")
+    ap.add_argument("--gate", action="store_true",
+                    help="modes index and message: every finding blocks and is printed with its remedy, the "
+                         "disputed ones go to Jev, the allowlist is the staged one, no report (THE GATE above)")
     args = ap.parse_args()
 
     try:
@@ -878,20 +1104,40 @@ def main() -> int:
     real_root = os.path.realpath(root)
     if args.mode == "files" and not args.paths:
         die("mode files needs at least one path")
+    if args.mode == "message" and len(args.paths) != 1:
+        die("mode message needs exactly one path: the message file")
+    if args.gate and args.mode not in GATE_WHAT:
+        die(f"--gate is for modes {' and '.join(GATE_WHAT)}")
 
     stamp = time.strftime("%Y%m%d-%H%M%S")
     report = args.report or os.path.join(tempfile.gettempdir(), "pii-scan", f"{args.mode}-{stamp}.json")
     report = os.path.abspath(os.path.expanduser(report))
-    if os.path.realpath(report).startswith(real_root + os.sep):
+    if not args.gate and os.path.realpath(report).startswith(real_root + os.sep):
         die(f"the report would land inside the repository: {report}")
+
+    t0 = time.time()
+    stats: dict = {}
+    if args.mode == "tree":
+        items = tree_items(root)
+    elif args.mode == "index":
+        items = index_items(root)
+    elif args.mode == "message":
+        items = message_items(root, args.paths[0])
+    elif args.mode == "files":
+        items = files_items(args.paths)
+    else:
+        items, stats = history_items(root, args.reflog)
+    if args.gate and not items:
+        print(f"pii: {GATE_WHAT[args.mode]} — nothing to check")
+        return 0
 
     try:
         morph = Morph()
     except ImportError as exc:
         die(f"{exc}. Run through uv, which installs the dependencies from the script header: "
             f"uv run {os.path.relpath(__file__)} {args.mode}")
-    t0 = time.time()
-    allow = Allow(args.allow or os.path.join(os.path.dirname(os.path.abspath(__file__)), "pii-allow.txt"), morph)
+    allow_path = args.allow or os.path.join(os.path.dirname(os.path.abspath(__file__)), "pii-allow.txt")
+    allow = Allow(*allow_lines(root, allow_path, args.gate and not args.allow), morph)
     entries = load_registry(registry_dir(args.registry))
     own = [e for e in entries if any(os.path.realpath(p) == real_root for p in e.get("paths") or [])
            or (args.own and e.get("identity") == args.own)]
@@ -902,19 +1148,13 @@ def main() -> int:
         die("no people/ profiles found through the intercom registry — the exact layer would be empty")
     agents = load_agents(entries, own, morph, allow)
     terms = load_terms(args.terms, morph)
-
-    stats: dict = {}
-    if args.mode == "tree":
-        items = tree_items(root)
-    elif args.mode == "index":
-        items = index_items(root)
-    elif args.mode == "files":
-        items = files_items(args.paths)
-    else:
-        items, stats = history_items(root, args.reflog)
     t1 = time.time()
 
     found = Scanner(morph, allow, book, agents, terms, not args.no_ner).scan(items)
+    if args.gate:
+        allow_file = os.path.relpath(os.path.realpath(allow_path), real_root)
+        return gate_report(args.mode, items, found.sorted(), Jev(jev_binary(entries), root), allow_file,
+                           time.time() - t0)
     if args.mode == "history":
         if args.identity:
             expected = args.identity

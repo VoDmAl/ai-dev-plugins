@@ -144,6 +144,11 @@ A SessionStart hook in `.claude/settings.json` warns if this isn't set, but does
 
 If you see `[vdm-dev] Dev hooks not active in this clone…`, run the command above.
 
+The PII gate (pre-commit gate 13 and `.githooks/commit-msg`) runs `scripts/pii-scan.py` through `uv`,
+which installs the scanner's two dependencies into its own cache on the first commit — nothing lands in
+the work tree. `uv` must be on PATH once per machine (`brew install uv`); without it the gate blocks and
+says so. Both machines the owner works on have it (2026-10-03).
+
 ## Where things live
 
 - `plugins/vdm/` — core plugin (docs-sync, docs-distill, learn, changelog, crystal-*, intercom skills)
@@ -161,6 +166,11 @@ If you see `[vdm-dev] Dev hooks not active in this clone…`, run the command ab
   (`tree`, `index`, `history`, `files <path>`), against the owner's address books read at run time.
   Check a file that quotes anyone with `uv run scripts/pii-scan.py files <path>` — never by grepping
   for names you already know. `scripts/pii-allow.txt` is its public allowlist, grown by review.
+- `scripts/pii-gate.sh` — the scanner as a gate: `index` from the pre-commit (gate 13), `message` from
+  `.githooks/commit-msg`. Every finding blocks with its remedy; a disputed one goes to Jev through the
+  access layer, whose answer picks the remedy and never lets the commit through. A word that names no
+  one passes by a line in `scripts/pii-allow.txt` staged in the same commit. Red tests:
+  `tests/pii-scan.test.sh`.
   Crystal `public-repo-cleanup`.
 
 See `README.md` → Development for the full developer protocol.
