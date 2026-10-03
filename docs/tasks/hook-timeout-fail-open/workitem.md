@@ -93,7 +93,7 @@ Stop) при отмене просто молчат — их дефектом э
 **Basis:** observed
 **Basis-detail:** `git-guard-hook.py` выходит с 0 на всём, что не `tool_name == "Bash"`; обёртка
 `git-guard-hook.sh` в fail-closed-ветке тоже смотрит только на Bash. История `hooks.json`: matcher не было
-с разделения плагинов (e1dc95a, 2026-03-09) — не решение, а отсутствие решения. Две из пяти отмен
+с разделения плагинов (f3b6843, 2026-03-09) — не решение, а отсутствие решения. Две из пяти отмен
 git-guard — на Edit и на MCP-вызове Jira.
 **Context:** без matcher гард стартует (bash + python3) на каждом вызове любого инструмента и таймаутит на
 вызовах, которые не читает, — в те же минуты, когда машине тяжелее всего.
@@ -199,7 +199,7 @@ fail-closed-ветки держат тесты, которые берут спи
       им запас (DL #4)
 - [x] Решить судьбу `git commit` через `Monitor` (Sidetrack #1) — расширить, DL #6
 - [ ] Перемерить отмены и двери в shell через неделю после раскатки — срок назван executor (Sidetrack #2) (due: 2026-10-08)
-- [x] Outcome to `executor`: `git-guard-hook-timeouts-outcome-2` (2026-10-01, коммит `59b6de3`), бриф в `_done/`
+- [x] Outcome to `executor`: `git-guard-hook-timeouts-outcome-2` (2026-10-01, коммит `116445f`), бриф в `_done/`
 
 ## References
 

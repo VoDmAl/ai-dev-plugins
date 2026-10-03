@@ -145,7 +145,7 @@ Scope — не отдельный файл, как в брифе, а ключ `o
 **Context:** оба брифа от `executor` стояли. Profile-skill — `dormant` с 2026-09-08,
 ни одного шага реализации. Hygiene — `pending` в инбоксе с 2026-09-06. У profile-skill
 последний блокер (его Sidetrack #6, гейты под два плагина) снялся сам 2026-09-22 вместе
-с `vdm-comms` (`790bc29`). Варианты: начать hygiene сразу; оставить бриф в инбоксе; припарковать.
+с `vdm-comms` (`da4b69e`). Варианты: начать hygiene сразу; оставить бриф в инбоксе; припарковать.
 **Why:** начать сразу — значит начать с главного нерешённого вопроса (параметризация
 пяти скриптов) и с двух вопросов к отправителю, на которые ответа ещё нет. Оставить в
 инбоксе хуже всего: для отправителя бриф, лежащий 19 дней, неотличим от непрочитанного.
@@ -203,8 +203,8 @@ Scope — не отдельный файл, как в брифе, а ключ `o
 **Basis-detail:** на этой машине 2026-09-25. `~/.claude/plugins/installed_plugins.json`
 хранит у каждого плагина суиты `installPath` — например,
 `…/cache/vodmal-claude-code-marketplace/vdm/2.35.2`. Клонов marketplace два:
-`marketplaces/vodmal/` живой — на него указывает `known_marketplaces.json`, HEAD `d2afbc5`
-от того же дня; `marketplaces/vodmal-claude-code-marketplace/` брошенный — HEAD `865af35`
+`marketplaces/vodmal/` живой — на него указывает `known_marketplaces.json`, HEAD `08367d1`
+от того же дня; `marketplaces/vodmal-claude-code-marketplace/` брошенный — HEAD `0de86dd`
 от 2026-03-09, внутри vdm 2.1.0. `vdx` не установлен совсем: нет ни в PATH, ни в `npm -g`,
 ни в shims mise. Не проверено: что `bin/` плагина недоступен в терминале пользователя —
 это известно только из текста хука `git-guard`.

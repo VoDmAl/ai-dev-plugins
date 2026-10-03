@@ -24,10 +24,10 @@
 #
 # WHAT THIS WOULD EXPLAIN — every observation at once:
 #
-#   1. 02faf7f deleted all six tests/ files      ← `rm -rf tests` in the clone
+#   1. c793175 deleted all six tests/ files      ← `rm -rf tests` in the clone
 #   2. …and committed .serena/project.yml, which ← `git add -A` swept the whole
 #      was NOT in the emitted pathspec              working-tree copy
-#   3. e46e697 produced an EMPTY commit          ← by then HEAD already lacked
+#   3. 32f91ee produced an EMPTY commit          ← by then HEAD already lacked
 #                                                   tests/, so the clone's
 #                                                   content equalled HEAD
 #   4. only those two commits misbehaved         ← only they staged

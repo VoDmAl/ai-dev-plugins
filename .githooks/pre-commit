@@ -194,7 +194,7 @@ if printf '%s\n' "$staged" | grep -qE '^(scripts/check-.*\.sh|plugins/vdm/script
   # the temporary index holding the tree about to be committed. On 2026-09-04
   # the harness's `git add -A` (run in a clone deliberately built without
   # tests/) followed that variable home and dropped eight test files from
-  # commit 7d80c73. Cheap — the probe runs the harness setup only.
+  # commit c60f05f. Cheap — the probe runs the harness setup only.
   run_suite gates-harness-isolation
 fi
 

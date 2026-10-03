@@ -117,7 +117,7 @@ State file in `.claude/.vdm-state/` records last-firing timestamp per section. H
 
 ## References
 
-- Phase 1 commit: `daebf41` (`[!] Update changelog and docs-sync…`).
+- Phase 1 commit: `79819a2` (`[!] Update changelog and docs-sync…`).
 - Phase 2 PR: per-project config + skill self-config.
 - Initial brainstorm: chat session 2026-05-01.
 - `PROJECT_CHANGELOG.md` entries dated 2026-05-01.

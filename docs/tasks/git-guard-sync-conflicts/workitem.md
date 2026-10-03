@@ -12,7 +12,7 @@ relates-to:
 
 # git-guard-prepare: отказ, пока в .git лежат конфликтные копии Syncthing
 
-> **Закрыт 2026-09-30.** `40db4d3` (vdm-git 2.16.0), ответ vdx отправлен.
+> **Закрыт 2026-09-30.** `a588f8c` (vdm-git 2.16.0), ответ vdx отправлен.
 
 > Письмо vdx `git-guard-sync-conflicts` (2026-09-30), решение владельца — vdx DL #17. Syncthing
 > синхронизирует `~/AI Projects` и `~/PhpstormProjects` вместе с `.git`, владелец работает в одном репо с

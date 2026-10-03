@@ -32,7 +32,7 @@
 # PREDICTION
 #   tests/ vanish from the commit, and unrelated.txt is swept in at its working
 #   tree state despite being in neither the index nor the pathspec — which is
-#   precisely what commit 02faf7f contains.
+#   precisely what commit c793175 contains.
 #
 # Run: bash docs/tasks/git-guard-explicit-file-list/references/verify-hook-index-leak-2.sh
 #

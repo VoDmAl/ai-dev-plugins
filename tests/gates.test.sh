@@ -42,7 +42,7 @@ set -u
 # ones meant for the throwaway clone. The clone is built without `tests/` (see
 # below), so its `git add -A` recorded the deletion of every `tests/*` path
 # into the pending commit's index. The commit then shipped, minus eight test
-# files that were never touched on disk. Observed 2026-09-04 on commit 7d80c73;
+# files that were never touched on disk. Observed 2026-09-04 on commit c60f05f;
 # the same shape as the 2026-08-27 incident ("the commit lost six files and
 # captured one") whose cause was never established — that investigation named
 # GIT_INDEX_FILE leakage as hypothesis #2 and dropped it as unreproducible.

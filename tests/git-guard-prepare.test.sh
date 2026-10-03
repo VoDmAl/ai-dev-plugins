@@ -436,7 +436,7 @@ expect_says "detector labels it SWEPT IN" "$out" "SWEPT IN"
 expect_not_says "detector does not accuse the intended path" "$out" "  mine.txt"
 
 # TRUE POSITIVE: an empty commit against a non-empty declaration — the exact
-# shape of e46e697.
+# shape of 32f91ee.
 d=$(new_repo detect_empty); cd "$d" || exit 1
 export TMPDIR="$d/tmp"
 printf 'x\n' > a.txt

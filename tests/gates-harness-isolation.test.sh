@@ -12,7 +12,7 @@
 # `git add -A` wrote into the pending commit's index and recorded the deletion
 # of every `tests/*` path.
 #
-# Commit 7d80c73 (2026-09-04) therefore shipped without eight test files that
+# Commit c60f05f (2026-09-04) therefore shipped without eight test files that
 # were never touched on disk — their mtimes still read weeks old afterwards.
 # Same shape as the 2026-08-27 incident, "the commit lost six files and
 # captured one", whose three hypotheses were all refuted and whose cause was

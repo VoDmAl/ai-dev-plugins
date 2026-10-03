@@ -333,7 +333,7 @@ environment to hooks. For a pathspec commit, `GIT_INDEX_FILE` names the
 in the harness inherits it — including the ones aimed at a scratch fixture. On
 2026-09-04 that turned `git add -A`, run inside a fixture clone deliberately
 built without `tests/`, into a deletion of eight test files from the real
-commit (`7d80c73`); the files were never touched on disk, and the harness
+commit (`c60f05f`); the files were never touched on disk, and the harness
 reported all 54 assertions green while doing it.
 
 Three rules follow, and the third is the general one:
