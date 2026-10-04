@@ -353,6 +353,26 @@ _intercom_norm_name() {
 
 intercom_registry_file() { printf '%s/%s.json' "$(intercom_registry_dir)" "$1"; }
 
+# Every entry file of the registry, one path per line — never a sync conflict
+# copy. The store is synced between the user's machines, and when two of them
+# edit one entry at once Syncthing keeps the losing side beside it as
+# `<id>.sync-conflict-<date>-<time>-<device>.json`. Read as an entry, such a
+# copy claims every name of the original, and each of those names turns
+# ambiguous: on 2026-10-03 ten copies made `resolve vdm` exit 3 and put ten
+# phantom agents into `directory`. The copy holds no fact the entry lacks — the
+# ten differed from theirs only in `.updated`. Every reader that enumerates the
+# registry goes through here; reading one entry by identity needs no filter.
+_intercom_registry_files() {
+  local regdir rf
+  regdir="$(intercom_registry_dir)"
+  [ -d "$regdir" ] || return 0
+  for rf in "$regdir"/*.json; do
+    [ -e "$rf" ] || continue
+    case "${rf##*/}" in *.sync-conflict-*) continue ;; esac
+    printf '%s\n' "$rf"
+  done
+}
+
 # intercom_registry_get <identity> <jq-filter>  → raw output of the filter
 intercom_registry_get() {
   local rf
@@ -574,6 +594,12 @@ intercom_register() {
   tmp="$(mktemp 2>/dev/null)" || return 0
   base='{}'
   [ -f "$regfile" ] && base="$(cat "$regfile" 2>/dev/null || echo '{}')"
+  # An entry that would change in nothing but its stamp is left alone: the jq
+  # program prints nothing, and an empty result is not written. This runs at
+  # every session start, check and send, on every machine the store is synced
+  # to, and rewriting an unchanged entry was how two machines came to edit one
+  # file at once (see _intercom_registry_files). `.updated` is therefore the
+  # time of the last change, which is all its name ever claimed.
   if printf '%s' "$base" | jq \
       --arg id "$id" \
       --arg remote "$url" \
@@ -583,7 +609,8 @@ intercom_register() {
       --argjson newaliases "$aliasjson" \
       --argjson newnames "$namesjson" \
       --argjson addremote "$add_remote" "$_INTERCOM_JQ_UNIQ"'
-      .identity    = $id
+      . as $old
+      | .identity    = $id
       | .registered  = (.registered // $now)
       | .remote      = (if ((.remote // "") == "") then (if $remote == "" then null else $remote end) else .remote end)
       | .remotes     = (((.remotes // []) + (if .remote then [.remote] else [] end) + $addremote) | uniq_ord)
@@ -591,8 +618,8 @@ intercom_register() {
       | .names       = (((.names // []) + $newnames) | uniq_ord)
       | .description = (if $desc == "" then (.description // "") else $desc end)
       | .paths       = (((.paths // []) + [$path]) | uniq_ord)
-      | .updated     = $now
-    ' > "$tmp" 2>/dev/null; then
+      | if del(.updated) == ($old | del(.updated)) then empty else .updated = $now end
+    ' > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
     mv "$tmp" "$regfile" 2>/dev/null || rm -f "$tmp" 2>/dev/null
   else
     rm -f "$tmp" 2>/dev/null
@@ -818,15 +845,12 @@ intercom_unregister() {
 # ---------------------------------------------------------------------------
 
 _intercom_match() {
-  local t="$1" regdir
-  regdir="$(intercom_registry_dir)"
+  local t="$1"
   command -v jq >/dev/null 2>&1 || return 0
-  [ -d "$regdir" ] || return 0
   local files=() rf
-  for rf in "$regdir"/*.json; do
-    [ -e "$rf" ] || continue
+  while IFS= read -r rf; do
     files+=("$rf")
-  done
+  done < <(_intercom_registry_files)
   [ "${#files[@]}" -gt 0 ] || return 0
   jq -r -s --arg t "$t" "$_INTERCOM_JQ_FOLD"'
     [ .[] | select(((.identity // "") | tostring) != "") ]
@@ -962,11 +986,8 @@ intercom_orphans_matching() {
 
 # All registered identities, one per line, sorted.
 intercom_registry_ids() {
-  local regdir rf
-  regdir="$(intercom_registry_dir)"
-  [ -d "$regdir" ] || return 0
-  for rf in "$regdir"/*.json; do
-    [ -e "$rf" ] || continue
+  local rf
+  _intercom_registry_files | while IFS= read -r rf; do
     basename "$rf" .json
   done | sort
 }
@@ -1017,8 +1038,12 @@ intercom_live_sessions() {
   [ -d "$dir" ] && [ -d "$regdir" ] || return 0
 
   # Every agent's checkouts, as physical paths: "<path><TAB><identity>".
-  local owners
-  owners="$(jq -r '.identity as $i | (.paths // [])[] | [., $i] | @tsv' "$regdir"/*.json 2>/dev/null \
+  local owners entries=() rf
+  while IFS= read -r rf; do
+    entries+=("$rf")
+  done < <(_intercom_registry_files)
+  [ "${#entries[@]}" -gt 0 ] || return 0
+  owners="$(jq -r '.identity as $i | (.paths // [])[] | [., $i] | @tsv' "${entries[@]}" 2>/dev/null \
     | while IFS=$'\t' read -r p who; do
         [ -n "$p" ] && printf '%s\t%s\n' "$(_intercom_realpath "$p")" "$who"
       done)"

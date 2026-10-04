@@ -113,6 +113,24 @@ out="$(bash "$IC" register 2>&1)"
 eq "plain re-register keeps names" "$(jq -r '.names | length' "$reg")" "2"
 eq "plain re-register keeps description" "$(jq -r '.description' "$reg")" "The widget service (billing)"
 
+# Registration rides along on every session start, check and send — on each
+# machine the store is synced to. Rewriting an unchanged entry only to move
+# `.updated` made two machines edit the same file at once, and Syncthing kept
+# the loser beside it as `<id>.sync-conflict-*.json`: ten such copies on
+# 2026-10-01/02, each differing from its entry only in that stamp. The inode is
+# the witness — a rewrite through mv replaces it, a skipped write cannot.
+jq '.updated = "2000-01-01T00:00:00Z"' "$reg" > "$reg.tmp" && mv "$reg.tmp" "$reg"
+ino="$(ls -i "$reg" | awk '{print $1}')"
+bash "$IC" register >/dev/null 2>&1
+eq "RED: a re-register with nothing new leaves the file alone" "$(ls -i "$reg" | awk '{print $1}')" "$ino"
+eq "…and its updated stamp" "$(jq -r '.updated' "$reg")" "2000-01-01T00:00:00Z"
+printf '{"session_id":"t","source":"startup"}' | bash "$HOOK" >/dev/null 2>&1
+eq "RED: a session start with nothing new does not rewrite it either" "$(ls -i "$reg" | awk '{print $1}')" "$ino"
+bash "$IC" register --describe "The widget service (billing), v2" >/dev/null 2>&1
+if [ "$(jq -r '.updated' "$reg")" != "2000-01-01T00:00:00Z" ]; then ok "a real change still writes, with a fresh stamp"
+else bad "a real change still writes, with a fresh stamp" "updated stayed 2000-01-01T00:00:00Z"; fi
+bash "$IC" register --describe "The widget service (billing)" >/dev/null 2>&1
+
 printf '\n[session-start hook — complete]\n'
 out="$(printf '{"session_id":"t","source":"startup"}' | bash "$HOOK")"
 says "hook states who you are" "$out" "You are \`widget\`"
@@ -216,6 +234,25 @@ out="$(bash "$IC" who)"
 says "who is an alias of directory" "$out" "intercom directory"
 says "directory lists orphan first-contact inboxes" "$out" "NO registered agent"
 says "orphan inbox named with its pending count" "$out" "• newcomer   [1 pending]"
+
+printf '\n[a sync-conflict copy of an entry is not a second agent]\n'
+# Syncthing keeps the losing side of a concurrent edit as
+# `<id>.sync-conflict-<date>-<time>-<device>.json` next to the entry. Read as an
+# entry, the copy claims every name of the original, and each of those names
+# turns ambiguous — measured 2026-10-03: `resolve vdm` and `resolve штаб` both
+# exit 3 on the owner's store, and `directory` lists ten agents that are not
+# there. Session files have been read this way since 2.34.0; entries were not.
+conflict="$VDM_INTERCOM_ROOT/_registry/widget.sync-conflict-20261001-192610-ABCDEFG.json"
+cp "$reg" "$conflict"
+out="$(bash "$IC" resolve "Widget App" 2>&1)"; rc=$?
+eq "RED: a name stays exact while a conflict copy lies beside the entry" "$rc" "0"
+eq "…and routes to the entry" "$out" "widget"
+out="$(bash "$IC" directory)"
+says "RED: directory still counts the agents that exist" "$out" "2 agent(s)"
+says_not "RED: …and does not list the copy as one" "$out" "sync-conflict"
+out="$(bash "$IC" names add --for gadget "widget app" 2>&1)"; rc=$?
+says "RED: a name held by the entry is refused as routing there, not as ambiguous" "$out" 'already routes to `widget`'
+rm -f "$conflict"
 
 printf '\n[second remote — mirror vs collision]\n'
 cd "$TMP/widget-mirror"

@@ -1375,6 +1375,13 @@ expect_exit "GREEN: a two-letter search finds nobody rather than everybody ⇒ e
 printf '{"comms": {"hq": "The HQ"}}\n' > "$HAND/.claude/vdm-plugins.json"
 run_people where --project-root "$HAND"; rc=$?
 expect_exit "RED: comms.hq may be a name the HQ goes by, folded as intercom folds ⇒ exit 0" 0 "$rc"
+# Two machines editing one entry leave `<id>.sync-conflict-*.json` beside it
+# (ten on the owner's store, 2026-10-03); read as an entry, the copy makes every
+# name of the HQ "several agents".
+cp "$STORE/_registry/hq-proj.json" "$STORE/_registry/hq-proj.sync-conflict-20261001-192610-ABCDEFG.json"
+run_people where --project-root "$HAND"; rc=$?
+expect_exit "RED: a sync-conflict copy of the HQ's entry is not a second agent ⇒ exit 0" 0 "$rc"
+rm -f "$STORE/_registry/hq-proj.sync-conflict-20261001-192610-ABCDEFG.json"
 printf '{"comms": {"hq": "no-such-hq"}}\n' > "$HAND/.claude/vdm-plugins.json"
 run_people show anna --project-root "$HAND"; rc=$?
 expect_exit "RED: an HQ nobody is registered as ⇒ exit 1" 1 "$rc"

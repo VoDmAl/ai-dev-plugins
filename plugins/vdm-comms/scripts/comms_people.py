@@ -120,8 +120,13 @@ def registry_entry(identity):
         raise Unresolved("comms.hq is `%s`, but there is no intercom directory at %s "
                          "(the vdm plugin keeps it)" % (identity, reg))
     direct = os.path.join(reg, identity + ".json")
+    # A `<id>.sync-conflict-*.json` beside an entry is Syncthing's copy of the
+    # losing side of two machines editing it at once — not a second agent, and
+    # read as one it makes every name of the entry ambiguous (the same filter
+    # as `_intercom_registry_files` in the vdm plugin's intercom-common.sh).
     candidates = [direct] if os.path.isfile(direct) else sorted(
-        os.path.join(reg, f) for f in os.listdir(reg) if f.endswith(".json"))
+        os.path.join(reg, f) for f in os.listdir(reg)
+        if f.endswith(".json") and ".sync-conflict-" not in f)
     want = fold(identity)
     hits = []
     for path in candidates:
