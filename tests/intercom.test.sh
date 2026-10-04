@@ -1011,6 +1011,25 @@ says "…and the letter is said to wait for that session" "$out" "waits for it"
 out="$( cd "$TMP/hop-a" && VDM_INTERCOM_NOW="$NOW_EPOCH" VDM_INTERCOM_TODAY=2026-10-04 bash "$IC" sent 2>&1 )"
 says "RED: sent follows the same rule" "$out" "do not wake here"
 rm -f "$PROJ/hb/sid-elsewhere.jsonl"
+# One conversation open on BOTH machines (measured 2026-10-04: one agent's two
+# sessions shared a sessionId and its transcript, written from both sides, and
+# each machine read "your last turn was here"). The session file is the one
+# thing each machine keeps to itself: a turn typed here moves this session's
+# statusUpdatedAt. A live session whose status last moved before the turn did
+# not take it — it was typed into the same conversation elsewhere.
+jq '.statusUpdatedAt = 1759568400000' "$SESS/live-b.json" > "$SESS/live-b.tmp" && mv "$SESS/live-b.tmp" "$SESS/live-b.json"  # 2025-10-04T09:00:00Z — before the turn
+turn hb "sid-hop-b-11" "$TMP/hop-b" "2026-10-04T10:20:00Z"
+out="$(wake_out one-shared)"
+says "RED: the same conversation, its status older than the last turn — typed elsewhere, nobody woken here" "$out" "do not wake here"
+jq '.statusUpdatedAt = 1791109205000' "$SESS/live-b.json" > "$SESS/live-b.tmp" && mv "$SESS/live-b.tmp" "$SESS/live-b.json"  # 2026-10-04T10:20:05Z — just after
+out="$(wake_out one-shared-here)"
+says "…and with its status moved at the turn, it is this machine's" "$out" "→ wake one: hop-b-11"
+# A Syncthing copy of a transcript is not a session: its newer turn must not
+# send the letter waiting for a session that does not exist.
+turn hb "sid-hop-b-11.sync-conflict-20261004-161533-ABCDEFG" "$TMP/hop-b" "2026-10-04T10:50:00Z"
+out="$(wake_out one-conflict)"
+says "RED: a sync-conflict copy of a transcript is not where the owner is" "$out" "→ wake one: hop-b-11"
+rm -f "$PROJ/hb/sid-hop-b-11.sync-conflict-20261004-161533-ABCDEFG.jsonl"
 mksession live-a2.json "$LIVE_PID" "$TMP/hop-a" hop-a-34 idle "$SOCKS/a.sock"
 out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-x VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" pickup one-latest 2>&1 )"
 eq "RED: the receipt goes to one session of the sender, not each" "$(printf '%s\n' "$out" | grep -c '→ send a receipt to one:')" "1"

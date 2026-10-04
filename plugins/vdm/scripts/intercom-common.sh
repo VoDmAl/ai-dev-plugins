@@ -1267,6 +1267,12 @@ _intercom_iso_utc() {
   date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null
 }
 
+# _intercom_epoch_utc <YYYY-MM-DDTHH:MM:SSZ> — seconds since the epoch, or
+# nothing. BSD date first, then GNU.
+_intercom_epoch_utc() {
+  date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null || date -u -d "$1" +%s 2>/dev/null
+}
+
 # intercom_owner_turns <identity> — "<timestamp><TAB><sessionId>" for every
 # transcript of that agent whose last owner-typed turn is inside the window,
 # newest first. A transcript belongs to the agent `_intercom_owner_of` names
@@ -1283,6 +1289,10 @@ intercom_owner_turns() {
   # modification time narrows the scan to the sessions of the last hours.
   find "$projects" -mindepth 2 -maxdepth 2 -name '*.jsonl' -mmin "-$((INTERCOM_PRESENCE_WINDOW_H * 60 + 60))" 2>/dev/null \
     | while IFS= read -r f; do
+        # A conversation written from two machines leaves Syncthing's copy of
+        # the losing side beside it — not a session, and its turns are not
+        # where the owner is now.
+        case "${f##*/}" in *.sync-conflict-*) continue ;; esac
         cwd="$(grep -m1 -o '"cwd":"[^"]*"' "$f" 2>/dev/null | head -1 | sed 's/^"cwd":"//; s/"$//')"
         [ -n "$cwd" ] || continue
         [ "$(_intercom_owner_of "$(_intercom_realpath "$cwd")" "$owners")" = "$id" ] || continue
@@ -1310,8 +1320,25 @@ intercom_wake_choice() {
   turns="$(intercom_owner_turns "$id")"
   if [ -n "$turns" ]; then
     IFS=$'\t' read -r top_ts top_sid <<<"$(printf '%s\n' "$turns" | head -1)"
+    # One conversation can be open on both machines (measured 2026-10-04: one
+    # agent's two sessions shared a sessionId and a transcript written from
+    # both sides), and then its transcript cannot say where the turn was
+    # typed. The session file can: it is each machine's own, and a turn typed
+    # here moves this session's status. A status that last moved before the
+    # turn means the turn went into the same conversation elsewhere. No stamp
+    # in the file — no verdict from it.
+    local top_epoch
+    top_epoch="$(_intercom_epoch_utc "$top_ts")"
     while IFS=$'\t' read -r name status sid upd; do
       if [ -n "$sid" ] && [ "$sid" = "$top_sid" ]; then
+        case "$upd" in
+          ''|*[!0-9]*) ;;
+          *) if [ -n "$top_epoch" ] && [ $((upd / 1000)) -lt $((top_epoch - 5)) ]; then
+               printf 'wait\037\037\037your last turn in `%s` (%s) went into the same conversation on another machine — %s here has not moved since; the letter waits for that one\n' \
+                 "$id" "$top_ts" "$name"
+               return 0
+             fi ;;
+        esac
         printf 'wake\037%s\037%s\037your last turn in `%s` was there (%s)\n' "$name" "$status" "$id" "$top_ts"
         return 0
       fi
