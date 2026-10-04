@@ -82,12 +82,16 @@ cp "$REPO_ROOT/.githooks/commit-msg" "$REPO/.githooks/"
 # repository's own allowlist carries, so this file passes the real gate.
 printf -- '---\nslug: ivan-sokolov\n---\n\n# Иван Соколов\n' > "$HQ/people/ivan-sokolov.md"
 
-registry() {  # registry <identity> <path> — one entry of the fixture registry
-  printf '{"identity": "%s", "paths": ["%s"]}\n' "$1" "$2" > "$STORE/_registry/$1.json"
+registry() {  # registry <identity> <path> [<role>] — one entry of the fixture registry
+  if [ -n "${3:-}" ]; then
+    printf '{"identity": "%s", "paths": ["%s"], "roles": ["%s"]}\n' "$1" "$2" "$3" > "$STORE/_registry/$1.json"
+  else
+    printf '{"identity": "%s", "paths": ["%s"]}\n' "$1" "$2" > "$STORE/_registry/$1.json"
+  fi
 }
 registry fixture-repo "$REPO"
 registry fixture-hq "$HQ"
-registry echelon "$ACCESS"
+registry echelon "$ACCESS" access-layer
 
 # The access layer's `jev`, faked: it keeps what it was given and answers as the
 # test says.
@@ -228,12 +232,24 @@ expect_exit "an answer out of form: blocked" 1 "$rc"
 expect_says "says so" "$out" "an answer outside the agreed form"
 
 JEV_ANSWER=term
-mv "$STORE/_registry/echelon.json" "$TMP/echelon.json.off"
+# The access layer is the agent whose entry declares the role access-layer, not
+# an agent of a given name (docs/tasks/intercom-agent-roles, DL #2): the same
+# agent without the role is not asked, another agent holding it is.
+registry echelon "$ACCESS"
 out=$(gate index); rc=$?
-expect_exit "no access layer in the registry: blocked" 1 "$rc"
-expect_says "says Jev was not asked, and why" "$out" "not asked — the intercom registry has no echelon"
+expect_exit "no agent declares the role access-layer: blocked" 1 "$rc"
+expect_says "RED: says Jev was not asked, and why" "$out" "not asked — no agent in the intercom registry declares the role access-layer"
 expect_eq "nothing was called" "$(asked)" 0
-mv "$TMP/echelon.json.off" "$STORE/_registry/echelon.json"
+mkdir -p "$TMP/gate/bin"; cp "$ACCESS/bin/echelon" "$TMP/gate/bin/gatekeeper"
+rm -f "$STORE/_registry/echelon.json"   # nothing named echelon to fall back on
+registry gatekeeper "$TMP/gate" access-layer
+out=$(gate index); rc=$?
+expect_eq "RED: an access layer under another name is asked" "$([ "$(asked)" -gt 0 ] && echo yes || echo no)" yes
+registry echelon "$ACCESS" access-layer
+out=$(gate index); rc=$?
+expect_says "RED: two agents declaring the role: not asked, and why" "$out" "several agents in the intercom registry declare the role access-layer"
+expect_eq "…nothing was called" "$(asked)" 0
+rm -f "$STORE/_registry/gatekeeper.json"
 
 # ---------------------------------------------------------------------------
 echo ""

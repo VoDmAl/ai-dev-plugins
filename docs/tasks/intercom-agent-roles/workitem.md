@@ -2,7 +2,7 @@
 title: "Роли агентов: где живёт роль и как суита находит агента по роли, а не по имени"
 slug: intercom-agent-roles
 description: "Решить, откуда берётся роль агента и как суита по ней находит штаб и слой доступа"
-status: in-progress
+status: done
 session-type: prd-prep
 created: 2026-10-03
 last-updated: 2026-10-03
@@ -41,10 +41,13 @@ last-updated: 2026-10-03
     пройден: `comms.hq` рядом с `head` убрали 02.10.
   - список центральный, потому что роль меняет владелец, а проект не может выпустить себя сам. Права и запреты лежат
     в одном файле у того, кто их применяет.
-- **Кто сейчас ищет агента по имени:** гард PII этого репо (`ACCESS_LAYER` в `scripts/pii-scan.py`, через реестр
-  intercom) и `comms-now.py` (`echelon_bin`: переменные, конфиг, путь по умолчанию — Sidetrack #4 в
-  [[vdm-comms-live-now/workitem|vdm-comms-live-now]]). Имя слоя доступа называть разрешено (DL #15
-  `public-repo-cleanup`), так что поиск по имени — не утечка, а связанность.
+- **Как находят слой доступа теперь** (2026-10-03, vdm 2.41.0, vdm-comms 0.18.0). Запись реестра несёт `roles`;
+  реестр хранит одну роль, `access-layer`, с одним держателем. Эшелону она вписана из этой сессии. Гард PII
+  (`jev_binary` в `scripts/pii-scan.py`) и `comms-now.py` (`echelon_bin` через `comms_people.access_layer_bin`) берут
+  держателя роли и его `bin/<identity>` в checkout на этой машине; имени агента и пути машины в их коде больше нет.
+  `ECHELON_BIN`, `comms.now.echelon` и `ECHELON_HOME` у `comms-now` остались — явные настройки идут раньше реестра.
+  Для ассистента и скилов — `intercom role access-layer [--path]`. Раньше гард искал запись по имени `echelon`, а
+  `comms-now` — по пути `~/AI Projects/echelon`.
 - **Роли, которыми уже пишут тексты** (DL #16 `public-repo-cleanup`): `hq`, `program`, `command-center` — три имени
   роли «штаб»; `access-layer`, `product`, `executor`. `head` у эшелона описывает только связь «штаб — рука»; слоя
   доступа и продукта он не описывает.
@@ -106,12 +109,15 @@ access-layer`. Next action о сверке роли с источником сн
       `access-layer` нет (DL #2)
 - [x] Предложение владельцу — с ответами на три пункта выше (DL #2)
 - [x] Sidetrack #1: конфликтные копии реестра — фикс, тесты, копии удалены
-- [ ] `roles` в реестре: `register --role`, `roles add|rm [--for]`, `role <роль>`, строка в `directory`; тесты; скил
-      `intercom`; vdm MINOR
-- [ ] Поиск слоя доступа по роли: `scripts/pii-scan.py` (`ACCESS_LAYER`) и `comms-now.py` (`echelon_bin`, без пути
-      машины — Sidetrack #4 в [[vdm-comms-live-now/workitem|vdm-comms-live-now]]); vdm-comms MINOR
-- [ ] Роль эшелону: `intercom roles add --for echelon access-layer` — до переключения гарда PII
-- [ ] Снять блок с [[vdm-comms-outward-checks/workitem|vdm-comms-outward-checks]]: штаб из `hq` слоя доступа — его шаг
+- [x] `roles` в реестре: `register --role`, `roles add|rm [--for]`, `role <роль> [--path]`, строка в `directory` и
+      `whoami`; 27 новых проверок в `tests/intercom.test.sh`; скил `intercom` § Roles; vdm 2.41.0
+- [x] Поиск слоя доступа по роли: `scripts/pii-scan.py` (`ACCESS_ROLE`, `jev_binary`) и `comms-now.py` (`echelon_bin`
+      через `comms_people.access_layer_bin`, без пути машины — Sidetrack #4 в
+      [[vdm-comms-live-now/workitem|vdm-comms-live-now]]); красные проверки — на старом коде краснеют все; vdm-comms 0.18.0
+- [x] Роль эшелону: `intercom roles add --for echelon access-layer` (2026-10-03) — `role access-layer --path`, гард PII
+      и `comms_people` находят его checkout
+- [x] Снять блок с [[vdm-comms-outward-checks/workitem|vdm-comms-outward-checks]]: статус `ready`, штаб из `hq` слоя
+      доступа — его шаг (2026-10-03)
 
 ## References
 

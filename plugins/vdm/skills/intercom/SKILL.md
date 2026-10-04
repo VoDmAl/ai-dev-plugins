@@ -175,7 +175,8 @@ scripts, readable by every sender:
 | `description` | agent | one line: what the repo is / which agent lives here — also searched when a name does not match |
 | `remote`, `remotes` | script | primary remote + every remote confirmed as the same project |
 | `paths` | script | every local checkout seen |
-| `registered`, `updated` | script | timestamps |
+| `roles` | **agent, about itself** (or `roles add --for`) | the role it holds; the directory keeps one — see § Roles |
+| `registered`, `updated` | script | timestamps; `updated` moves only when the entry changes |
 
 A registration is **complete** when it has at least one human `name` and a
 `description`. The canonical id and the auto-aliases are always there — but
@@ -194,6 +195,35 @@ and `owner/repo` survive unchanged. Lowercasing is ASCII-only on both sides, so 
 non-ASCII name (`интерком`) matches case-exactly — register it lowercase. The
 fold has one implementation (in `jq`, inside `intercom-common.sh`); without `jq`
 there is no directory at all and routing degrades to the canonical identity.
+
+The store is synced between the user's machines, and an entry edited on two of
+them at once leaves Syncthing's copy of the losing side beside it,
+`<id>.sync-conflict-*.json`. The scripts never read such a copy as an entry;
+re-registering an unchanged entry does not rewrite it, which is what made two
+machines edit one file at once.
+
+### Roles
+
+The directory keeps **one** role: `access-layer` — the agent through which the
+user's projects reach external systems (trackers, chats, mail), and whose
+command `hq <project root>` says which project is whose HQ. Code that needs it
+asks the directory instead of naming that agent or a path on one machine:
+
+```
+"${CLAUDE_PLUGIN_ROOT}/scripts/intercom.sh" role access-layer           # → its identity
+"${CLAUDE_PLUGIN_ROOT}/scripts/intercom.sh" role access-layer --path    # → its checkout on this machine
+```
+
+Its command is `bin/<its identity>` in that checkout.
+
+- **The holder declares it**: `register --role access-layer` in its own session,
+  or `roles add --for <identity> access-layer` from any session. A role has one
+  holder: a second claim is refused and names the current one (free it with
+  `roles rm --for <identity> access-layer`).
+- **HQ and hand are not roles here.** The access layer keeps them and answers
+  for them; a copy in the directory would be the same fact in a second place.
+  `roles add hq` is refused and says where the answer comes from.
+- Descriptive roles (product, executor) are not kept: nothing reads them.
 
 ### How an address resolves (`resolve`, and inside `send`)
 
@@ -309,8 +339,10 @@ re-derive its logic:
 | `identity` | Print this repo's canonical identity. |
 | `whoami` | Identity + source, names, aliases, description, remotes, inbox, registration status (complete / what is missing / unconfirmed remote). |
 | `store` | Print the resolved store root. |
-| `register [--name N]… [--describe D] [--same-project]` | Record this repo in the directory. Without flags: the mechanical part only. `--name` (repeatable) and `--describe` supply the human part; `--same-project` confirms this clone's remote. Refuses a name that routes to another agent. |
+| `register [--name N]… [--describe D] [--role R]… [--same-project]` | Record this repo in the directory. Without flags: the mechanical part only. `--name` (repeatable) and `--describe` supply the human part; `--role` declares the role this agent holds (§ Roles); `--same-project` confirms this clone's remote. Refuses a name that routes to another agent and a role another agent holds. |
 | `names [add\|rm] [--for ID] <name>…` | List (no args) or edit human names — own entry by default, `--for <identity>` for another agent's. |
+| `roles [add\|rm] [--for ID] <role>…` | List (no args) or edit an agent's role — own entry by default, `--for <identity>` for another's. Only `access-layer`; one holder. |
+| `role <role> [--path]` | Print the one agent holding `<role>`, or with `--path` its checkout on this machine (exit 2 nobody, 3 several, 1 no checkout here). |
 | `describe [--for ID] "<one-liner>"` | Set a description. Own entry by default; `--for` completes another agent's (see § Completing someone else's entry). |
 | `unregister <identity> [--force]` | Remove **one** directory entry. Refuses while the agent is addressed by a human name; `--force` overrides. Never a sweep — there is no bulk form on purpose. |
 | `directory [-v]` (aka `who`, `list`, `agents`) | Every registered agent: identity, names + aliases, description, pending count; `⚠ unnamed` where the human part is missing; plus inboxes that exist with no registered agent (unclaimed first-contact sends). `-v` adds remotes and paths. |

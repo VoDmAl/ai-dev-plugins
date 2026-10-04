@@ -5,7 +5,7 @@ description: "Собирает signals/now.md из открытых пункто
 status: dormant
 session-type: prd-prep
 created: 2026-09-28
-last-updated: 2026-09-30
+last-updated: 2026-10-03
 relates-to:
   - "[[vdm-comms-pending/workitem|vdm-comms-pending]]"
   - "[[vdm-comms-commitment-form/workitem|vdm-comms-commitment-form]]"
@@ -264,7 +264,10 @@ intercom — так с 2026-10-03 его находит гард PII этого 
 тогда нет, а у пользователя без слоя доступа запись не найдётся, и `now.md` честно скажет, что echelon не подключён.
 Поиск по роли вместо имени — кристалл [[intercom-agent-roles/workitem|intercom-agent-roles]].
 
-**Status:** open
+**Status:** resolved 2026-10-03 — без `ECHELON_BIN`, `comms.now.echelon` и `ECHELON_HOME` слой доступа — агент, чья
+запись в реестре intercom объявляет роль `access-layer` (`comms_people.access_layer_bin`); не нашёлся — `now.md` говорит
+почему. Пути машины в коде нет; красные тесты в `tests/comms-now.test.sh`; vdm-comms 0.18.0
+([[intercom-agent-roles/workitem|intercom-agent-roles]], DL #2)
 
 ## Next actions
 
@@ -284,7 +287,8 @@ intercom — так с 2026-10-03 его находит гард PII этого 
 - [x] Скилл: как подключить `now.md` (`comms.now`, `after_pass`); письмо echelon с именем команды → скилл `pending` «The live now.md» (0.13–0.16); `echelon/live-now-hook-line-ready-outcome`, 2026-09-30
 - [x] Ответить hq: формат `^id`, как проект подключает пересборку, версия vdm-comms, когда проверять → `hq/live-now-comms-outcome`, 2026-09-30
 - [ ] Разобрать приёмку hq по ТЗ §7 (п. 1–3, 6), когда придёт их ответ; автообновление прошло 30.09 (vdm-comms 0.16.1 установлен, сказано `hq/versions-installed`), ждём их `comms.now`
-- [ ] Sidetrack #4: убрать путь машины из `echelon_bin` — поиск через реестр intercom, как у гарда PII, или до ролей оставить; red-тесты; бамп vdm-comms
+- [x] Sidetrack #4: убрать путь машины из `echelon_bin` — поиск по роли `access-layer` в реестре intercom; red-тесты;
+      vdm-comms 0.18.0
 
 ## References
 

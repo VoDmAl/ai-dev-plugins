@@ -2,10 +2,10 @@
 title: "Скилл коммуникаций: форма обращения по каналу, проверка до отправки, сверка после"
 slug: vdm-comms-outward-checks
 description: "Тексты людям от агентов: форма по каналу, проверка до отправки, сверка после — что в скилле, что у echelon"
-status: blocked
+status: ready
 session-type: prd-prep
 created: 2026-10-01
-last-updated: 2026-10-02
+last-updated: 2026-10-03
 relates-to:
   - "[[vdm-comms-letters/workitem|vdm-comms-letters]]"
   - "[[vdm-comms-letter-mechanics/workitem|vdm-comms-letter-mechanics]]"
@@ -187,9 +187,10 @@ Sidetrack #2); до тех пор кристалл в `blocked`. Предлож�
 - [ ] Сверка после отправки: в каналах echelon — его; что может скилл для остальных и как урок от echelon
       доходит до скилла
 - [ ] «Кто пишет» — фактура по агентам и субагентам вместе с echelon (журнал у него); дождаться его итога
-- [ ] Штаб из команды слоя доступа вместо `comms.hq` (DL #4, #5): найти слой по роли в реестре intercom, вызвать его
-      `hq <корень>`; `comms_people.py`, тесты, § 5 скилла, README; vdm-comms MINOR — вместе с фазой C
-      `public-repo-cleanup`
+- [ ] Штаб из команды слоя доступа вместо `comms.hq` (DL #4, #5) — блок снят 2026-10-03: роль `access-layer` есть в
+      реестре, и `comms_people.access_layer_bin()` отдаёт команду слоя доступа (vdm-comms 0.18.0,
+      [[intercom-agent-roles/workitem|intercom-agent-roles]]). Найти слой по роли в реестре intercom, вызвать его
+      `hq <корень>`; `comms_people.py`, тесты, § 5 скилла, README; vdm-comms MINOR
 - [ ] Outcome to `vdx`: intercom reply people-wiring-hq-decision --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
 - [x] Outcome to `hq`: letters-jira-mention-form — ушёл `letters-jira-mention-form-outcome` 2026-10-01
 - [x] Outcome to `hq`: comments-system-vdm — ушёл `comments-system-vdm-outcome` 2026-10-01

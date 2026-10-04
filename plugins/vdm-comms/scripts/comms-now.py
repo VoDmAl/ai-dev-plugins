@@ -49,6 +49,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import comms_config as cfgmod  # noqa: E402
+import comms_people as peoplemod  # noqa: E402
 
 DEFAULT_PATH = "signals/now.md"
 LINK_STYLES = ("markdown", "wikilink")
@@ -265,20 +266,27 @@ MSK = datetime.timezone(datetime.timedelta(hours=3))
 
 
 def echelon_bin(now_cfg):
-    """→ path of echelon's `bin/echelon`, or None when the project switched it off.
+    """→ (path of the access layer's command, None), (None, why it was not
+    found), or (None, None) when the project switched it off.
 
     `ECHELON_BIN` wins (tests, an unusual install); then `comms.now.echelon` as a
     path; then `ECHELON_HOME` — echelon's own convention, the one its sheet skill
-    uses — with its default checkout."""
+    uses. With none of them, the agent whose intercom entry declares the role
+    access-layer: no checkout path of one machine is written here
+    (vdm-comms-live-now, Sidetrack #4; the vdm plugin's intercom-agent-roles)."""
     setting = now_cfg.get("echelon", True)
     if setting is False:
-        return None
+        return None, None
     if os.environ.get("ECHELON_BIN"):
-        return os.environ["ECHELON_BIN"]
+        return os.environ["ECHELON_BIN"], None
     if isinstance(setting, str) and setting.strip():
-        return os.path.expanduser(setting.strip())
-    home = os.environ.get("ECHELON_HOME") or os.path.join(os.path.expanduser("~"), "AI Projects", "echelon")
-    return os.path.join(home, "bin", "echelon")
+        return os.path.expanduser(setting.strip()), None
+    if os.environ.get("ECHELON_HOME"):
+        return os.path.join(os.environ["ECHELON_HOME"], "bin", "echelon"), None
+    try:
+        return peoplemod.access_layer_bin(), None
+    except peoplemod.Unresolved as exc:
+        return None, str(exc)
 
 
 def echelon_json(binary, command, root):
@@ -456,7 +464,9 @@ def build(root, cfg, today, now_cfg, pending):
     # fills «today and tomorrow». A task an owner's home item already carries is
     # not doubled — the home's text is the session's, and richer.
     notes_mine, notes_soon, events = [], [], []
-    binary = echelon_bin(now_cfg)
+    binary, unfound = echelon_bin(now_cfg)
+    if unfound:
+        notes_mine.append("- ⚠ " + lab["now-echelon-missing"] % {"why": unfound})
     if binary:
         owner_texts = [item_text(i) for i in items if is_mine(i)]
         mine_data, why = echelon_json(binary, "mine", root)

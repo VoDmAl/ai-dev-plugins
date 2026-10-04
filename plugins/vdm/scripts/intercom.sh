@@ -4,10 +4,13 @@
 #   intercom identity                     print this repo's canonical identity
 #   intercom whoami                       identity + names + aliases + registration status
 #   intercom store                        print the resolved store root
-#   intercom register [--name N]... [--describe D] [--same-project]
+#   intercom register [--name N]... [--describe D] [--role R]... [--same-project]
 #                                         register this repo in the agent directory
 #   intercom names [add|rm] [--for ID] <name>...
 #                                         list / edit the human names of an agent
+#   intercom roles [add|rm] [--for ID] <role>...
+#                                         list / edit an agent's role (the one kept: access-layer)
+#   intercom role <role> [--path]         which agent holds <role> — or its checkout on this machine
 #   intercom directory [-v]               list every registered agent (aka: who, list, agents)
 #   intercom resolve <name>               which agent does <name> address?
 #   intercom check [--count]              list (or count) pending messages
@@ -49,7 +52,7 @@ cmd_identity() { intercom_identity; printf '\n'; }
 cmd_store() { intercom_store_root; printf '\n'; }
 
 cmd_whoami() {
-  local id src names aliases desc remotes missing n mismatch
+  local id src names aliases desc remotes roles missing n mismatch
   id="$(intercom_identity)"
   src="$(intercom_identity_source)"
   printf '🪪 intercom whoami\n'
@@ -66,9 +69,11 @@ cmd_whoami() {
   aliases="$(_ic_reg_list "$id" .aliases)"
   desc="$(intercom_registry_get "$id" '.description // ""')"
   remotes="$(_ic_reg_list "$id" .remotes)"
+  roles="$(_ic_reg_list "$id" .roles)"
   printf '   names:        %s\n' "${names:-(none)}"
   printf '   aliases:      %s\n' "${aliases:-(none)}"
   printf '   description:  %s\n' "${desc:-(none)}"
+  [ -n "$roles" ] && printf '   roles:        %s\n' "$roles"
   printf '   remotes:      %s\n' "${remotes:-(none)}"
   n="$(intercom_inbox_count "$id")"; [ -n "$n" ] || n=0
   printf '   inbox:        %s   (%s pending)\n' "$(intercom_inbox_dir "$id")" "$n"
@@ -169,6 +174,71 @@ cmd_names() {
       _ic_die "names: unknown op '$op'. Usage: intercom names [add|rm] [--for <identity>] <name>..."
       ;;
   esac
+}
+
+cmd_roles() {
+  local op="${1:-}" id=""
+  case "$op" in
+    add|rm)
+      shift
+      intercom_roles_edit "$op" "$@" || exit 1
+      local a prev=""
+      for a in "$@"; do
+        case "$a" in --for=*) id="${a#--for=}" ;; esac
+        [ "$prev" = "--for" ] && id="$a"
+        prev="$a"
+      done
+      ;;
+    ""|list) ;;
+    *) _ic_die "roles: unknown op '$op'. Usage: intercom roles [add|rm] [--for <identity>] <role>..." ;;
+  esac
+  [ -n "$id" ] || id="$(intercom_identity)"
+  id="$(_intercom_fold "$id")"
+  local roles
+  roles="$(_ic_reg_list "$id" .roles)"
+  printf 'roles of %s: %s\n' "$id" "${roles:-(none)}"
+}
+
+# `role <role> [--path]` — the one agent holding <role>, or with --path its
+# checkout on this machine. The question a consumer asks before calling the
+# access layer: a name or a path written into the caller instead would be a
+# second copy of this answer, true on one machine.
+cmd_role() {
+  local role="" want_path=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --path) want_path=1; shift ;;
+      -*)     _ic_die "role: unknown option '$1'. Usage: intercom role <role> [--path]" ;;
+      *)      [ -z "$role" ] && role="$1"; shift ;;
+    esac
+  done
+  [ -n "$role" ] || _ic_die "role: which role? Usage: intercom role <role> [--path]"
+  command -v jq >/dev/null 2>&1 || _ic_die "role needs jq (registry is JSON)."
+  _intercom_role_check "$role" || exit 1
+  local holder rc
+  holder="$(intercom_role_resolve "$role")"; rc=$?
+  case "$rc" in
+    2) printf 'intercom: ✗ no agent in the directory declares the role %s.\n' "$role" >&2
+       printf '   The agent that holds it declares it: intercom register --role %s — or, from any session: intercom roles add --for <identity> %s\n' "$role" "$role" >&2
+       exit 2 ;;
+    3) printf 'intercom: ✗ several agents declare the role %s: %s — a role has one holder.\n' "$role" "$(printf '%s' "$holder" | paste -sd ',' - | sed 's/,/, /g')" >&2
+       printf '   Drop it from all but one: intercom roles rm --for <identity> %s\n' "$role" >&2
+       exit 3 ;;
+  esac
+  if [ "$want_path" -eq 0 ]; then
+    printf '%s\n' "$holder"
+    return 0
+  fi
+  local p found=""
+  while IFS= read -r p; do
+    [ -n "$p" ] && [ -d "$p" ] && { found="$p"; break; }
+  done <<<"$(intercom_registry_get "$holder" '(.paths // [])[]')"
+  if [ -z "$found" ]; then
+    printf 'intercom: ✗ `%s` holds the role %s, but none of its checkouts is on this machine: %s\n' \
+      "$holder" "$role" "$(_ic_reg_list "$holder" .paths)" >&2
+    exit 1
+  fi
+  printf '%s\n' "$found"
 }
 
 cmd_describe() {
@@ -1020,6 +1090,8 @@ case "$sub" in
   store)                      cmd_store "$@" ;;
   register)                   cmd_register "$@" ;;
   names)                      cmd_names "$@" ;;
+  roles)                      cmd_roles "$@" ;;
+  role)                       cmd_role "$@" ;;
   describe)                   cmd_describe "$@" ;;
   unregister)                 cmd_unregister "$@" ;;
   directory|who|list|agents)  cmd_directory "$@" ;;
@@ -1038,12 +1110,18 @@ intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
   intercom identity                     print this repo's canonical identity
   intercom whoami                       identity + names + aliases + registration status
   intercom store                        print the resolved store root
-  intercom register [--name N]... [--describe D] [--same-project]
+  intercom register [--name N]... [--describe D] [--role R]... [--same-project]
                                         register this repo in the agent directory
-                                        (--name: how the user calls it; --same-project:
-                                        confirm this clone's remote as the same project)
+                                        (--name: how the user calls it; --role: the role it
+                                        holds; --same-project: confirm this clone's remote
+                                        as the same project)
   intercom names [add|rm] [--for ID] <name>...
                                         list / edit an agent's human names
+  intercom roles [add|rm] [--for ID] <role>...
+                                        list / edit an agent's role. The directory keeps one,
+                                        access-layer, with one holder; HQ and hand are answered
+                                        by the access layer's own `hq <project root>`
+  intercom role <role> [--path]         the agent holding <role>; --path: its checkout here
   intercom describe [--for ID] "<one-liner>"
                                         set an agent's description (own entry without --for)
   intercom unregister <identity> [--force]

@@ -229,8 +229,11 @@ is one click away, in the home. An incomplete collection says so in its block;
 an empty calendar from an incomplete collection is not "no meetings".
 
 echelon is found at `ECHELON_BIN`, else `comms.now.echelon` (a path; `false`
-switches it off for the project), else `$ECHELON_HOME/bin/echelon`. When it
-cannot be reached the build still runs and the file says what is missing.
+switches it off for the project), else `$ECHELON_HOME/bin/echelon`, else as the
+agent whose intercom directory entry declares the role `access-layer` —
+`bin/<its identity>` in its checkout on this machine (the vdm plugin's
+`/vdm:intercom role access-layer --path` answers the same). When it cannot be
+reached the build still runs and the file says what is missing.
 
 Build it with `"${CLAUDE_PLUGIN_ROOT}/scripts/comms-now.sh"` (`--stdout` to look
 without writing). It is a command, not a hook — the plugin's hooks write no

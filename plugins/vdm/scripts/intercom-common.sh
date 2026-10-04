@@ -430,7 +430,7 @@ intercom_remote_mismatch() {
 # Registry (DL #6): self-maintained who-is-who so a sender can address a
 # project by any alias. Needs jq; fails open (routing by canonical still works).
 #
-#   intercom_register [--explicit] [--name N]... [--describe D] [--same-project]
+#   intercom_register [--explicit] [--name N]... [--describe D] [--role R]... [--same-project]
 #
 # Implicit by default: an identity resting on nothing but the directory's name
 # is not registered. `--explicit` — the `register` subcommand, the one gesture
@@ -461,9 +461,12 @@ _intercom_need_value() {
 
 intercom_register() {
   command -v jq >/dev/null 2>&1 || return 0
-  local same_project=0 implicit=1 desc="" names=() n
+  local same_project=0 implicit=1 desc="" names=() roles=() n
   while [ $# -gt 0 ]; do
     case "$1" in
+      --role)          _intercom_need_value "$1" $# || return 2
+                       _intercom_role_check "$2" || return 2; roles+=("$2"); shift 2 ;;
+      --role=*)        _intercom_role_check "${1#--role=}" || return 2; roles+=("${1#--role=}"); shift ;;
       --name)          _intercom_need_value "$1" $# || return 2
                        n="$(_intercom_norm_name "$2")"; [ -n "$n" ] && names+=("$n"); shift 2 ;;
       --name=*)        n="$(_intercom_norm_name "${1#--name=}")"; [ -n "$n" ] && names+=("$n"); shift ;;
@@ -474,7 +477,7 @@ intercom_register() {
       --explicit)      implicit=0; shift ;;
       # Refused before the registry is touched: `--nmae X` used to register
       # without the name and report success.
-      *)               printf 'intercom: register: unknown option %s — nothing written. Usage: intercom register [--name N]... [--describe D] [--same-project]\n' "$1" >&2
+      *)               printf 'intercom: register: unknown option %s — nothing written. Usage: intercom register [--name N]... [--describe D] [--role R]... [--same-project]\n' "$1" >&2
                        return 2 ;;
     esac
   done
@@ -527,6 +530,10 @@ intercom_register() {
       printf 'intercom: ✗ name "%s" is already ambiguous in the directory (intercom resolve "%s").\n' "$n" "$n" >&2
       return 1
     fi
+  done
+  # …and a role to one agent (see the Roles block below).
+  for n in "${roles[@]+"${roles[@]}"}"; do
+    _intercom_role_free "$n" "$id" || return 1
   done
 
   # Collision / second-remote detection (Sidetrack #4, refined in v2.21.0):
@@ -589,6 +596,10 @@ intercom_register() {
   if [ "${#names[@]}" -gt 0 ]; then
     namesjson="$(printf '%s\n' "${names[@]}" | jq -R . | jq -s . 2>/dev/null || echo '[]')"
   fi
+  local rolesjson='[]'
+  if [ "${#roles[@]}" -gt 0 ]; then
+    rolesjson="$(printf '%s\n' "${roles[@]}" | jq -R . | jq -s . 2>/dev/null || echo '[]')"
+  fi
 
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo '')"
   tmp="$(mktemp 2>/dev/null)" || return 0
@@ -608,6 +619,7 @@ intercom_register() {
       --arg desc "$desc" \
       --argjson newaliases "$aliasjson" \
       --argjson newnames "$namesjson" \
+      --argjson newroles "$rolesjson" \
       --argjson addremote "$add_remote" "$_INTERCOM_JQ_UNIQ"'
       . as $old
       | .identity    = $id
@@ -618,6 +630,7 @@ intercom_register() {
       | .names       = (((.names // []) + $newnames) | uniq_ord)
       | .description = (if $desc == "" then (.description // "") else $desc end)
       | .paths       = (((.paths // []) + [$path]) | uniq_ord)
+      | (if ($newroles | length) > 0 then .roles = (((.roles // []) + $newroles) | uniq_ord) else . end)
       | if del(.updated) == ($old | del(.updated)) then empty else .updated = $now end
     ' > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
     mv "$tmp" "$regfile" 2>/dev/null || rm -f "$tmp" 2>/dev/null
@@ -786,6 +799,126 @@ intercom_describe_edit() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# Roles (docs/tasks/intercom-agent-roles, DL #2).
+#
+# The directory keeps ONE role: `access-layer` — the agent through which the
+# user's projects reach external systems, and whose `hq <project root>` command
+# says which project is whose HQ. The plugin finds that agent BY ROLE, so that
+# neither its name nor the path of one machine is written into code that ships.
+#
+# Why its own entry declares it: nothing else on disk says who the access layer
+# is, and the access layer cannot be asked before it is found. No prohibition
+# rests on this role — only where a question is sent. HQ and hand are NOT roles
+# here: the access layer keeps them and answers for them, and a copy in the
+# directory would be the same fact in a second place, guarded against the first
+# — `comms.hq` was removed for exactly that on 2026-10-02. Descriptive roles
+# (product, executor) are not kept either: no line of code reads them.
+#
+# A role has one holder, as a name routes to one agent: every consumer needs
+# exactly one place to ask, so a second claim is refused when it is made rather
+# than discovered as an ambiguity when someone asks.
+# ---------------------------------------------------------------------------
+
+INTERCOM_ROLES="access-layer"
+
+# _intercom_role_check <role> — 0 when the directory keeps <role>; otherwise
+# says what it keeps and who answers for HQ and hand, and returns 1.
+_intercom_role_check() {
+  case " $INTERCOM_ROLES " in *" $1 "*) return 0 ;; esac
+  printf 'intercom: ✗ "%s" is not a role the directory keeps — it keeps one: %s.\n' "$1" "$INTERCOM_ROLES" >&2
+  printf '          HQ and hand are answered by the access layer: "<its checkout>/bin/<its identity>" hq <project root>.\n' >&2
+  return 1
+}
+
+# intercom_role_holders <role> — the identities whose entry declares <role>,
+# one per line, sync conflict copies excluded.
+intercom_role_holders() {
+  command -v jq >/dev/null 2>&1 || return 0
+  local files=() rf
+  while IFS= read -r rf; do
+    files+=("$rf")
+  done < <(_intercom_registry_files)
+  [ "${#files[@]}" -gt 0 ] || return 0
+  jq -r --arg r "$1" 'select((.roles // []) | any(.[]; . == $r)) | .identity // empty' "${files[@]}" 2>/dev/null
+}
+
+# intercom_role_resolve <role> — prints the holder(s); returns
+#   0 = exactly one holder, 2 = none, 3 = several (all printed).
+intercom_role_resolve() {
+  local holders n=0
+  holders="$(intercom_role_holders "$1")"
+  [ -n "$holders" ] && n="$(printf '%s\n' "$holders" | grep -c '.')"
+  [ "$n" -gt 0 ] || return 2
+  printf '%s\n' "$holders"
+  [ "$n" -eq 1 ] && return 0
+  return 3
+}
+
+# _intercom_role_free <role> <identity> — 0 when nobody but <identity> holds it;
+# otherwise names the holder and returns 1.
+_intercom_role_free() {
+  local h
+  while IFS= read -r h; do
+    [ -n "$h" ] || continue
+    [ "$h" = "$2" ] && continue
+    printf 'intercom: ✗ role "%s" is already held by `%s` — a role has one holder.\n' "$1" "$h" >&2
+    printf '          Drop it there first (intercom roles rm --for %s %s).\n' "$h" "$1" >&2
+    return 1
+  done <<<"$(intercom_role_holders "$1")"
+  return 0
+}
+
+# intercom_roles_edit add|rm [--for <identity>] <role>...
+# Symmetric with intercom_names_edit: an agent declares its own role, and
+# `--for` lets the directory be completed without a session in that repository.
+intercom_roles_edit() {
+  command -v jq >/dev/null 2>&1 || { printf 'intercom: roles editing needs jq.\n' >&2; return 1; }
+  local op="${1:-}"; [ $# -gt 0 ] && shift
+  local id="" roles=() r
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --for)   _intercom_need_value "$1" $# || return 2; id="$(_intercom_fold "$2")"; shift 2 ;;
+      --for=*) id="$(_intercom_fold "${1#--for=}")"; shift ;;
+      *)       roles+=("$1"); shift ;;
+    esac
+  done
+  case "$op" in add|rm) ;; *) printf 'intercom: roles: unknown op "%s" (add|rm).\n' "$op" >&2; return 1 ;; esac
+  [ "${#roles[@]}" -gt 0 ] || { printf 'intercom: roles %s: no role given.\n' "$op" >&2; return 1; }
+  [ -n "$id" ] || id="$(intercom_identity)"
+  local rf
+  rf="$(intercom_registry_file "$id")"
+  if [ ! -f "$rf" ]; then
+    printf 'intercom: ✗ no registered agent `%s` (intercom directory lists them).\n' "$id" >&2
+    return 1
+  fi
+  for r in "${roles[@]}"; do
+    _intercom_role_check "$r" || return 1
+    if [ "$op" = "add" ]; then
+      _intercom_role_free "$r" "$id" || return 1
+    fi
+  done
+  local rolesjson tmp now prog
+  rolesjson="$(printf '%s\n' "${roles[@]}" | jq -R . | jq -s . 2>/dev/null || echo '[]')"
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo '')"
+  case "$op" in
+    add) prog="$_INTERCOM_JQ_UNIQ"'.roles = (((.roles // []) + $r) | uniq_ord)' ;;
+    rm)  prog='.roles = ((.roles // []) | map(select(. as $x | ($r | index($x)) == null)))
+               | if (.roles | length) == 0 then del(.roles) else . end' ;;
+  esac
+  tmp="$(mktemp 2>/dev/null)" || return 1
+  # Same rule as intercom_register: an entry that would not change is not written.
+  if jq --argjson r "$rolesjson" --arg now "$now" '. as $old | '"$prog"' | if . == $old then empty else .updated = $now end' "$rf" > "$tmp" 2>/dev/null; then
+    if [ -s "$tmp" ]; then
+      mv "$tmp" "$rf" 2>/dev/null || { rm -f "$tmp"; return 1; }
+    else
+      rm -f "$tmp"
+    fi
+  else
+    rm -f "$tmp"; return 1
+  fi
+}
+
 # intercom_unregister <identity> [--force]
 #
 # Removes ONE registry entry. Never a sweep: an entry that turns out to be real
@@ -930,6 +1063,7 @@ intercom_directory_line() {
     def joinlist: if length == 0 then "" else join(", ") end;
     ((.names // []) + (.aliases // [])) as $aka
     | "  • " + $id
+      + (if ((.roles // []) | length) > 0 then "   role: " + (.roles | joinlist) else "" end)
       + (if ($aka | length) > 0 then "   aka: " + ($aka | joinlist) else "" end)
       + "   — " + (if ((.description // "") | length) > 0 then .description else "(no description)" end)
       + (if ((.names // []) | length) == 0 then "   ⚠ unnamed" else "" end)

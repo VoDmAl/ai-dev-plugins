@@ -269,6 +269,21 @@ build >/dev/null
 expect_not_says "echelon switched off for the project — not asked, not mentioned" "$(block "$N" "Твой ход")" "echelon"
 export ECHELON_BIN="$TMP/no-echelon-here"
 
+# Nothing set — no ECHELON_BIN, no comms.now.echelon, no ECHELON_HOME: the
+# access layer is the agent whose intercom entry declares the role access-layer
+# (intercom-agent-roles DL #2), not a path on one machine (vdm-comms-live-now,
+# Sidetrack #4). HOME is a scratch one, so no real checkout can answer instead.
+cfg '{"owner": ["владелец"], "instructions": "docs/how-to-work.md"}'
+mkdir -p "$TMP/home" "$TMP/store/_registry" "$TMP/gk/bin"
+cp "$STUB" "$TMP/gk/bin/gatekeeper"
+by_role() { env -u ECHELON_BIN -u ECHELON_HOME HOME="$TMP/home" VDM_INTERCOM_ROOT="$TMP/store" python3 "$NOW" --project-root "$FX" 2>&1; }
+by_role >/dev/null
+expect_says "RED: with no holder of the role, the file says so" "$(block "$N" "Твой ход")" "declares the role access-layer"
+printf '{"identity": "gatekeeper", "paths": ["%s/gone", "%s/gk"], "roles": ["access-layer"]}\n' "$TMP" "$TMP" \
+  > "$TMP/store/_registry/gatekeeper.json"
+by_role >/dev/null
+expect_says "RED: the access layer is found by its role in the intercom directory" "$(block "$N" "Твой ход")" "PROJ-647"
+
 echo "== block ids: taken by the session, named by the linter, the backlog marked once =="
 # Owner, 2026-09-30 (DL #2): the session that writes an item ends it with a block
 # id; the linter names a new item without one; the items already open are marked

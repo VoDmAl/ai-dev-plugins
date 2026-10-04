@@ -254,6 +254,64 @@ out="$(bash "$IC" names add --for gadget "widget app" 2>&1)"; rc=$?
 says "RED: a name held by the entry is refused as routing there, not as ambiguous" "$out" 'already routes to `widget`'
 rm -f "$conflict"
 
+printf '\n[roles — the directory keeps one, access-layer, and it has one holder]\n'
+# docs/tasks/intercom-agent-roles, DL #2. The plugin finds the access layer by
+# the role its entry declares, so neither an agent's name nor a path of one
+# machine is written into code that ships. HQ and hand are not roles here: the
+# access layer answers for them (`hq <project root>`), and a copy in the
+# directory would be the same fact in a second place.
+gadget_reg="$VDM_INTERCOM_ROOT/_registry/gadget.json"
+cd "$TMP/widget-clone"
+bash "$IC" role access-layer >/dev/null 2>&1; rc=$?
+eq "RED: nobody declares the role yet → exit 2" "$rc" "2"
+out="$(bash "$IC" register --role access-layer 2>&1)"; rc=$?
+eq "RED: register --role declares it" "$rc" "0"
+eq "…stored in roles[]" "$(jq -r '(.roles // []) | join(",")' "$reg")" "access-layer"
+eq "RED: role → the one holder" "$(bash "$IC" role access-layer 2>/dev/null)" "widget"
+eq "RED: role --path → its checkout on this machine" "$(bash "$IC" role access-layer --path 2>/dev/null)" "$(jq -r '.paths[0]' "$reg")"
+bash "$IC" register >/dev/null 2>&1
+eq "a plain re-register keeps the role" "$(jq -r '(.roles // []) | join(",")' "$reg")" "access-layer"
+says "RED: directory shows the role on its holder's line" "$(bash "$IC" directory | grep '• widget')" "role: access-layer"
+says "RED: whoami names it" "$(bash "$IC" whoami)" "roles:        access-layer"
+cp "$reg" "$conflict"
+eq "RED: a sync-conflict copy of the holder is not a second holder" "$(bash "$IC" role access-layer 2>/dev/null)" "widget"
+rm -f "$conflict"
+
+cd "$TMP/gadget"
+out="$(bash "$IC" roles add access-layer 2>&1)"; rc=$?
+eq "RED: a second holder is refused" "$rc" "1"
+says "…naming the holder" "$out" 'already held by `widget`'
+eq "…and nothing is written" "$(jq -r '(.roles // []) | length' "$gadget_reg")" "0"
+bash "$IC" register --role access-layer >/dev/null 2>&1; rc=$?
+eq "RED: …by register --role as well" "$rc" "1"
+out="$(bash "$IC" roles add hq 2>&1)"; rc=$?
+eq "RED: a role the directory does not keep is refused" "$rc" "1"
+says "…saying which one it keeps" "$out" "it keeps one: access-layer"
+says "…and who answers for HQ and hand" "$out" "hq <project root>"
+bash "$IC" register --role hq --describe "should not land" >/dev/null 2>&1; rc=$?
+eq "RED: register --role hq is refused" "$rc" "1"
+eq "…before anything is written" "$(jq -r '.description // ""' "$gadget_reg")" ""
+bash "$IC" role hq >/dev/null 2>&1; rc=$?
+eq "RED: asking for a role the directory does not keep → exit 1" "$rc" "1"
+out="$(bash "$IC" roles rm --for widget access-layer 2>&1)"
+says "RED: roles rm --for drops it" "$out" "roles of widget: (none)"
+bash "$IC" roles add access-layer >/dev/null 2>&1
+eq "RED: the freed role can be taken" "$(bash "$IC" role access-layer 2>/dev/null)" "gadget"
+cp "$gadget_reg" "$TMP/gadget.json.bak"
+jq --arg p "$TMP/no-such-checkout" '.paths = [$p]' "$gadget_reg" > "$gadget_reg.tmp" && mv "$gadget_reg.tmp" "$gadget_reg"
+out="$(bash "$IC" role access-layer --path 2>&1)"; rc=$?
+eq "RED: a holder with no checkout on this machine → exit 1" "$rc" "1"
+says "…said as such" "$out" "none of its checkouts is on this machine"
+mv "$TMP/gadget.json.bak" "$gadget_reg"
+jq '.roles = ["access-layer"]' "$reg" > "$reg.tmp" && mv "$reg.tmp" "$reg"   # a hand-made second holder
+out="$(bash "$IC" role access-layer 2>&1)"; rc=$?
+eq "RED: two holders → exit 3" "$rc" "3"
+says "…both named" "$out" "gadget"
+says "…both named (2)" "$out" "widget"
+jq 'del(.roles)' "$reg" > "$reg.tmp" && mv "$reg.tmp" "$reg"
+bash "$IC" roles rm access-layer >/dev/null 2>&1
+eq "the fixture leaves no holder behind" "$(bash "$IC" role access-layer 2>/dev/null)" ""
+
 printf '\n[second remote — mirror vs collision]\n'
 cd "$TMP/widget-mirror"
 out="$(bash "$IC" register 2>&1)"

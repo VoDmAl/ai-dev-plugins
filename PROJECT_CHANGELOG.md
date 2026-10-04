@@ -10,6 +10,28 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ## 2026-10-03
 
+### ✨ FEATURE — слой доступа находят по роли в реестре intercom, а не по имени и пути (vdm 2.41.0, vdm-comms 0.18.0)
+
+**Что было.** Гард PII этого репо искал в реестре запись с именем `echelon`, а `comms-now.py` без настроек шёл по пути
+`~/AI Projects/echelon` — пути одной машины в коде, который едет к любому пользователю.
+
+**Что сделано.**
+- В записи реестра — поле `roles`. Реестр хранит одну роль, `access-layer`, и у неё один держатель (решение владельца,
+  DL #2). Штаб и рука ролями здесь не стали: на них отвечает сам слой доступа командой `hq <корень>`, и копия в реестре
+  была бы вторым местом того же факта.
+- intercom: `register --role`, `roles [add|rm] [--for ID]`, `role <роль> [--path]`. Роль видна в `directory` и
+  `whoami`. Вторую заявку на роль и роль, которую реестр не хранит, команда отклоняет до записи.
+- Гард PII (`jev_binary`) и `comms-now.py` (`echelon_bin` через `comms_people.access_layer_bin`) берут держателя роли
+  и его `bin/<identity>`. Явные `ECHELON_BIN`, `comms.now.echelon`, `ECHELON_HOME` по-прежнему идут первыми. Не нашёлся
+  держатель — `now.md` и гард говорят почему.
+- Эшелону роль вписана в общий реестр (`roles add --for echelon access-layer`).
+- Красные тесты: 27 проверок в `tests/intercom.test.sh`, по роли в `tests/pii-scan.test.sh` и
+  `tests/comms-now.test.sh`. На старом коде новые проверки гарда краснеют все, включая «слой доступа под другим
+  именем».
+
+**Ref**: docs/tasks/intercom-agent-roles/workitem.md (DL #2); vdm-comms-live-now Sidetrack #4 закрыт;
+vdm-comms-outward-checks разблокирован
+
 ### 🐛 BUG — конфликтная копия записи реестра intercom читалась как второй агент (vdm 2.40.5, vdm-comms 0.17.2)
 
 **Что было.** В `_registry/` общего хранилища лежали 10 файлов `<id>.sync-conflict-*.json` от 01–02.10: Syncthing

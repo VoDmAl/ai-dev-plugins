@@ -745,10 +745,12 @@ class Scanner:
 # The gate: a remedy per finding, and Jev on the disputed ones
 # ---------------------------------------------------------------------------
 
-# The agent that holds the Jev key and runs the call. Named by name: the owner
-# allowed it (DL #15); found through the registry, so no path of a machine is
-# written here (DL #22). By role once the registry knows roles (Sidetrack #5).
-ACCESS_LAYER = "echelon"
+# The agent that holds the Jev key and runs the call: the one whose registry
+# entry declares the role access-layer (docs/tasks/intercom-agent-roles, DL #2).
+# Found by role, so neither its name nor a path of a machine is written here
+# (DL #22 of public-repo-cleanup); its command is `bin/<identity>` in its
+# checkout, as `intercom role access-layer --path` and comms_people.py find it.
+ACCESS_ROLE = "access-layer"
 JEV_LINE = 200      # characters around the candidate; the access layer refuses a state over 400
 JEV_MAX = 5         # questions per run: what leaves the machine stays small on a large commit
 JEV_TIMEOUT = 20    # seconds; the access layer itself gives TypeSafe 10
@@ -764,14 +766,20 @@ JEV_INSTRUCTIONS = ("A scanner flagged the candidate as a possible personal name
 JEV_EXIT = {1: "TypeSafe is unavailable", 2: "the question was refused", 3: "no right from this checkout"}
 
 
-def jev_binary(entries: list[dict]) -> str | None:
-    for e in entries:
-        if e.get("identity") == ACCESS_LAYER:
-            for p in e.get("paths") or []:
-                b = os.path.join(p, "bin", ACCESS_LAYER)
-                if os.path.isfile(b) and os.access(b, os.X_OK):
-                    return b
-    return None
+def jev_binary(entries: list[dict]) -> tuple[str | None, str | None]:
+    """→ (the access layer's command, None) or (None, why Jev is not asked)."""
+    holders = [e for e in entries if ACCESS_ROLE in (e.get("roles") or [])]
+    if not holders:
+        return None, f"not asked — no agent in the intercom registry declares the role {ACCESS_ROLE}"
+    if len(holders) > 1:
+        names = ", ".join(sorted(str(e.get("identity")) for e in holders))
+        return None, f"not asked — several agents in the intercom registry declare the role {ACCESS_ROLE}: {names}"
+    ident = str(holders[0].get("identity") or "")
+    for p in holders[0].get("paths") or []:
+        b = os.path.join(p, "bin", ident)
+        if ident and os.path.isfile(b) and os.access(b, os.X_OK):
+            return b, None
+    return None, f"not asked — `{ident}` holds the role {ACCESS_ROLE}, but no checkout here has bin/{ident}"
 
 
 def window(text: str, value: str, size: int = JEV_LINE) -> str:
@@ -794,10 +802,9 @@ class Jev:
     access layer would follow GIT_INDEX_FILE into the commit being made
     (githooks(5); tests/gates.test.sh)."""
 
-    def __init__(self, binary: str | None, root: str) -> None:
-        self.binary, self.root = binary, root
-        self.down = None if binary else (f"not asked — the intercom registry has no {ACCESS_LAYER} "
-                                         f"with bin/{ACCESS_LAYER}")
+    def __init__(self, found: tuple[str | None, str | None], root: str) -> None:
+        (self.binary, why), self.root = found, root
+        self.down = None if self.binary else why
         self.asked = 0
         self._env: dict[str, str] | None = None
 

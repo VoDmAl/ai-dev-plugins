@@ -112,6 +112,17 @@ def fold(name):
     return re.sub(r"[ \t_]+", "-", s).strip("-")
 
 
+def entry_files(reg):
+    """Every entry file of the intercom directory `reg`, sorted.
+
+    A `<id>.sync-conflict-*.json` beside an entry is Syncthing's copy of the
+    losing side of two machines editing it at once — not a second agent, and
+    read as one it makes every name of the entry ambiguous (the same filter
+    as `_intercom_registry_files` in the vdm plugin's intercom-common.sh)."""
+    return sorted(os.path.join(reg, f) for f in os.listdir(reg)
+                  if f.endswith(".json") and ".sync-conflict-" not in f)
+
+
 def registry_entry(identity):
     """The intercom directory entry `identity` addresses — by its file first,
     then by a folded identity / alias / name, as `intercom.sh resolve` does."""
@@ -120,13 +131,7 @@ def registry_entry(identity):
         raise Unresolved("comms.hq is `%s`, but there is no intercom directory at %s "
                          "(the vdm plugin keeps it)" % (identity, reg))
     direct = os.path.join(reg, identity + ".json")
-    # A `<id>.sync-conflict-*.json` beside an entry is Syncthing's copy of the
-    # losing side of two machines editing it at once — not a second agent, and
-    # read as one it makes every name of the entry ambiguous (the same filter
-    # as `_intercom_registry_files` in the vdm plugin's intercom-common.sh).
-    candidates = [direct] if os.path.isfile(direct) else sorted(
-        os.path.join(reg, f) for f in os.listdir(reg)
-        if f.endswith(".json") and ".sync-conflict-" not in f)
+    candidates = [direct] if os.path.isfile(direct) else entry_files(reg)
     want = fold(identity)
     hits = []
     for path in candidates:
@@ -147,6 +152,51 @@ def registry_entry(identity):
                          % (identity, ", ".join(sorted(str(h.get("identity")) for h in hits))))
     raise Unresolved("comms.hq is `%s`, but no agent in the intercom directory goes by "
                      "that name — `/vdm:intercom resolve %s`" % (identity, identity))
+
+
+# The agent through which projects reach external systems is found by the role
+# its intercom entry declares, never by its name or a path of one machine
+# (vdm plugin, intercom-agent-roles DL #2). Its command is `bin/<its identity>`
+# in its checkout — `intercom role access-layer --path` answers the same.
+ACCESS_ROLE = "access-layer"
+
+
+def role_holder(role):
+    """The one intercom directory entry that declares `role`. Raises Unresolved
+    when there is no directory, no holder, or several."""
+    reg = os.path.join(store_root(), "_registry")
+    if not os.path.isdir(reg):
+        raise Unresolved("no intercom directory at %s (the vdm plugin keeps it)" % reg)
+    hits = []
+    for path in entry_files(reg):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                entry = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if isinstance(entry, dict) and role in (entry.get("roles") or []):
+            hits.append(entry)
+    if len(hits) == 1:
+        return hits[0]
+    if hits:
+        raise Unresolved("several agents in the intercom directory declare the role %s: %s"
+                         % (role, ", ".join(sorted(str(h.get("identity")) for h in hits))))
+    raise Unresolved("no agent in the intercom directory declares the role %s "
+                     "(/vdm:intercom role %s)" % (role, role))
+
+
+def access_layer_bin():
+    """→ the access layer's command on this machine: `<checkout>/bin/<identity>`
+    of the agent holding ACCESS_ROLE. Raises Unresolved, saying what is missing."""
+    entry = role_holder(ACCESS_ROLE)
+    ident = str(entry.get("identity") or "")
+    paths = [p for p in (entry.get("paths") or []) if isinstance(p, str)]
+    for root in paths:
+        binary = os.path.join(root, "bin", ident)
+        if ident and os.path.isfile(binary) and os.access(binary, os.X_OK):
+            return binary
+    raise Unresolved("`%s` holds the role %s, but none of its checkouts on this machine has bin/%s: %s"
+                     % (ident, ACCESS_ROLE, ident, ", ".join(paths) or "no paths recorded"))
 
 
 def locate(project_root, cfg):
