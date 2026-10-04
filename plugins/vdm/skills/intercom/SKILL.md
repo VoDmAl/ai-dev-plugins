@@ -435,6 +435,14 @@ pending messages:
      `intercom.sh pickup <slug>` once grown. Use this for a brief that defines
      real ongoing work.
 
+     Seeding is retelling, not pasting: the workitem belongs to your repository,
+     and the brief is another agent's text, addressed to you rather than to
+     whoever reads your repository. Its address goes into `Basis-detail`. In a
+     published repository, the retelling names people and other agents by role
+     (crystal-grow → the provenance rule), and so does the printed
+     `Outcome to <sender>` line. `reply` reads the recipient from the letter's
+     envelope, so the name in that checkbox is only a label.
+
 **The user's pending steps come first.** Mail that arrives mid-session — a
 wake, the opt-in reminder, a receipt — is almost never urgent, and the user may
 be in the middle of steps you handed them: a commit to run, a push, a decision

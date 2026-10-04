@@ -99,6 +99,14 @@ Each rule is paired with a deterministic gate — see `docs/llm/soft-guidance-vs
 
    Second surface: `.githooks/pre-commit` Gate 5 runs `plugins/vdm/scripts/crystal-lint.sh --staged`, which lints the **staged** blob and so catches IDE-direct edits the `PostToolUse` hook never sees. It lives in the plugin rather than `scripts/check-*.sh` because the canon is a file, not a rule that could be restated here without becoming a second copy of it.
 
+7. **Nothing that identifies anyone goes into this repository.** It is public, and its history keeps whatever was ever committed (crystal `public-repo-cleanup`). This holds in every committed file — code, tests and their fixtures, SKILL.md, workitems, `references/`, the changelog — and in every commit message:
+   - examples are fictional: «Петров», «John Doe», `PROJ-123`, `example.com`. A fictional surname must not be a real one from the owner's address books; the gate checks that;
+   - agents are named by role, and only where the interaction matters: `hq`, `program`, `command-center`, `access-layer`, `product`, `executor`. Only `echelon` (the access layer) and `vdx` go by name (DL #15, #16). The owner is «владелец»;
+   - no ticket keys of work trackers, no internal system names, no work e-mail; every commit is signed `Dmitry Vorobyev <dmitry@vorobyev.org>`;
+   - another agent's brief is retold, not copied; its address goes into `Basis-detail`.
+
+   Enforced by Gate 13 of `.githooks/pre-commit` (what the commit adds) and by `.githooks/commit-msg` (the message, the author, the committer), both through `scripts/pii-gate.sh`. A word that names no one passes by a line in `scripts/pii-allow.txt` staged in the same commit. The gate does not know machine names, other repositories' crystal slugs or their paths: those stay out by attention. Check a file before staging it: `uv run scripts/pii-scan.py files <path>`.
+
 ## Authoring standard: agent-agnostic skill text
 
 When writing prompts, hook output, or instructions inside `plugins/**/skills/**/SKILL.md` and `plugins/**/scripts/**`:
@@ -106,6 +114,7 @@ When writing prompts, hook output, or instructions inside `plugins/**/skills/**/
 - **Don't hardcode the assistant's name** ("Claude", "Qwen", "GPT", etc.). The same files load under multiple harnesses, and naming one model implicitly tells the others "this isn't for you."
 - **Use generic terms** instead: "the assistant", "the AI assistant", "you (the assistant)", or `Assistant:` as a label prefix.
 - **OK to mention by name:** product-level harness names (`Claude Code`, `Qwen Code`) when describing where files live or which install path is used — e.g. `.claude/` vs `.qwen/`. That's harness, not agent identity.
+- **Neutral about everyone else too.** A field case or an example names no person, no other agent and no work system: the lesson stays, the address goes — Critical Rule 7.
 
 **Why:** plugins ship through multiple marketplaces; agent-agnostic text means a single source of truth and no per-harness forks. Caught during the v2.2.0 work — fix touched 5 files (guard SKILL.md, learn SKILL.md, learn-reminder.sh, hook output) where "Claude" had crept in.
 

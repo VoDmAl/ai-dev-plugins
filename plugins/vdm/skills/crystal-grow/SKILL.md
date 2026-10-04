@@ -657,6 +657,19 @@ something**. Both break, often together.
    back in after being evicted from the prose — through the back door, while the
    rule is being obeyed to the letter.
 
+**The veto reaches the retelling too.** In a published or distributed repository,
+a name, a login, a ticket key or a work address written into the entry is
+published exactly like the stored file, and history keeps it just as long. So
+the transcription carries the claim without the identifiers: people by role ("the
+reviewer", "a colleague on the payments team") or by an obviously fictional name,
+other agents by role, keys and addresses as placeholders (`PROJ-123`,
+`example.com`). The `Basis-detail` address of the original stays — it points
+outside the repository, where the data is allowed to live. Field case
+(2026-10-02): a published plugin repository carried 20 real people, 15 work
+ticket keys and 22 agent names. Six of its seven stored copies were made after
+this veto existed, and the prose, test fixtures and code comments — which the
+veto as first written did not reach at all — carried the rest.
+
 **Провенанс — не хоардинг.** The artifact is stored when the claim cannot be
 checked against your own writing — *and* when you are entitled to store it.
 
