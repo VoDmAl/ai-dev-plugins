@@ -36,6 +36,11 @@ _INTERCOM_TEMPLATE="$_INTERCOM_SCRIPT_DIR/../templates/intercom-brief-template.m
 
 _ic_die() { printf 'intercom: %s\n' "$1" >&2; exit "${2:-1}"; }
 
+# Temporary files of one run — reply's rendered body, send's copy of --body.
+# One EXIT trap removes both: reply calls send in the same process, and a second
+# `trap … EXIT` would replace the first.
+_ic_cleanup() { rm -f "${_IC_REPLY_BODY:-}" "${_IC_BODY_COPY:-}"; }
+
 # Sanitize a user-supplied slug into a safe filename: lowercase, spaces→dash,
 # keep [a-z0-9._-], collapse repeats, trim leading/trailing dashes.
 _ic_sanitize_slug() {
@@ -597,15 +602,31 @@ cmd_send() {
   # would produce a letter that only LOOKS sent is refused before a byte is
   # written — an empty body, an unreadable one, or one that is itself an
   # unfilled scaffold.
+  #
+  # The body is read ONCE, into a private copy, and everything after works from
+  # the copy. `--body /dev/stdin` is why (executor, 2026-10-04): the check
+  # read the stream, the splice read it again, and on macOS a second open of
+  # /dev/stdin shares the offset with the first — the letter landed with no
+  # body, and the after-write comparison compared nothing with nothing. A pipe,
+  # not being a regular file, was refused outright. One read makes a heredoc, a
+  # pipe and `<(…)` the same thing as a file.
+  local body_label=""
   if [ "$body_set" -eq 1 ]; then
     [ -n "$body_file" ] || _ic_die "send: --body needs a file path." 2
-    if [ ! -f "$body_file" ] || [ ! -r "$body_file" ]; then
+    if [ -d "$body_file" ] || [ ! -r "$body_file" ]; then
       _ic_die "send: cannot read body file '$body_file' — not sending." 2
     fi
+    _IC_BODY_COPY="$(mktemp "${TMPDIR:-/tmp}/intercom-body.XXXXXX" 2>/dev/null)" \
+      || _ic_die "send: cannot make a temporary copy of the body — not sending." 2
+    trap _ic_cleanup EXIT
+    cat -- "$body_file" > "$_IC_BODY_COPY" 2>/dev/null \
+      || _ic_die "send: cannot read body file '$body_file' — not sending." 2
+    body_label="$body_file"
+    body_file="$_IC_BODY_COPY"
     grep -q '[^[:space:]]' "$body_file" 2>/dev/null \
-      || _ic_die "send: body file '$body_file' is empty — not sending (a letter without a body looks sent)." 2
+      || _ic_die "send: body '$body_label' is empty — not sending (a letter without a body looks sent)." 2
     if grep -qF "$_IC_PLACEHOLDER_MARK" "$body_file" 2>/dev/null; then
-      _ic_die "send: body file '$body_file' still holds the template placeholder — it is an unfilled scaffold, not a body. Not sending." 2
+      _ic_die "send: body '$body_label' still holds the template placeholder — it is an unfilled scaffold, not a body. Not sending." 2
     fi
   fi
 
@@ -720,8 +741,8 @@ cmd_send() {
     printf '    body: %s — %s bytes, compared after writing.\n' \
       "$_IC_BODY_LABEL" "$(wc -c < "$body_file" | tr -d ' ')"
   elif [ "$body_set" -eq 1 ]; then
-    printf '    body: %s — %s bytes, identical to the file (compared after writing).\n' \
-      "$body_file" "$(wc -c < "$body_file" | tr -d ' ')"
+    printf '    body: %s — %s bytes, identical to what was read (compared after writing).\n' \
+      "$body_label" "$(wc -c < "$body_file" | tr -d ' ')"
   else
     printf '    → now write the brief body into that file (replace the placeholder comment).\n'
   fi
@@ -1135,7 +1156,7 @@ cmd_reply() {
     _IC_REPLY_BODY="$(mktemp "${tmpdir%/}/intercom-reply.XXXXXX" 2>/dev/null)" \
       || _ic_die "reply: cannot create a temporary body."
     _IC_BODY_LABEL="rendered from --done/--link/--ball"
-    trap 'rm -f "$_IC_REPLY_BODY"' EXIT
+    trap _ic_cleanup EXIT
     {
       printf '## Done\n\n'
       local x

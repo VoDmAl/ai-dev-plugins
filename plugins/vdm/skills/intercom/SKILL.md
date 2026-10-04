@@ -389,6 +389,9 @@ it is a divergence between "sent" and "kept" that neither side rereads.
 An empty or unreadable file, or one that still holds the template placeholder,
 is refused **and nothing is written** — a letter with no body looks sent. The
 body is taken as written, with no token substitution. Works with `--reply-to`.
+The body is read once, so a stream is a file like any other: `--body /dev/stdin`
+with a heredoc or a pipe, or `--body <(…)`; an empty stream is refused the same
+way.
 
 **The heading.** A body whose first non-blank line is a `# heading` keeps it as
 the letter's heading, and the template's `# <title>` is not written above it —

@@ -786,6 +786,32 @@ refuses "a file still holding the placeholder" body-unfilled "placeholder" --bod
 refuses "--body with no path"             body-nopath   "--body"       --body
 refuses "a directory"                     body-dir      "cannot read"  --body "$B"
 
+# `--body /dev/stdin` (executor, 2026-10-04): a letter landed with its
+# envelope and heading and no body. The emptiness check read the stream, the
+# splice read it again — and on macOS a second open of /dev/stdin shares the
+# offset with the first, so it read nothing; the after-write comparison then
+# compared nothing with nothing. A pipe was refused instead ("cannot read"):
+# two ways of handing over the same text, two different failures.
+body_tail() { tail -c "$(printf '%s' "$2" | wc -c)" "$VDM_INTERCOM_ROOT/hop-b/$1.md" 2>/dev/null; }
+( cd "$TMP/hop-a" && bash "$IC" send hop-b body-heredoc --body /dev/stdin >/dev/null 2>&1 <<'EOF'
+Body from a heredoc.
+EOF
+)
+eq "RED: --body /dev/stdin from a heredoc carries the body" "$(body_tail body-heredoc 'Body from a heredoc.
+')" "Body from a heredoc."
+( cd "$TMP/hop-a" && printf 'Body from a pipe.\n' | bash "$IC" send hop-b body-pipe --body /dev/stdin >/dev/null 2>&1 )
+eq "RED: --body /dev/stdin from a pipe carries the body" "$(body_tail body-pipe 'Body from a pipe.
+')" "Body from a pipe."
+( cd "$TMP/hop-a" && bash "$IC" send hop-b body-procsub --body <(printf 'Body from a process.\n') >/dev/null 2>&1 )
+eq "RED: --body <(…) carries the body" "$(body_tail body-procsub 'Body from a process.
+')" "Body from a process."
+out="$( cd "$TMP/hop-a" && printf 'Said once.\n' | bash "$IC" send hop-b body-label --body /dev/stdin 2>&1 )"
+says "…and the report names what the sender gave, not a temporary copy" "$out" "body: /dev/stdin — 11 bytes"
+o="$( cd "$TMP/hop-a" && : | bash "$IC" send hop-b body-stdin-empty --body /dev/stdin 2>&1 )"; r=$?
+if [ "$r" -ne 0 ] && [ ! -e "$VDM_INTERCOM_ROOT/hop-b/body-stdin-empty.md" ]; then ok "RED: an empty stdin is refused, no letter written"
+else bad "RED: an empty stdin is refused, no letter written" "rc=$r"; fi
+says "…says why" "$o" "empty"
+
 # A relative path is the sender's, read from where the sender stands.
 mkdir -p "$TMP/hop-a/docs/comms"
 cp "$B/plain.md" "$TMP/hop-a/docs/comms/out.md"
