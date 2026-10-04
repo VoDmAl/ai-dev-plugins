@@ -17,7 +17,9 @@
 #   intercom chain <slug>                 the relay chain behind a letter, and where each link lives
 #   intercom send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--body FILE] [--to ID] [--first-contact]
 #   intercom claim <inbox> [--force]      move an unclaimed inbox addressed to one of your names home
-#   intercom pickup <slug> [--grow]       archive a message (or promote with --grow)
+#   intercom take <slug> [--force]        mark a letter taken by this session before working on it
+#   intercom pickup <slug> [--grow] [--force]
+#                                         archive a message (or promote with --grow)
 #   intercom reply <letter> (--done T [--link U]... --ball T | --body F)
 #                                         close a letter you received with its outcome, to its sender
 #   intercom sent                         your letters still unpicked in other inboxes (aka: outbox)
@@ -350,7 +352,7 @@ cmd_check() {
   fi
   _ic_print_unclaimed "$id" "   "
   printf '📬 intercom: %s pending message(s) for `%s`\n   inbox: %s\n\n' "$n" "$id" "$(intercom_inbox_dir "$id")"
-  local f from created slug title prev
+  local f from created slug title prev taken
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     from="$(intercom_fm_field "$f" from)"
@@ -361,6 +363,8 @@ cmd_check() {
     [ -n "$title" ] || title="$slug"
     printf '  • %s\n    from: %s   created: %s\n    file: %s\n' \
       "$title" "${from:-?}" "${created:-?}" "$f"
+    taken="$(intercom_fm_field "$f" taken)"
+    [ -n "$taken" ] && printf '    taken by %s at %s — leave it to that session\n' "${taken%% *}" "${taken#* }"
     # A relay letter is only half a message without what it continues, and the
     # chain is derived here rather than written into the letter so that picking
     # a link up (inbox → _done/) cannot make a stored path lie.
@@ -730,20 +734,33 @@ cmd_send() {
   # now, say so and hand over the pointer — the assistant sends it; nothing here
   # writes to another session. With a scaffold the pointer must wait for the
   # body, or the recipient reads a placeholder.
-  local live
+  # One session is woken, the one where the owner typed last (wake-one-machine
+  # DL #3); `intercom_wake_choice` says which, or that it lives elsewhere.
+  local live choice verdict wname wstatus why
   live="$(intercom_live_sessions "$canon")"
   if [ -n "$live" ]; then
-    printf '    📣 live session(s) of `%s` on this machine: %s\n' "$canon" \
-      "$(printf '%s\n' "$live" | awk -F '\t' '{ printf "%s%s (%s)", (NR > 1 ? ", " : ""), $1, $2 }')"
-    if [ "$body_set" -eq 1 ]; then
-      printf '       → wake each now with your cross-session message tool (Claude Code: SendMessage).\n'
+    printf '    📣 live session(s) of `%s` on this machine: %s\n' "$canon" "$(_ic_live_list "$live")"
+    choice="$(intercom_wake_choice "$canon")"
+    IFS=$'\037' read -r verdict wname wstatus why <<<"$choice"
+    if [ "$verdict" = "wake" ]; then
+      printf '       → wake one: %s — %s.\n' "$wname" "$why"
+      if [ "$body_set" -eq 1 ]; then
+        printf '         Wake it now with your cross-session message tool (Claude Code: SendMessage).\n'
+      else
+        printf '         Wake it once the body is written — not before, or it reads a placeholder —\n'
+        printf '         with your cross-session message tool (Claude Code: SendMessage).\n'
+      fi
+      printf '         It is a pointer; the inbox stays the truth. Text, first line self-contained:\n'
+      printf '         📬 intercom: `%s` from `%s` — %s. Read: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first\n' "$slug" "$from" "$title"
     else
-      printf '       → once the body is written — not before, or they read a placeholder — wake each\n'
-      printf '         with your cross-session message tool (Claude Code: SendMessage).\n'
+      printf '       → do not wake here: %s.\n' "$why"
     fi
-    printf '         It is a pointer; the inbox stays the truth. Text, first line self-contained:\n'
-    printf '         📬 intercom: `%s` from `%s` — %s. Read: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first\n' "$slug" "$from" "$title"
   fi
+}
+
+# "name (status), name (status)" from intercom_live_sessions lines.
+_ic_live_list() {
+  printf '%s\n' "$1" | awk -F '\t' '{ printf "%s%s (%s)", (NR > 1 ? ", " : ""), $1, $2 }'
 }
 
 # `sent` — the sender's half of "delivery is not receipt": every letter this
@@ -759,21 +776,33 @@ cmd_sent() {
   fi
   n="$(printf '%s\n' "$list" | wc -l | tr -d ' ')"
   printf '📤 intercom: %s letter(s) from `%s` not picked up yet (oldest first):\n\n' "$n" "$id"
-  local age inbox slug title file live seen="" cache=""
+  local age inbox slug title file live choice verdict wname wstatus why taken seen="" cache=""
   while IFS=$'\t' read -r age inbox slug title file; do
     [ -n "$inbox" ] || continue
+    printf '  • %sd  %s/%s — %s\n' "$age" "$inbox" "$slug" "$title"
+    taken="$(intercom_fm_field "$file" taken)"
+    if [ -n "$taken" ]; then
+      printf '      taken by %s at %s — in work, nobody to wake\n' "${taken%% *}" "${taken#* }"
+      continue
+    fi
     # One lookup per recipient, not per letter — bash 3.2 has no maps, so a
-    # plain "<inbox>=<live>" list stands in for one.
+    # plain "<inbox>=<live>\x1e<choice>" list stands in for one.
     case "$seen" in
       *"|$inbox|"*) live="$(printf '%s\n' "$cache" | awk -F '=' -v k="$inbox" '$1 == k { sub(/^[^=]*=/, ""); print; exit }')" ;;
       *) live="$(intercom_live_sessions "$inbox" | cut -f1 | paste -sd ',' - | sed 's/,/, /g')"
+         [ -n "$live" ] && live="${live}"$'\036'"$(intercom_wake_choice "$inbox")"
          seen="${seen}|$inbox|"; cache="${cache}${inbox}=${live}
 " ;;
     esac
-    printf '  • %sd  %s/%s — %s\n' "$age" "$inbox" "$slug" "$title"
     if [ -n "$live" ]; then
-      printf '      live now: %s → wake with SendMessage: 📬 intercom: `%s` from `%s` — %s. Read: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first\n' \
-        "$live" "$slug" "$id" "$title"
+      choice="${live#*$'\036'}"; live="${live%%$'\036'*}"
+      IFS=$'\037' read -r verdict wname wstatus why <<<"$choice"
+      if [ "$verdict" = "wake" ]; then
+        printf '      live now: %s → wake one: %s (%s) with SendMessage: 📬 intercom: `%s` from `%s` — %s. Read: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first\n' \
+          "$live" "$wname" "$why" "$slug" "$id" "$title"
+      else
+        printf '      live now: %s — do not wake here: %s\n' "$live" "$why"
+      fi
     else
       printf '      no live session — it waits for their next `check`\n'
     fi
@@ -894,16 +923,49 @@ _ic_reply_hint() {
   printf 'intercom reply %s --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"' "$1"
 }
 
+# _ic_refuse_if_taken <verb> <letter> <slug> — stop when another session has
+# taken the letter (wake-one-machine DL #3); `--force` is the way past it, for a
+# session that is gone.
+_ic_refuse_if_taken() {
+  local mark
+  mark="$(intercom_taken_elsewhere "$2")"
+  [ -n "$mark" ] || return 0
+  _ic_die "$1: '$3' is taken by ${mark%% *} at ${mark#* } — it is that session's. If that session is gone: intercom $1 $3 --force"
+}
+
+# `take <slug>` — mark a letter in your inbox as taken by this session before
+# you start on it, so a session elsewhere that finds it leaves it alone.
+cmd_take() {
+  local slug="" force=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --force) force=1; shift ;;
+      -*)      _ic_die "take: unknown argument '$1'. Usage: intercom take <slug> [--force]" ;;
+      *)       [ -z "$slug" ] && slug="$1"; shift ;;
+    esac
+  done
+  [ -n "$slug" ] || _ic_die "take: missing <slug>. Usage: intercom take <slug> [--force]"
+  slug="$(_ic_sanitize_slug "${slug%.md}")"
+  local id msg
+  id="$(intercom_identity)"
+  msg="$(intercom_inbox_dir "$id")/$slug.md"
+  [ -f "$msg" ] || _ic_die "take: no pending message '$slug' in your inbox ($(intercom_inbox_dir "$id"))."
+  [ "$force" -eq 1 ] || _ic_refuse_if_taken "take" "$msg" "$slug"
+  intercom_take "$msg" || _ic_die "take: could not write the mark into $msg"
+  printf '✋ intercom: %s taken by %s — work on it, then reply or pickup.\n' "$slug" "$(intercom_fm_field "$msg" taken)"
+}
+
 cmd_pickup() {
-  local slug="" grow=0
+  local slug="" grow=0 force=0
   slug="${1:-}"; [ $# -gt 0 ] && shift
   while [ $# -gt 0 ]; do
     case "$1" in
       --grow) grow=1; shift ;;
+      --force) force=1; shift ;;
       # Refused before anything moves: an unknown flag here used to archive the
       # letter and drop whatever the flag carried (field case: `pickup <slug>
       # --done "…"`, product, 2026-09-29). The outcome has its own verb.
-      *)      _ic_die "pickup: unknown argument '$1' — nothing archived. Usage: intercom pickup <slug> [--grow]. An outcome goes back with: intercom reply <slug> --done … --ball …" ;;
+      *)      _ic_die "pickup: unknown argument '$1' — nothing archived. Usage: intercom pickup <slug> [--grow] [--force]. An outcome goes back with: intercom reply <slug> --done … --ball …" ;;
     esac
   done
   [ -n "$slug" ] || _ic_die "pickup: missing <slug>. Usage: intercom pickup <slug> [--grow]"
@@ -914,10 +976,14 @@ cmd_pickup() {
   msg="$inbox/$slug.md"
   [ -f "$msg" ] || _ic_die "pickup: no pending message '$slug' in your inbox ($inbox)."
   sender="$(intercom_fm_field "$msg" from)"
+  [ "$force" -eq 1 ] || _ic_refuse_if_taken "pickup" "$msg" "$slug"
 
   if [ "$grow" -eq 1 ]; then
+    # The brief stays in the inbox while the crystal is grown: mark it taken,
+    # so a session elsewhere does not start on it meanwhile.
+    intercom_take "$msg" || printf 'intercom: ⚠ could not mark %s taken\n' "$slug" >&2
     printf '🌱 intercom: promote message → workitem\n'
-    printf '    message: %s\n' "$msg"
+    printf '    message: %s   (taken: %s)\n' "$msg" "$(_intercom_taker)"
     printf '    next: run /vdm:crystal-grow %s, seed the workitem from the body above,\n' "$slug"
     # The outcome is owed after the work, and the brief is archived before it
     # starts. Named as a Next action, the promise is held by the crystal-cut
@@ -936,14 +1002,19 @@ cmd_pickup() {
 
   # The receipt: the sender otherwise learns "received" only by auditing the
   # store by hand. Offered only while the sender has a live session to tell.
-  local live
+  local live choice verdict wname wstatus why
   if [ -n "$sender" ] && [ "$sender" != "$id" ]; then
     live="$(intercom_live_sessions "$sender")"
     if [ -n "$live" ]; then
-      printf '    📣 the sender `%s` has a live session on this machine: %s\n' "$sender" \
-        "$(printf '%s\n' "$live" | awk -F '\t' '{ printf "%s%s (%s)", (NR > 1 ? ", " : ""), $1, $2 }')"
-      printf '       → send a receipt with your cross-session message tool (Claude Code: SendMessage):\n'
-      printf '         ✅ intercom: `%s` picked up by `%s`.\n' "$slug" "$id"
+      printf '    📣 the sender `%s` has live session(s) on this machine: %s\n' "$sender" "$(_ic_live_list "$live")"
+      choice="$(intercom_wake_choice "$sender")"
+      IFS=$'\037' read -r verdict wname wstatus why <<<"$choice"
+      if [ "$verdict" = "wake" ]; then
+        printf '       → send a receipt to one: %s — %s — with your cross-session message tool (Claude Code: SendMessage):\n' "$wname" "$why"
+        printf '         ✅ intercom: `%s` picked up by `%s`.\n' "$slug" "$id"
+      else
+        printf '       → no receipt here: %s.\n' "$why"
+      fi
     fi
   fi
 
@@ -964,9 +1035,9 @@ cmd_pickup() {
 # the letter may still be in the inbox (archived here, in the same step) or
 # already in `_done/` (the crystal path: picked up when the work started).
 cmd_reply() {
-  local ref="" title="" from_agent="" slug_out="" body_file="" body_set=0
+  local ref="" title="" from_agent="" slug_out="" body_file="" body_set=0 force=0
   local dones=() links=() balls=()
-  local usage='Usage: intercom reply <letter> (--done "<what>" [--link <url>]... --ball "<who — what ⏰ date>" | --body <file>) [--title T] [--slug S] [--from-agent A]'
+  local usage='Usage: intercom reply <letter> (--done "<what>" [--link <url>]... --ball "<who — what ⏰ date>" | --body <file>) [--title T] [--slug S] [--from-agent A] [--force]'
   ref="${1:-}"; [ $# -gt 0 ] && shift
   case "$ref" in -*) _ic_die "reply: the first argument is the letter you answer. $usage" ;; esac
   while [ $# -gt 0 ]; do
@@ -989,6 +1060,7 @@ cmd_reply() {
       --slug=*)       slug_out="${1#--slug=}"; shift ;;
       --from-agent)   from_agent="$2"; shift 2 ;;
       --from-agent=*) from_agent="${1#--from-agent=}"; shift ;;
+      --force)        force=1; shift ;;
       *)              _ic_die "reply: unknown argument '$1' — nothing sent. $usage" ;;
     esac
   done
@@ -1024,6 +1096,9 @@ cmd_reply() {
     msg="$inbox/_done/$slug.md"
   fi
   [ -n "$msg" ] || _ic_die "reply: no letter '$slug' in your inbox or its archive ($inbox)."
+  if [ "$force" -eq 0 ] && [ "$msg" = "$inbox/$slug.md" ]; then
+    _ic_refuse_if_taken "reply" "$msg" "$slug"
+  fi
   local sender
   sender="$(intercom_fm_field "$msg" from)"
   [ -n "$sender" ] || _ic_die "reply: '$slug' names no sender in its envelope — nothing to reply to."
@@ -1100,6 +1175,7 @@ case "$sub" in
   send)                       cmd_send "$@" ;;
   claim)                      cmd_claim "$@" ;;
   pickup)                     cmd_pickup "$@" ;;
+  take)                       cmd_take "$@" ;;
   reply)                      cmd_reply "$@" ;;
   sent|outbox)                cmd_sent "$@" ;;
   chain)                      cmd_chain "$@" ;;
@@ -1138,7 +1214,10 @@ intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
                                         that agent's name (after the user said whom they meant)
   intercom claim <inbox> [--force]      move an unclaimed inbox that was addressed to one of
                                         your names into your own inbox
-  intercom pickup <slug> [--grow]       archive a message (or promote with --grow)
+  intercom take <slug> [--force]        mark a letter taken by this session before working on it;
+                                        pickup, reply and the wake leave a letter taken elsewhere alone
+  intercom pickup <slug> [--grow] [--force]
+                                        archive a message (or promote with --grow, which marks it taken)
   intercom reply <letter> (--done "<what>" [--link <url>]... --ball "<who — what ⏰ date>" | --body FILE)
                                         close a letter you received with its outcome: it goes
                                         to the letter's sender as a reply-to link; a letter

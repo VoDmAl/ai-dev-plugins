@@ -944,6 +944,83 @@ says "oldest first" "$first" "old-one"
 out="$( cd "$TMP/hop-b" && bash "$IC" outbox 2>&1 )"
 says "outbox is the same command" "$out" "📤 intercom"
 
+echo "-- one session wakes: where the owner typed last (wake-one-machine DL #3)"
+# A project lives in sessions on two machines, and cross-session messages reach
+# only this one. Waking every live session here sent the work wherever the
+# SENDER happened to sit. The harness writes `turnOrigin: "human"` on every turn
+# the owner typed — through a terminal from another machine too, which keyboard
+# idle time cannot tell — and `projects/` travels between the machines.
+PROJ="$HOME/.claude/projects"
+NOW_EPOCH="$(python3 -c 'import calendar,time; print(calendar.timegm(time.strptime("2026-10-04T11:00:00Z","%Y-%m-%dT%H:%M:%SZ")))')"
+turn() {  # turn <dir> <sessionId> <cwd> <timestamp> [<origin>] — one turn in a fixture transcript
+  mkdir -p "$PROJ/$1"
+  printf '{"type":"user","timestamp":"%s","sessionId":"%s","cwd":"%s","turnOrigin":"%s","message":{"role":"user","content":"x"}}\n' \
+    "$4" "$2" "$3" "${5:-human}" >> "$PROJ/$1/$2.jsonl"
+}
+wake_out() { ( cd "$TMP/hop-a" && CLAUDE_CODE_SESSION_ID=self-sid VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" send hop-b "$1" --body "$B/live.md" 2>&1 ); }
+out="$(wake_out one-nodata)"
+says "RED: with no turn of the owner's anywhere, one session is woken, not each" "$out" "→ wake one:"
+eq "…exactly one" "$(printf '%s\n' "$out" | grep -c '→ wake one:')" "1"
+says "…and the line says why" "$out" "no turn of yours"
+turn hb "sid-hop-b-11" "$TMP/hop-b" "2026-10-04T09:00:00Z"
+turn hb "sid-hop-b-22" "$TMP/hop-b/sub" "2026-10-04T08:00:00Z"
+out="$(wake_out one-latest)"
+says "RED: the live session the owner typed into last is the one woken" "$out" "→ wake one: hop-b-11"
+says "…named as where the owner's last turn was" "$out" "your last turn in \`hop-b\`"
+turn hb "sid-hop-b-22" "$TMP/hop-b/sub" "2026-10-04T10:30:00Z" peer
+out="$(wake_out one-peer)"
+says "RED: a turn another session started is not the owner's" "$out" "→ wake one: hop-b-11"
+turn hb-2 "sid-sibling" "$TMP/hop-b-2" "2026-10-04T10:40:00Z"
+out="$(wake_out one-sibling)"
+says "RED: a sibling directory's transcript is someone else's" "$out" "→ wake one: hop-b-11"
+turn hb "sid-elsewhere" "$TMP/hop-b" "2026-10-03T20:00:00Z"
+out="$(wake_out one-stale)"
+says "RED: a turn elsewhere older than the window is not presence" "$out" "→ wake one: hop-b-11"
+turn hb "sid-elsewhere" "$TMP/hop-b" "2026-10-04T10:00:00Z"
+out="$(wake_out one-elsewhere)"; rc=$?
+eq "send succeeds when the owner is elsewhere" "$rc" "0"
+says "RED: the owner's last turn in a session not on this machine — nobody is woken here" "$out" "do not wake here"
+says_not "…no wake line" "$out" "→ wake one:"
+says "…and the letter is said to wait for that session" "$out" "waits for it"
+out="$( cd "$TMP/hop-a" && VDM_INTERCOM_NOW="$NOW_EPOCH" VDM_INTERCOM_TODAY=2026-10-04 bash "$IC" sent 2>&1 )"
+says "RED: sent follows the same rule" "$out" "do not wake here"
+rm -f "$PROJ/hb/sid-elsewhere.jsonl"
+mksession live-a2.json "$LIVE_PID" "$TMP/hop-a" hop-a-34 idle "$SOCKS/a.sock"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-x VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" pickup one-latest 2>&1 )"
+eq "RED: the receipt goes to one session of the sender, not each" "$(printf '%s\n' "$out" | grep -c '→ send a receipt to one:')" "1"
+rm -f "$SESS/live-a2.json"
+
+echo "-- taken: a session that takes a letter marks it (wake-one-machine DL #3)"
+# Two sessions that each find the same letter by themselves both start on it.
+# `take` writes who took it into the envelope; the store carries it to the
+# other machine, and pickup, reply and the wake respect it.
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-11 bash "$IC" take one-peer 2>&1 )"; rc=$?
+eq "RED: take succeeds" "$rc" "0"
+tk="$(grep '^taken:' "$VDM_INTERCOM_ROOT/hop-b/one-peer.md")"
+says "RED: …and writes who took it, machine/session" "$tk" "/hop-b-11 "
+out="$( cd "$TMP/hop-b" && bash "$IC" check 2>&1 )"
+says "RED: check shows who took a letter" "$out" "taken by"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-22 bash "$IC" take one-peer 2>&1 )"; rc=$?
+eq "RED: another session cannot take it" "$rc" "1"
+says "…and is told whose it is" "$out" "/hop-b-11"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-22 bash "$IC" pickup one-peer 2>&1 )"; rc=$?
+eq "RED: nor archive it" "$rc" "1"
+[ -f "$VDM_INTERCOM_ROOT/hop-b/one-peer.md" ] && ok "…the letter stays in the inbox" || bad "…the letter stays in the inbox"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-22 bash "$IC" reply one-peer --done "x" --ball "nobody — closed" 2>&1 )"; rc=$?
+eq "RED: nor reply to it" "$rc" "1"
+out="$( cd "$TMP/hop-a" && VDM_INTERCOM_NOW="$NOW_EPOCH" VDM_INTERCOM_TODAY=2026-10-04 bash "$IC" sent 2>&1 )"
+line="$(printf '%s\n' "$out" | grep -A1 'hop-b/one-peer' | tail -1)"
+says "RED: sent says a taken letter is in work" "$line" "taken by"
+says_not "…and offers no wake for it" "$line" "SendMessage"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-11 bash "$IC" pickup one-peer 2>&1 )"; rc=$?
+eq "RED: the session that took it archives it" "$rc" "0"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-11 bash "$IC" take one-sibling 2>&1 )"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-22 bash "$IC" pickup one-sibling --force 2>&1 )"; rc=$?
+eq "RED: --force takes over a letter whose session is gone" "$rc" "0"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-22 bash "$IC" pickup one-stale --grow 2>&1 )"
+says "RED: pickup --grow marks the letter taken" "$(grep '^taken:' "$VDM_INTERCOM_ROOT/hop-b/one-stale.md")" "/hop-b-22 "
+rm -rf "$PROJ"; rm -f "$VDM_INTERCOM_ROOT"/hop-b/one-*.md
+
 echo "-- session start, the sender's side"
 out="$( cd "$TMP/hop-a" && printf '{}' | VDM_INTERCOM_TODAY=2026-09-24 bash "$HOOK" )"
 says "session start counts letters unpicked for 3+ days" "$out" "1 of your letters lie unpicked for 3+ days"

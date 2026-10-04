@@ -1149,21 +1149,52 @@ intercom_registry_ids() {
 # /private/var would never match.
 _intercom_realpath() { (cd "$1" 2>/dev/null && pwd -P) || printf '%s' "$1"; }
 
-# intercom_live_sessions <identity> — "name<TAB>status" for every LIVE session
-# of that agent on this machine, other than the caller's own.
+# _intercom_owners — every agent's checkouts as physical paths, one
+# "<path><TAB><identity>" per line. Read once by each caller that maps a
+# working directory to the agent it belongs to.
+_intercom_owners() {
+  command -v jq >/dev/null 2>&1 || return 0
+  local entries=() rf
+  while IFS= read -r rf; do
+    entries+=("$rf")
+  done < <(_intercom_registry_files)
+  [ "${#entries[@]}" -gt 0 ] || return 0
+  jq -r '.identity as $i | (.paths // [])[] | [., $i] | @tsv' "${entries[@]}" 2>/dev/null \
+    | while IFS=$'\t' read -r p who; do
+        [ -n "$p" ] && printf '%s\t%s\n' "$(_intercom_realpath "$p")" "$who"
+      done
+}
+
+# _intercom_owner_of <physical cwd> <owners> — the agent whose registered
+# checkout is the LONGEST one containing that directory. By path, not by
+# session name: the name is derived and two clones can share it. Longest,
+# because a session in a sub-directory belongs to the repo around it (measured:
+# a live session sat in hq/tracks/<track>), while a separate repo nested inside
+# another is its own agent.
+_intercom_owner_of() {
+  local rcwd="$1" best="" best_len=0 p who
+  while IFS=$'\t' read -r p who; do
+    [ -n "$p" ] || continue
+    case "$rcwd/" in
+      "$p/"*) [ "${#p}" -gt "$best_len" ] && { best="$who"; best_len="${#p}"; } ;;
+    esac
+  done <<<"$2"
+  printf '%s' "$best"
+}
+
+# intercom_live_sessions <identity> — "name<TAB>status<TAB>sessionId<TAB>updated"
+# for every LIVE session of that agent on this machine, other than the caller's
+# own. `updated` is the session file's statusUpdatedAt (ms), empty when absent.
 #
 # Live means all of: the file is not a sync conflict (settings synced from
 # another machine carry sessions whose pids mean nothing here), its socket
 # exists (/tmp is never synced), and its pid answers `kill -0`. A session file
 # alone proves nothing — on the machine this was written on, 4 of the files in
-# sessions/ were conflict copies from other devices.
-#
-# Belongs to the agent whose registered checkout is the LONGEST one containing
-# the session's cwd. By path, not by session name: the name is derived and two
-# clones can share it. Longest, because a session in a sub-directory belongs to
-# the repo around it (measured: a live session sat in hq/tracks/<track>),
-# while a separate repo nested inside another is its own agent. Silent, and
-# harmless, wherever the harness keeps no such files.
+# sessions/ were conflict copies from other devices. Since 2026-09-26 the
+# owner's machines no longer sync sessions/ at all; the checks stay, because a
+# harness directory synced elsewhere would bring the same copies back.
+# Belongs to the agent `_intercom_owner_of` names. Silent, and harmless,
+# wherever the harness keeps no such files.
 intercom_live_sessions() {
   local id="$1" dir regdir
   command -v jq >/dev/null 2>&1 || return 0
@@ -1171,27 +1202,20 @@ intercom_live_sessions() {
   regdir="$(intercom_registry_dir)"
   [ -d "$dir" ] && [ -d "$regdir" ] || return 0
 
-  # Every agent's checkouts, as physical paths: "<path><TAB><identity>".
-  local owners entries=() rf
-  while IFS= read -r rf; do
-    entries+=("$rf")
-  done < <(_intercom_registry_files)
-  [ "${#entries[@]}" -gt 0 ] || return 0
-  owners="$(jq -r '.identity as $i | (.paths // [])[] | [., $i] | @tsv' "${entries[@]}" 2>/dev/null \
-    | while IFS=$'\t' read -r p who; do
-        [ -n "$p" ] && printf '%s\t%s\n' "$(_intercom_realpath "$p")" "$who"
-      done)"
+  local owners
+  owners="$(_intercom_owners)"
   [ -n "$owners" ] || return 0
 
-  local f pid cwd name status sock sid rcwd best best_len p who
+  local f pid cwd name status sock sid upd
   for f in "$dir"/*.json; do
     [ -f "$f" ] || continue
     case "$(basename "$f")" in *.sync-conflict-*) continue ;; esac
     # Unit separator, not TAB: TAB is whitespace to `read`, so an empty field
     # (a session with no status yet) would collapse and shift every column after it.
-    IFS=$'\037' read -r pid cwd name status sock sid < <(
+    IFS=$'\037' read -r pid cwd name status sock sid upd < <(
       jq -r '[(.pid // "" | tostring), (.cwd // ""), (.name // ""), (.status // ""),
-              (.messagingSocketPath // ""), (.sessionId // "")] | join("\u001f")' "$f" 2>/dev/null
+              (.messagingSocketPath // ""), (.sessionId // ""),
+              ((.statusUpdatedAt // .updatedAt // "") | tostring)] | join("\u001f")' "$f" 2>/dev/null
     ) || continue
     [ -n "$pid" ] && [ -n "$name" ] && [ -n "$cwd" ] || continue
     case "$pid" in *[!0-9]*) continue ;; esac
@@ -1200,17 +1224,163 @@ intercom_live_sessions() {
     if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] && [ "$sid" = "$CLAUDE_CODE_SESSION_ID" ]; then
       continue
     fi
-    rcwd="$(_intercom_realpath "$cwd")"
-    best=""; best_len=0
-    while IFS=$'\t' read -r p who; do
-      [ -n "$p" ] || continue
-      case "$rcwd/" in
-        "$p/"*) [ "${#p}" -gt "$best_len" ] && { best="$who"; best_len="${#p}"; } ;;
-      esac
-    done <<<"$owners"
-    [ "$best" = "$id" ] && printf '%s\t%s\n' "$name" "${status:-?}"
+    [ "$(_intercom_owner_of "$(_intercom_realpath "$cwd")" "$owners")" = "$id" ] \
+      && printf '%s\t%s\t%s\t%s\n' "$name" "${status:-?}" "$sid" "$upd"
   done
   return 0
+}
+
+# ---------------------------------------------------------------------------
+# Which ONE session to wake (docs/tasks/intercom-wake-one-machine, DL #3).
+#
+# A project may live in sessions on two machines, and a cross-session message
+# reaches only this one — so waking every live session here sent the work
+# wherever the SENDER happened to sit. Where the owner is, the harness already
+# writes down: every turn the owner typed carries `"turnOrigin":"human"` in the
+# session's transcript (`peer` is a turn another session started), and the
+# transcripts under projects/ travel between the machines. Keyboard idle time
+# was the other candidate and it fails exactly here: the owner often drives a
+# session on one machine through a terminal opened on the other.
+#
+# The rule, chosen by the owner (DL #3):
+#   - the owner's last turn in the recipient's sessions is in a session live on
+#     this machine → wake that one;
+#   - it is in a session that is not live here → wake nobody: the letter waits
+#     for that session;
+#   - no turn of the owner's within the window → one session here, the most
+#     recently active (a message cannot reach the other machine anyway).
+# A turn older than the window is not presence: the session may be closed, and
+# the owner gone since. Nothing is stored — both operands are on disk.
+# ---------------------------------------------------------------------------
+
+INTERCOM_PRESENCE_WINDOW_H=12
+
+# _intercom_now — seconds since the epoch; VDM_INTERCOM_NOW pins it for tests.
+_intercom_now() {
+  if [ -n "${VDM_INTERCOM_NOW:-}" ]; then printf '%s' "$VDM_INTERCOM_NOW"; return; fi
+  date -u +%s
+}
+
+# _intercom_iso_utc <epoch> — YYYY-MM-DDTHH:MM:SSZ, comparable as a string with
+# the transcripts' timestamps. BSD date first, then GNU.
+_intercom_iso_utc() {
+  date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null
+}
+
+# intercom_owner_turns <identity> — "<timestamp><TAB><sessionId>" for every
+# transcript of that agent whose last owner-typed turn is inside the window,
+# newest first. A transcript belongs to the agent `_intercom_owner_of` names
+# for its `cwd` — read from the transcript, because the directory name the
+# harness derives from a path is lossy (`a-b` and `a/b` look the same).
+intercom_owner_turns() {
+  local id="$1" projects owners cutoff f cwd ts
+  projects="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"
+  [ -d "$projects" ] || return 0
+  owners="$(_intercom_owners)"
+  [ -n "$owners" ] || return 0
+  cutoff="$(_intercom_iso_utc "$(( $(_intercom_now) - INTERCOM_PRESENCE_WINDOW_H * 3600 ))")"
+  # A transcript with a turn inside the window was written inside it: the
+  # modification time narrows the scan to the sessions of the last hours.
+  find "$projects" -mindepth 2 -maxdepth 2 -name '*.jsonl' -mmin "-$((INTERCOM_PRESENCE_WINDOW_H * 60 + 60))" 2>/dev/null \
+    | while IFS= read -r f; do
+        cwd="$(grep -m1 -o '"cwd":"[^"]*"' "$f" 2>/dev/null | head -1 | sed 's/^"cwd":"//; s/"$//')"
+        [ -n "$cwd" ] || continue
+        [ "$(_intercom_owner_of "$(_intercom_realpath "$cwd")" "$owners")" = "$id" ] || continue
+        ts="$(grep -F '"turnOrigin":"human"' "$f" 2>/dev/null | tail -1 \
+              | grep -o '"timestamp":"[^"]*"' | tail -1 | sed 's/^"timestamp":"//; s/"$//')"
+        [ -n "$ts" ] || continue
+        ts="${ts%%.*}"; ts="${ts%Z}Z"          # 2026-10-04T09:00:00.123Z → …:00Z
+        [ "$ts" \< "$cutoff" ] && continue
+        printf '%s\t%s\n' "$ts" "$(basename "$f" .jsonl)"
+      done | sort -r
+}
+
+# intercom_wake_choice <identity> — one line, or nothing when no session of
+# that agent is live here. Fields are joined by the unit separator (\037), not
+# TAB: TAB is whitespace to `read`, and the empty fields of "wait" would collapse.
+#   "wake<US><name><US><status><US><why>"   wake this one session
+#   "wait<US><US><US><why>"                 wake nobody here
+intercom_wake_choice() {
+  local id="$1" live turns top_ts top_sid name status sid upd
+  live="$(intercom_live_sessions "$id")"
+  [ -n "$live" ] || return 0
+  turns="$(intercom_owner_turns "$id")"
+  if [ -n "$turns" ]; then
+    IFS=$'\t' read -r top_ts top_sid <<<"$(printf '%s\n' "$turns" | head -1)"
+    while IFS=$'\t' read -r name status sid upd; do
+      if [ -n "$sid" ] && [ "$sid" = "$top_sid" ]; then
+        printf 'wake\037%s\037%s\037your last turn in `%s` was there (%s)\n' "$name" "$status" "$id" "$top_ts"
+        return 0
+      fi
+    done <<<"$live"
+    printf 'wait\037\037\037your last turn in `%s` (%s) was in a session that is not on this machine — the letter waits for it\n' \
+      "$id" "$top_ts"
+    return 0
+  fi
+  # No presence: the most recently active live session (its file's status
+  # stamp), the first listed on a tie or when the harness writes none.
+  local best="" best_upd=-1 best_status=""
+  while IFS=$'\t' read -r name status sid upd; do
+    case "$upd" in ''|*[!0-9]*) upd=0 ;; esac
+    if [ "$upd" -gt "$best_upd" ]; then best="$name"; best_status="$status"; best_upd="$upd"; fi
+  done <<<"$live"
+  printf 'wake\037%s\037%s\037no turn of yours in `%s` in the last %s h — one session here, the most recently active\n' \
+    "$best" "$best_status" "$id" "$INTERCOM_PRESENCE_WINDOW_H"
+}
+
+# ---------------------------------------------------------------------------
+# Taken (docs/tasks/intercom-wake-one-machine, DL #3). Two sessions that each
+# find the same letter by themselves both start on it — the wake picks one, but
+# `check` and session start are not the wake. A session that takes a letter
+# writes `taken: <machine>/<session> <time>` into its envelope; the store
+# carries it to the other machine within about a minute, and pickup, reply and
+# the wake respect it. Two takes inside that minute leave a sync conflict copy
+# of the letter — visible, and the race the mark narrows rather than closes.
+# ---------------------------------------------------------------------------
+
+# _intercom_taker — who this session is, as the mark records it:
+# `<machine>/<session name>`, or `<machine>` where the harness names no session.
+_intercom_taker() {
+  local m name="" f
+  m="$(_intercom_machine_name)"
+  if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] && command -v jq >/dev/null 2>&1; then
+    for f in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"/*.json; do
+      [ -f "$f" ] || continue
+      case "${f##*/}" in *.sync-conflict-*) continue ;; esac
+      name="$(jq -r --arg s "$CLAUDE_CODE_SESSION_ID" 'select(.sessionId == $s) | .name // empty' "$f" 2>/dev/null)"
+      [ -n "$name" ] && break
+    done
+  fi
+  if [ -n "$name" ]; then printf '%s/%s' "$m" "$name"; else printf '%s' "$m"; fi
+}
+
+# intercom_taken_elsewhere <letter> — prints the mark ("<who> <time>") when the
+# letter is taken by someone other than this session; silent otherwise.
+intercom_taken_elsewhere() {
+  local mark who
+  mark="$(intercom_fm_field "$1" taken)"
+  [ -n "$mark" ] || return 0
+  who="${mark%% *}"
+  [ "$who" = "$(_intercom_taker)" ] && return 0
+  printf '%s' "$mark"
+}
+
+# intercom_take <letter> — write this session's mark into the envelope, in
+# place of any earlier one. The caller has already decided it may.
+intercom_take() {
+  local f="$1" tmp mark
+  [ -f "$f" ] || return 1
+  mark="$(_intercom_taker) $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  tmp="$(mktemp 2>/dev/null)" || return 1
+  awk -v mark="$mark" '
+    NR == 1 && $0 == "---" { infm = 1; print; next }
+    infm && $0 == "---"    { print "taken: " mark; infm = 0; print; next }
+    infm && /^taken:/      { next }
+    { print }
+  ' "$f" > "$tmp" 2>/dev/null && grep -q '^taken: ' "$tmp" \
+    && cat "$tmp" > "$f" && rm -f "$tmp" && return 0
+  rm -f "$tmp"
+  return 1
 }
 
 # _intercom_today — today's date, YYYY-MM-DD (UTC). VDM_INTERCOM_TODAY pins it

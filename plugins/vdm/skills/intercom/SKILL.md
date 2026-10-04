@@ -351,8 +351,9 @@ re-derive its logic:
 | `send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--body FILE] [--to ID] [--first-contact]` | Scaffold an envelope message addressed to `<to>` (identity, alias or name) and print its path. Unknown / ambiguous target = **hard stop** with suggestions and the next command. `--to <identity>` delivers there and records `<to>` as that agent's name (the resend after the user said whom they meant). `--reply-to <ref>` records which letter this one continues (§ The relay form). `--body <file>` makes the file the letter's body, byte for byte (§ Sending a message). `--first-contact` creates a fresh inbox for a recipient that has never registered. |
 | `chain <slug>` | The relay chain behind a letter — every link it continues, and where each one lives right now. |
 | `claim <inbox> [--force]` | Move an unclaimed inbox (no registered agent) whose name matches one of your names/aliases into your own inbox; `to:` is rewritten to your identity, `to_input` stays as the trace, the name is recorded. `--force` for an orphan that matches none of your names. |
-| `pickup <slug> [--grow]` | Archive a message to `_done/` (or, with `--grow`, hand it to `/vdm:crystal-grow`). When the sender has a live session on this machine, prints the receipt to send it (§ Delivery is not receipt). For a brief whose outcome has not gone back yet it prints the `reply` that closes it; with `--grow` it prints that as a Next action for the crystal (§ Closing a brief with its outcome). |
-| `reply <letter> (--done "<what>" [--link <url>]… --ball "<who — what ⏰ date>" \| --body FILE) [--title T] [--slug S]` | Close a letter **you received** with its outcome. It goes to the letter's sender as a `reply-to` link; recipient and link come from the envelope. Works on a letter in the inbox (archived in the same step) or in `_done/`. `--done` and `--ball` repeat; `--ball` is required — "nobody — closed" is an answer (§ Closing a brief with its outcome). |
+| `take <slug> [--force]` | Mark a letter in your inbox as taken by this session before working on it (§ Receiving). Refuses a letter taken by another session unless `--force`. |
+| `pickup <slug> [--grow] [--force]` | Archive a message to `_done/` (or, with `--grow`, hand it to `/vdm:crystal-grow` — the letter stays in the inbox, marked taken). Refuses a letter taken by another session unless `--force`. When the sender has a live session on this machine, prints the receipt to send it (§ Delivery is not receipt). For a brief whose outcome has not gone back yet it prints the `reply` that closes it; with `--grow` it prints that as a Next action for the crystal (§ Closing a brief with its outcome). |
+| `reply <letter> (--done "<what>" [--link <url>]… --ball "<who — what ⏰ date>" \| --body FILE) [--title T] [--slug S] [--force]` | Close a letter **you received** with its outcome. It goes to the letter's sender as a `reply-to` link; recipient and link come from the envelope. Works on a letter in the inbox (archived in the same step; refused while another session has it taken, unless `--force`) or in `_done/`. `--done` and `--ball` repeat; `--ball` is required — "nobody — closed" is an answer (§ Closing a brief with its outcome). |
 | `sent` (aka `outbox`) | Every letter **you** wrote that still lies unpicked in someone's inbox, oldest first, with its age and whether the recipient has a live session to wake now. |
 
 ### Sending a message
@@ -455,8 +456,14 @@ When the session-start line (or the opt-in reminder, or the user) reports
 pending messages:
 
 1. `intercom.sh check` → list what's waiting.
-2. Read the message file(s).
-3. Then either:
+2. Read the message file(s). A letter `check` shows as **taken by** another
+   session is that session's — leave it.
+3. Before you start on a letter, take it: `intercom.sh take <slug>`. The mark
+   (`taken: <machine>/<session> <time>`) reaches the user's other machine within
+   about a minute, and `pickup`, `reply` and the wake leave a letter taken
+   elsewhere alone (`--force` takes over from a session that is gone). A note
+   you only archive needs no mark.
+4. Then either:
    - **Act now** → do the work, then `intercom.sh reply <slug> --done … --ball …`:
      the outcome goes to the sender and the letter is archived in the same step.
      A letter that asks for nothing — a note, an answer to yours — is archived
@@ -564,17 +571,28 @@ So three things happen on top of the inbox, and none of them replaces it:
 
 - **`send` names the recipient's live sessions on this machine** — sessions of
   the harness whose working directory lies inside one of the recipient's
-  registered checkouts, with a live process and socket. When it prints
-  `📣 live session(s) of …`, **wake each one in the same turn** with your
-  cross-session message tool (Claude Code: `SendMessage`), using the text it
-  printed. That text is a **pointer**: its first line names the slug and the
-  sender, and it ends with how to read the letter. Never paste the brief into
-  it — the inbox stays the truth. After a scaffolding `send`, wake only once the
-  body is written; with `--body` the letter is complete and you wake at once.
-  Wake busy sessions too: the message queues until their next tool round, it
-  does not interrupt.
+  registered checkouts, with a live process and socket — and **which one to
+  wake**. When it prints `→ wake one: <session>`, wake that one session in the
+  same turn with your cross-session message tool (Claude Code: `SendMessage`),
+  using the text it printed. That text is a **pointer**: its first line names
+  the slug and the sender, and it ends with how to read the letter. Never paste
+  the brief into it — the inbox stays the truth. After a scaffolding `send`,
+  wake only once the body is written; with `--body` the letter is complete and
+  you wake at once. A busy session is woken too: the message queues until its
+  next tool round, it does not interrupt. When it prints `→ do not wake here`,
+  wake nobody: the letter waits for the session named in that line.
+- **One session, where the user typed last.** A project may have sessions on
+  two of the user's machines, and a cross-session message reaches only this
+  one. The harness marks every turn the user typed (`"turnOrigin":"human"` in
+  the session's transcript under `projects/`, which travels between the
+  machines). `send` wakes the live session here that holds the user's last turn
+  in the recipient's project; if that turn is in a session not on this machine,
+  nobody is woken here; with no turn of the user's in the last 12 hours, it
+  wakes one session here, the most recently active.
 - **`pickup` offers a receipt**: when the sender has a live session, it prints
-  `✅ intercom: <slug> picked up by <you>` — send it the same way.
+  `→ send a receipt to one: <session>` and the text
+  `✅ intercom: <slug> picked up by <you>` — send it the same way, by the same
+  rule.
 - **`sent` shows your side**: every letter you wrote that is still unpicked,
   its age, and who can be woken right now. The session-start line adds
   `📤 N of your letters lie unpicked for 3+ days` when there are any. A
