@@ -54,10 +54,21 @@ set -u
 #
 # `git init` further down would honour GIT_DIR too, so the scrub covers every
 # variable that can redirect a git command away from its cwd.
+#
+# The session is wider than the repository's location. A commit also hands its
+# hooks the author it settled on (GIT_AUTHOR_NAME/EMAIL/DATE — builtin/commit.c,
+# determine_author_info) and GIT_EDITOR=: when no editor opens (githooks(5)). A
+# suite that reads either sees the live commit instead of its fixture: on
+# 2026-10-03 tests/pii-scan.test.sh, which checks a commit's signature, went red
+# in three cases inside the hook while green by hand. So the block takes the
+# signature and the editor too, committer included, in every harness — and
+# tests/gates-harness-isolation.test.sh asks each file for every name.
 # ---------------------------------------------------------------------------
 unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE \
-      GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION 2>/dev/null || true
+      GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION \
+      GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
+      GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR 2>/dev/null || true
 
 # `--setup-only` stops after the baseline block. The isolation test
 # (tests/gates-harness-isolation.test.sh) uses it to exercise the setup — the

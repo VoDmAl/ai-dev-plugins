@@ -27,17 +27,14 @@
 set -u
 
 # Scrub the inherited git session — see tests/gates.test.sh. The pre-commit runs
-# this suite inside a live `git commit`.
+# this suite inside a live `git commit`, and this suite is the one that taught
+# the block its second half: it reads the signature through `git var` and the
+# editor to decide what the message is, and inherited, the live commit's author
+# overrode the fixture's — three cases red in the hook, green by hand.
 unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE \
-      GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION 2>/dev/null || true
-# A commit hands its hooks more than the repository's location: the author it
-# settled on, and GIT_EDITOR=: when no editor opens (githooks(5); builtin/
-# commit.c, determine_author_info). This suite reads both — the signature
-# through `git var`, the editor to decide what the message is. Inherited, the
-# live commit's author overrode the fixture's, and three cases went red in the
-# hook while green by hand (2026-10-03).
-unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
+      GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION \
+      GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
       GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR 2>/dev/null || true
 # The gate finds the address books, the private terms and the access layer
 # through these. Each is pinned to the fixture below, never to the owner's.

@@ -58,7 +58,9 @@ set -u
 # ---------------------------------------------------------------------------
 unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE \
-      GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION 2>/dev/null || true
+      GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION \
+      GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
+      GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR 2>/dev/null || true
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HARNESS="$REPO_ROOT/tests/gates.test.sh"
@@ -195,13 +197,61 @@ printf '\nevery test harness carries the scrub, not just the ones a gate runs to
 # So the invariant is stated over every file, with no predicate about whether
 # it "uses git": a harness never wants the caller's git session, and a rule
 # with an exception is a rule someone has to remember to apply.
+#
+# And over every NAME. Until 2026-10-03 this asked only that the block exist,
+# and the block named where the repository is — not who signs the commit or
+# whether an editor opens, which a commit hands its hooks as well. The first
+# suite to read the signature (tests/pii-scan.test.sh) went red in the hook and
+# green by hand. Eight blocks also lacked four of the location names. Each file
+# is now asked for each name, and a gap is reported by file and by name.
+SESSION_VARS="GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE GIT_PREFIX
+  GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL
+  GIT_AUTHOR_DATE GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR"
+
+# scrub_missing <file> — the session names the file's scrub does not unset, or
+# "the whole block" when it has none. The block is the statement that opens with
+# `unset GIT_INDEX_FILE` at the start of a line, with its continuation lines.
+scrub_missing() {
+  local block v missing=""
+  block=$(awk '/^unset GIT_INDEX_FILE /{on=1} on{print; if ($0 !~ /\\$/) exit}' "$1")
+  if [ -z "$block" ]; then printf 'the whole block'; return 0; fi
+  for v in $SESSION_VARS; do
+    printf '%s\n' "$block" | grep -qw -- "$v" || missing="$missing $v"
+  done
+  printf '%s' "${missing# }"
+}
+
+# The check watched failing before it is trusted (tests/gates.test.sh, header).
+FX="$TMP/scrub-fixture.sh"
+printf '#!/bin/bash\nset -u\nunset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \\\n      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE \\\n      GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION 2>/dev/null || true\n' > "$FX"
+got=$(scrub_missing "$FX")
+case "$got" in
+  *GIT_AUTHOR_NAME*GIT_COMMITTER_DATE*GIT_EDITOR*) ok "RED: a block that names only the location is caught, by name" ;;
+  *) bad "RED: a block that names only the location is caught, by name" "got: [${got}]" ;;
+esac
+printf '#!/bin/bash\nset -u\necho no scrub here\n' > "$FX"
+got=$(scrub_missing "$FX")
+if [ "$got" = "the whole block" ]; then
+  ok "RED: a file with no block is caught"
+else
+  bad "RED: a file with no block is caught" "got: [${got}]"
+fi
+got=$(scrub_missing "$HARNESS")
+if [ -z "$got" ]; then
+  ok "GREEN: the live gate harness names every variable"
+else
+  bad "GREEN: the live gate harness names every variable" "missing: $got"
+fi
+
 for f in "$REPO_ROOT"/tests/*.test.sh; do
   name=$(basename "$f")
-  if grep -q '^unset GIT_INDEX_FILE ' "$f"; then
-    ok "$name scrubs the inherited git session"
+  missing=$(scrub_missing "$f")
+  if [ -z "$missing" ]; then
+    ok "$name scrubs the session a commit hands its hooks"
   else
-    bad "$name scrubs the inherited git session" \
-        "add the unset block right after \`set -u\` — see tests/gates.test.sh"
+    bad "$name scrubs the session a commit hands its hooks" \
+        "missing: $missing — the block right after \`set -u\`, see tests/gates.test.sh"
   fi
 done
 

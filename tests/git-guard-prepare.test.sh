@@ -30,7 +30,9 @@ set -u
 # fixture paths. The commit survived only because the objects were missing.
 unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE \
-      GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION 2>/dev/null || true
+      GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION \
+      GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
+      GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR 2>/dev/null || true
 
 # The helper scopes its files by the harness's session id. This suite is run
 # from inside a live session as often as from a terminal, so the variable is

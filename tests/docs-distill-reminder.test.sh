@@ -27,7 +27,10 @@ set -u
 # GIT_INDEX_FILE would point them at that commit's index (tests/gates.test.sh,
 # 2026-09-03: eight files swept into an unrelated commit).
 unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
-      GIT_COMMON_DIR GIT_INDEX_VERSION 2>/dev/null || true
+      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE \
+      GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION \
+      GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
+      GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR 2>/dev/null || true
 # Under the dispatcher a reminder writes a fragment instead of printing; this
 # suite reads what the hook prints.
 unset VDM_REMINDER_FRAGMENT 2>/dev/null || true
