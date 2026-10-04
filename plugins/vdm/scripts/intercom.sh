@@ -761,7 +761,7 @@ cmd_send() {
   live="$(intercom_live_sessions "$canon")"
   if [ -n "$live" ]; then
     printf '    📣 live session(s) of `%s` on this machine: %s\n' "$canon" "$(_ic_live_list "$live")"
-    choice="$(intercom_wake_choice "$canon")"
+    choice="$(intercom_wake_choice "$canon" "$live")"
     IFS=$'\037' read -r verdict wname wstatus why <<<"$choice"
     if [ "$verdict" = "wake" ]; then
       printf '       → wake one: %s — %s.\n' "$wname" "$why"
@@ -797,7 +797,7 @@ cmd_sent() {
   fi
   n="$(printf '%s\n' "$list" | wc -l | tr -d ' ')"
   printf '📤 intercom: %s letter(s) from `%s` not picked up yet (oldest first):\n\n' "$n" "$id"
-  local age inbox slug title file live choice verdict wname wstatus why taken seen="" cache=""
+  local age inbox slug title file live lines choice verdict wname wstatus why taken seen="" cache=""
   while IFS=$'\t' read -r age inbox slug title file; do
     [ -n "$inbox" ] || continue
     printf '  • %sd  %s/%s — %s\n' "$age" "$inbox" "$slug" "$title"
@@ -810,8 +810,9 @@ cmd_sent() {
     # plain "<inbox>=<live>\x1e<choice>" list stands in for one.
     case "$seen" in
       *"|$inbox|"*) live="$(printf '%s\n' "$cache" | awk -F '=' -v k="$inbox" '$1 == k { sub(/^[^=]*=/, ""); print; exit }')" ;;
-      *) live="$(intercom_live_sessions "$inbox" | cut -f1 | paste -sd ',' - | sed 's/,/, /g')"
-         [ -n "$live" ] && live="${live}"$'\036'"$(intercom_wake_choice "$inbox")"
+      *) lines="$(intercom_live_sessions "$inbox")"
+         live="$(printf '%s' "$lines" | cut -f1 | paste -sd ',' - | sed 's/,/, /g')"
+         [ -n "$live" ] && live="${live}"$'\036'"$(intercom_wake_choice "$inbox" "$lines")"
          seen="${seen}|$inbox|"; cache="${cache}${inbox}=${live}
 " ;;
     esac
@@ -1028,7 +1029,7 @@ cmd_pickup() {
     live="$(intercom_live_sessions "$sender")"
     if [ -n "$live" ]; then
       printf '    📣 the sender `%s` has live session(s) on this machine: %s\n' "$sender" "$(_ic_live_list "$live")"
-      choice="$(intercom_wake_choice "$sender")"
+      choice="$(intercom_wake_choice "$sender" "$live")"
       IFS=$'\037' read -r verdict wname wstatus why <<<"$choice"
       if [ "$verdict" = "wake" ]; then
         printf '       → send a receipt to one: %s — %s — with your cross-session message tool (Claude Code: SendMessage):\n' "$wname" "$why"

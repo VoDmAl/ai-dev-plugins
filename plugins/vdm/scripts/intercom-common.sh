@@ -1209,7 +1209,7 @@ intercom_live_sessions() {
   local f pid cwd name status sock sid upd
   for f in "$dir"/*.json; do
     [ -f "$f" ] || continue
-    case "$(basename "$f")" in *.sync-conflict-*) continue ;; esac
+    case "${f##*/}" in *.sync-conflict-*) continue ;; esac
     # Unit separator, not TAB: TAB is whitespace to `read`, so an empty field
     # (a session with no status yet) would collapse and shift every column after it.
     IFS=$'\037' read -r pid cwd name status sock sid upd < <(
@@ -1291,18 +1291,21 @@ intercom_owner_turns() {
         [ -n "$ts" ] || continue
         ts="${ts%%.*}"; ts="${ts%Z}Z"          # 2026-10-04T09:00:00.123Z → …:00Z
         [ "$ts" \< "$cutoff" ] && continue
-        printf '%s\t%s\n' "$ts" "$(basename "$f" .jsonl)"
+        f="${f##*/}"; printf '%s\t%s\n' "$ts" "${f%.jsonl}"
       done | sort -r
 }
 
-# intercom_wake_choice <identity> — one line, or nothing when no session of
-# that agent is live here. Fields are joined by the unit separator (\037), not
+# intercom_wake_choice <identity> [<live>] — one line, or nothing when no
+# session of that agent is live here. <live> is the caller's own
+# `intercom_live_sessions` output when it already has it: every caller prints
+# the live list first, and reading the session files twice doubled the cost of
+# a send (counted 2026-10-04: +786 jq launches in the intercom suite). Fields are joined by the unit separator (\037), not
 # TAB: TAB is whitespace to `read`, and the empty fields of "wait" would collapse.
 #   "wake<US><name><US><status><US><why>"   wake this one session
 #   "wait<US><US><US><why>"                 wake nobody here
 intercom_wake_choice() {
-  local id="$1" live turns top_ts top_sid name status sid upd
-  live="$(intercom_live_sessions "$id")"
+  local id="$1" live="${2-}" turns top_ts top_sid name status sid upd
+  [ $# -ge 2 ] || live="$(intercom_live_sessions "$id")"
   [ -n "$live" ] || return 0
   turns="$(intercom_owner_turns "$id")"
   if [ -n "$turns" ]; then
