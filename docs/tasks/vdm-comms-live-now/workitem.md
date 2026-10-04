@@ -252,6 +252,20 @@ command-center — имя владельца (22 из 355). Сборке нуж�
 
 **Status:** resolved
 
+### #4. `echelon_bin` по умолчанию берёт путь машины владельца
+
+**Возникло в:** `public-repo-cleanup`, замер имён агентов в `plugins/` (2026-10-02); перенесено сюда 2026-10-03 —
+migrated from: [[public-repo-cleanup/workitem|public-repo-cleanup]] (Sidetrack #2)
+**Описание:** если не заданы ни `ECHELON_BIN`, ни `comms.now.echelon`, ни `ECHELON_HOME`, `comms-now.py` ищет слой
+доступа по пути `~/AI Projects/echelon` — пути конкретной машины в коде, который едет к любому пользователю. Имя слоя
+доступа утечкой больше не считается (DL #15 `public-repo-cleanup`), путь — по-прежнему против «скилл для всех».
+Вариант, которого не было, когда побег записывали: искать `bin/echelon` по полю `paths` записи `echelon` в реестре
+intercom — так с 2026-10-03 его находит гард PII этого репо (`jev_binary` в `scripts/pii-scan.py`). Пути в коде
+тогда нет, а у пользователя без слоя доступа запись не найдётся, и `now.md` честно скажет, что echelon не подключён.
+Поиск по роли вместо имени — кристалл [[intercom-agent-roles/workitem|intercom-agent-roles]].
+
+**Status:** open
+
 ## Next actions
 
 - [x] Прочитать ТЗ целиком и грил владельца (`hq/docs/tasks/signal-intake/references/2026-09-28-sheet-grill.md`) → 2026-09-30, и грил echelon
@@ -270,6 +284,7 @@ command-center — имя владельца (22 из 355). Сборке нуж�
 - [x] Скилл: как подключить `now.md` (`comms.now`, `after_pass`); письмо echelon с именем команды → скилл `pending` «The live now.md» (0.13–0.16); `echelon/live-now-hook-line-ready-outcome`, 2026-09-30
 - [x] Ответить hq: формат `^id`, как проект подключает пересборку, версия vdm-comms, когда проверять → `hq/live-now-comms-outcome`, 2026-09-30
 - [ ] Разобрать приёмку hq по ТЗ §7 (п. 1–3, 6), когда придёт их ответ; автообновление прошло 30.09 (vdm-comms 0.16.1 установлен, сказано `hq/versions-installed`), ждём их `comms.now`
+- [ ] Sidetrack #4: убрать путь машины из `echelon_bin` — поиск через реестр intercom, как у гарда PII, или до ролей оставить; red-тесты; бамп vdm-comms
 
 ## References
 
