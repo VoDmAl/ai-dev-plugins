@@ -166,6 +166,12 @@ Prevents Claude from running `git commit` and `git push` without explicit user p
 
 **Commit message format**: `[+]` new feature, `[-]` bugfix, `[*]` other change. Max 50 chars.
 
+### `vdx` — Lifecycle Interface (optional, from another repository)
+
+Listed in this marketplace, developed in [VoDmAl/vdx](https://github.com/VoDmAl/vdx) (its `plugin/`
+directory): the `vdx` lifecycle CLI's MCP server, its skills, and a `SessionStart` check of how the agent
+is launched in a project. Nothing of it lives in this repository; its releases and versions are vdx's.
+
 ## Installation
 
 ### Claude Code
@@ -182,6 +188,9 @@ claude plugin install vdm-git@vodmal --scope user
 
 # Install meetings & correspondence discipline (optional)
 claude plugin install vdm-comms@vodmal --scope user
+
+# Install the vdx lifecycle interface (optional; built in VoDmAl/vdx)
+claude plugin install vdx@vodmal --scope user
 ```
 
 ### Qwen Code

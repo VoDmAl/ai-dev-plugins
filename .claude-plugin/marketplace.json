@@ -49,6 +49,19 @@
         "path": "plugins/vdm-comms"
       },
       "category": "workflow"
+    },
+    {
+      "name": "vdx",
+      "description": "Unified lifecycle interface (up/down/build/test/check/fix/publish) + versioned maturity audit + AI bootstrap skill + how the agent is launched (vdx ai: session-start check, skill). MCP server: the installed vdx-mcp, else npx from @vodmal/vdx-cli on npm.",
+      "author": {
+        "name": "Dmitry Vorobyev"
+      },
+      "source": {
+        "source": "git-subdir",
+        "url": "VoDmAl/vdx",
+        "path": "plugin"
+      },
+      "category": "workflow"
     }
   ]
 }
