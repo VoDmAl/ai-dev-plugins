@@ -53,6 +53,13 @@
 #     <scope>/<repo>-<branch>-commit-<token>.txt     the message
 #     <scope>/<repo>-<branch>-commit-<token>.paths   NUL-separated intent
 #     <scope>/<repo>-<branch>-commit-<token>.meta    the HEAD prepped against
+#     <scope>/<repo>-<branch>-commit-<token>.dels    NUL-separated untrackings (only when there are any)
+#
+# One form without a pathspec. A path untracked with `git rm --cached` and still
+#   on disk cannot be committed by pathspec: git takes the listed path from the
+#   working tree and commits the file back. Such a prep prints `git commit -F
+#   <msg>` with no paths — and only when the index holds nothing but this prep's
+#   paths; otherwise it refuses. The detector then checks the untracking landed.
 #
 #   <scope> is ${TMPDIR:-/tmp}/vdm-git-<uid>/<session> when the harness names its
 #   session (CLAUDE_CODE_SESSION_ID), and ${TMPDIR:-/tmp} itself otherwise — a
@@ -110,7 +117,7 @@ PATHSPEC_INLINE_MAX=${GIT_GUARD_PATHSPEC_INLINE_MAX:-20}
 # All three go together or none do. Removing only `.meta` (which is all the
 # audit needs) leaves `.txt` on disk, and a message file on disk is a command
 # line that still runs — the whole defect this file now guards against.
-rm_trio() { rm -f "$1.txt" "$1.paths" "$1.meta"; }
+rm_trio() { rm -f "$1.txt" "$1.paths" "$1.meta" "$1.dels"; }
 
 # session_scope <tmpdir> — the directory this caller's trios live in.
 #
@@ -267,7 +274,7 @@ verify_last() {
       consumed\ *)
         sha=${state#consumed }
         verify_sha=$sha
-        if _verify_one "$stem.paths" "$sha^" "$sha"; then
+        if _verify_one "$stem.paths" "$sha^" "$sha" "$stem.dels"; then
           verify_clean=$((verify_clean + 1))
         else
           verify_dirty=$((verify_dirty + 1))
@@ -284,8 +291,8 @@ verify_last() {
 }
 
 _verify_one() {
-  local pathsf="$1" parent="$2" head="$3"
-  local intended=() actual=() extra=() missing=() p
+  local pathsf="$1" parent="$2" head="$3" delsf="${4:-}"
+  local intended=() actual=() extra=() missing=() kept=() p st
 
   while IFS= read -r -d '' p; do intended+=("$p"); done < "$pathsf"
   [ ${#intended[@]} -eq 0 ] && return 0
@@ -305,7 +312,18 @@ _verify_one() {
     [ "$hit" -eq 0 ] && missing+=("$i")
   done
 
-  [ ${#extra[@]} -eq 0 ] && [ ${#missing[@]} -eq 0 ] && return 0
+  # An untracking the prep meant to commit must show as a deletion. A path
+  # staged back in between commits as a change, and the name list above
+  # cannot tell the two apart.
+  if [ -n "$delsf" ] && [ -f "$delsf" ]; then
+    while IFS= read -r -d '' p; do
+      st=""
+      IFS= read -r -d '' st < <(git diff-tree --no-commit-id -r -z --name-status --no-renames "$parent" "$head" -- "$p" 2>/dev/null) || true
+      [ "$st" = "D" ] || kept+=("$p")
+    done < "$delsf"
+  fi
+
+  [ ${#extra[@]} -eq 0 ] && [ ${#missing[@]} -eq 0 ] && [ ${#kept[@]} -eq 0 ] && return 0
 
   {
     echo "git-guard-prepare: ⚠ the commit made from the previous prepared command does not match what was prepared."
@@ -324,6 +342,11 @@ _verify_one() {
         echo "  (a named path whose content already matched HEAD is legitimate here):"
       fi
       for p in "${missing[@]}"; do echo "      $p"; done
+    fi
+    if [ ${#kept[@]} -gt 0 ]; then
+      echo
+      echo "  NOT UNTRACKED — prepared to leave git (\`git rm --cached\`), still tracked after the commit:"
+      for p in "${kept[@]}"; do echo "      $p"; done
     fi
     echo
     echo "  Something changed the index or the tree between prepare and commit."
@@ -629,6 +652,65 @@ if [ ${#divergent[@]} -gt 0 ]; then
   exit 1
 fi
 
+# ------------------------------------------- untracking (`git rm --cached`)
+#
+# Field case (executor, 2026-10-04): a directory went into .gitignore, four
+# tracked files were `git rm --cached`, and the prepared pathspec commit put all
+# four back — as modifications. For a listed path `git commit -- <paths>` takes
+# the working tree, the file was there, and the deletion staged in the index was
+# dropped without a word. The check above cannot see it: `git diff` lists no
+# file the index no longer holds.
+#
+# Only a commit of the whole index records an untracking, and that form is safe
+# exactly when the index holds nothing but this prep's paths — the sweep-in the
+# pathspec exists to prevent has nothing to sweep. Anything else staged: refuse,
+# because both forms would commit something other than what was prepared.
+# A deletion whose file is gone from disk is an ordinary `git rm`; the pathspec
+# form commits it correctly and stays.
+
+untracked=()
+while IFS= read -r -d '' st && IFS= read -r -d '' p; do
+  [ "$st" = "D" ] || continue
+  if [ -e "$repo_root/$p" ] || [ -L "$repo_root/$p" ]; then
+    untracked+=("$p")
+  fi
+done < <(git -C "$path_base" diff --cached --name-status -z --no-renames -- "${paths[@]}" 2>/dev/null || true)
+
+whole_index=0
+if [ ${#untracked[@]} -gt 0 ]; then
+  ours=() others=()
+  while IFS= read -r -d '' p; do ours+=("$p"); done \
+    < <(git -C "$path_base" diff --cached --name-only -z --no-renames -- "${paths[@]}" 2>/dev/null || true)
+  while IFS= read -r -d '' p; do
+    hit=0
+    for o in ${ours[@]+"${ours[@]}"}; do [ "$p" = "$o" ] && { hit=1; break; }; done
+    [ "$hit" -eq 0 ] && others+=("$p")
+  done < <(git -C "$repo_root" diff --cached --name-only -z --no-renames 2>/dev/null || true)
+  if [ ${#others[@]} -gt 0 ]; then
+    {
+      echo "git-guard-prepare: untracked with \`git rm --cached\` and still on disk:"
+      for p in "${untracked[@]}"; do echo "                     $p"; done
+      echo
+      echo "  A pathspec commit takes a listed path from the working tree, so it would"
+      echo "  commit these files back instead of removing them from git. A commit of"
+      echo "  the whole index would record the removal — but would also take what else"
+      echo "  is staged and was never named here:"
+      for p in "${others[@]}"; do echo "                     $p"; done
+      echo
+      echo "  If those are part of this commit, prepare without a list:"
+      echo "    git-guard-prepare \"<msg>\""
+      echo "  If they belong to someone else, commit the untracking after theirs."
+    } >&2
+    exit 1
+  fi
+  whole_index=1
+  # The record compares against a commit, and a commit names paths from the top
+  # of the work tree; every check below then reads them from there.
+  paths=(${ours[@]+"${ours[@]}"})
+  path_base="$repo_root"
+  relative_flag=()
+fi
+
 # ----------------------------------------------------------- U+FFFD check
 #
 # Refuse to prepare a commit whose content carries U+FFFD (the replacement
@@ -770,9 +852,29 @@ mv -f "$tmpfile" "$paths_file"
 # Written last, before the command line is printed. A trio without it is a prep
 # that died mid-write: the detector skips it and the next sweep clears it away,
 # neither of them guessing at what it meant to commit.
+if [ ${#untracked[@]} -gt 0 ]; then
+  tmpfile="${stem}.dels.tmp.$$"
+  : > "$tmpfile"
+  for p in "${untracked[@]}"; do
+    printf '%s\0' "$p" >> "$tmpfile"
+  done
+  mv -f "$tmpfile" "${stem}.dels"
+fi
+
 printf '%s\n' "${head_sha:-}" > "${stem}.meta"
 
-if [ ${#paths[@]} -gt "$PATHSPEC_INLINE_MAX" ]; then
+if [ "$whole_index" -eq 1 ]; then
+  # No pathspec: see the untracking section. Said on stderr, so the line on
+  # stdout stays the one thing to copy.
+  {
+    echo "git-guard-prepare: no pathspec in this command — it commits the whole index. Untracked"
+    echo "                   with \`git rm --cached\` and still on disk, so a pathspec would put them back:"
+    for p in "${untracked[@]}"; do echo "                     $p"; done
+    echo "                   The index holds only this commit's paths now; if anything else is staged"
+    echo "                   before the line runs, the next prep reports it as SWEPT IN."
+  } >&2
+  printf 'git commit -F %s\n' "$msg_q"
+elif [ ${#paths[@]} -gt "$PATHSPEC_INLINE_MAX" ]; then
   # Long list: hand git a NUL-separated file instead of an unreadable line.
   # --pathspec-from-file requires git >= 2.25.
   printf "git commit -F %s --pathspec-from-file=%s --pathspec-file-nul\n" \

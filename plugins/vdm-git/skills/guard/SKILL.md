@@ -183,6 +183,19 @@ staged hunks, and falling back to the bare form would resurrect the defect
 above. Both degradations are silent; the refusal is loud and is fixed by one
 `git add` (or `git checkout --`). Do not work around it.
 
+**Untracking with `git rm --cached` — the one line without a pathspec.** A file
+removed from the index but still on disk (a directory just added to
+`.gitignore`) cannot be committed by pathspec: git takes the listed path from the
+working tree and commits the file back, and the staged removal is dropped
+without a word. The worktree check above does not see it — `git diff` lists no
+file the index no longer holds. Field case: executor, 2026-10-04, four files put
+back into git. So when the prepared paths hold such an untracking, the helper
+prints `git commit -F <msg>` **with no paths** and says why on stderr — but only
+when the index holds nothing but this commit's paths. Anything else staged, it
+refuses and names it: a pathspec would put the files back, a whole-index commit
+would take the rest. A plain `git rm` (file gone from disk) keeps the pathspec.
+Hand the line off verbatim as always; a line without `--` is correct here.
+
 **Syncthing conflict copies inside `.git`.** When a repository is synced between
 machines together with its `.git`, and both machines write the same file there,
 one version stays and the other lies beside it as `*.sync-conflict-*`. Nothing
@@ -228,6 +241,8 @@ the commit actually contains, and complains on stderr when they differ:
 - **NOT COMMITTED** — a named path absent from the commit. A warning, because a
   named path whose content already matched HEAD legitimately drops out. When
   the commit is empty, that excuse does not apply and it is reported as such.
+- **NOT UNTRACKED** — a path prepared to leave git (`git rm --cached`) that the
+  commit still tracks, typically because it was staged back in between.
 
 If you see this output, **stop and look at the commit** before building on it:
 `git show --stat <sha>`. Do not re-run the prepare and carry on.

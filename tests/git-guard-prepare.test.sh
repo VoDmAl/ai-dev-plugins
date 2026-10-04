@@ -849,6 +849,74 @@ expect_says "…the live branch is named as waiting for its commit" "$out" "bran
 expect_not_says "RED: …not as gone" "$out" "no longer exists"
 expect_not_says "RED: …and no fatal leaks" "$out" "fatal:"
 
+printf '\n=== git rm --cached: a pathspec commit puts the file back ===\n'
+# Field case (executor, 2026-10-04, vdm-git 2.16.6): a directory went into
+# .gitignore, four tracked files were `git rm --cached`, and the prepared
+# `git commit -F … -- <paths>` committed them back as modifications. For a
+# listed path a pathspec commit takes the working tree, and the files were
+# still there. The worktree check did not see it: `git diff` lists no file the
+# index no longer holds.
+d=$(new_repo untrack); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+mkdir -p cfg; printf 'one\n' > cfg/app.json
+git add cfg/app.json; git commit -qm "track cfg"
+printf 'cfg/\n' > .gitignore; printf 'two\n' > cfg/app.json   # changed on disk too, as in the field
+git add .gitignore; git rm -q --cached cfg/app.json
+out=$("$PREP" "[*] untrack cfg" -- .gitignore cfg/app.json 2>/dev/null); rc=$?
+expect_exit "RED: untracking with nothing else staged → exit 0" 0 "$rc"
+expect_not_says "RED: …the command carries no pathspec" "$out" " -- "
+run_emitted "$out" >/dev/null 2>&1
+if git cat-file -e HEAD:cfg/app.json 2>/dev/null; then
+  bad "RED: …and the file leaves git" "cfg/app.json is still in HEAD"
+else
+  ok "RED: …and the file leaves git"
+fi
+[ -f cfg/app.json ] && ok "…while it stays on disk" || bad "…while it stays on disk"
+expect_eq "…and .gitignore is committed with it" "cfg/" "$(git show HEAD:.gitignore 2>/dev/null)"
+
+# Something else is staged: a pathspec commit would put the file back, a
+# whole-index commit would take the other path. Neither — refuse.
+d=$(new_repo untrack_other); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'one\n' > app.json; git add app.json; git commit -qm "track app"
+git rm -q --cached app.json
+printf 'theirs\n' > theirs.txt; git add theirs.txt
+out=$("$PREP" "[*] untrack app" -- app.json 2>&1); rc=$?
+expect_exit "RED: untracking while another path is staged → refused" 1 "$rc"
+expect_says "…names the untracked file" "$out" "app.json"
+expect_says "RED: …and the staged path a whole-index commit would take" "$out" "theirs.txt"
+expect_not_says "…and prints no command" "$out" "git commit -F"
+
+# A prep with no explicit list IS the whole index.
+d=$(new_repo untrack_snapshot); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'one\n' > app.json; git add app.json; git commit -qm "track app"
+git rm -q --cached app.json
+out=$("$PREP" "[*] untrack snapshot" 2>/dev/null); rc=$?
+expect_exit "untracking in a snapshot prep → exit 0" 0 "$rc"
+expect_not_says "RED: …no pathspec" "$out" " -- "
+
+# A plain `git rm` — the file gone from disk — keeps the pathspec form.
+d=$(new_repo rm_plain); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'one\n' > gone.txt; git add gone.txt; git commit -qm "track gone"
+git rm -q gone.txt
+out=$("$PREP" "[*] remove gone" -- gone.txt 2>/dev/null)
+expect_says "a deletion whose file is gone keeps the pathspec" "$out" " -- 'gone.txt'"
+
+# The detector: an untracking the commit did not record. Here the file is
+# staged back between prep and commit — the commit carries it as a change.
+d=$(new_repo untrack_verify); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'one\n' > app.json; git add app.json; git commit -qm "track app"
+printf 'two\n' > app.json; git rm -q --cached app.json
+"$PREP" "[*] untrack verify" >/dev/null 2>&1
+git add app.json
+git commit -qm "[*] untrack verify"
+out=$("$PREP" --verify-last 2>&1 >/dev/null)
+expect_says "RED: --verify-last reports an untracking the commit did not record" "$out" "NOT UNTRACKED"
+expect_says "…naming the file" "$out" "app.json"
+
 # ---------------------------------------------------------------------------
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
