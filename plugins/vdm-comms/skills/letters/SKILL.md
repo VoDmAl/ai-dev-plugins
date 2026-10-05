@@ -181,6 +181,15 @@ is shown to anyone, and open the sections below when a line does not settle.
   item on the sender to publish it when ready, no one of ours timing the hand-over.
   Test: after this message, is anyone of ours needed for the news to get from one
   to the other? If so, the construction is wrong.
+- **Whoever saw the subject earlier gets a blind copy of the first answer.** The
+  subject reached us and someone else who has no part in our answer — neither as
+  addressee nor as copy: the letter we answer had them in copy, or a document
+  came shared with them too. Our first answer goes to its addressee, with a blind
+  copy (BCC) to them: they see the subject is not lost and not dropped, and the
+  thread goes on without them — reply-all does not pick up a blind copy. Only
+  the first answer; whoever must act is in copy, not in BCC. Example: a member
+  shares a document with you and with their mentor; you answer the member, copy
+  whoever acts on it, and the mentor is in BCC (the owner, 2026-10-04).
 - **A request is addressed to a person**, chosen for the competence — an open
   call ("any takers?") is not a request. Check: is there a sentence that starts
   with a name? Offer a choice only when the candidates are equal.
@@ -358,8 +367,9 @@ And around them:
 - **Who has the ball now, and is that recorded where it will surface** — the
   waiting item with a review date in the track's pending section. And who else
   waits on this subject: they are in copy, not waiting on us to pass it on (§ 5,
-  connect, do not relay). Our waiting item is then one, on the one who does the
-  work, with a date.
+  connect, do not relay). Whoever only saw it earlier is in BCC of the first
+  answer (§ 5). Our waiting item is then one, on the one who does the work, with
+  a date.
 - **`sent: <date>` is set by an edit once the owner confirms the letter left
   their hands** — sent, or scheduled in the mail client. The date is the day of
   confirmation. Until then it is a draft.

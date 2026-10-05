@@ -243,6 +243,10 @@ expect_says "…and the channel sets the body's form" "$ctx" "a greeting on its 
 # half of a request, a third person waited on the other half, and the session
 # carried the news between them. Owner: connect them — a copy, a mention.
 expect_says "…and whoever else waits on the subject is in copy, not us in the middle" "$ctx" "not us in the middle"
+# program, 2026-10-04 (vdm-comms-bcc-earlier-witnesses), the owner: someone who
+# saw the subject earlier but needs no part in what follows gets a blind copy
+# of the first answer — they see it is not lost, and reply-all leaves them out.
+expect_says "RED: …and whoever saw it earlier, needing no continuation, gets a blind copy of the first answer" "$ctx" "blind copy of this first answer"
 expect_not_says "…no register line when none is declared" "$ctx" "Register:"
 printf '{\n  "comms": {\n    "register": "peer",\n    "language": "en"\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
 OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-y-out.md" "$DRAFT" | bash "$GUARD" 2>/dev/null)
