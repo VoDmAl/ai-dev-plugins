@@ -243,6 +243,13 @@ the commit actually contains, and complains on stderr when they differ:
   the commit is empty, that excuse does not apply and it is reported as such.
 - **NOT UNTRACKED** — a path prepared to leave git (`git rm --cached`) that the
   commit still tracks, typically because it was staged back in between.
+- **CHANGED SINCE PREP** — a path committed with other content than was staged
+  when the line was prepared, while HEAD moved in between. A pathspec line takes
+  its paths from disk when it runs: a line run late, after another session
+  committed and rewrote the same files, commits that work under its own message
+  (field case 2026-10-05; the names matched, so only the content shows it). A
+  late line is a dead line — prepare again. With HEAD unchanged a different
+  blob is what a formatting pre-commit hook produces, and that is not reported.
 
 If you see this output, **stop and look at the commit** before building on it:
 `git show --stat <sha>`. Do not re-run the prepare and carry on.

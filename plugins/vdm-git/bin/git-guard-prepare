@@ -54,6 +54,7 @@
 #     <scope>/<repo>-<branch>-commit-<token>.paths   NUL-separated intent
 #     <scope>/<repo>-<branch>-commit-<token>.meta    the HEAD prepped against
 #     <scope>/<repo>-<branch>-commit-<token>.dels    NUL-separated untrackings (only when there are any)
+#     <scope>/<repo>-<branch>-commit-<token>.blobs   "<path>\t<staged blob>" per path, NUL-separated
 #
 # One form without a pathspec. A path untracked with `git rm --cached` and still
 #   on disk cannot be committed by pathspec: git takes the listed path from the
@@ -117,7 +118,7 @@ PATHSPEC_INLINE_MAX=${GIT_GUARD_PATHSPEC_INLINE_MAX:-20}
 # All three go together or none do. Removing only `.meta` (which is all the
 # audit needs) leaves `.txt` on disk, and a message file on disk is a command
 # line that still runs — the whole defect this file now guards against.
-rm_trio() { rm -f "$1.txt" "$1.paths" "$1.meta" "$1.dels"; }
+rm_trio() { rm -f "$1.txt" "$1.paths" "$1.meta" "$1.dels" "$1.blobs"; }
 
 # session_scope <tmpdir> — the directory this caller's trios live in.
 #
@@ -274,7 +275,7 @@ verify_last() {
       consumed\ *)
         sha=${state#consumed }
         verify_sha=$sha
-        if _verify_one "$stem.paths" "$sha^" "$sha" "$stem.dels"; then
+        if _verify_one "$stem.paths" "$sha^" "$sha" "$stem.dels" "$stem"; then
           verify_clean=$((verify_clean + 1))
         else
           verify_dirty=$((verify_dirty + 1))
@@ -291,8 +292,8 @@ verify_last() {
 }
 
 _verify_one() {
-  local pathsf="$1" parent="$2" head="$3" delsf="${4:-}"
-  local intended=() actual=() extra=() missing=() kept=() p st
+  local pathsf="$1" parent="$2" head="$3" delsf="${4:-}" stem="${5:-}"
+  local intended=() actual=() extra=() missing=() kept=() changed=() p st
 
   while IFS= read -r -d '' p; do intended+=("$p"); done < "$pathsf"
   [ ${#intended[@]} -eq 0 ] && return 0
@@ -323,7 +324,31 @@ _verify_one() {
     done < "$delsf"
   fi
 
-  [ ${#extra[@]} -eq 0 ] && [ ${#missing[@]} -eq 0 ] && [ ${#kept[@]} -eq 0 ] && return 0
+  # The content, not only the names. A pathspec line takes its paths from disk
+  # when it RUNS. Run late — after another session committed (HEAD moved) and
+  # rewrote the same files — it commits that work under this prep's message,
+  # and the names still match (this repository, 2026-10-05: seven files, one
+  # evening's line run the next night). So the staged blob of each path at prep
+  # is compared with the commit's — but only when HEAD moved in between. With
+  # HEAD unchanged a different blob is what a formatting pre-commit hook
+  # produces, and a warning on every commit of such a project is a warning
+  # nobody reads.
+  local recorded=""
+  [ -n "$stem" ] && [ -f "$stem.meta" ] && recorded=$(cat "$stem.meta" 2>/dev/null || echo "")
+  if [ -n "$stem" ] && [ -f "$stem.blobs" ] && [ -n "$recorded" ] \
+     && [ "$(git rev-parse --verify -q "$parent" 2>/dev/null)" != "$recorded" ]; then
+    local top rec want got
+    top=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+    while IFS= read -r -d '' rec; do
+      p="${rec%%$'\t'*}"; want="${rec#*$'\t'}"
+      got=""
+      IFS= read -r -d '' got < <(git -C "$top" ls-tree -z "$head" -- "$p" 2>/dev/null) || true
+      got="${got%%$'\t'*}"; got="${got##* }"         # "<mode> blob <id>\t<path>" → <id>
+      [ -n "$want" ] && [ "$got" != "$want" ] && changed+=("$p")
+    done < "$stem.blobs"
+  fi
+
+  [ ${#extra[@]} -eq 0 ] && [ ${#missing[@]} -eq 0 ] && [ ${#kept[@]} -eq 0 ] && [ ${#changed[@]} -eq 0 ] && return 0
 
   {
     echo "git-guard-prepare: ⚠ the commit made from the previous prepared command does not match what was prepared."
@@ -342,6 +367,14 @@ _verify_one() {
         echo "  (a named path whose content already matched HEAD is legitimate here):"
       fi
       for p in "${missing[@]}"; do echo "      $p"; done
+    fi
+    if [ ${#changed[@]} -gt 0 ]; then
+      echo
+      echo "  CHANGED SINCE PREP — committed with other content than was staged when the line was prepared:"
+      for p in "${changed[@]}"; do echo "      $p"; done
+      echo "  The line was prepared on $(git rev-parse --short "$recorded" 2>/dev/null) and ran on $(git rev-parse --short "$parent" 2>/dev/null):"
+      echo "  a pathspec line takes its paths from disk when it runs, so what rewrote them in between went in"
+      echo "  under this message. A late line is a dead line — prepare again rather than run an old one."
     fi
     if [ ${#kept[@]} -gt 0 ]; then
       echo
@@ -860,6 +893,16 @@ if [ ${#untracked[@]} -gt 0 ]; then
   done
   mv -f "$tmpfile" "${stem}.dels"
 fi
+
+# What each path is committed with — its staged blob now. The detector compares
+# it with the commit when HEAD moved between this prep and the line's run.
+tmpfile="${stem}.blobs.tmp.$$"
+: > "$tmpfile"
+while IFS= read -r -d '' rec; do
+  meta_part="${rec%%$'\t'*}"; blob="${meta_part#* }"; blob="${blob%% *}"
+  printf '%s\t%s\0' "${rec#*$'\t'}" "$blob" >> "$tmpfile"
+done < <(git -C "$path_base" ls-files -s -z --full-name -- "${paths[@]}" 2>/dev/null || true)
+mv -f "$tmpfile" "${stem}.blobs"
 
 printf '%s\n' "${head_sha:-}" > "${stem}.meta"
 

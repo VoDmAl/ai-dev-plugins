@@ -917,6 +917,44 @@ out=$("$PREP" --verify-last 2>&1 >/dev/null)
 expect_says "RED: --verify-last reports an untracking the commit did not record" "$out" "NOT UNTRACKED"
 expect_says "…naming the file" "$out" "app.json"
 
+printf '\n=== a line run late takes the paths from disk as they are THEN ===\n'
+# This repository, 2026-10-05: a line prepared one evening ran the next. In
+# between, a session on the other machine committed (HEAD moved) and rewrote the
+# same files with its own work; the late line committed that work under its own
+# message. The names matched, so the name check called it clean.
+d=$(new_repo late_line); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'mine\n' > a.txt; git add a.txt
+cmd=$("$PREP" "[*] mine" 2>/dev/null)
+printf 'other\n' > b.txt; git add b.txt; git commit -qm "neighbour" -- b.txt   # HEAD moves
+printf 'theirs\n' > a.txt; git add a.txt                                    # same path, rewritten
+run_emitted "$cmd" >/dev/null 2>&1
+out=$("$PREP" --verify-last 2>&1 >/dev/null)
+expect_says "RED: a late line that committed other content is reported" "$out" "CHANGED SINCE PREP"
+expect_says "…naming the path" "$out" "a.txt"
+expect_says "…and that HEAD moved between prep and the run" "$out" "prepared on"
+
+# A neighbour's commit on other paths is ordinary: our content is what we staged.
+d=$(new_repo late_line_clean); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'mine\n' > a.txt; git add a.txt
+cmd=$("$PREP" "[*] mine" 2>/dev/null)
+printf 'other\n' > b.txt; git add b.txt; git commit -qm "neighbour" -- b.txt
+run_emitted "$cmd" >/dev/null 2>&1
+out=$("$PREP" --verify-last 2>&1 >/dev/null)
+expect_not_says "a neighbour's commit on other paths is not a change of ours" "${out:-(silent)}" "CHANGED SINCE PREP"
+
+# Content rewritten with HEAD unchanged is what a formatting pre-commit hook
+# does: not reported, or every commit in such a project would carry a warning.
+d=$(new_repo late_line_samehead); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'mine\n' > a.txt; git add a.txt
+cmd=$("$PREP" "[*] mine" 2>/dev/null)
+printf 'reformatted\n' > a.txt; git add a.txt
+run_emitted "$cmd" >/dev/null 2>&1
+out=$("$PREP" --verify-last 2>&1 >/dev/null)
+expect_not_says "a rewrite with HEAD unchanged (a formatting hook) is not reported" "${out:-(silent)}" "CHANGED SINCE PREP"
+
 # ---------------------------------------------------------------------------
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
