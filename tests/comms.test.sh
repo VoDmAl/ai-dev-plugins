@@ -247,6 +247,14 @@ expect_says "…and whoever else waits on the subject is in copy, not us in the 
 # saw the subject earlier but needs no part in what follows gets a blind copy
 # of the first answer — they see it is not lost, and reply-all leaves them out.
 expect_says "RED: …and whoever saw it earlier, needing no continuation, gets a blind copy of the first answer" "$ctx" "blind copy of this first answer"
+# hq, 2026-10-05 (letters-write-from-their-artifact): a review point on someone
+# else's epic was drafted from our own notes, and went out without an edit only
+# after the epic was read live and the draft rebuilt from it — its place, terms,
+# stages, the full key of our related task, the condition that lifts the
+# restriction. A check for each of these was in place; none fired, since each
+# reads the finished text and the error was in the material it was built from.
+expect_says "RED: …writing into someone else's artifact: read it live first, and build the draft from it" "$ctx" "it was read live first, and the draft is built from it"
+expect_says "RED: …and a ticket goes by its full key, never a bare number" "$ctx" "a ticket goes by its full key, never a bare number"
 expect_not_says "…no register line when none is declared" "$ctx" "Register:"
 printf '{\n  "comms": {\n    "register": "peer",\n    "language": "en"\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
 OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-y-out.md" "$DRAFT" | bash "$GUARD" 2>/dev/null)

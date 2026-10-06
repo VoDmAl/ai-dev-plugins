@@ -22,7 +22,7 @@ Start a draft from the scaffold (`/vdm-comms:meetings` → *Start a draft from t
 scaffold*), not from a neighbouring letter.
 
 **The short form arrives by itself.** Creating a draft — with the scaffold, or
-with a write of a new `*/comms/*-out.md` — brings a fifteen-line checklist into
+with a write of a new `*/comms/*-out.md` — brings a sixteen-line checklist into
 the context, with the letter's register and the project's language when they are
 declared. It is this skill compressed to checks; go through it before the draft
 is shown to anyone, and open the sections below when a line does not settle.
@@ -46,6 +46,17 @@ is shown to anyone, and open the sections below when a line does not settle.
   people's requests to the same person. A finding such as "it does not work on
   prod" is first the unfinished half of an open request, and only then a fact for
   a third person.
+- **Writing into someone else's artifact — a ticket, an epic, a document, a
+  thread — read it live before the draft, and build the draft from it.** Our
+  notes are a source of facts, not the frame. The artifact gives the place
+  (where its author called you, § 2), the words (its terms, not our internal
+  ones), the structure (its stages, where our point applies) and the end (the
+  condition that lifts what we ask for, § 7); our related tasks go in by their
+  full keys. Checks of the finished text miss this: the error is earlier, in the
+  material the text was assembled from. Field case (2026-10-05): a review point
+  on someone else's epic, drafted from incident notes, was rewritten after the
+  epic was read live and went out without an edit; a check for each of these
+  points had been in place, and none fired.
 - **Answering a letter, name in the header which of its points you leave
   unanswered on purpose** — above the separator, so the owner sees the choice;
   not in the text that goes out.
@@ -61,9 +72,12 @@ is shown to anyone, and open the sections below when a line does not settle.
 - **The owner's word decides.** "Letter", "email", "write to their mail" is
   email, and an email needs a subject. "In the chat", "in Telegram", "a DM" is
   that messenger. When the word was said, do not ask about the channel.
-- **No word — pick by the recipients, not by a question to the owner.** Several
-  people with no named shared chat: email. One person with a thread already
-  running: the channel of that thread. Ask only when both are silent.
+- **No word — pick by where you were called, then by the recipients**, not by a
+  question to the owner. Called in an artifact — a review asked for in a comment
+  on their ticket — answer there, even with a thread to that person running
+  elsewhere. Several people with no named shared chat: email. One person with a
+  thread already running: the channel of that thread. Ask only when all of these
+  are silent.
 - Declare it as `channel:` in the draft the moment you create it.
 - **The channel sets the body's form too.** An email: a greeting on its own line,
   a paragraph per thought — the fact, the request, the question, the close — and
@@ -274,7 +288,8 @@ will hold is outgoing too.
 - **A ticket by its full key** — `PROJ-663`, never `663`. Inside the ticket
   itself: "this task", not its number.
 - **A thing with a lasting state** is described by its life cycle: set up →
-  kept up through changes → ended → restored.
+  kept up through changes → ended → restored. A requirement or a restriction we
+  ask for creates such a state, so it goes out with the condition that lifts it.
 - **No implementation details in a brief for lawyers, HR, accounting or security**:
   they settle into their document, and every change of the implementation
   becomes a change of that document.

@@ -33,6 +33,7 @@ import comms_frontmatter as fmmod  # noqa: E402
 CHECKS = (
     "Goal: what changes once it is answered — in `goal:`, one sentence. A likely answer of \"yes\" or \"we'll see\" → do not write it.",
     "One subject: one request or one statement; every sentence carries it.",
+    "Writing into someone else's ticket, document or thread: it was read live first, and the draft is built from it — the answer goes where its author called, in its terms, along its structure; what we ask for comes with the condition that lifts it.",
     "The decision and the request — not the reader's own decisions retold, not our own corrections.",
     "No exit: nothing lets them close or park it in one line (\"if not, fine\", \"let me know when convenient\", \"send X, then\"); the request ends with what happens once it is done — our next step goes to the owner above the separator, as a proposal.",
     "Everything needed to start is inside the letter; procedural asks run in parallel, not as a condition.",
@@ -40,7 +41,7 @@ CHECKS = (
     "No obliging extras: no help nobody asked for, no \"happy to\", no \"while we're at it\" — \"please\" and \"thanks\" are the register's, not extras.",
     "Cut: what we already decided, our own status, what they already know.",
     "Questions only for the gap: a \"What we know\" line above the separator, with sources; not found = \"not seen in our sources\".",
-    "Every fact about their system or a person has a source; \"always\" / \"any\" holds in every case.",
+    "Every fact about their system or a person has a source; \"always\" / \"any\" holds in every case; a ticket goes by its full key, never a bare number — under the ticket itself, \"this task\".",
     "Their field is not explained to them; nothing is prescribed inside their zone.",
     "Recipients' profiles read and applied, and their `trust` lets this project write: a hand writes to team and peer only — careful, top and anyone not in people/ go through the HQ. No reproach for a past silence.",
     "The channel's form: an email has a subject (the same thread keeps `RE:`, a new matter a new one), a greeting on its own line, a paragraph per thought; a ticket addresses people by mention — `[~login]` in Jira, `@login` in GitLab.",
