@@ -18,6 +18,8 @@ reader the linter uses, so the scaffold and the check cannot disagree:
     a project that switched on the `goal` element gets a reminder from the
     linter at the first edit, until the goal is written;
   * a subject line, when the channel owes one (`--subject` fills it);
+  * the recipients line with its blind-copy segment, when the project asks for
+    `recipients` — every segment `—` until it is filled;
   * the separator, when the project asks for one.
 
 Why it exists (field report, program, 2026-09-26): with no scaffold, an
@@ -69,6 +71,9 @@ def render(cfg, channel, to, subject):
     lines += ["goal:", "---", "", "# → %s" % to, ""]
     if "subject" in need:
         lines += ["**%s**: %s" % (lab["letter-subject"], subject or ""), ""]
+    if "recipients" in need:
+        # The blind copy is written out, `—` until decided (skill `letters` § 5).
+        lines += ["**%s:** — · **%s:** — · **%s:** —" % (lab["letter-to"], lab["letter-cc"], lab["letter-bcc"]), ""]
     if "separator" in need:
         lines += ["---", "", lab["letter-text"], ""]
     return "\n".join(lines)

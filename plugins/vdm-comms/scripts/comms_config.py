@@ -33,7 +33,7 @@ Config lives in `.claude/vdm-plugins.json` (or `.qwen/…`) under `comms`:
                       executor | peer; a letter's own `register:` wins (default: none)
     language          the language of outgoing letters, e.g. en, ru  (default: none)
     letter-form       per channel: what an outgoing DRAFT must carry — `channel`,
-                      `subject`, `separator`, `goal`, `known`; `*` applies to every draft; merged
+                      `subject`, `separator`, `goal`, `known`, `recipients`; `*` applies to every draft; merged
                       over the default key by key       (default {"email": ["subject"]})
     now               the live signals/now.md (comms-now.py): {"owner": [names
                       that mean the owner], "instructions": path, "path":
@@ -140,6 +140,9 @@ LABELS = {
         "pointer-topics": "Topics on this track:",
         "letter-subject": "Subject",
         "letter-text": "Text to send, as it will go out.",
+        "letter-to": "To",
+        "letter-cc": "Cc",
+        "letter-bcc": "Bcc",
         "now-instructions": "How to work with this file",
         "now-no-instructions": "No instructions yet — set `comms.now.instructions` to the file that says how to work with now.md.",
         "now-orphans": "Replies without an item",
@@ -176,6 +179,9 @@ LABELS = {
         "pointer-topics": "Темы этого трека:",
         "letter-subject": "Тема",
         "letter-text": "Текст к отправке — так, как он уйдёт.",
+        "letter-to": "Кому",
+        "letter-cc": "копия",
+        "letter-bcc": "скрытая копия",
         "now-instructions": "Как работать с этим файлом",
         "now-no-instructions": "Инструкции пока нет — задайте `comms.now.instructions`: файл о том, как работать с now.md.",
         "now-orphans": "Реплики без пункта",

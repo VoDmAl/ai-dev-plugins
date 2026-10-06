@@ -253,6 +253,7 @@ What each channel requires is the project's own, in `comms.letter-form`:
 | `separator` | a `---` line after the service header, and the text to send after it — everything below the line is pasted as it stands |
 | `goal` | a non-empty `goal:` in the frontmatter: what should change once the letter is answered. Any YAML form — a multi-line block is read as text. If it does not fit in one sentence, the letter is not ready yet |
 | `known` | when the text below the separator asks a question: a `**What we know**` (or `**Знаем сами**`) line above the separator — what the sources already hold on the subject, where it came from, and what they cannot show. A **warning**, not a failure: a question mark is a loose sign |
+| `recipients` | a recipients line before the separator — `**To:** … · **Cc:** … · **Bcc:** …` (or `**Кому:** … · **копия:** … · **скрытая копия:** …`; the colon inside the bold or after it) — **with the blind-copy segment**, `—` when nobody: whoever saw the subject earlier and needs no part in what follows is in BCC of the first answer (`letters` § 5), and the segment shows that was decided. The scaffold writes the line with every segment `—` |
 
 `*` applies to every draft, including one that declares no channel yet; a
 channel's own list adds to it. The default is only `{"email": ["subject"]}` —

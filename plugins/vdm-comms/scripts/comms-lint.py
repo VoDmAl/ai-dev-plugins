@@ -89,10 +89,17 @@ MD_LINK_RE = re.compile(r"\[([^\]]*)\]\(\s*<?([^)>]+?)>?\s*\)")
 WIKI_LINK_RE = re.compile(r"\[\[[^\]]+\]\]")
 
 # The form of an outgoing DRAFT, per channel (`comms.letter-form`).
-FORM_ELEMENTS = ("channel", "subject", "separator", "goal", "known")
+FORM_ELEMENTS = ("channel", "subject", "separator", "goal", "known", "recipients")
 # «What we know» before the questions: a header line such as
 # `> **Знаем сами** (разбор 26.09): …` — the form hq writes.
 KNOWN_RE = re.compile(r"^\s*(>\s*)?\*\*(знаем сами|what we know)\*\*", re.I)
+# The recipients line, `**To:** … · **Cc:** … · **Bcc:** …` (or the Russian
+# labels); the colon inside the bold or after it, as both are written. The
+# blind-copy segment is what the element is for: whoever saw the subject
+# earlier and needs no part in what follows is in BCC of the first answer
+# (skill `letters` § 5, program 2026-10-04), and `—` says it was decided.
+RECIPIENTS_RE = re.compile(r"^\s*(>\s*)?\*\*(to|кому)(:\*\*|\*\*:)", re.I)
+BCC_RE = re.compile(r"\*\*(bcc|скрытая копия)(:\*\*|\*\*:)", re.I)
 URL_RE = re.compile(r"\bhttps?://\S+")
 CODE_SPAN_RE = re.compile(r"`[^`]*`")
 QUESTION_RE = re.compile(r"\?(?=[\s\"'»)\]]|$)")
@@ -309,6 +316,16 @@ def _lint_letter_form(rep, keys, body, cfg, fm_text=""):
                      "`**Знаем сами**` line — write down first what the sources already hold on "
                      "the subject, with where it came from, and what they cannot show (the "
                      "recipient's private mail and chats); then ask only for the gap")
+    if "recipients" in need:
+        line = next((l for l in head if RECIPIENTS_RE.match(l)), None)
+        if line is None:
+            rep.error("a `channel: %s` draft has no recipients line — before the separator: "
+                      "`**To:** … · **Cc:** … · **Bcc:** …` (`**Кому:** … · **копия:** … · "
+                      "**скрытая копия:** …`)" % channel)
+        elif not BCC_RE.search(line):
+            rep.error("the recipients line has no blind copy — add `· **Bcc:** …`, or "
+                      "`**Bcc:** —` when nobody: whoever saw the subject earlier and needs no "
+                      "part in what follows gets the first answer in BCC (skill `letters` § 5)")
     if "goal" in need and not _goal_text(keys, fm_text):
         rep.error("a draft with no `goal:` in its frontmatter — say what should change once "
                   "the letter is answered; if it does not fit in one sentence, the letter is "

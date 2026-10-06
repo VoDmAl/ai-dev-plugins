@@ -1053,6 +1053,26 @@ fi
 printf -- '---\ndraft: true\n---\n\n> **What we know**: the ticket says corporate.\n\n---\n\nWhich Langfuse runs on prod?\n' > "$LF"
 OUT=$(payload Write "$LF" "x" | (cd "$FX" && bash "$LINTSH" --hook) 2>&1); rc=$?
 expect_silent "HOOK: nothing to say ⇒ nothing on either stream" "$OUT"
+
+# The recipients line (program, 2026-10-04/06): whoever saw the subject earlier
+# is in the blind copy of the first answer, and the header shows the blind copy
+# was decided, not forgotten — `—` when nobody. The program's own line is
+# `**Кому:** … · **копия:** … · **скрытая копия:** …`, colon inside the bold.
+printf '{\n  "comms": {\n    "letter-form": {"email": ["recipients"]}\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
+printf -- '---\ndraft: true\nchannel: email\n---\n\n# → x\n\n---\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "RED: an email draft with no recipients line ⇒ exit 1" 1 "$rc"
+expect_says "…and the line is named" "$OUT" "recipients line"
+printf -- '---\ndraft: true\nchannel: email\n---\n\n**To:** anna · **Cc:** boris\n\n---\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "RED: a recipients line with no blind-copy segment ⇒ exit 1" 1 "$rc"
+expect_says "…and it asks for the blind copy to be decided" "$OUT" "Bcc"
+printf -- '---\ndraft: true\nchannel: email\n---\n\n**Кому:** A · **копия:** B · **скрытая копия:** —\n\n---\n\nПривет.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "GREEN: the program's form — Russian, colon inside the bold, the blind copy decided as — ⇒ exit 0" 0 "$rc"
+printf -- '---\ndraft: true\nchannel: email\n---\n\n**To**: anna · **Bcc**: vera\n\n---\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "GREEN: colon outside the bold, no Cc segment — a copy is optional ⇒ exit 0" 0 "$rc"
 rm -f "$FX/.claude/vdm-plugins.json" "$LF"
 
 echo ""
@@ -1094,6 +1114,14 @@ expect_exit "GREEN: …and it meets the project's letter-form ⇒ exit 0" 0 "$rc
 SC="$FX/gaps/alpha/comms/$TODAY-vera-out.md"; rm -f "$SC"
 run_new --channel email --to vera --track gaps/alpha --subject "Доступ"
 expect_says "RED: the project's wording — ru ⇒ **Тема**:" "$(cat "$SC" 2>/dev/null)" "**Тема**: Доступ"
+printf '{\n  "comms": {\n    "labels": "ru",\n    "letter-form": {"email": ["subject", "recipients"]}\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
+SC="$FX/gaps/alpha/comms/$TODAY-gleb-out.md"; rm -f "$SC"
+run_new --channel email --to gleb --track gaps/alpha --subject "Доступ"
+expect_says "RED: a project that asks for recipients gets the line, the blind copy included" "$(cat "$SC" 2>/dev/null)" "**скрытая копия:** —"
+run_skip "$SC"; rc=$?
+expect_exit "GREEN: …and the scaffold meets that letter-form ⇒ exit 0" 0 "$rc"
+rm -f "$SC"
+printf '{\n  "comms": {\n    "labels": "ru",\n    "letter-form": {"*": ["channel", "separator"]}\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
 # The file name is a latin slug, as in people/ — a Cyrillic name made a Cyrillic
 # file name on the first field try (hq names its letters in latin).
 run_new --channel email --to "Пётр Коваленко" --track gaps/alpha; rc=$?

@@ -201,7 +201,10 @@ is shown to anyone, and open the sections below when a line does not settle.
   came shared with them too. Our first answer goes to its addressee, with a blind
   copy (BCC) to them: they see the subject is not lost and not dropped, and the
   thread goes on without them — reply-all does not pick up a blind copy. Only
-  the first answer; whoever must act is in copy, not in BCC. Example: a member
+  the first answer; whoever must act is in copy, not in BCC. A project that
+  switches on the `recipients` element of `comms.letter-form` gets the decision
+  checked: the draft's recipients line carries a blind-copy segment, `—` when
+  nobody. Example: a member
   shares a document with you and with their mentor; you answer the member, copy
   whoever acts on it, and the mentor is in BCC (the owner, 2026-10-04).
 - **A request is addressed to a person**, chosen for the competence — an open
@@ -471,6 +474,6 @@ project, not a path. The people directory is the HQ's own `comms.people-dir`.
 
 | Other skill | Interaction |
 |-------------|-------------|
-| `/vdm-comms:meetings` | the file of a letter: draft marker, `sent:`, form per channel (`comms.letter-form`, including `goal` and `known`), 📎, `.eml`, the scaffold |
+| `/vdm-comms:meetings` | the file of a letter: draft marker, `sent:`, form per channel (`comms.letter-form`, including `goal`, `known` and `recipients`), 📎, `.eml`, the scaffold |
 | `/vdm-comms:pending` | the waiting item "after the letter" (§ 12) lives there |
 | `/vdm:intercom` | letters to other agents; the relay form; a hand's brief to its HQ (§ 5); the directory that resolves `comms.hq` |
