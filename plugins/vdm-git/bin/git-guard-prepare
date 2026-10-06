@@ -11,6 +11,8 @@
 #   echo "<message>" | git-guard-prepare -
 #   echo "<message>" | git-guard-prepare - -- <path>...
 #   git-guard-prepare --verify-last          # audit the previous prep only
+#   git-guard-prepare --supersede "<commit message>" [-- <path>...]
+#                                            # replace a line still waiting
 #
 # Output (stdout):
 #   <single-line shell command>           # the user copy-pastes this
@@ -97,13 +99,34 @@
 #   scope, and superseding would silently stop. Without a session id the old
 #   per-branch scope is the honest fallback.
 #
+# A line that is still waiting
+#   Superseding kills the earlier line, and for a while that was all a second
+#   prep did — after it, a notice said the earlier line "was never run". Two
+#   field cases showed what that costs: a session interviewing the owner
+#   prepared four lines for one batch, none run (executor, 2026-10-03); another
+#   prepared about sixteen, seven run, each extra one after a note added to a
+#   crystal — two of them while the owner was still sending a letter
+#   (echelon, 2026-10-06). An unrun line usually means the user is not done,
+#   not that the line is wrong. And the notice came after the deletion: it
+#   could report a dead line, never prevent one.
+#
+#   So a prep that finds a line of this scope still waiting refuses, deletes
+#   nothing, and says when and what was prepared. Edits to the paths that line
+#   names ride with it anyway — a pathspec commit takes them from the working
+#   tree. `--supersede` is the deliberate exception: the line failed when the
+#   user ran it (after a pre-commit refusal nothing on disk tells — the hook
+#   runs before git writes anything), or the block changed in substance. Which of those happened is in
+#   the conversation, not in the repository, so the flag is the caller's word.
+#
 # Exit codes:
 #   0 success
 #   1 missing message / not a git repo / write failed / nothing staged /
-#     index-vs-worktree divergence on the listed paths
+#     index-vs-worktree divergence on the listed paths /
+#     a line of this scope still waiting (without --supersede)
 #
 # @see plugins/vdm-git/skills/guard/SKILL.md
 # @see docs/tasks/git-guard-explicit-file-list/workitem.md — DL #4, #5, #6
+# @see docs/tasks/git-guard-prepare-churn/workitem.md — DL #3
 
 set -eu
 
@@ -209,6 +232,26 @@ sweep_superseded() {
     echo "                   fails instead of committing a stale message."
     echo "                   Hand off the line below, and say the earlier one is void."
   } >&2
+  return 0
+}
+
+# waiting_line <dir> <base> <head> — the prep in this scope whose line has not
+# been run, as "<epoch>\t<subject>"; nothing when there is none.
+#
+# Asked BEFORE anything is deleted. sweep_superseded reports an unrun line only
+# after it has killed it, so its notice can tell the caller that a line died
+# but never stop it from dying — see "A line that is still waiting" above.
+waiting_line() {
+  local dir="$1" base="$2" head="$3" f stem tok epoch
+  for f in "$dir/$base"*.txt; do
+    [ -f "$f" ] || continue
+    stem="${f%.txt}"
+    [ "$(prep_state "$stem" "$head")" = pending ] || continue
+    tok="${stem##*/}"; tok="${tok#"$base"-}"; epoch="${tok%%-*}"
+    case "$epoch" in ''|*[!0-9]*) epoch="" ;; esac
+    printf '%s\t%s\n' "$epoch" "$(head -n 1 "$f")"
+    return 0
+  done
   return 0
 }
 
@@ -374,7 +417,8 @@ _verify_one() {
       for p in "${changed[@]}"; do echo "      $p"; done
       echo "  The line was prepared on $(git rev-parse --short "$recorded" 2>/dev/null) and ran on $(git rev-parse --short "$parent" 2>/dev/null):"
       echo "  a pathspec line takes its paths from disk when it runs, so what rewrote them in between went in"
-      echo "  under this message. A late line is a dead line — prepare again rather than run an old one."
+      echo "  under this message. Your own edits made after the prep ride along by design; another session's"
+      echo "  work does not."
     fi
     if [ ${#kept[@]} -gt 0 ]; then
       echo
@@ -392,16 +436,18 @@ usage() {
   cat >&2 <<'USAGE'
 Usage: git-guard-prepare "<commit message>" [-- <path>...]
        echo "<message>" | git-guard-prepare - [-- <path>...]
+       git-guard-prepare --supersede "<commit message>" [-- <path>...]
        git-guard-prepare --verify-last
 
 Writes the message to a per-prep file under ${TMPDIR:-/tmp} and prints a
 single-line `git commit -F <path> -- <paths>` command for the user to run.
 
-Preparing again supersedes the previous command: its message file is deleted,
-so the earlier line fails instead of committing a message that has moved on.
-The scope is this session (CLAUDE_CODE_SESSION_ID) on this repo and branch;
-without a session id, the repo and branch. A neighbouring session's line is
-never touched.
+While a prepared line has not been run, preparing again refuses and deletes
+nothing: the user may not be done. With --supersede the earlier line's message
+file is deleted, so that line fails instead of committing a message that has
+moved on. The scope is this session (CLAUDE_CODE_SESSION_ID) on this repo and
+branch; without a session id, the repo and branch. A neighbouring session's
+line is never touched.
 
 Paths come from the explicit `--` list when given, otherwise from a snapshot
 of the index at prep time. Exits 1 if the index is empty, or if the working
@@ -457,12 +503,26 @@ if [ "$1" = "--verify-last" ]; then
   exit 0
 fi
 
+# --supersede: replace a line of this session that is still waiting to be run.
+# Accepted before the message or right after it.
+supersede=0
+if [ "$1" = "--supersede" ]; then
+  supersede=1
+  shift
+  [ $# -ge 1 ] || { usage; exit 1; }
+fi
+
 if [ "$1" = "-" ]; then
   message=$(cat)
 else
   message="$1"
 fi
 shift
+
+if [ $# -gt 0 ] && [ "$1" = "--supersede" ]; then
+  supersede=1
+  shift
+fi
 
 # Remaining args, if any, must start with `--` and are the explicit path list.
 explicit_paths=()
@@ -602,6 +662,41 @@ if [ -n "$sync_found" ]; then
     echo "  Then run git-guard-prepare again."
   } >&2
   exit 1
+fi
+
+# ------------------------------------------------- a line still waiting
+#
+# Decided before any other check: when a line is waiting, the answer is "hand
+# off nothing new" whatever the index looks like now. See the header.
+if [ "$supersede" -eq 0 ]; then
+  wl_tmp="${TMPDIR:-/tmp}"; wl_tmp="${wl_tmp%/}"
+  waiting=$(waiting_line "$(session_scope "$wl_tmp")" "${repo_name}-${branch_safe}-commit" \
+              "$(git rev-parse --verify -q HEAD 2>/dev/null || true)")
+  if [ -n "$waiting" ]; then
+    wl_epoch="${waiting%%$'\t'*}"; wl_subject="${waiting#*$'\t'}"
+    wl_when=""
+    if [ -n "$wl_epoch" ]; then
+      wl_clock=$(date -r "$wl_epoch" '+%H:%M' 2>/dev/null || date -d "@$wl_epoch" '+%H:%M' 2>/dev/null || true)
+      wl_min=$(( ($(date +%s) - wl_epoch) / 60 ))
+      wl_when=" — prepared ${wl_clock:-earlier}, $wl_min min ago"
+    fi
+    {
+      echo "git-guard-prepare: a line for this branch is still waiting to be run$wl_when:"
+      echo "                     $wl_subject"
+      echo "                   Nothing was deleted: that line still runs as handed off."
+      echo
+      echo "  A line is handed off once per finished block. While it waits, the user may still be"
+      echo "  discussing the work, or busy with a step of their own — a letter to send, a reply to"
+      echo "  wait for. Edits to the paths it names ride with it (a pathspec commit takes them from"
+      echo "  the working tree); new files go with the next commit. So hand off nothing new."
+      echo
+      echo "  Prepare again only if the user reported that line failed, or the block changed in"
+      echo "  substance — its message is no longer true, or a file joins it:"
+      echo "      git-guard-prepare --supersede \"<message>\" [-- <path>...]"
+      echo "  The earlier line then dies; say so when you hand off the new one."
+    } >&2
+    exit 1
+  fi
 fi
 
 # ---------------------------------------------------------------- path list

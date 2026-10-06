@@ -513,15 +513,18 @@ def build_block_message(op_name, reason, command):
         lines.append("     staged files out of your commit.")
         lines.append("")
         lines.append(
-            "     Preparing again supersedes the previous command: the earlier"
+            "     One line per finished block. While a line you handed off is"
         )
         lines.append(
-            "     message file is deleted, so that line is dead. If the helper"
+            "     still waiting, the helper refuses a new one: hand off nothing"
         )
         lines.append(
-            "     says a prepared command was NEVER RUN, tell the user the"
+            "     new. Only if the user reported it failed, or the block changed"
         )
-        lines.append("     earlier line is void when you hand off the new one.")
+        lines.append(
+            "     in substance, run it with --supersede — the earlier line then"
+        )
+        lines.append("     dies; tell the user it is void.")
         lines.append("")
         lines.append(
             "     To commit a subset of what is staged, name it explicitly:"

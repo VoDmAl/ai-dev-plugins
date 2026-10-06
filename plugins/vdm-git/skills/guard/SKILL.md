@@ -124,7 +124,9 @@ When the assistant has finished work that warrants a commit — implementation d
 
        printf '%s\n\n%s\n' "[+] Add foo helper" "Why: needed for X." | git-guard-prepare -
 
-   **Preparing again kills the earlier line — yours, not a neighbour's.** Each prep gets its own message file and deletes the previous one of the same session, so a superseded command fails instead of committing a message that has since been revised (see [Superseding a prepared line](#superseding-a-prepared-line)). When the helper reports `a prepared command for this branch was never run`, say so on hand-off: the user still has the dead line in their scrollback.
+   **One line per finished block.** Don't prepare while the user is still discussing the work or busy with a step of their own — a letter to send, a reply to wait for. A line handed off stands: edits to the paths it names ride with it, new files go with the next commit. While it waits, the helper refuses to prepare again and deletes nothing (see [A line that is still waiting](#a-line-that-is-still-waiting)); then hand off nothing new.
+
+   **Superseding kills the earlier line — yours, not a neighbour's.** `git-guard-prepare --supersede "<subject>"` is for a line the user reported failed, or a block that changed in substance. It deletes the earlier line's message file, so that command fails instead of committing a message that has since been revised (see [Superseding a prepared line](#superseding-a-prepared-line)). The helper then reports `a prepared command for this branch was never run`; say so on hand-off: the user still has the dead line in their scrollback.
 
 4. **Hand off to the user.** Your end-of-work message should contain:
    - what was staged (file list);
@@ -247,8 +249,10 @@ the commit actually contains, and complains on stderr when they differ:
   when the line was prepared, while HEAD moved in between. A pathspec line takes
   its paths from disk when it runs: a line run late, after another session
   committed and rewrote the same files, commits that work under its own message
-  (field case 2026-10-05; the names matched, so only the content shows it). A
-  late line is a dead line — prepare again. With HEAD unchanged a different
+  (field case 2026-10-05; the names matched, so only the content shows it). Your
+  own edits made after the prep ride along by design ([A line that is still
+  waiting](#a-line-that-is-still-waiting)); another session's work does not. With
+  HEAD unchanged a different
   blob is what a formatting pre-commit hook produces, and that is not reported.
 
 If you see this output, **stop and look at the commit** before building on it:
@@ -292,6 +296,7 @@ a visible failure instead of a quiet wrong commit.
 
 What this asks of you:
 
+- Supersede only on purpose, with `--supersede` (next section says when).
 - When the helper prints `⚠ a prepared command for this branch was never run`,
   **tell the user the earlier line is void** as you hand off the new one. They
   cannot see which of two lines in their scrollback is current; you can.
@@ -311,6 +316,32 @@ Without a session id — a human running the helper at a terminal, or a harness
 that exports none — the scope falls back to the repo and branch, as before. Not
 `$PPID`: the helper's parent is the shell of one tool call, a new one each time,
 so every prep would become its own scope and superseding would silently stop.
+
+### A line that is still waiting
+
+Superseding was once what every second prep did, and a notice after it said the
+earlier line "was never run". Two field reports showed the cost. A session
+interviewing the owner prepared four lines for one batch and none was run
+(`executor`, 2026-10-03; the owner: the answers are still coming, a commit now
+is wasted work). Another prepared about sixteen, seven were run, each extra one
+after a note added to a crystal — two of them while the owner was still sending
+a letter that would itself bring edits back (`echelon`, 2026-10-06). An unrun
+line usually means the user is not done, not that the line is wrong. And the
+notice came after the deletion: it reported each dead line and prevented none.
+
+So while a line of this session has not been run, the helper refuses to prepare
+again, deletes nothing, and says when and what was prepared. What that asks of
+you:
+
+- **Hand off nothing new.** Edits to the paths the waiting line names ride with
+  it — a pathspec commit takes them from the working tree. New files go with the
+  next commit.
+- **Supersede when the line cannot stand:** the user reported it failed
+  (pre-commit refused it — nothing on disk tells the helper that, the
+  conversation does), or the block changed in substance (the message is no
+  longer true, a file joins it, the user sent corrections). Then
+  `git-guard-prepare --supersede "<subject>" [-- <path>...]`, and say the earlier
+  line is void.
 
 ### Amending
 

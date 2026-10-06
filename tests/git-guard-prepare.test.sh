@@ -311,8 +311,9 @@ printf '\n=== superseding a prepared line ===\n'
 #
 # So the contract is not "two preps must not overwrite each other" — that was
 # the old one, and it is what kept the stale line alive. It is the opposite:
-# preparing again must KILL the earlier line, loudly enough that running it
-# fails rather than committing something that has moved on.
+# superseding must KILL the earlier line, loudly enough that running it fails
+# rather than committing something that has moved on. Superseding is asked for
+# with --supersede; without it a waiting line is left alone (next section).
 
 # msg_path <emitted command> — the -F argument, unquoted. shell_quote always
 # single-quotes, so the first quoted field is the message path.
@@ -323,7 +324,7 @@ export TMPDIR="$d/tmp"
 printf 'a\n' > a.txt
 git add a.txt
 stale=$("$PREP" "[*] first wording")
-fresh=$("$PREP" "[*] corrected wording" 2>/dev/null)
+fresh=$("$PREP" --supersede "[*] corrected wording" 2>/dev/null)
 
 if [ "$(msg_path "$stale")" = "$(msg_path "$fresh")" ]; then
   bad "the second prep gets its own message file" "both preps point at $(msg_path "$fresh")"
@@ -366,7 +367,7 @@ export TMPDIR="$d/tmp"
 i=1
 while [ $i -le 4 ]; do
   printf '%s\n' "$i" > "f$i.txt"; git add "f$i.txt"
-  "$PREP" "[*] prep $i" >/dev/null 2>&1
+  "$PREP" --supersede "[*] prep $i" >/dev/null 2>&1
   i=$((i+1))
 done
 expect_eq "one message file survives four preps" "1" "$(ls -1 "$TMPDIR"/*.txt   2>/dev/null | grep -c .)"
@@ -408,9 +409,52 @@ git init -q .; git config user.email t@t; git config user.name t
 export TMPDIR="$d/tmp"
 printf 'a\n' > a.txt; git add a.txt
 "$PREP" "[*] one" > /dev/null 2>&1
-out=$("$PREP" "[*] two" 2>&1 >/dev/null)
+out=$("$PREP" --supersede "[*] two" 2>&1 >/dev/null)
 expect_eq "unborn HEAD leaves one message file" "1" "$(ls -1 "$TMPDIR"/*.txt 2>/dev/null | grep -c .)"
 expect_says "unborn HEAD still reports the superseded line" "$out" "never run"
+
+printf '\n=== a line still waiting is not replaced without --supersede ===\n'
+# Field cases (executor 2026-10-03, echelon 2026-10-06): a line was prepared
+# again after every note added to a crystal, while the owner was still talking
+# or still sending a letter — four lines with none run, sixteen with seven run.
+# The "never run" notice came after the deletion, so it reported each dead line
+# and prevented none. A waiting line usually means the user is not done.
+
+d=$(new_repo waiting); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'a\n' > a.txt; git add a.txt
+first=$("$PREP" "[*] the block")
+printf 'b\n' > b.txt; git add b.txt
+out=$("$PREP" "[*] the block, again" 2>&1); rc=$?
+expect_exit "RED: a second prep while the line waits → refused" 1 "$rc"
+expect_not_says "…and hands off no new line" "$out" "git commit -F"
+expect_says "…names what is waiting" "$out" "[*] the block"
+expect_says "…and the way to replace it on purpose" "$out" "--supersede"
+if [ -e "$(msg_path "$first")" ]; then
+  ok "RED: …and deletes nothing — the waiting line still has its message file"
+else
+  bad "RED: …and deletes nothing — the waiting line still has its message file" "$(msg_path "$first") was deleted"
+fi
+expect_eq "…and leaves one message file" "1" "$(ls -1 "$TMPDIR"/*.txt 2>/dev/null | grep -c .)"
+
+# The refusal promises that edits to the waiting line's paths ride with it.
+printf 'a, edited after the prep\n' > a.txt
+run_emitted "$first" >/dev/null 2>&1; rc=$?
+expect_exit "the waiting line runs after the refusal" 0 "$rc"
+expect_eq "…with its own message" "[*] the block" "$(git log -1 --format=%s)"
+expect_eq "…and an edit made after the prep rides with it" "a, edited after the prep" "$(git show HEAD:a.txt)"
+
+out=$("$PREP" "[*] next block" 2>&1 >/dev/null); rc=$?
+expect_exit "once the line has run, the next prep is not refused" 0 "$rc"
+expect_not_says "…and says nothing about a waiting line" "${out:-(silent)}" "still waiting"
+
+d=$(new_repo waiting_flag_after); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'a\n' > a.txt; git add a.txt
+"$PREP" "[*] one" >/dev/null 2>&1
+out=$("$PREP" "[*] two" --supersede 2>&1); rc=$?
+expect_exit "--supersede is accepted after the message too" 0 "$rc"
+expect_says "…and supersedes" "$out" "never run"
 
 printf '\n=== detector: did the commit match what was prepared? ===\n'
 # The reason this exists: a commit lost six files and gained one that was never
@@ -493,7 +537,7 @@ git add a.txt
 printf 'z\n' > z.txt; git add z.txt
 git commit -qm "a completely different commit" -- z.txt   # a.txt stays staged
 printf 'n\n' > n.txt; git add n.txt
-out=$("$PREP" "[*] next" 2>&1 >/dev/null)
+out=$("$PREP" --supersede "[*] next" 2>&1 >/dev/null)
 expect_not_says "unrelated commit ⇒ no accusation" "$out" "does not match what was prepared"
 expect_says "unrelated commit ⇒ the earlier, never-run line is still declared void" "$out" "never run"
 
@@ -523,7 +567,7 @@ printf 'x\n' > a.txt
 git add a.txt
 "$PREP" "[*] pending" > /dev/null
 printf 'y\n' > b.txt; git add b.txt
-out=$("$PREP" "[*] second" 2>&1 >/dev/null)
+out=$("$PREP" --supersede "[*] second" 2>&1 >/dev/null)
 expect_not_says "unconsumed prep ⇒ no accusation about a commit" "$out" "does not match what was prepared"
 expect_not_says "unconsumed prep ⇒ nothing labelled SWEPT IN" "$out" "SWEPT IN"
 expect_says "unconsumed prep ⇒ the earlier line is declared void" "$out" "never run"
@@ -540,7 +584,7 @@ git commit -qm "[*] once"
 printf 'n\n' > n.txt; git add n.txt
 out1=$("$PREP" "[*] n1" 2>&1 >/dev/null)
 printf 'm\n' > m.txt; git add m.txt
-out2=$("$PREP" "[*] n2" 2>&1 >/dev/null)
+out2=$("$PREP" --supersede "[*] n2" 2>&1 >/dev/null)
 expect_says "first prep after the bad commit reports it" "$out1" "theirs.txt"
 expect_not_says "second prep does not repeat the accusation" "$out2" "theirs.txt"
 expect_not_says "second prep does not repeat the SWEPT IN label" "$out2" "SWEPT IN"
@@ -600,12 +644,12 @@ expect_eq "… and commits this session's message" "[*] from A" "$(git log -1 --
 expect_eq "… and only this session's path" "a.txt" "$(git show --name-only --format= HEAD)"
 
 # Scoping must not cost the half of the contract it was not aimed at: within
-# one session, preparing again still kills the earlier line, loudly.
+# one session, superseding still kills the earlier line, loudly.
 d=$(new_repo same_session); cd "$d" || exit 1
 export TMPDIR="$d/tmp"
 printf 'a\n' > a.txt; git add a.txt
 first=$(as_a "$PREP" "[*] first")
-out=$(as_a "$PREP" "[*] second" 2>&1 >/dev/null)
+out=$(as_a "$PREP" --supersede "[*] second" 2>&1 >/dev/null)
 if [ -e "$(msg_path "$first")" ]; then
   bad "within one session the superseded message file is still deleted" "$(msg_path "$first") survived"
 else
@@ -621,7 +665,7 @@ printf 'a\n' > a.txt; git add a.txt
 first=$(as_a "$PREP" "[*] ours" -- a.txt)
 printf 'b\n' > b.txt; git add b.txt
 git commit -qm "[*] the neighbour's" -- b.txt
-out=$(as_a "$PREP" "[*] ours, reworded" -- a.txt 2>&1 >/dev/null)
+out=$(as_a "$PREP" --supersede "[*] ours, reworded" -- a.txt 2>&1 >/dev/null)
 expect_says "a neighbour's commit does not hide that our line never ran" "$out" "never run"
 
 # The detector finds OUR commit even with a neighbour's landed in between —
@@ -667,7 +711,7 @@ else
   bad "a prep without a session id leaves a session's line alone" "$(msg_path "$line_s") was deleted"
 fi
 expect_silent "… and says nothing about it" "$out"
-line_t=$("$PREP" "[*] terminal again" -- b.txt 2>/dev/null)
+line_t=$("$PREP" --supersede "[*] terminal again" -- b.txt 2>/dev/null)
 as_b "$PREP" "[*] other session" -- a.txt >/dev/null 2>&1
 if [ -e "$(msg_path "$line_t")" ]; then
   ok "a session's prep leaves the terminal's line alone"
@@ -682,7 +726,7 @@ export TMPDIR="$d/tmp"
 i=1
 while [ $i -le 4 ]; do
   printf '%s\n' "$i" > "f$i.txt"; git add "f$i.txt"
-  as_a "$PREP" "[*] prep $i" >/dev/null 2>&1
+  as_a "$PREP" --supersede "[*] prep $i" >/dev/null 2>&1
   i=$((i+1))
 done
 expect_eq "one message file survives four preps in a session" "1" \
