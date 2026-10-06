@@ -10,6 +10,21 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ## 2026-10-06
 
+### 🐛 BUG — `fffd.test.sh` покраснел от 2.17.0, и pre-commit его не позвал
+
+**Что было.** `tests/fffd.test.sh` готовит строку четыре раза в одной фикстуре. С vdm-git 2.17.0 вторая подготовка
+получает отказ «строка ждёт» раньше проверки U+FFFD, и шесть проверок набора стали красными. Коммит `acefe73` прошёл:
+gate 8 перезапускает набор по имени хелпера, а `scripts/suites-for.sh` вторичных предметов набора не видел.
+
+**Что сделано.**
+- `fffd.test.sh` передаёт `--supersede` начиная со второй подготовки в фикстуре.
+- `scripts/suites-for.sh`: helper из `bin/` принадлежит и всякому набору, который вызывает `bin/<имя>` в строке, не
+  являющейся комментарием (один `grep` по `tests/`). Изменение `git-guard-prepare` теперь запускает и `fffd`. Для
+  `scripts/` и `lib/` граница прежняя.
+- `tests/suite-wiring.test.sh` ждёт `git-guard-prepare fffd`; на прежнем правиле это ожидание красное.
+
+**Ref**: `docs/tasks/git-guard-prepare-churn/workitem.md` (побег #5)
+
 ### ✨ FEATURE — git-guard-prepare: строка, которую ещё не запустили, не заменяется без `--supersede` (vdm-git 2.17.0)
 
 **Что было.** Повторная подготовка молча удаляла незапущенную строку этой сессии и только потом печатала «never run…

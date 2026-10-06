@@ -76,6 +76,11 @@ corrupt_text() { printf 'Проверка \xef\xbf\xbd\xef\xbf\xbdкста\n'; }
 
 echo "== git-guard-prepare: the surface with no installation step =="
 
+# Each fixture below prepares more than once. From vdm-git 2.17.0 a prep that
+# finds an earlier line still waiting refuses for THAT reason, before it reads
+# a single file — so every prep after the first successful one passes
+# --supersede, or the U+FFFD verdicts would be about a waiting line instead.
+
 d=$(new_repo prep); cd "$d" || exit 1
 export TMPDIR="$d/tmp"
 printf 'чистый текст\n' > clean.md
@@ -86,7 +91,7 @@ expect_says "GREEN: it emits the commit line" "$out" "git commit -F"
 
 corrupt_text > broken.md
 git add broken.md
-out=$("$PREP" "[*] broken" 2>&1); rc=$?
+out=$("$PREP" --supersede "[*] broken" 2>&1); rc=$?
 expect_exit "RED: staged U+FFFD ⇒ exit 1" 1 "$rc"
 expect_says "RED: names the file" "$out" "broken.md"
 expect_says "RED: explains what the character means" "$out" "truncated"
@@ -95,13 +100,13 @@ expect_not_says "RED: and emits no commit line" "$out" "git commit -F"
 # The refusal must be fixable the obvious way and then get out of the way.
 printf 'Проверка текста\n' > broken.md
 git add broken.md
-out=$("$PREP" "[*] fixed" 2>&1); rc=$?
+out=$("$PREP" --supersede "[*] fixed" 2>&1); rc=$?
 expect_exit "GREEN: after the fix it prepares" 0 "$rc"
 
 # Only the named paths are inspected: a corrupt file nobody staged is not this
 # commit's problem.
 corrupt_text > unrelated.md
-out=$("$PREP" "[*] subset" -- clean.md 2>&1); rc=$?
+out=$("$PREP" --supersede "[*] subset" -- clean.md 2>&1); rc=$?
 expect_exit "GREEN: an unstaged corrupt file is not inspected" 0 "$rc"
 
 echo ""
@@ -157,12 +162,12 @@ expect_exit "GREEN (prepare): a binary file carrying EF BF BD is not corruption"
 printf 'plain text that git would diff \xef\xbf\xbd\n' > table.dat
 printf '*.dat binary\n' > .gitattributes
 git add .gitattributes table.dat
-out=$("$PREP" "[*] data" 2>&1); rc=$?
+out=$("$PREP" --supersede "[*] data" 2>&1); rc=$?
 expect_exit "GREEN (prepare): a file the project marked binary is skipped" 0 "$rc"
 
 corrupt_text > note.md
 git add note.md
-out=$("$PREP" "[*] note" 2>&1); rc=$?
+out=$("$PREP" --supersede "[*] note" 2>&1); rc=$?
 expect_exit "RED (prepare): a text file beside them is still read" 1 "$rc"
 expect_says "RED (prepare): …and named" "$out" "note.md"
 expect_not_says "RED (prepare): …the binary one is not" "$out" "flows.pdf"

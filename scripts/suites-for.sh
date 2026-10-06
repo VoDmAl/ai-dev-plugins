@@ -19,6 +19,13 @@
 # suite also exercises crystal-dates.sh, and nearly every suite reads
 # lib/config-read.sh; a change to those runs gate 7's broad list, not these.
 #
+# Except for a helper under bin/. A helper is run by its path, so a suite that
+# runs it under another name says so in code: `bin/<name>` on a line that is not
+# a comment. That suite owns the helper too. Found 2026-10-06: vdm-git 2.17.0
+# changed git-guard-prepare, gate 8 re-ran tests/git-guard-prepare.test.sh, and
+# tests/fffd.test.sh — which prepares four times in one fixture — went out red,
+# run by nobody. One grep over tests/, not one per suite.
+#
 # Usage: paths as arguments, or one per line on stdin (repo-relative).
 
 set -u
@@ -53,6 +60,16 @@ owners() {
       *)   p="" ;;
     esac
   done
+  case "$path" in
+    plugins/*/bin/*)
+      local t name="${path##*/}"
+      name="${name//./\\.}"
+      while IFS= read -r t; do
+        t="${t##*/}"
+        emit "${t%.test.sh}"
+      done < <(grep -lE "^[^#]*bin/${name}([\"'}[:space:]]|\$)" "$ROOT"/tests/*.test.sh 2>/dev/null || true)
+      ;;
+  esac
 }
 
 if [ $# -gt 0 ]; then

@@ -63,7 +63,8 @@ expect_eq "a dash-prefix: intercom-common → intercom" "$(owners plugins/vdm/sc
 expect_eq "a longer name: fffd-precommit-check → fffd" "$(owners plugins/vdm-git/scripts/fffd-precommit-check.sh)" "fffd"
 expect_eq "any extension: crystal-lint.py"          "$(owners plugins/vdm/scripts/crystal-lint.py)" "crystal-lint"
 expect_eq "a lib file, in either plugin"            "$(owners plugins/vdm-git/lib/crystal-path.sh)" "crystal-path"
-expect_eq "a helper with no extension"              "$(owners plugins/vdm-git/bin/git-guard-prepare)" "git-guard-prepare"
+expect_eq "a helper with no extension — and every suite that runs it by path" \
+  "$(owners plugins/vdm-git/bin/git-guard-prepare)" "git-guard-prepare fffd"
 expect_eq "both a full name and its prefix own it"  "$(owners plugins/vdm-comms/scripts/comms-pending.py)" "comms-pending comms"
 expect_eq "a staged suite owns itself"              "$(owners tests/intercom.test.sh)" "intercom"
 expect_eq "each owner is named once"                "$(owners plugins/vdm/scripts/intercom.sh plugins/vdm/scripts/intercom-common.sh)" "intercom"
