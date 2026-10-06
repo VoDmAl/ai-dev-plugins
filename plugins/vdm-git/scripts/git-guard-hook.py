@@ -508,9 +508,15 @@ def build_block_message(op_name, reason, command):
             "     prints a single-line `git commit -F <path> -- <paths>`"
         )
         lines.append(
-            "     command. The pathspec is what keeps a parallel session's"
+            "     command, opening with a check that its message file still"
         )
-        lines.append("     staged files out of your commit.")
+        lines.append(
+            "     exists. The pathspec keeps a parallel session's staged files"
+        )
+        lines.append(
+            "     out of your commit; the check stops a dead line before any"
+        )
+        lines.append("     hook runs. Hand it off whole.")
         lines.append("")
         lines.append(
             "     One line per finished block. While a line you handed off is"

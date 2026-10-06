@@ -118,7 +118,7 @@ When the assistant has finished work that warrants a commit — implementation d
 
        git-guard-prepare "[+] Add foo helper"
 
-   It writes the message to a per-prep file under `${TMPDIR:-/tmp}` and prints a single-line `git commit -F <path> -- <paths>` command on stdout. Capture it and hand it off **verbatim** — the explicit pathspec is the point (see [Why the pathspec](#why-the-pathspec-is-not-optional)).
+   It writes the message to a per-prep file under `${TMPDIR:-/tmp}` and prints a single-line `git commit -F <path> -- <paths>` command on stdout, opening with a check that its message file still exists (`[ -f <path> ] || { echo …; false; } &&`). Capture it and hand it off **verbatim** — the explicit pathspec is the point (see [Why the pathspec](#why-the-pathspec-is-not-optional)), and the check in front is what stops a dead line before any hook runs (see [A line that is still waiting](#a-line-that-is-still-waiting)).
 
    For a multi-line message (subject + body), pipe via `-`:
 
@@ -291,8 +291,8 @@ superseded message and needed an `--amend` to fix. The same session left
 So each prep now takes a name that is never issued twice **and** deletes the
 previous prep's files. Both halves are needed: reusable names let an old line be
 re-pointed at a newer message, and unique names alone leave every superseded line
-runnable forever. Together the stale line dies on `No such file or directory` —
-a visible failure instead of a quiet wrong commit.
+runnable forever. Together the stale line stops on its own check — `git-guard:
+this line is void` — a visible failure instead of a quiet wrong commit.
 
 What this asks of you:
 
@@ -343,6 +343,16 @@ you:
   `git-guard-prepare --supersede "<subject>" [-- <path>...]`, and say the earlier
   line is void.
 
+A dead line still gets run — from the scrollback, by a mistaken paste, in a
+restored session where every old line looks current. Git runs pre-commit before
+it reads `-F`, so such a line used to run the project's whole pre-commit on
+whatever its paths held by then, and could be stopped by a gate complaining about
+another session's work (2026-10-06: version-bump, about a neighbour's unbumped
+plugin). Every line now opens with a check that its message file exists — the
+file exists exactly while the line is live — and a dead one stops there with
+`git-guard: this line is void`. Not a HEAD check: a waiting line has to survive a
+neighbour's commit.
+
 ### Amending
 
 `git commit --amend` **without** a pathspec takes the whole index — including
@@ -370,6 +380,7 @@ Commits handed off as anything other than `git commit -F <path> -- <paths>` invi
 - Listing `git-guard-prepare` (or `git add`) in a copy-paste recipe for the user. The helper lives on the **assistant's** PATH (plugin `bin/` mounted by the harness); it is **not** on the user's shell PATH. If you put it in a numbered list of "run these in order", the user gets `zsh: command not found: git-guard-prepare`. Run `git add` and `git-guard-prepare` yourself in Bash, capture the `git commit -F <path> -- <paths>` line from stdout, and hand off only that line.
 
 - Trimming the `-- <paths>` tail off the emitted line, or re-typing it as a bare `git commit -F <path>`. That silently re-opens the defect the pathspec exists to close: a parallel session's staged files get swept into your commit.
+- Trimming the `[ -f <path> ] || { …; } &&` check off its front. Git runs pre-commit before it reads `-F`, so without the check a dead line runs the project's hooks on whatever its paths hold by then.
 
 Always emit `git commit -F <path> -- <paths>` exactly as `git-guard-prepare` printed it, presented as inline code (single backticks).
 

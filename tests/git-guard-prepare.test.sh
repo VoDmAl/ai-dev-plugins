@@ -316,8 +316,8 @@ printf '\n=== superseding a prepared line ===\n'
 # with --supersede; without it a waiting line is left alone (next section).
 
 # msg_path <emitted command> — the -F argument, unquoted. shell_quote always
-# single-quotes, so the first quoted field is the message path.
-msg_path() { printf '%s' "$1" | sed -e "s/^git commit -F '//" -e "s/'.*$//"; }
+# single-quotes, so the first quoted field after `-F` is the message path.
+msg_path() { printf '%s' "$1" | sed -e "s/.*git commit -F '//" -e "s/'.*$//"; }
 
 d=$(new_repo supersede); cd "$d" || exit 1
 export TMPDIR="$d/tmp"
@@ -337,8 +337,9 @@ else
   ok "the superseded message file is deleted"
 fi
 
-run_emitted "$stale" >/dev/null 2>&1; rc=$?
-expect_exit "the superseded line refuses to run" 128 "$rc"
+out=$(run_emitted "$stale" 2>&1); rc=$?
+expect_exit "the superseded line refuses to run" 1 "$rc"
+expect_says "…and says it is void" "$out" "this line is void"
 expect_eq "the superseded line commits nothing" "base" "$(git log -1 --format=%s)"
 run_emitted "$fresh" >/dev/null 2>&1
 expect_eq "the current line commits the corrected message" "[*] corrected wording" "$(git log -1 --format=%s)"
@@ -412,6 +413,43 @@ printf 'a\n' > a.txt; git add a.txt
 out=$("$PREP" --supersede "[*] two" 2>&1 >/dev/null)
 expect_eq "unborn HEAD leaves one message file" "1" "$(ls -1 "$TMPDIR"/*.txt 2>/dev/null | grep -c .)"
 expect_says "unborn HEAD still reports the superseded line" "$out" "never run"
+
+printf '\n=== a dead line stops before the hooks ===\n'
+# Git runs pre-commit before it reads -F. A line whose message file is gone ran
+# the project's whole pre-commit first, on whatever its paths held by then, and
+# could be stopped by a gate complaining about someone else's work (2026-10-06:
+# a line from the day before, run again from the scrollback). The line now
+# checks its own message file first. The live line is the control: the same
+# hook DOES run for it, so "the hook did not run" is not a hook that never could.
+
+d=$(new_repo dead_before_hooks); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf '#!/bin/sh\necho ran >> "$(git rev-parse --git-dir)/hook-ran"\n' > .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+git config core.hooksPath .git/hooks     # a global hooksPath would bypass the fixture's hook
+printf 'a\n' > a.txt; git add a.txt
+dead=$("$PREP" "[*] dead")
+printf 'b\n' > b.txt; git add b.txt
+live=$("$PREP" --supersede "[*] live" 2>/dev/null)
+case "$dead" in
+  "[ -f "*) ok "the line opens with its message-file check" ;;
+  *)        bad "the line opens with its message-file check" "${dead:0:80}" ;;
+esac
+out=$(run_emitted "$dead" 2>&1); rc=$?
+expect_exit "RED: a dead line → exit 1" 1 "$rc"
+expect_says "…saying it is void" "$out" "this line is void"
+if [ -e .git/hook-ran ]; then
+  bad "RED: …before the pre-commit hook runs" "the hook ran for a dead line"
+else
+  ok "RED: …before the pre-commit hook runs"
+fi
+run_emitted "$live" >/dev/null 2>&1; rc=$?
+expect_exit "the live line still commits" 0 "$rc"
+if [ -e .git/hook-ran ]; then
+  ok "…and the same hook does run for it (control)"
+else
+  bad "…and the same hook does run for it (control)" "no marker: the fixture's hook never runs"
+fi
 
 printf '\n=== a line still waiting is not replaced without --supersede ===\n'
 # Field cases (executor 2026-10-03, echelon 2026-10-06): a line was prepared

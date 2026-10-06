@@ -115,8 +115,24 @@
 #   names ride with it anyway — a pathspec commit takes them from the working
 #   tree. `--supersede` is the deliberate exception: the line failed when the
 #   user ran it (after a pre-commit refusal nothing on disk tells — the hook
-#   runs before git writes anything), or the block changed in substance. Which of those happened is in
-#   the conversation, not in the repository, so the flag is the caller's word.
+#   runs before git writes anything), or the block changed in substance. Which
+#   of those happened is in the conversation, not in the repository, so the
+#   flag is the caller's word.
+#
+# A dead line fails before the hooks
+#   A line dies when its message file is deleted — by --supersede, or by the
+#   sweep after it was committed. Without the file `git commit -F` fails, but
+#   git runs pre-commit BEFORE it reads -F (githooks(5): "before obtaining the
+#   proposed commit log message"). A dead line run again — from scrollback, by
+#   a mistaken paste, in a restored session — therefore ran the project's whole
+#   pre-commit on whatever its paths held now, another session's work included,
+#   and was stopped, if at all, by a gate complaining about that work (field
+#   case 2026-10-06: version-bump, about a neighbour's unbumped plugin).
+#
+#   So every line opens with `[ -f <msg> ] || { echo …; false; } &&`. The check
+#   is exact: the file exists exactly while the line is live. Not a HEAD check:
+#   a waiting line has to survive a neighbour's commit (above), and HEAD moves
+#   with every one of them.
 #
 # Exit codes:
 #   0 success
@@ -126,7 +142,7 @@
 #
 # @see plugins/vdm-git/skills/guard/SKILL.md
 # @see docs/tasks/git-guard-explicit-file-list/workitem.md — DL #4, #5, #6
-# @see docs/tasks/git-guard-prepare-churn/workitem.md — DL #3
+# @see docs/tasks/git-guard-prepare-churn/workitem.md — DL #3, #4
 
 set -eu
 
@@ -448,6 +464,9 @@ file is deleted, so that line fails instead of committing a message that has
 moved on. The scope is this session (CLAUDE_CODE_SESSION_ID) on this repo and
 branch; without a session id, the repo and branch. A neighbouring session's
 line is never touched.
+
+The line opens with a check that its message file still exists, so a
+superseded or already-run line stops there, before any git hook runs.
 
 Paths come from the explicit `--` list when given, otherwise from a snapshot
 of the index at prep time. Exits 1 if the index is empty, or if the working
@@ -961,6 +980,12 @@ shell_quote() {
 
 msg_q=$(shell_quote "$path")
 
+# Every form opens with a check that its own message file is still there. A
+# void line is one whose file was deleted, so the check is exact; and it runs
+# before git, whose pre-commit hook would otherwise run first — see "A dead line
+# fails before the hooks" in the header.
+void_check="[ -f $msg_q ] || { echo 'git-guard: this line is void; ask for a new one' >&2; false; } &&"
+
 # The paths file is written on EVERY prep, not only for long lists: it is both
 # the pathspec source for the long form and the record the detector compares
 # the resulting commit against. A short prep that kept no record would be a
@@ -1011,14 +1036,14 @@ if [ "$whole_index" -eq 1 ]; then
     echo "                   The index holds only this commit's paths now; if anything else is staged"
     echo "                   before the line runs, the next prep reports it as SWEPT IN."
   } >&2
-  printf 'git commit -F %s\n' "$msg_q"
+  printf '%s git commit -F %s\n' "$void_check" "$msg_q"
 elif [ ${#paths[@]} -gt "$PATHSPEC_INLINE_MAX" ]; then
   # Long list: hand git a NUL-separated file instead of an unreadable line.
   # --pathspec-from-file requires git >= 2.25.
-  printf "git commit -F %s --pathspec-from-file=%s --pathspec-file-nul\n" \
-    "$msg_q" "$(shell_quote "$paths_file")"
+  printf "%s git commit -F %s --pathspec-from-file=%s --pathspec-file-nul\n" \
+    "$void_check" "$msg_q" "$(shell_quote "$paths_file")"
 else
-  out="git commit -F $msg_q --"
+  out="$void_check git commit -F $msg_q --"
   for p in "${paths[@]}"; do
     out="$out $(shell_quote "$p")"
   done
