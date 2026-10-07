@@ -359,7 +359,13 @@ _content_filter_init() {
   _CF_BASE=""
   [ "$_IN_GIT" = 1 ] || return 0
   git ls-files --error-unmatch -- "$synth" >/dev/null 2>&1 || return 0
-  git diff --quiet HEAD -- "$synth" >/dev/null 2>&1 || return 0
+  # Plumbing, never `git diff <rev>` against the working tree: the porcelain
+  # refreshes stat data and writes the index back when a file it reads is
+  # stat-dirty — even with optional locks off (measured 2026-10-07, git 2.54.0)
+  # — and this runs from a UserPromptSubmit hook, on every prompt, in a `.git`
+  # that Syncthing carries between machines. diff-index does not refresh;
+  # --numstat compares content, so a file whose mtime alone moved is not listed.
+  [ -z "$(git diff-index --numstat HEAD -- "$synth" 2>/dev/null)" ] || return 0
   base=$(git log -1 --format=%H -- "$synth" 2>/dev/null)
   [ -n "$base" ] || return 0
   _CF_BASE="$base"
@@ -367,7 +373,7 @@ _content_filter_init() {
   # Three questions, one git call each — cost independent of the number of
   # candidates:
   #   changed and committed since the synthesis was written  ... base..HEAD
-  #   changed but not committed (staged or not)              ... diff HEAD
+  #   changed but not committed (staged or not)              ... diff-index HEAD
   #   never committed at all                                 ... untracked
   # `--relative` because every other path in this script is relative to the
   # current directory, while `git diff --name-only` on its own reports from the
@@ -375,7 +381,7 @@ _content_filter_init() {
   # match when run from a subdirectory, and the filter would drop everything.
   _CF_CHANGED=$(
     { git diff -z --name-only --relative "$base" HEAD 2>/dev/null
-      git diff -z --name-only --relative HEAD 2>/dev/null
+      git diff-index -z --numstat --relative HEAD 2>/dev/null | tr '\0' '\n' | cut -f3- | tr '\n' '\0'
       git ls-files -z --others --exclude-standard 2>/dev/null
     } | tr '\0' '\n' | sort -u
   )
@@ -518,7 +524,7 @@ _changed_inputs() {
         [ -n "$hit" ] || continue
         [ "$hit" = "$synth" ] && continue
         printf 'удалён: %s\n' "$hit"
-      done < <(git diff -z --name-only --relative --no-renames --diff-filter=D "$_CF_BASE" -- "${specs[@]}" 2>/dev/null)
+      done < <(git diff-index -z --name-only --relative --no-renames --diff-filter=D "$_CF_BASE" -- "${specs[@]}" 2>/dev/null)
     fi
   fi
 

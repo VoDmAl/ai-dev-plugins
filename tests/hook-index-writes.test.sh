@@ -18,12 +18,19 @@
 #   git --no-optional-locks status     no write      GIT_OPTIONAL_LOCKS=0 — same
 #   git diff        (index ↔ worktree) writes, EVEN with GIT_OPTIONAL_LOCKS=0
 #   git describe --dirty               writes, EVEN with GIT_OPTIONAL_LOCKS=0
-#   git diff <rev>, git diff --cached, diff-files, ls-files, rev-parse, log
-#                                      no write
+#   git diff <rev>  (rev ↔ worktree)   writes when a path it reads is stat-dirty,
+#                                      EVEN with GIT_OPTIONAL_LOCKS=0 (2026-10-07)
+#   git diff-index <rev>, git diff <rev> <rev>, git diff --cached, diff-files,
+#   ls-files, rev-parse, log, show     no write
 #
 # So the guard is `export GIT_OPTIONAL_LOCKS=0` in each script that reads git
 # (for python, in the env handed to the subprocess) — and it does NOT cover
-# `git diff` without a revision. Written where the call is, not in the
+# `git diff` without a revision, nor `git diff <rev>` against the working tree:
+# there the answer is plumbing, `git diff-index <rev>`. The first table said
+# `git diff <rev>` did not write. It was measured in the fixture below, which
+# has no HEAD, so no revision could be read at all; the drift signal's
+# `git diff HEAD` rewrote the index on every prompt here, unseen (2026-10-07).
+# WITH HISTORY closes that: a second fixture whose HEAD is borrowed. Written where the call is, not in the
 # dispatcher that happens to run it today: a script run standalone, or moved to
 # another caller, keeps its guard.
 #
@@ -73,9 +80,13 @@ mkdir -p "$PROJ"
 # refreshing read has something to write. Checksums, not mtimes: no sleeps, and
 # no dependence on the filesystem's timestamp granularity.
 STEP=0
+DIRTY_FILES="f"
 dirty() {
+  local x
   STEP=$((STEP+1))
-  touch -t "$(printf '2020010100%02d.%02d' $((STEP / 60 % 60)) $((STEP % 60)))" "$PROJ/f"
+  for x in $DIRTY_FILES; do
+    touch -t "$(printf '2020010100%02d.%02d' $((STEP / 60 % 60)) $((STEP % 60)))" "$PROJ/$x"
+  done
 }
 sum() { cksum < "$PROJ/.git/index"; }
 
@@ -179,6 +190,44 @@ for p in "${plugins[@]}"; do
   done < <(grep -rlI --exclude-dir=__pycache__ 'GIT_OPTIONAL_LOCKS' \
              "$REPO_ROOT/plugins/$p/scripts" "$REPO_ROOT/plugins/$p/lib" 2>/dev/null | sort)
 done
+
+# ---------------------------------------------------------------------------
+printf '\nWITH HISTORY: hooks that read the working tree against a revision\n'
+# ---------------------------------------------------------------------------
+# The fixture above has no HEAD, so a hook comparing the working tree with a
+# revision returns before it reaches git. Here HEAD is this repository's own,
+# borrowed through objects/info/alternates — no commit is made anywhere — and
+# the files given a new mtime are a synthesis document and one of its inputs,
+# which is what the drift signal reads.
+HIST="$TMP/hist"
+objs="$(cd "$REPO_ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd)/objects"
+( mkdir -p "$HIST" && cd "$HIST" && git init -q &&
+  printf '%s\n' "$objs" > .git/objects/info/alternates &&
+  git update-ref refs/heads/main "$(git -C "$REPO_ROOT" rev-parse HEAD)" &&
+  git symbolic-ref HEAD refs/heads/main && git read-tree HEAD && git checkout-index -a &&
+  git update-index -q --refresh ) >/dev/null 2>&1
+PROJ="$HIST"
+DIRTY_FILES="docs/model/suite.md plugins/vdm/scripts/distill-scan.sh"
+
+dirty; b=$(sum); ( cd "$PROJ" && git status --porcelain >/dev/null 2>&1 )
+if [ "$(sum)" != "$b" ]; then ok "control: a plain git status rewrites the index here too"
+else bad "control: a plain git status rewrites the index here too" "it did not — nothing below can see a write"; fi
+
+for p in "${plugins[@]}"; do
+  echo "── $p"
+  CUR=$p
+  for_each_hook "$p" green_one
+done
+
+# The class this section exists for: with porcelain `git diff` back in the
+# drift signal, a hook writes — otherwise the GREEN above proves nothing.
+rm -rf "$TMP/red"; mkdir -p "$TMP/red"; cp -R "$REPO_ROOT/plugins/vdm" "$TMP/red/vdm"
+sed -e 's/git diff-index /git diff /g' "$REPO_ROOT/plugins/vdm/scripts/distill-scan.sh" \
+  > "$TMP/red/vdm/scripts/distill-scan.sh"
+CUR=vdm; RED_HIT=""
+for_each_hook vdm red_one
+if [ -n "$RED_HIT" ]; then ok "RED: porcelain git diff <rev> in the drift signal → a hook writes ($RED_HIT)"
+else bad "RED: porcelain git diff <rev> in the drift signal → a hook writes" "no hook wrote — the fixture does not reach the drift signal"; fi
 
 echo
 echo "hook-index-writes: $PASS passed, $FAIL failed"
