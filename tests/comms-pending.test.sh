@@ -598,5 +598,38 @@ json_check "an event with nothing after it has no head: its words are the condit
 json_check "the event is still the item's date kind" \
   "all(i['date_kind'] == 'event' for i in items if 'после' in i['line'] or 'after:' in i['line'])"
 
+echo ""
+echo "== a sent letter edited since its commit =="
+# Field case (2026-10-06): the name of another letter landed in a sent one from
+# an editor, past every hook, and lay in the working tree 20 days — every
+# session saw ` M` and committed around it. Session start names such records.
+# No pending-paths here on purpose: letters live in comms/ either way.
+ED="$TMP/edited"; mkdir -p "$ED/t/comms" "$ED/comms"
+( cd "$ED" && git init -q . ) >/dev/null 2>&1
+printf -- '---\nsent: 2026-09-15\n---\n# to A\nbody\n' > "$ED/t/comms/2026-09-15-a-out.md"
+printf -- '---\nsent: 2026-09-16\n---\n# to B\nbody\n' > "$ED/t/comms/2026-09-16-b-out.md"
+printf -- '---\nsent: 2026-09-17\n---\n# from C\nbody\n' > "$ED/comms/2026-09-17-c-in.md"
+printf -- '---\ndraft: true\n---\n# to D\nbody\n' > "$ED/t/comms/2026-09-18-d-out.md"
+( cd "$ED" && git add -A >/dev/null 2>&1 &&
+  git -c user.email=t@example.invalid -c user.name=t commit -q -m fixture >/dev/null 2>&1 )
+OUT=$(CLAUDE_PROJECT_DIR="$ED" bash "$CHECKSH" </dev/null 2>&1); rc=$?
+expect_silent "every record as committed ⇒ the session start says nothing" "$OUT"
+
+printf '2026-09-16-b-out\n' >> "$ED/t/comms/2026-09-15-a-out.md"   # the field case
+rm "$ED/comms/2026-09-17-c-in.md"                                   # an inbound record, deleted
+printf 'more\n' >> "$ED/t/comms/2026-09-18-d-out.md"                # a draft is still being written
+printf -- '---\nsent: 2026-10-01\n---\n# to E\n' > "$ED/t/comms/2026-10-01-e-out.md"
+( cd "$ED" && git add t/comms/2026-10-01-e-out.md )                 # new, staged: someone's work in flight
+OUT=$(CLAUDE_PROJECT_DIR="$ED" bash "$CHECKSH" </dev/null 2>&1); rc=$?
+expect_says "RED: an edited sent letter is named" "$OUT" "t/comms/2026-09-15-a-out.md (+1/−0)"
+expect_says "RED: a deleted record too" "$OUT" "comms/2026-09-17-c-in.md (+0/−"
+expect_says "…counted" "$OUT" "2 sent letter(s) differ from HEAD"
+expect_not_says "a draft being written is not a record" "$OUT" "d-out.md"
+expect_not_says "a new letter staged and never committed is not an edited record" "$OUT" "e-out.md"
+expect_not_says "…and the pending pointer is not printed for it" "$OUT" "Who owes what"
+expect_exit "the reminder never blocks" 0 "$rc"
+# That it does not rewrite .git/index is held by tests/hook-index-writes.test.sh,
+# which runs every registered hook against a control that does write.
+
 printf '\ncomms-pending: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

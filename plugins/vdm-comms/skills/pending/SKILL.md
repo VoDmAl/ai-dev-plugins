@@ -182,13 +182,27 @@ becomes overdue by the calendar turning, not by anyone writing a file, so there
 is no tool call to hang it on; session start is the only moment available and
 also the right one.
 
+A second line names **sent letters edited since their commit**: a file in a
+`comms/` directory whose frontmatter carries `sent:` (outgoing or inbound) and
+whose working tree differs from `HEAD` — modified or deleted, with `+N/−M`. A
+sent letter is the record of what went out. An edit that syncs it with what was
+really sent is made in the same turn and committed with it; an edit that
+outlives the session is almost always an accident. Field case (2026-10-06): the
+name of another letter landed in a sent one from an editor, past every hook,
+and lay there 20 days while every session committed around the ` M`. When the
+line appears: `git diff -- <path>`, then commit the sync or restore the
+accident (`git checkout -- <path>`). A new letter staged and never committed is
+not named — that is usually another session's work in flight. This line does
+not need `pending-paths`.
+
 **After a write** the contract is checked on **new lines only** — lines that are
 not in `HEAD` — and a violation is returned to the assistant as feedback. The
 old tail is deliberately out of scope: every repository that keeps open items
 has one, it predates the contract, and re-reporting it on every edit is how a
 linter becomes background noise. Fix the tail as a migration, not as a hook.
 
-Both hooks stay silent in a project that has not set `pending-paths`. The
+Both hooks stay silent in a project that has not set `pending-paths`, except
+for the line about edited sent letters. The
 blocking one fails **closed**: if it could not run, it says `NOT CHECKED` and
 blocks rather than exiting quietly, because "the check failed" and "the check
 did not run" are different events and only the first is what a clean exit means.

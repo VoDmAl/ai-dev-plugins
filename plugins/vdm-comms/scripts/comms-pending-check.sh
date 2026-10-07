@@ -12,8 +12,12 @@
 # tool call to hang this on; and the first question of a session is exactly
 # "what is waiting".
 #
-# Silent when: `comms.pending-paths` is unset, the plugin is disabled, python3
-# is missing, or nothing is due.
+# A second line names sent letters edited since their commit (comms-pending.py
+# → edited_records): an editor's write passes every hook, and a record of what
+# went out then drifts unseen. That one does not need `pending-paths`.
+#
+# Silent when: the plugin is disabled, python3 is missing, or nothing is due
+# and no sent letter differs from HEAD.
 
 set -u
 
@@ -54,8 +58,11 @@ fi
 
 if [ "$rc" -eq 1 ] && [ -n "$out" ]; then
   printf '%s\n' "$out"
-  printf '        Who owes what: /vdm-comms:pending — or by owner:\n'
-  printf '        "${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh" --owner\n'
+  case "$out" in
+    *"[comms] pending:"*)
+      printf '        Who owes what: /vdm-comms:pending — or by owner:\n'
+      printf '        "${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh" --owner\n' ;;
+  esac
 fi
 [ -n "$nowline" ] && printf '%s\n' "$nowline"
 exit 0

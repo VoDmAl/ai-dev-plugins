@@ -692,6 +692,83 @@ def unsent_drafts(root, cfg, today, min_age=None):
     return sorted(out, key=lambda d: -(d["age"] or 0))
 
 
+EDITED_SHOWN = 5
+
+
+def edited_records(root):
+    """Sent letters edited since their commit: a `*.md` in a `comms/` directory
+    whose frontmatter carries `sent:` and whose working tree differs from HEAD.
+    → [{"file", "added", "deleted"}], paths relative to `root`.
+
+    A sent letter is the record of what went out. An edit after its commit is
+    either a sync with what was really sent — made in the same turn and
+    committed with it — or an accident, and one that outlives a session is
+    almost always the second. Field case (2026-10-06): the name of another
+    letter landed in a sent one from an editor, past every hook, and lay there
+    20 days; every session saw ` M` in `git status` and committed around it
+    with explicit paths. An editor's write has no tool call to hang a check on,
+    so session start is the moment.
+
+    An inbound letter carries `sent:` too (the day the other side sent it), and
+    it is a record just the same.
+
+    Modified and deleted only (`--diff-filter=MD`). A letter staged and never
+    committed is not an edited record: measured on the owner's projects
+    2026-10-07, all six such hits were new letters in a neighbour session's
+    index — its work in flight, not this session's to commit.
+
+    Plumbing, `git diff-index`, not `git diff HEAD`: the porcelain refreshes
+    the stat data of every path it reads and writes the index back when one is
+    stat-dirty — even with optional locks turned off, by environment or by flag
+    (measured 2026-10-07, git 2.54.0) — and the owner's `.git` travels between
+    machines. diff-index does not refresh; with --numstat it compares content,
+    so a file whose mtime alone moved is not listed. `git show` reads objects
+    only. Not a repository, or no HEAD yet — nothing to compare with, and
+    nothing is said.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "-C", root, "diff-index", "--numstat", "-z", "--no-renames", "--relative",
+             "--diff-filter=MD", "HEAD", "--", ":(glob)**/comms/*.md"],
+            capture_output=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if proc.returncode != 0:
+        return []
+    out = []
+    for rec in proc.stdout.decode("utf-8", "surrogateescape").split("\0"):
+        parts = rec.split("\t", 2)
+        if len(parts) != 3:
+            continue
+        added, deleted, rel = parts
+        path = os.path.join(root, rel)
+        if os.path.exists(path):
+            sent = letter_flags(path)[1]
+        else:
+            # Deleted: the record was the HEAD version, so that is what is read.
+            try:
+                text = subprocess.run(["git", "-C", root, "show", "HEAD:./" + rel],
+                                      capture_output=True, timeout=20).stdout
+                keys = fmmod.scalar_keys(fmmod.split_frontmatter(
+                    text.decode("utf-8", "replace")[:LETTER_READ_LIMIT])[0])
+                sent = keys.get("sent") not in (None, "", False)
+            except (OSError, subprocess.SubprocessError, fmmod.FrontmatterError):
+                sent = False
+        if sent:
+            out.append({"file": rel, "added": added, "deleted": deleted})
+    return out
+
+
+def edited_line(edited):
+    shown = ", ".join("%s (+%s/−%s)" % (e["file"], e["added"], e["deleted"])
+                      for e in edited[:EDITED_SHOWN])
+    more = " and %d more" % (len(edited) - EDITED_SHOWN) if len(edited) > EDITED_SHOWN else ""
+    return ("[comms] %d sent letter(s) differ from HEAD — a record of what went out, edited and not "
+            "committed: %s%s. Look first (git diff -- <path>): an edit that syncs the record with what "
+            "was really sent is committed now; anything else is restored (git checkout -- <path>)."
+            % (len(edited), shown, more))
+
+
 MEETING_DIR_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})-")
 
 
@@ -971,8 +1048,9 @@ def report(root, cfg, items, today, by_owner=False, show_all=False):
     return 0
 
 
-def brief(root, cfg, items, today):
-    """One line for a session start. Silent when there is nothing to act on."""
+def brief(root, cfg, items, today, edited=()):
+    """One line for a session start, and one more for sent letters edited since
+    their commit. Silent when there is nothing to act on."""
     b = buckets(items, today)
     drafts = unsent_drafts(root, cfg, today)
     untranscribed = meetings_without_transcript(root, cfg, today)
@@ -995,12 +1073,13 @@ def brief(root, cfg, items, today):
             "%s %s" % (u["series"], u["date"]) for u in unprepared[:3]))
     if passed:
         parts.append("%d series with a past `next:`" % len(passed))
-    if not parts:
-        return 0
-    if b["event"]:
-        parts.append("%d waiting on an event" % len(b["event"]))
-    print("[comms] pending: %s." % " · ".join(parts))
-    return 1
+    if parts:
+        if b["event"]:
+            parts.append("%d waiting on an event" % len(b["event"]))
+        print("[comms] pending: %s." % " · ".join(parts))
+    if edited:
+        print(edited_line(edited))
+    return 1 if parts or edited else 0
 
 
 def head_lines(root, path):
@@ -1133,8 +1212,14 @@ def main(argv):
         return 0
 
     today = cfgmod.today()
+    # Before the pending-paths gate: letters live in `comms/` whether or not the
+    # project keeps pending items.
+    edited = edited_records(root) if args.brief else []
     scoped = pending_files(root, cfg)
     if not scoped:
+        if edited:
+            print(edited_line(edited))
+            return 1
         return 0
 
     if args.files:
@@ -1158,7 +1243,7 @@ def main(argv):
                          ensure_ascii=False, indent=1))
         return 0
     if args.brief:
-        return brief(root, cfg, items, today)
+        return brief(root, cfg, items, today, edited)
     return report(root, cfg, items, today, by_owner=args.owner, show_all=args.all)
 
 
