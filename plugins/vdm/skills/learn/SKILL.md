@@ -174,8 +174,16 @@ codebase. Those go to the project's CLAUDE.md or `docs/llm/`, as below.
    it" does. A rule written only for the case that triggered it will not be
    recognised in the next domain.
 3. End with one origin line: project, date, the case in a sentence.
-4. Keep the whole file under **12 KB**. It rides in every session's context, and
-   the hook truncates beyond that (and says so).
+4. **The first paragraph is the rule.** The hook delivers only the heading and
+   the first paragraph of every `## ` rule — the reasons, the table and the
+   origin are read from the file when the rule applies. Keep that paragraph to
+   two or three sentences. The whole layer must stay under 9 000 bytes: a hook
+   output longer than about 10 000 characters is put into a file by the
+   harness, and the session sees a 2 KB preview (measured 2026-10-07 — the
+   layer went unseen at 1 034 session starts that way). Before writing, and
+   after, measure — it exits 1 and names any rule that no longer fits:
+
+       "${CLAUDE_PLUGIN_ROOT}/scripts/shared-rules.sh" --measure
 5. Do not copy the rule into the project's CLAUDE.md. If the project already
    carries a local copy, point it at the shared file — in **this** project only;
    other projects are not yours to edit.

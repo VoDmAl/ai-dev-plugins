@@ -2,10 +2,10 @@
 title: "Блокирующий гард, отменённый по таймауту, пропускает вызов: таймауты и matcher хуков суиты"
 slug: hook-timeout-fail-open
 description: "PreToolUse-гард, отменённый по таймауту, пропускает вызов — дать блокирующим гардам запас и matcher"
-status: in-progress
+status: dormant
 session-type: prd-prep
 created: 2026-10-01
-last-updated: 2026-10-01
+last-updated: 2026-10-07
 ---
 
 # Блокирующий гард, отменённый по таймауту, пропускает вызов: таймауты и matcher хуков суиты

@@ -69,50 +69,94 @@ else
 fi
 chmod 644 "$RULES"
 
-echo "== the ceiling is 12 KB (owner, 2026-09-28) =="
-# The layer grew by two rules in one day from two sessions and reached 8 150 of
-# 8 192 bytes; an approved rule of 419 bytes no longer fitted, and the cut would
-# have dropped exactly its last lines. The owner raised the ceiling rather than
-# evict rules. A file between the old and the new ceiling must load whole.
+echo "== every rule reaches the session, as its first paragraph =="
+# Field case (2026-10-07): the harness puts a hook's text output longer than
+# about 10 000 characters into a file and hands the session a 2 KB preview. The
+# layer then carried 12 288 bytes of a 16 918-byte file and was put away at
+# 1 034 session starts in a week — sessions saw the header and half a rule.
+# Now the heading and first paragraph of each rule ride; the rest is read from
+# the file. A file well over the old ceiling must deliver every rule, whole.
 {
-  printf '## Правило между старым и новым потолком\n\n'
-  i=0; while [ $i -lt 130 ]; do printf 'Строка правила номер %03d, файл больше 8 КБ.\n' "$i"; i=$((i+1)); done
-  printf 'LAST LINE OF THE FILE\n'
+  printf '# Cross-project rules\n\nA preamble about the file itself.\n\n'
+  i=1; while [ $i -le 12 ]; do
+    printf '## Правило номер %02d\n\nСамо правило номер %02d — две фразы. Вторая фраза правила %02d.\n\n' "$i" "$i" "$i"
+    j=0; while [ $j -lt 20 ]; do printf 'BODY-ONLY строка обоснования %02d-%02d, таблицы и случаи.\n' "$i" "$j"; j=$((j+1)); done
+    printf '\nOrigin: проект, 2026-10-07 — случай.\n\n'
+    i=$((i+1))
+  done
 } > "$RULES"
 size="$(wc -c < "$RULES" | tr -d ' ')"
-if [ "$size" -gt 8192 ] && [ "$size" -le 12288 ]; then
-  ok "fixture sits between the old and the new ceiling ($size bytes)"
-else
-  bad "fixture sits between the old and the new ceiling" "it is $size bytes"
-fi
-out="$(run "$TMP/project-a")"
-says_not "a file under 12 KB is not truncated" "$out" "Truncated"
-says "…its last line reaches the context" "$out" "LAST LINE OF THE FILE"
+[ "$size" -gt 16000 ] && ok "fixture is past the old 12 KB ceiling ($size bytes)" \
+  || bad "fixture is past the old 12 KB ceiling" "it is $size bytes"
+RAW="$TMP/out.bin"; run "$TMP/project-a" > "$RAW"; out="$(cat "$RAW")"
+n=0; i=1; while [ $i -le 12 ]; do case "$out" in *"Само правило номер $(printf %02d $i)"*) n=$((n+1)) ;; esac; i=$((i+1)); done
+eq "RED: all twelve rules reach the session" "$n" "12"
+says_not "…as first paragraphs: the body stays in the file" "$out" "BODY-ONLY"
+says_not "…and the preamble about the file does not ride" "$out" "A preamble about the file"
+says_not "…nothing is reported as cut" "$out" "did not fit"
+says "the header says where the reasons and cases are" "$out" "read a rule's section when it applies"
+bytes="$(wc -c < "$RAW" | tr -d ' ')"
+[ "$bytes" -le 9000 ] && ok "RED: the output stays under the harness threshold ($bytes ≤ 9000 bytes)" \
+  || bad "RED: the output stays under the harness threshold" "$bytes bytes"
 
-echo "== the layer has a ceiling, and cuts on a line =="
+echo "== rules that do not fit are named, never cut in the middle =="
 {
-  printf '## Правило о кириллице\n\n'
-  i=0; while [ $i -lt 400 ]; do printf 'Строка правила номер %03d — чтобы файл стал больше лимита.\n' "$i"; i=$((i+1)); done
+  i=1; while [ $i -le 30 ]; do
+    printf '## Длинное правило %02d\n\n' "$i"
+    j=0; while [ $j -lt 6 ]; do printf 'Первый абзац правила %02d слишком длинный, строка %d, кириллица.\n' "$i" "$j"; j=$((j+1)); done
+    printf '\n'
+    i=$((i+1))
+  done
 } > "$RULES"
-RAW="$TMP/out.bin"
-run "$TMP/project-a" > "$RAW"
-out="$(cat "$RAW")"
-says "an oversized file is truncated, and says so" "$out" "Truncated"
-says "…naming its real size" "$out" "$(wc -c < "$RULES" | tr -d ' ') bytes"
-# Judged on the RAW bytes, in the C locale. A first version extracted the body
-# with sed in the user's UTF-8 locale — and BSD sed stops at an illegal byte
-# sequence, so a byte-offset cut produced a clean-looking prefix and the test
-# passed on exactly the input it exists to catch.
+run "$TMP/project-a" > "$RAW"; out="$(cat "$RAW")"
+bytes="$(wc -c < "$RAW" | tr -d ' ')"
+[ "$bytes" -le 9000 ] && ok "over budget, the output still stays under it ($bytes bytes)" \
+  || bad "over budget, the output still stays under it" "$bytes bytes"
+says "…the rules that did not fit are counted" "$out" "rule(s) did not fit the layer"
+says "…named, so the session knows they exist" "$out" "Длинное правило 30"
+says "…and where to read them" "$out" "$RULES"
+says "…and the author is told what to shorten" "$out" "Shorten first paragraphs"
+says "a rule that fitted arrives whole" "$out" "Первый абзац правила 01 слишком длинный, строка 5"
 if python3 -c 'import sys; open(sys.argv[1], "rb").read().decode("utf-8")' "$RAW" 2>/dev/null; then
-  ok "the cut never splits a letter (the output is valid UTF-8)"
+  ok "the output is valid UTF-8 — no letter split"
 else
-  bad "the cut never splits a letter (the output is valid UTF-8)" "the hook output does not decode as UTF-8"
+  bad "the output is valid UTF-8 — no letter split" "the hook output does not decode as UTF-8"
+fi
+
+echo "== a file with no rules is delivered by whole lines =="
+{
+  i=0; while [ $i -lt 400 ]; do printf 'Строка без заголовков номер %03d — чтобы файл стал больше лимита.\n' "$i"; i=$((i+1)); done
+} > "$RULES"
+run "$TMP/project-a" > "$RAW"; out="$(cat "$RAW")"
+says "an oversized file without rules is truncated, and says so" "$out" "Truncated"
+bytes="$(wc -c < "$RAW" | tr -d ' ')"
+[ "$bytes" -le 9000 ] && ok "…under the threshold ($bytes bytes)" || bad "…under the threshold" "$bytes bytes"
+if python3 -c 'import sys; open(sys.argv[1], "rb").read().decode("utf-8")' "$RAW" 2>/dev/null; then
+  ok "…valid UTF-8"
+else
+  bad "…valid UTF-8" "the hook output does not decode as UTF-8"
 fi
 last="$(LC_ALL=C sed '/Truncated: the rules file/,$d' "$RAW" | LC_ALL=C sed '/^$/d' | tail -1)"
 case "$last" in
-  "Строка правила номер "*"больше лимита.") ok "…and ends on a whole line" ;;
+  "Строка без заголовков номер "*"больше лимита.") ok "…and ends on a whole line" ;;
   *) bad "…and ends on a whole line" "last line before the notice is cut" ;;
 esac
+
+echo "== --measure, for /vdm:learn before it writes a rule =="
+printf '## Короткое правило\n\nОдна фраза.\n\nОбоснование.\n' > "$RULES"
+out="$(bash "$HOOK" --measure 2>&1)"; rc=$?
+eq "a layer that fits ⇒ exit 0" "$rc" "0"
+says "…and says how much it carries" "$out" "of 9000 bytes"
+{
+  i=1; while [ $i -le 30 ]; do
+    printf '## Длинное правило %02d\n\n' "$i"
+    j=0; while [ $j -lt 6 ]; do printf 'Первый абзац правила %02d слишком длинный, строка %d, кириллица.\n' "$i" "$j"; j=$((j+1)); done
+    printf '\n'; i=$((i+1))
+  done
+} > "$RULES"
+out="$(bash "$HOOK" --measure 2>&1)"; rc=$?
+eq "a layer that does not fit ⇒ exit 1" "$rc" "1"
+says "…and names what did not fit" "$out" "did not fit"
 
 echo "== wiring =="
 hj="$REPO_ROOT/plugins/vdm/hooks/hooks.json"
