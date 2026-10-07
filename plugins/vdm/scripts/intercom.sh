@@ -587,7 +587,15 @@ cmd_send() {
       intercom_find_letter "$reply_to" | while IFS= read -r _p; do
         printf '     %s\n' "$(intercom_letter_ref "$_p")"
       done >&2
-      printf '   Qualify it: --reply-to <identity>/<slug>\n' >&2
+      if [ "$(intercom_find_letter "$reply_to" | while IFS= read -r _p; do intercom_letter_ref "$_p"; done | sort -u | wc -l | tr -d ' ')" -eq 1 ]; then
+        # Same reference twice: a letter in the inbox and its namesake in _done/.
+        # Qualifying cannot tell them apart; picking the inbox one up can — a
+        # clash in _done/ gives it a name of its own.
+        printf '   Both are one reference — a letter in that inbox and its namesake in the archive.\n' >&2
+        printf '   Once the inbox one is picked up it gets a name of its own (<slug>.<time>); use that.\n' >&2
+      else
+        printf '   Qualify it: --reply-to <identity>/<slug>\n' >&2
+      fi
       exit 3
     fi
     reply_path="$(intercom_find_letter "$reply_to" | head -1)"
@@ -650,6 +658,26 @@ cmd_send() {
   outfile="$inbox/$slug.md"
   if [ -e "$outfile" ]; then
     _ic_die "send: a pending message '$slug' already exists at $outfile (use a different slug, or have the recipient pick up the existing one first)."
+  fi
+  # The archive too. A reference is `<identity>/<slug>` and is resolved in the
+  # inbox AND _done/, so a second letter of an archived letter's name makes the
+  # reference name both — and a reply to the new one is refused as ambiguous,
+  # with nothing to qualify it by (echelon, 2026-10-06).
+  if [ -e "$inbox/_done/$slug.md" ]; then
+    local free="$slug-2" n_free=3 seen_title seen_at
+    while [ -e "$inbox/$free.md" ] || [ -e "$inbox/_done/$free.md" ]; do
+      free="$slug-$n_free"; n_free=$((n_free + 1))
+    done
+    seen_title="$(grep -m1 '^# ' "$inbox/_done/$slug.md" 2>/dev/null | sed 's/^# //')"
+    seen_at="$(intercom_fm_field "$inbox/_done/$slug.md" created)"
+    {
+      printf 'intercom: ✗ "%s" already names a letter in %s'"'"'s archive (%s, "%s") — not sending.\n' \
+        "$slug" "$canon" "${seen_at:-?}" "${seen_title:-$slug}"
+      printf '   A second letter of that name would make `%s/%s` name two letters, and a reply to\n' "$canon" "$slug"
+      printf '   either could not say which. Another slug: intercom send %s %s …\n' "$to" "$free"
+      printf '   If this letter continues that one, add: --reply-to %s/%s\n' "$canon" "$slug"
+    } >&2
+    exit 1
   fi
   [ -f "$_INTERCOM_TEMPLATE" ] || _ic_die "send: template not found at $_INTERCOM_TEMPLATE"
   # Rendered beside the letter and moved into place only when complete, so the
@@ -1169,7 +1197,19 @@ cmd_reply() {
     body_file="$_IC_REPLY_BODY"
   fi
 
-  local args=("$sender" "$slug_out" --title "$title" --reply-to "$id/$slug" --body "$body_file")
+  # A clash already on disk — an older version, or a sender on another machine
+  # that has not updated, wrote this slug while its namesake lay in _done/. Then
+  # `<id>/<slug>` names both letters, so the brief is archived FIRST: a clash in
+  # _done/ gives it a name of its own, and the reply links to that name.
+  local reply_ref="$id/$slug"
+  if [ "$msg" = "$inbox/$slug.md" ] && [ -e "$inbox/_done/$slug.md" ]; then
+    msg="$(_ic_archive "$msg")" || exit 1
+    reply_ref="$(intercom_letter_ref "$msg")"
+    printf '✅ intercom: archived first, as %s — `%s/%s` also names an older letter in your archive.\n' "$msg" "$id" "$slug"
+    printf '   Should the reply below fail, answer it as: intercom reply %s …\n' "${reply_ref#*/}"
+  fi
+
+  local args=("$sender" "$slug_out" --title "$title" --reply-to "$reply_ref" --body "$body_file")
   [ -n "$from_agent" ] && args+=(--from-agent "$from_agent")
   cmd_send "${args[@]}"
 

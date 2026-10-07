@@ -1212,5 +1212,49 @@ says "pickup --grow hands the crystal a Next action for the outcome" "$out" '- [
 says "…with the command that discharges it" "$out" "intercom reply ask-nine"
 [ -f "$R/hop-b/ask-nine.md" ] && ok "…and still archives nothing" || bad "pickup --grow archived the brief"
 
+echo "== one slug, one letter: an inbox and its archive never share a name =="
+# Field case (echelon, 2026-10-06): one sender wrote the same slug twice, a day
+# apart. The first letter lay in _done/, the second in the inbox, and
+# `<identity>/<slug>` named both — so `reply` was refused as ambiguous, and the
+# advice "qualify it as <identity>/<slug>" repeated the very reference that was
+# ambiguous. `send` checked the inbox for a clash, never the archive.
+( cd "$TMP/hop-a" && bash "$IC" send hop-b dup-one --title "First" --body "$B/ask.md" >/dev/null 2>&1 )
+( cd "$TMP/hop-b" && bash "$IC" pickup dup-one >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-a" && bash "$IC" send hop-b dup-one --title "Second" --body "$B/ask.md" 2>&1 )"; rc=$?
+[ "$rc" -ne 0 ] && ok "RED: send refuses a slug the recipient's archive already holds" \
+  || bad "RED: send refuses a slug the recipient's archive already holds" "rc=$rc"
+[ ! -f "$R/hop-b/dup-one.md" ] && ok "…and writes nothing" || bad "…and writes nothing" "a second dup-one is in the inbox"
+says "…names the archived letter" "$out" '"First"'
+says "…offers a free slug" "$out" "dup-one-2"
+says "…and the link, in case this letter continues that one" "$out" "--reply-to hop-b/dup-one"
+
+# A clash already on disk — left by an older version, or a sender on another
+# machine that has not updated yet. The reply must still go out, linked to the
+# letter it answers and not to its older namesake.
+( cd "$TMP/hop-a" && bash "$IC" send hop-b dup-two --title "Old ask" --body "$B/ask.md" >/dev/null 2>&1 )
+( cd "$TMP/hop-b" && bash "$IC" pickup dup-two >/dev/null 2>&1 )
+sed -e 's/^# Old ask$/# New ask/' -e 's/^status: done$/status: pending/' \
+  "$R/hop-b/_done/dup-two.md" > "$R/hop-b/dup-two.md"
+out="$( cd "$TMP/hop-b" && bash "$IC" reply dup-two --done "Did the new ask" --ball "nobody — closed" 2>&1 )"; rc=$?
+eq "RED: reply to a letter whose slug its archive also holds goes out" "$rc" "0"
+L2="$(ls "$R/hop-a"/dup-two-outcome*.md 2>/dev/null | head -1)"
+rt="$(grep '^reply-to:' "$L2" 2>/dev/null | sed 's/^reply-to: //')"
+case "$rt" in
+  hop-b/dup-two.[0-9]*) ok "…linked to the answered letter under a name of its own" ;;
+  *)                    bad "…linked to the answered letter under a name of its own" "reply-to: ${rt:-none}" ;;
+esac
+says "…a name that leads to the new letter, not its namesake" \
+  "$(cd "$TMP/hop-a" && bash "$IC" chain "${rt:-none}" 2>&1)" "New ask"
+[ ! -f "$R/hop-b/dup-two.md" ] && ok "…and the answered letter is archived" || bad "…and the answered letter is archived"
+says "…the older namesake is left as it was" "$(cat "$R/hop-b/_done/dup-two.md" 2>/dev/null)" "# Old ask"
+# A relay that names such a clash cannot be qualified out of it — the advice
+# must say what does tell the two apart.
+sed -e 's/^status: done$/status: pending/' "$R/hop-b/_done/dup-two.md" > "$R/hop-b/dup-three.md"
+cp "$R/hop-b/dup-three.md" "$R/hop-b/_done/dup-three.md"
+out="$( cd "$TMP/hop-c" && bash "$IC" send hop-a relay-clash --reply-to hop-b/dup-three --body "$B/ask.md" 2>&1 )"; rc=$?
+eq "a relay naming a clash is refused" "$rc" "3"
+says "…with what tells the two apart" "$out" "gets a name of its own"
+says_not "…not the qualifying advice that cannot work" "$out" "Qualify it"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

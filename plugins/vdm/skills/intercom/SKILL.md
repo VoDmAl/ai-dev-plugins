@@ -408,6 +408,17 @@ user's word as that agent's name; ask the user if it is not clear; use the
 identity alone for a hint that is not a name. Only when the recipient genuinely
 has never registered (a brand-new repo) use `--first-contact`.
 
+**One slug names one letter in an inbox — archive included.** A reference
+`<identity>/<slug>` is resolved in the inbox and its `_done/`, so `send` refuses
+a slug the recipient already holds in either. The refusal names the archived
+letter, offers a free slug, and gives `--reply-to <identity>/<slug>` in case the
+new letter continues the old one. Field case (echelon, 2026-10-06): a sender
+reused a slug a day later, and the reply to the new letter was refused as
+ambiguous with nothing to qualify it by. A clash already on disk — left by an
+older version — `reply` handles itself: it archives the brief first, where the
+clash gives it a name of its own (`<slug>.<time>`), and links the outcome to
+that name.
+
 ### The relay form — reference the previous letter, never paste it
 
 A relay is a letter that travels: A writes to B, B adds facts and passes it to
