@@ -155,10 +155,11 @@ is shown to anyone, and open the sections below when a line does not settle.
   | `team` | writes itself | writes |
   | `peer` | writes itself, tone by this skill | writes |
   | `careful` | does not write — briefs the HQ | a draft only, every word checked; the owner reads it before it goes |
-  | `top` | does not write — briefs the HQ | asks the owner whether to write at all, before any draft |
+  | `exec` | does not write — briefs the HQ | asks the owner whether to write at all, before any draft |
 
-  No profile, no field, or a value outside these four counts as `careful`. Look
-  the person up by profile file name, login or address:
+  No profile, no field, or a value outside these four counts as `careful`;
+  the former `top` reads as `exec`. Look the person up by profile file name,
+  login or address:
 
   ```bash
   "${CLAUDE_PLUGIN_ROOT}/scripts/comms-people.py" show <slug | login | address>
@@ -455,7 +456,7 @@ every other key stays as the HQ keeps it.
 
 ```yaml
 ---
-trust: peer                       # team | peer | careful | top; none = careful
+trust: peer                       # team | peer | careful | exec; none = careful
 mail_from:                        # the owner's word on From, per address of theirs
   - to: ivan@their.example
     from: Our Name <me@ours.example>
@@ -464,7 +465,15 @@ mail_from:                        # the owner's word on From, per address of the
 
 `trust` is not `register` (§ 6). The register says how a request is made; trust
 says who may write at all, and how much checking the text takes. `peer` is a
-value of both and means different things on each.
+value of both and means different things on each. `exec` and the register
+`executor` only sound alike: `exec` is leadership, `executor` a reader who does
+the work in their own zone.
+
+`trust` is not `confidential: true` either. That field says who may *read* the
+person's threads — echelon closes them to agents and signals the owner — and it
+is set regardless of rank. This skill does not read it. A profile still saying
+`trust: top` (the former name, which answered both) becomes `trust: exec` plus
+`confidential: true`; until then it reads as `exec`, never as `careful`.
 
 A hand finds the HQ through the intercom directory, so `comms.hq` names a
 project, not a path. The people directory is the HQ's own `comms.people-dir`.

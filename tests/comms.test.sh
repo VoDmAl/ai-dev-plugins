@@ -1363,7 +1363,8 @@ printf '{"identity": "hq-proj", "aliases": [], "names": ["the hq"], "paths": ["%
 printf -- '---\nslug: anna\ntrust: team\nidentity:\n  jira: anna_k\n---\n# Anna\n' > "$HQ/crew/anna.md"
 printf -- '---\ntrust: Peer\nmail_from:\n  - to: boris@their.example\n    from: Owner <me@ours.example>\n---\n# Boris\n' > "$HQ/crew/boris.md"
 printf -- '---\ntrust: carefull\n---\n# Vera — writes to anna_k often\n' > "$HQ/crew/vera.md"
-printf -- '---\ntrust: top\n---\n# Gleb\n' > "$HQ/crew/gleb.md"
+printf -- '---\ntrust: exec\n---\n# Gleb\n' > "$HQ/crew/gleb.md"
+printf -- '---\ntrust: top\nconfidential: true\n---\n# Legacy lead\n' > "$HQ/crew/legacy-lead.md"   # the former name of exec
 printf '# Dina\n\n**Email**: dina@their.example\nWorks with Al on payments.\n' > "$HQ/crew/dina.md"   # no frontmatter at all
 printf -- '---\ntrust: peer\nlinks:\n  blocks:\n    - x: 1\nmail_from:\n  - to: e@their.example\n    from: me@ours.example\n---\n# Egor\n' > "$HQ/crew/egor.md"
 printf -- '---\ntrust: peer\n---\n# Another Anna\n' > "$HQ/crew/anna-k.md"
@@ -1396,7 +1397,11 @@ expect_says "RED: an unknown level reads as careful" "$OUT" "trust: careful"
 expect_says "…and names the typo, not just the default" "$OUT" "unknown \`trust: carefull\`"
 expect_says "…and a hand does not write to careful: it briefs the HQ" "$OUT" "do not write — brief the HQ"
 run_people show gleb --project-root "$HAND"; rc=$?
-expect_says "RED: top goes through the HQ as well" "$OUT" "do not write — brief the HQ"
+expect_says "RED: exec goes through the HQ as well" "$OUT" "do not write — brief the HQ"
+run_people show legacy-lead --project-root "$HAND"; rc=$?
+expect_says "RED: the former \`trust: top\` reads as exec, not as an unknown value" "$OUT" "trust: exec (\`trust: top\` is the former name"
+expect_says "…the note names what the profile becomes" "$OUT" "\`trust: exec\` plus \`confidential: true\`"
+expect_says "…and a hand still briefs the HQ" "$OUT" "do not write — brief the HQ"
 run_people show dina@their.example --project-root "$HAND"; rc=$?
 expect_exit "RED: a profile with no frontmatter is found by the address in its body ⇒ exit 0" 0 "$rc"
 expect_says "…and, with no trust field, it is careful" "$OUT" "careful (no \`trust:\` in the profile)"
@@ -1438,7 +1443,9 @@ expect_says "…and the fix is named" "$OUT" "comms.hq"
 
 run_people show gleb --project-root "$HQ"; rc=$?
 expect_exit "GREEN: the HQ reads its own people/ ⇒ exit 0" 0 "$rc"
-expect_says "…and for top it asks the owner first" "$OUT" "ask the owner whether to write at all"
+expect_says "…and for exec it asks the owner first" "$OUT" "ask the owner whether to write at all"
+run_people show legacy-lead --project-root "$HQ"; rc=$?
+expect_says "RED: the former top keeps the owner's question at the HQ — careful would drop it" "$OUT" "ask the owner whether to write at all"
 run_people show vera --project-root "$HQ"; rc=$?
 expect_says "…and careful is a draft the owner reads" "$OUT" "the owner reads it before it goes"
 

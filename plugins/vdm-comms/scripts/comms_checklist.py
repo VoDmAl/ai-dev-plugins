@@ -43,7 +43,7 @@ CHECKS = (
     "Questions only for the gap: a \"What we know\" line above the separator, with sources; not found = \"not seen in our sources\".",
     "Every fact about their system or a person has a source; \"always\" / \"any\" holds in every case; a ticket goes by its full key, never a bare number — under the ticket itself, \"this task\".",
     "Their field is not explained to them; nothing is prescribed inside their zone.",
-    "Recipients' profiles read and applied, and their `trust` lets this project write: a hand writes to team and peer only — careful, top and anyone not in people/ go through the HQ. No reproach for a past silence.",
+    "Recipients' profiles read and applied, and their `trust` lets this project write: a hand writes to team and peer only — careful, exec and anyone not in people/ go through the HQ. No reproach for a past silence.",
     "The channel's form: an email has a subject (the same thread keeps `RE:`, a new matter a new one), a greeting on its own line, a paragraph per thought; a ticket addresses people by mention — `[~login]` in Jira, `@login` in GitLab.",
     "Attachments: the text says \"attached\", and the file has a 📎 section.",
     "After sending: who has the ball, and where the waiting item with a review date lives; whoever else waits on this subject is in copy — not us in the middle; whoever saw the subject earlier and needs no part in what follows (a copy of the letter we answer, someone the document was shared with) gets a blind copy of this first answer — they see it is not dropped, and reply-all leaves them out.",

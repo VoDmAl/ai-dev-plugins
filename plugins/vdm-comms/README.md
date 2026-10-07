@@ -103,7 +103,7 @@ HQ's. It names the HQ by its intercom identity, not by a path, so it holds on
 every machine and clone; the checkout comes from the intercom directory, the
 directory name from the HQ's own `people-dir`. Without `hq` a project is its
 own HQ. Two fields in a profile decide who may write and from which address —
-`trust: team | peer | careful | top` (none = `careful`) and `mail_from` pairs;
+`trust: team | peer | careful | exec` (none = `careful`; the former `top` reads as `exec`) and `mail_from` pairs;
 the format is in `/vdm-comms:letters` → *People profiles*.
 
 `labels` is the wording of the files the generator writes **into your

@@ -5,7 +5,7 @@ description: "Тексты людям от агентов: форма по ка�
 status: ready
 session-type: prd-prep
 created: 2026-10-01
-last-updated: 2026-10-03
+last-updated: 2026-10-07
 relates-to:
   - "[[vdm-comms-letters/workitem|vdm-comms-letters]]"
   - "[[vdm-comms-letter-mechanics/workitem|vdm-comms-letter-mechanics]]"
@@ -168,6 +168,30 @@ echelon и за проектами. Упоминания в тикетных с�
 **Implication:** реализуется вместе с переводом интеграции vdm-comms на роли (`public-repo-cleanup`, фаза C,
 Sidetrack #2); до тех пор кристалл в `blocked`. Предложение DL #4 о глобальном конфиге снято.
 
+### #6 / 2026-10-07 / `top` делится на два поля: `trust: exec` — как писать, `confidential: true` — кто читает
+
+**Source:** user
+**Basis:** user-stated
+**Basis-detail:** решение владельца пришло письмом агента хранилища заметок владельца `trust-confidential-split`
+(intercom, 2026-10-07): владелец разбирал там людей и сказал «может быть надо top -> confidential и это будет
+понятнее, а то видишь путаница», а на предложение разделить поле — «Ну давай да, согласен». Остальное в письме
+пересказ агента. Замер у нас: `top` читали `LEVELS`/`next_step` в `comms_people.py`, строка чеклиста, § 5 и
+«People profiles» скилла `letters`, README, тесты. Профилей с `top` четыре, у двух штабов (счёт echelon,
+2026-10-07, в письме).
+**Context:** `top` из DL #2 отвечал на два вопроса сразу. Как писать: только штаб, и сначала спросить владельца. Кто
+может читать: echelon закрывает ветки человека для агентов и шлёт владельцу сигнал. Название «ключевые люди»
+читали как «важные мне», а имелось в виду руководство. Конфиденциальность к рангу не привязана: письма юриста
+бывают закрытее рабочей переписки руководителя.
+**Why:** одно поле — один вопрос. Шкала `trust` остаётся про письмо, и ей нужна только ступень `exec`. Закрытость —
+отдельное поле, его читает echelon, а не скилл: на то, кто вправе писать, оно не влияет. Старое `top` читается
+как `exec` с пометкой. Если бы оно стало незнакомым значением, сработал бы откат к `careful`, и вопрос владельцу
+«писать ли вообще» пропал бы молча.
+**Implication:** vdm-comms 0.21.0: `trust: team | peer | careful | exec`; `RENAMED = {"top": "exec"}` в
+`comms_people.py`, пометка называет, во что превращается профиль (`trust: exec` и `confidential: true`). `confidential`
+скилл не читает. Часть echelon — `top.py` по `confidential: true`, слова сигнала, переходное чтение `trust: top`.
+Профили штабов переводить, когда echelon начнёт читать `confidential`, не раньше: иначе он потеряет закрытые ветки
+этих людей. vdm-comms к этому моменту читает обе формы.
+
 ## Sidetracks
 
 Пока нет.
@@ -191,6 +215,10 @@ Sidetrack #2); до тех пор кристалл в `blocked`. Предлож�
       реестре, и `comms_people.access_layer_bin()` отдаёт команду слоя доступа (vdm-comms 0.18.0,
       [[intercom-agent-roles/workitem|intercom-agent-roles]]). Найти слой по роли в реестре intercom, вызвать его
       `hq <корень>`; `comms_people.py`, тесты, § 5 скилла, README; vdm-comms MINOR
+- [x] `exec` вместо `top` в шкале `trust`, старое `top` читается как `exec` (DL #6): `comms_people.py`, чеклист, § 5 и
+      «People profiles» скилла, README, тесты; vdm-comms 0.21.0
+- [ ] Outcome to агенту хранилища заметок: `intercom reply trust-confidential-split` — шкала готова с 0.21.0;
+      профили штабов переводить после `confidential` у echelon
 - [ ] Outcome to `vdx`: intercom reply people-wiring-hq-decision --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
 - [x] Outcome to `hq`: letters-jira-mention-form — ушёл `letters-jira-mention-form-outcome` 2026-10-01
 - [x] Outcome to `hq`: comments-system-vdm — ушёл `comments-system-vdm-outcome` 2026-10-01

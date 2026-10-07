@@ -23,7 +23,7 @@ its own HQ.
 Two fields in a profile's frontmatter. Both are read by echelon as well, which
 is why their shape is fixed here and not left to each HQ:
 
-    trust: team | peer | careful | top
+    trust: team | peer | careful | exec
     mail_from:
       - to: ivan@their.example
         from: Our Name <me@ours.example>
@@ -35,12 +35,22 @@ checked first (owner: «не true/false а степень свободности
     team     a hand writes itself
     peer     a hand writes itself; the tone is the skill's
     careful  only the HQ writes; every word checked, the owner sees it first
-    top      leadership; only the HQ, and the owner decides whether to write
+    exec     leadership; only the HQ, and the owner decides whether to write
 
 No field, no profile, or a value outside the four reads as `careful`. That
 default is the owner's rule, and it makes an unmarked profile the safe case.
 `trust` is read line by line (`scalar_keys`), so a profile whose other
 frontmatter is outside what the reader supports keeps its level.
+
+`trust: top` is the former name of `exec` and reads as `exec`, with a note.
+Until 2026-10-07 `top` answered a second question as well — who may *read*: echelon
+closes the person's threads to agents and signals the owner. That one is not
+tied to rank (a lawyer's letters can be more closed than a manager's routine
+mail), so it is now a field of its own, `confidential: true`, which echelon
+reads and this module does not: it says nothing about writing. A profile still
+saying `top` becomes `trust: exec` plus `confidential: true`. Reading `top` as
+an unknown value would fall back to `careful` and drop the owner's question
+without a word (crystal `vdm-comms-outward-checks`, DL #6).
 
 `mail_from` is a list of pairs, not a map from address to address. A key holding
 `@` is outside the reader's subset, and a pair is exactly what the owner named:
@@ -49,7 +59,8 @@ this pair comes first.
 
 Not to be confused with `comms.register` (`letters` § 6). That one says how a
 request is made. `trust` says who may write at all, and how much checking it
-takes. `peer` exists on both axes and means different things on each.
+takes. `peer` exists on both axes and means different things on each; `exec`
+and the register `executor` only sound alike.
 
 Stdlib only, like the rest of the plugin. The intercom store root is resolved
 in the same order as `intercom_store_root` in the vdm plugin
@@ -67,14 +78,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import comms_config as cfgmod  # noqa: E402
 import comms_frontmatter as fmmod  # noqa: E402
 
-LEVELS = ("team", "peer", "careful", "top")
+LEVELS = ("team", "peer", "careful", "exec")
 DEFAULT_LEVEL = "careful"
+
+# A former name → the level it means now.
+RENAMED = {"top": "exec"}
 
 MEANING = {
     "team": "a hand writes itself",
     "peer": "a hand writes itself; the tone is the skill's",
     "careful": "only the HQ writes; every word checked, the owner sees it before it goes",
-    "top": "leadership: only the HQ, and the owner decides whether to write at all",
+    "exec": "leadership: only the HQ, and the owner decides whether to write at all",
 }
 
 # Shorter than this, a search would find a person in every profile's prose.
@@ -313,6 +327,9 @@ def level_of(raw):
     value = str(raw).strip().lower()
     if value in LEVELS:
         return value, None
+    if value in RENAMED:
+        return RENAMED[value], ("`trust: %s` is the former name — the profile becomes "
+                                "`trust: %s` plus `confidential: true`" % (value, RENAMED[value]))
     return DEFAULT_LEVEL, "unknown `trust: %s` — the levels are %s" % (raw, ", ".join(LEVELS))
 
 
@@ -326,7 +343,7 @@ def next_step(level, hq):
                 % (hq, hq))
     if level == "careful":
         return "a draft only, every word checked; the owner reads it before it goes"
-    if level == "top":
+    if level == "exec":
         return "ask the owner whether to write at all, before any draft"
     return "write it yourself"
 
