@@ -1,5 +1,5 @@
 {
-  "description": "VDM core hooks - documentation sync, synthesis-layer drift signal (docs-distill), knowledge capture + the cross-project rules layer (~/.claude/vdm/rules.md, loaded at session start), changelog reminders, intercom inbox reminder + session-start identity check (agent directory), orphan-guard for docs/llm/, crystal-* workitem discipline (hydrate / capture-reminder / completion-guard / stop-reminder / canon + sidetrack-checkbox lint), and a parse check of every shell file written.",
+  "description": "VDM core hooks - documentation sync, synthesis-layer drift signal (docs-distill), knowledge capture + the cross-project rules layer (~/.claude/vdm/rules.md, loaded at session start) + the scope of memory records (a reminder on a record written without one, a session-start line for hq/conduct lessons not lifted yet), changelog reminders, intercom inbox reminder + session-start identity check (agent directory), orphan-guard for docs/llm/, crystal-* workitem discipline (hydrate / capture-reminder / completion-guard / stop-reminder / canon + sidetrack-checkbox lint), and a parse check of every shell file written.",
   "hooks": {
     "SessionStart": [
       {
@@ -17,6 +17,11 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/shared-rules.sh\"",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/memory-scope-check.sh\"",
             "timeout": 30
           }
         ]
@@ -62,6 +67,11 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/shell-syntax-check.sh\" --hook",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/memory-scope-hook.sh\"",
             "timeout": 30
           }
         ]

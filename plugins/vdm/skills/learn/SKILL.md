@@ -204,6 +204,32 @@ Harness note: the layer arrives through a plugin hook. A harness that runs no
 plugin hooks (Qwen Code loads only the skills) does not get it; there, read the
 file at the start of work.
 
+### Memory records name their scope
+
+A memory record — a file in the project's `.claude/memory/` or in the harness's
+`~/.claude/projects/<project>/memory/` (not the `MEMORY.md` index) — carries,
+next to its `type`, whose lesson it is:
+
+| `scope` | The lesson is about | Where it ends up |
+|---|---|---|
+| `project` | this project's subject, people, tools | here |
+| `hq` | how an HQ works: letters, meetings, the ball, questions to the owner | collected for every HQ by the access layer; the owner picks the home |
+| `conduct` | how the assistant works, in any project | collected the same way; a rule that holds everywhere goes to `~/.claude/vdm/rules.md` |
+
+"Next to `type`" means wherever `type` is — at the top of the frontmatter, or
+under `metadata:` as the harness writes it. Once an `hq` or `conduct` lesson has
+a home, add `shared: <address>` — `rules.md` → the rule's heading, a skill and
+section, a README section — and the local record becomes a pointer that the
+collection skips.
+
+Why: an HQ kept its procedural lessons in its own memory, and the owner
+(2026-10-07): «Твоя память по процедурным вещам которые полезны другим HQ не
+может быть твой только.» Writing to memory directly, past this skill, is the
+usual path — so the question is asked by hooks, in every project: a record
+written without a valid `scope` gets one reminder, and session start names the
+`hq` and `conduct` records not lifted yet. Old records are not touched until
+they are edited. The contract was agreed with the access layer, which collects.
+
 ### → CLAUDE.md Rules
 
 **Criteria** (ANY applies):
@@ -279,6 +305,13 @@ docs/llm/ exists?
 ```
 Is this about the ASSISTANT'S OWN CONDUCT, true in any project (see criteria)?
 ├─ YES → ~/.claude/vdm/rules.md (cross-project layer) — and nothing in this project
+└─ NO ↓
+
+Is this about HOW AN HQ WORKS — letters, meetings, the ball, the sheet, questions
+to the owner — and useful to every HQ, not about this project's people or tools?
+├─ YES → a memory record here with `scope: hq` (see "Memory records name their
+│        scope"); the access layer collects these from every project and the
+│        owner picks the home. Once lifted: `shared: <address>`.
 └─ NO ↓
 
 Is this a SAFETY-CRITICAL rule that prevents disasters?
