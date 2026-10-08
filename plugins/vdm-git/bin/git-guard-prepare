@@ -587,9 +587,9 @@ repo_name=$(basename "$repo_root")
 # The first line says what changed; how and why go to the project's changelog,
 # or to the body where the project writes one. A ceiling in words did not hold.
 # Measured 2026-10-08 on the last 40 commits of every repository on the owner's
-# machine: a median first line of 675 characters in one project, 210-350 in
-# others prepared the same way, 136 in this plugin's own repository against a
-# CLAUDE.md that says "<= 80"; repositories committed by hand stayed at 40-60.
+# machine: a median first line of 741 characters in one project, 100-280 in
+# nine more, 90 in this plugin's own repository against a CLAUDE.md that says
+# "<= 80"; the shortest nine of 27 stayed at 39-63.
 # With no rule of its own, a project's `git log` is the sample for the next
 # subject, so every long one licenses a longer one. The ceiling is therefore a
 # number held here: `git-guard.subject-max` in the project's vdm-plugins.json,

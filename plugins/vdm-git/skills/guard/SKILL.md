@@ -437,9 +437,9 @@ Characters, not bytes. The refusal names the length and where the detail goes:
 line. Nothing is prepared; shorten the subject and run it again.
 
 A ceiling in words did not hold. Measured 2026-10-08 on the last 40 commits of
-every repository on one machine: a median first line of 675 characters in one
-project, 210–350 in several others prepared the same way, 136 in a repository
-whose own rules said "≤ 80"; repositories committed by hand stayed at 40–60. The
+every repository on one machine: a median first line of 741 characters in one
+project, 100–280 in nine more, 90 in a repository whose own rules said "≤ 80";
+the shortest nine of 27 stayed at 39–63. The
 mechanism is the format detection below: with no rule of its own, a project's
 `git log` is the sample, so every long subject licenses the next. A project that
 wants a different ceiling sets the number; there is no flag to pass one long

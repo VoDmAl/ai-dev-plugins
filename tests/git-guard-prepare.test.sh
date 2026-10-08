@@ -1069,8 +1069,8 @@ out=$("$PREP" --verify-last 2>&1 >/dev/null)
 expect_not_says "a rewrite with HEAD unchanged (a formatting hook) is not reported" "${out:-(silent)}" "CHANGED SINCE PREP"
 
 printf '\n=== the subject has a ceiling ===\n'
-# Measured 2026-10-08: median first lines of 675 characters in one project and
-# 136 here, against a CLAUDE.md that says "<= 80". A ceiling in words did not
+# Measured 2026-10-08: median first lines of 741 characters in one project and
+# 90 here, against a CLAUDE.md that says "<= 80". A ceiling in words did not
 # hold; the helper holds a number. No commit is needed for any of this.
 d=$(new_repo subject_max); cd "$d" || exit 1
 export TMPDIR="$d/tmp"
