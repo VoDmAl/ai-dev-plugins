@@ -610,6 +610,37 @@ expect_not_says "unconsumed prep ⇒ no accusation about a commit" "$out" "does 
 expect_not_says "unconsumed prep ⇒ nothing labelled SWEPT IN" "$out" "SWEPT IN"
 expect_says "unconsumed prep ⇒ the earlier line is declared void" "$out" "never run"
 
+# FALSE POSITIVE 4: the command named a DIRECTORY. A pathspec directory commits
+# every staged file below it, and the record must read it that way. Field case
+# (echelon, 2026-10-07): a line ending in `-- docs/tasks/<slug>/` committed four
+# files under it and one beside it, correctly; the next prep called the four
+# SWEPT IN and the directory NOT COMMITTED.
+d=$(new_repo detect_dir); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+mkdir -p docs/task
+printf 'a\n' > docs/task/a.md; printf 'b\n' > docs/task/b.md; printf 'm\n' > mcp.yaml
+git add docs/task mcp.yaml
+line=$("$PREP" "[*] a directory" -- docs/task/ mcp.yaml 2>/dev/null)
+run_emitted "$line" >/dev/null 2>&1; rc=$?
+expect_exit "a line naming a directory commits" 0 "$rc"
+expect_eq "…every file under it, and the one beside it" "3" "$(git show --name-only --format= HEAD | grep -c .)"
+out=$("$PREP" --verify-last 2>&1)
+expect_says "RED: the commit of a line naming a directory matches what was prepared" "$out" "matches"
+expect_not_says "RED: …files under the directory are not SWEPT IN" "$out" "SWEPT IN"
+expect_not_says "RED: …and the directory is not NOT COMMITTED" "$out" "NOT COMMITTED"
+# …while a file outside the directory, staged by a neighbour, still is.
+d=$(new_repo detect_dir_extra); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+mkdir -p docs/task
+printf 'a\n' > docs/task/a.md; git add docs/task
+"$PREP" "[*] a directory" -- docs/task > /dev/null 2>&1
+printf 't\n' > docs/taskless.md; git add docs/taskless.md      # the neighbour; shares the prefix
+git commit -qm "[*] a directory"                               # bare form — sweeps it in
+printf 'n\n' > n.txt; git add n.txt
+out=$("$PREP" "[*] next" 2>&1 >/dev/null)
+expect_says "a file beside the named directory, sharing its prefix, is still SWEPT IN" "$out" "docs/taskless.md"
+expect_not_says "…and the files under it are not" "$out" "docs/task/a.md"
+
 # The audit must run ONCE. A record left behind would re-accuse the same commit
 # on every later prep, which is how a real signal becomes background noise.
 d=$(new_repo detect_once); cd "$d" || exit 1

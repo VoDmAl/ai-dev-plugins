@@ -350,6 +350,21 @@ verify_last() {
   return 0
 }
 
+# _covers <named> <committed> — a path the prepared command named covers that
+# file of the commit: the same path, or a directory the file lies under. A
+# pathspec naming a directory commits every staged file below it. Field case
+# (echelon, 2026-10-07): a line ending in `-- docs/tasks/<slug>/` committed the
+# four files under it correctly, and the next prep called them SWEPT IN and the
+# directory NOT COMMITTED.
+_covers() {
+  local n="${1%/}"
+  n="${n#./}"
+  case "$n" in ''|.) return 0 ;; esac
+  [ "$2" = "$n" ] && return 0
+  case "$2" in "$n"/*) return 0 ;; esac
+  return 1
+}
+
 _verify_one() {
   local pathsf="$1" parent="$2" head="$3" delsf="${4:-}" stem="${5:-}"
   local intended=() actual=() extra=() missing=() kept=() changed=() p st
@@ -363,12 +378,12 @@ _verify_one() {
   local i a hit
   for a in ${actual[@]+"${actual[@]}"}; do
     hit=0
-    for i in "${intended[@]}"; do [ "$a" = "$i" ] && { hit=1; break; }; done
+    for i in "${intended[@]}"; do _covers "$i" "$a" && { hit=1; break; }; done
     [ "$hit" -eq 0 ] && extra+=("$a")
   done
   for i in "${intended[@]}"; do
     hit=0
-    for a in ${actual[@]+"${actual[@]}"}; do [ "$i" = "$a" ] && { hit=1; break; }; done
+    for a in ${actual[@]+"${actual[@]}"}; do _covers "$i" "$a" && { hit=1; break; }; done
     [ "$hit" -eq 0 ] && missing+=("$i")
   done
 
