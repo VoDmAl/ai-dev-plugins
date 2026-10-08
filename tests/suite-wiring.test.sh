@@ -15,15 +15,16 @@
 # the pre-commit calls it to decide what to run, and this file calls it to prove
 # the property:
 #
-#   every tests/*.test.sh is run by an explicit `run_suite <name>` of the
-#   pre-commit, or owns at least one file the name-keyed gate can see.
+#   every tests/*.test.sh in the index is run by an explicit `run_suite <name>`
+#   of the pre-commit, or owns at least one file the name-keyed gate can see.
 #
 # This reads the gate list rather than running a commit — a commit per suite
 # would cost minutes. What it proves is that a trigger EXISTS; that the suite
 # then passes is the suite's own business.
 #
 # RED half: the same check is run against a pre-commit that does not call the
-# rule, and against a suite named after nothing. Both must be reported.
+# rule, and against a suite named after nothing. Both must be reported. A suite
+# only in the work tree must not be counted; the same suite staged must be.
 #
 # Run: bash tests/suite-wiring.test.sh   (exit 0 = all pass)
 
@@ -94,7 +95,16 @@ unreachable() {
   done
 }
 
-ALL=$(for f in "$REPO_ROOT"/tests/*.test.sh; do n=${f##*/}; printf '%s\n' "${n%.test.sh}"; done)
+# suites <repo> — every suite the index holds. The index, not the work tree:
+# the owners above come from `git ls-files`, so both halves of the comparison
+# must. Field case (2026-10-07): a suite and its script, still being written on
+# the other machine, arrived here by sync ahead of their index — and with the
+# list read from the tree, they failed the pre-commit of an unrelated commit.
+suites() {
+  git -C "$1" ls-files ':(glob)tests/*.test.sh' | sed -E 's#^tests/##; s#\.test\.sh$##'
+}
+
+ALL=$(suites "$REPO_ROOT")
 N_ALL=$(printf '%s\n' "$ALL" | grep -c .)
 
 echo "== every suite has a trigger =="
@@ -116,6 +126,16 @@ else
 fi
 expect_eq "a suite named after nothing is reported" \
   "$(unreachable "$PRECOMMIT" zz-named-after-nothing)" "zz-named-after-nothing"
+
+echo "== RED: suites are counted from the index, not the tree =="
+FX="$TMP/fx"
+mkdir -p "$FX/tests" && git -C "$FX" init -q
+printf '#!/bin/bash\n' > "$FX/tests/zz-wip.test.sh"
+expect_eq "a suite only in the work tree is not counted — it is nobody's yet" "$(suites "$FX")" ""
+git -C "$FX" add tests/zz-wip.test.sh
+expect_eq "the same suite in the index is counted" "$(suites "$FX")" "zz-wip"
+expect_eq "… and, owning nothing and named by no run_suite line, it is an orphan" \
+  "$(unreachable "$PRECOMMIT" $(suites "$FX"))" "zz-wip"
 
 printf '\nsuite-wiring: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
