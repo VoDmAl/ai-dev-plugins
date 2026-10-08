@@ -828,6 +828,37 @@ ls -a "$VDM_INTERCOM_ROOT/hop-b" | grep -q '\.render\.' \
   && bad "no half-rendered file is left in the inbox" "$(ls -a "$VDM_INTERCOM_ROOT/hop-b")" \
   || ok "no half-rendered file is left in the inbox"
 
+# An outgoing text kept the vdm-comms way: frontmatter with `channel:`, a
+# service header for the sender, a `---` line, then the letter. Field case (HQ,
+# 2026-10-07): a brief sent from such a file arrived with its frontmatter and
+# its notes-to-self on top. What goes is the text below the line.
+printf -- '---\nchannel: intercom\nsent: false\n---\n\n# → hop-b (intercom)\n\n> Notes to self: what we know, what stays out.\n\n---\n\n# The brief itself\n\nThe text to send.\n' > "$B/comms.md"
+printf '\n# The brief itself\n\nThe text to send.\n' > "$B/comms-below.md"
+out="$( cd "$TMP/hop-a" && bash "$IC" send hop-b body-comms --body "$B/comms.md" 2>&1 )"; rc=$?
+eq "RED: an outgoing text with channel: sends" "$rc" "0"
+L="$VDM_INTERCOM_ROOT/hop-b/body-comms.md"
+says_not "RED: …without its service header" "$(cat "$L")" "Notes to self"
+says_not "…and without its own frontmatter" "$(cat "$L")" "channel: intercom"
+if tail -c "$(wc -c < "$B/comms-below.md")" "$L" | cmp -s - "$B/comms-below.md"; then
+  ok "…the body is the text below the line, byte for byte"
+else
+  bad "…the body is the text below the line, byte for byte" "$(tail -c 160 "$L")"
+fi
+eq "…its heading is the letter's" "$(grep '^# ' "$L" 2>/dev/null)" "# The brief itself"
+says "…and the sender is told which part went" "$out" "below its \`---\` line"
+printf -- '---\nchannel: intercom\n---\n\n# → hop-b\n\n> Notes to self.\n\nThe text.\n' > "$B/comms-noline.md"
+out="$( cd "$TMP/hop-a" && bash "$IC" send hop-b body-noline --body "$B/comms-noline.md" 2>&1 )"; rc=$?
+eq "RED: channel: without a --- line below the header is refused" "$rc" "2"
+[ -f "$VDM_INTERCOM_ROOT/hop-b/body-noline.md" ] && bad "…and nothing is written" || ok "…and nothing is written"
+says "…saying what is missing" "$out" "no \`---\` line"
+printf -- '---\ntitle: kept copy\n---\n\nBody of a kept copy.\n' > "$B/fm-nochannel.md"
+( cd "$TMP/hop-a" && bash "$IC" send hop-b body-fm --body "$B/fm-nochannel.md" >/dev/null 2>&1 )
+if tail -c "$(wc -c < "$B/fm-nochannel.md")" "$VDM_INTERCOM_ROOT/hop-b/body-fm.md" | cmp -s - "$B/fm-nochannel.md"; then
+  ok "a file whose frontmatter declares no channel is still sent byte for byte"
+else
+  bad "a file whose frontmatter declares no channel is still sent byte for byte"
+fi
+
 echo ""
 echo "== a value flag at the end of the line refuses instead of hanging =="
 # `--x) v="${2:-}"; shift 2` with the flag as the last argument shifts nothing,

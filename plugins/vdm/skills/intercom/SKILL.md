@@ -395,6 +395,16 @@ The body is read once, so a stream is a file like any other: `--body /dev/stdin`
 with a heredoc or a pipe, or `--body <(…)`; an empty stream is refused the same
 way.
 
+**An outgoing text with `channel:` goes from below its line.** A file whose
+frontmatter declares `channel:` — the form `/vdm-comms:meetings` gives every
+outgoing draft: frontmatter, a service header for the sender, a `---` line, the
+text — is sent as the text below that line, byte for byte; the frontmatter and
+the notes above the line stay in the kept copy. Such a file with no `---` line
+below its header is refused, nothing written: nothing marks where the letter
+starts. Any other file is still the body as a whole. Field case (HQ,
+2026-10-07): a brief sent from a kept draft arrived with its frontmatter and its
+notes-to-self on top, and was fixed by hand before it was read.
+
 **The heading.** A body whose first non-blank line is a `# heading` keeps it as
 the letter's heading, and the template's `# <title>` is not written above it —
 a kept copy usually starts with one, and measured 2026-09-30, 142 of the 344

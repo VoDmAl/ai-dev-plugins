@@ -631,6 +631,30 @@ cmd_send() {
       || _ic_die "send: cannot read body file '$body_file' — not sending." 2
     body_label="$body_file"
     body_file="$_IC_BODY_COPY"
+    # An outgoing text kept the vdm-comms way — frontmatter declaring
+    # `channel:`, a service header, a `---` line, the letter — is sent as what
+    # lies below the line: that is the text the line marks as "goes out as it
+    # stands". Field case (HQ, 2026-10-07): a brief sent from such a file
+    # arrived with its frontmatter and its notes-to-self on top, and was fixed
+    # by hand before it was read. Any other file is still taken byte for byte.
+    local below rc
+    below="$(mktemp "${TMPDIR:-/tmp}/intercom-body.XXXXXX" 2>/dev/null)" \
+      || _ic_die "send: cannot make a temporary copy of the body — not sending." 2
+    awk '
+      NR == 1 { if ($0 != "---") { rc = 1; exit } fm = 1; opened = 1; next }
+      fm && /^---[[:space:]]*$/ { fm = 0; if (!ch) { rc = 1; exit } next }
+      fm { if ($0 ~ /^channel:[[:space:]]*[^[:space:]]/) ch = 1; next }
+      !sep && /^---[[:space:]]*$/ { sep = 1; next }
+      sep { print }
+      END { if (rc) exit rc; if (!opened || fm) exit 1; if (!sep) exit 2 }
+    ' "$body_file" > "$below" 2>/dev/null
+    rc=$?
+    case "$rc" in
+      0) mv -f "$below" "$body_file"; _IC_BODY_BELOW=1 ;;
+      2) rm -f "$below"
+         _ic_die "send: body '$body_label' declares \`channel:\` but has no \`---\` line below its header — nothing marks where the letter starts. Put the line above the text to send. Not sending." 2 ;;
+      *) rm -f "$below" ;;
+    esac
     grep -q '[^[:space:]]' "$body_file" 2>/dev/null \
       || _ic_die "send: body '$body_label' is empty — not sending (a letter without a body looks sent)." 2
     if grep -qF "$_IC_PLACEHOLDER_MARK" "$body_file" 2>/dev/null; then
@@ -768,6 +792,9 @@ cmd_send() {
     # name a file that is gone by the time anyone reads this line.
     printf '    body: %s — %s bytes, compared after writing.\n' \
       "$_IC_BODY_LABEL" "$(wc -c < "$body_file" | tr -d ' ')"
+  elif [ "$body_set" -eq 1 ] && [ -n "${_IC_BODY_BELOW:-}" ]; then
+    printf '    body: %s — the text below its `---` line (an outgoing text with `channel:`), %s bytes, compared after writing.\n' \
+      "$body_label" "$(wc -c < "$body_file" | tr -d ' ')"
   elif [ "$body_set" -eq 1 ]; then
     printf '    body: %s — %s bytes, identical to what was read (compared after writing).\n' \
       "$body_label" "$(wc -c < "$body_file" | tr -d ' ')"
