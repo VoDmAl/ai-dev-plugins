@@ -1,6 +1,6 @@
 ---
 name: letters
-description: "What an outgoing letter carries and what stays out of it — goal, one subject, the addressee, register, claims with a source, the sender's commitments, who may write to a person (`trust` in the HQ's people/), the cutting pass, replying in a thread, incoming mail, other agents as addressees. Use before and while drafting any text a person outside this session will read: a letter, a chat message, a ticket comment, a brief to another agent — and when reviewing one before it goes. The file mechanics (draft marker, sent:, form per channel, attachments) are /vdm-comms:meetings. Triggers include: «письмо», «написать», «ответить», «черновик», «сообщение в чат», «комментарий в тикет», «бриф агенту», draft a letter, write to, reply, message, ticket comment."
+description: "What an outgoing letter carries and what stays out of it — goal, one subject, the addressee, register, claims with a source, the sender's commitments, who may write to a person (`trust` in the HQ's people/), the cutting pass, replying in a thread, incoming mail, other agents as addressees. Use before and while drafting any text a person outside this session will read: a letter, a chat message, a ticket comment (including the comment of a link or a transition), a brief to another agent — and when reviewing one before it goes. The file mechanics (draft marker, sent:, form per channel, attachments) are /vdm-comms:meetings. Triggers include: «письмо», «написать», «ответить», «черновик», «сообщение в чат», «комментарий в тикет», «комментарий к связи», «бриф агенту», draft a letter, write to, reply, message, ticket comment, link comment."
 license: MIT
 ---
 
@@ -92,6 +92,14 @@ is shown to anyone, and open the sections below when a line does not settle.
   participants. Where a tool on the write path suggests the mention, the rule
   still holds: it is needed in the channels that bypass that tool, and for the
   text before the call.
+- **A text parameter that publishes is a ticket comment.** The comment of a link
+  between two tickets, the comment of a transition, a card's description —
+  whatever a person will read in the ticket goes by this whole skill: the
+  mention and the full key first. Field case (2026-10-06): a link comment went
+  out with the ticket's own number and another ticket's number without its
+  project key; the parameter was not taken for text a person reads. Linking a
+  ticket to `PROJ-45`, the comment says `[~login] this task is blocked by PROJ-45 —
+  …`, never `blocked by 45`.
 
 ## 3. What does not go into the letter
 
@@ -289,8 +297,9 @@ will hold is outgoing too.
 - **The owner's word about access** (personal, with a token, public) is not
   swapped for a synonym; every link in the letter says who it is for and what
   may be done with it.
-- **A ticket by its full key** — `PROJ-663`, never `663`. Inside the ticket
-  itself: "this task", not its number.
+- **A ticket by its full key** — `PROJ-663`, never `663`, in any channel, and in
+  a text parameter that publishes (§ 2). Inside the ticket itself: "this task",
+  not its number.
 - **A thing with a lasting state** is described by its life cycle: set up →
   kept up through changes → ended → restored. A requirement or a restriction we
   ask for creates such a state, so it goes out with the condition that lifts it.
