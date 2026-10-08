@@ -278,7 +278,9 @@ The primary `remote` is never overwritten by a later clone.
 
 `scripts/intercom-identity-check.sh` runs on `SessionStart` (**on by default**,
 `intercom.identity-check: true`). It is *not* the inbox reminder: it fires once,
-at session start, and says nothing mid-session. What it does:
+at session start, and says nothing mid-session. In a focused session it
+registers and prints only who the agent is and that the session is focused —
+none of the items from 2 on (§ Focused sessions). What it does:
 
 1. **Registers the mechanical part** of this repo deterministically — identity,
    remote, auto-aliases, path. No assistant involvement, no memory to rely on.
@@ -619,6 +621,32 @@ required. Live sessions are read from the harness's own session files
 (`${CLAUDE_CONFIG_DIR:-~/.claude}/sessions/`); a copy synced from another
 machine, a dead process or a missing socket never counts as live, and your own
 session is never listed.
+
+### Focused sessions — deaf to mail
+
+A session started with `vdx ai --focused` carries `VDX_FOCUSED=1` and works on
+its own task. The user's words: a mode in which the session does not go reading
+letters on its own and nobody nudges it. Field case (2026-10-08): a session the
+user had opened as "isolated, without intercom" was woken twice, because it was
+where the user had typed last; after the first pointer it went off to read what
+nobody had asked it to.
+
+- **Nobody wakes it.** `send`, `sent` and the receipt after `pickup` leave it out
+  of the live sessions entirely. A turn the user typed into it is passed over,
+  and the turn before it decides whom to wake; when the recipient has no other
+  live session here, nothing is printed, as for a recipient with none.
+- **It is not called to its inbox.** Its session-start line says who it is and
+  that it is focused, with no count of pending letters, no letters of its own to
+  chase, no request to finish the registration first. The opt-in reminder stays
+  silent in it.
+- **Letters still arrive.** They lie in the inbox and are read when the user
+  asks: `/vdm:intercom check` works as always. A focused session may send too —
+  it is deaf, not mute.
+
+The flag is read from the session's own process, not from a mark in the store:
+the environment a process was started with cannot outlive the session, nor
+follow a resume that started without the flag. Guards such as git-guard are not
+nudges and keep working.
 
 ## Configuration Sub-commands
 

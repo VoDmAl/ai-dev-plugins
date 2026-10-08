@@ -1182,9 +1182,57 @@ _intercom_owner_of() {
   printf '%s' "$best"
 }
 
+# ---------------------------------------------------------------------------
+# Focused sessions (echelon `focused-session-quiet`, 2026-10-08). The owner:
+# «мне нужен режим когда он не будет лезть читать письма сам и когда ты не
+# будешь его nudge делать» — a session started with `vdx ai --focused` carries
+# VDX_FOCUSED=1 and is deaf to mail: nothing here wakes it, nothing at its start
+# calls it to the inbox. Letters still land in its inbox and are read when the
+# owner asks. Field case the same day: a session the owner had opened as "an
+# isolated session without intercom" was woken twice, because it was where the
+# owner had typed last.
+#
+# The flag is read from the session's own process, not from a mark: the
+# environment a process was started with is on the machine already, and it
+# cannot outlive the session or survive a resume without the flag, which a mark
+# in the store could. Linux exposes it in /proc; macOS shows it to `ps -E` for
+# the owner's own processes, except platform binaries (`sleep`), which a
+# session never is.
+# ---------------------------------------------------------------------------
+
+# intercom_focused — this session was started focused.
+intercom_focused() { [ "${VDX_FOCUSED:-}" = 1 ]; }
+
+# _intercom_pid_focused <pid> — that live process was started with VDX_FOCUSED=1.
+_intercom_pid_focused() {
+  if [ -r "/proc/$1/environ" ]; then
+    grep -qxzF 'VDX_FOCUSED=1' "/proc/$1/environ" 2>/dev/null
+    return
+  fi
+  ps -wwE -p "$1" -o command= 2>/dev/null | grep -qE '(^|[[:space:]])VDX_FOCUSED=1([[:space:]]|$)'
+}
+
+# _intercom_sid_focused_here <sessionId> — a session live on this machine under
+# that id was started focused. Read only for the owner's last turn, when it is
+# in no session the wake may choose.
+_intercom_sid_focused_here() {
+  local f pid
+  for f in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"/*.json; do
+    [ -f "$f" ] || continue
+    case "${f##*/}" in *.sync-conflict-*) continue ;; esac
+    grep -qE "\"sessionId\"[[:space:]]*:[[:space:]]*\"$1\"" "$f" 2>/dev/null || continue
+    pid="$(jq -r '.pid // "" | tostring' "$f" 2>/dev/null)"
+    case "$pid" in ''|*[!0-9]*) continue ;; esac
+    kill -0 "$pid" 2>/dev/null && _intercom_pid_focused "$pid" && return 0
+  done
+  return 1
+}
+
 # intercom_live_sessions <identity> — "name<TAB>status<TAB>sessionId<TAB>updated"
 # for every LIVE session of that agent on this machine, other than the caller's
-# own. `updated` is the session file's statusUpdatedAt (ms), empty when absent.
+# own and other than a focused one: a session started focused is not offered to
+# anybody to wake. `updated` is the session file's statusUpdatedAt (ms), empty
+# when absent.
 #
 # Live means all of: the file is not a sync conflict (settings synced from
 # another machine carry sessions whose pids mean nothing here), its socket
@@ -1224,8 +1272,9 @@ intercom_live_sessions() {
     if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] && [ "$sid" = "$CLAUDE_CODE_SESSION_ID" ]; then
       continue
     fi
-    [ "$(_intercom_owner_of "$(_intercom_realpath "$cwd")" "$owners")" = "$id" ] \
-      && printf '%s\t%s\t%s\t%s\n' "$name" "${status:-?}" "$sid" "$upd"
+    [ "$(_intercom_owner_of "$(_intercom_realpath "$cwd")" "$owners")" = "$id" ] || continue
+    _intercom_pid_focused "$pid" && continue
+    printf '%s\t%s\t%s\t%s\n' "$name" "${status:-?}" "$sid" "$upd"
   done
   return 0
 }
@@ -1249,6 +1298,8 @@ intercom_live_sessions() {
 #     for that session;
 #   - no turn of the owner's within the window → one session here, the most
 #     recently active (a message cannot reach the other machine anyway).
+# A focused session is never chosen, and a turn typed into one here is passed
+# over for the next (focused-session-quiet, 2026-10-08).
 # A turn older than the window is not presence: the session may be closed, and
 # the owner gone since. Nothing is stored — both operands are on disk.
 # ---------------------------------------------------------------------------
@@ -1318,8 +1369,18 @@ intercom_wake_choice() {
   [ $# -ge 2 ] || live="$(intercom_live_sessions "$id")"
   [ -n "$live" ] || return 0
   turns="$(intercom_owner_turns "$id")"
-  if [ -n "$turns" ]; then
-    IFS=$'\t' read -r top_ts top_sid <<<"$(printf '%s\n' "$turns" | head -1)"
+  # A turn the owner typed into a focused session here says where the owner
+  # is, not where mail may go: that turn is passed over, and the next one
+  # decides. Looked up only when the turn is in no session the wake may choose,
+  # so a send that finds the owner where it can wake costs nothing more.
+  local passed=""
+  while IFS=$'\t' read -r top_ts top_sid; do
+    [ -n "$top_sid" ] || continue
+    if ! printf '%s\n' "$live" | awk -F '\t' -v s="$top_sid" '$3 == s { f = 1 } END { exit !f }' \
+       && _intercom_sid_focused_here "$top_sid"; then
+      passed=1
+      continue
+    fi
     # One conversation can be open on both machines (measured 2026-10-04: one
     # agent's two sessions shared a sessionId and a transcript written from
     # both sides), and then its transcript cannot say where the turn was
@@ -1346,16 +1407,20 @@ intercom_wake_choice() {
     printf 'wait\037\037\037your last turn in `%s` (%s) was in a session that is not on this machine — the letter waits for it\n' \
       "$id" "$top_ts"
     return 0
-  fi
+  done <<<"$turns"
   # No presence: the most recently active live session (its file's status
   # stamp), the first listed on a tie or when the harness writes none.
-  local best="" best_upd=-1 best_status=""
+  local best="" best_upd=-1 best_status="" why
   while IFS=$'\t' read -r name status sid upd; do
     case "$upd" in ''|*[!0-9]*) upd=0 ;; esac
     if [ "$upd" -gt "$best_upd" ]; then best="$name"; best_status="$status"; best_upd="$upd"; fi
   done <<<"$live"
-  printf 'wake\037%s\037%s\037no turn of yours in `%s` in the last %s h — one session here, the most recently active\n' \
-    "$best" "$best_status" "$id" "$INTERCOM_PRESENCE_WINDOW_H"
+  if [ -n "$passed" ]; then
+    why="your last turn in \`$id\` was in a focused session, which nobody wakes — one session here, the most recently active"
+  else
+    why="no turn of yours in \`$id\` in the last $INTERCOM_PRESENCE_WINDOW_H h — one session here, the most recently active"
+  fi
+  printf 'wake\037%s\037%s\037%s\n' "$best" "$best_status" "$why"
 }
 
 # ---------------------------------------------------------------------------

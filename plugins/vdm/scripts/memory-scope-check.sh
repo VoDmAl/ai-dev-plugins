@@ -18,6 +18,9 @@ if command -v vdm_is_enabled >/dev/null 2>&1; then
   vdm_is_enabled "learn" || exit 0
 fi
 command -v python3 >/dev/null 2>&1 || exit 0
+# A focused session (VDX_FOCUSED=1) works on its own task: lifting lessons to an
+# HQ is work for another session (@see intercom-common.sh → "Focused sessions").
+[ "${VDX_FOCUSED:-}" = 1 ] && exit 0
 root="${CLAUDE_PROJECT_DIR:-}"
 [ -n "$root" ] || root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 python3 "$SELF_DIR/memory-scope.py" check "$root" 2>/dev/null

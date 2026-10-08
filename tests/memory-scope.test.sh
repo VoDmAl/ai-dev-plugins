@@ -96,6 +96,8 @@ says "…one from the harness's, found by the project's path" "$out" "conduct-wa
 says "…an empty shared: is not a home" "$out" "empty-shared"
 says_not "…a lifted lesson is not named" "$out" "already-up"
 says_not "…nor a project lesson" "$out" "local"
+out="$(CLAUDE_PROJECT_DIR="$PROJ" VDX_FOCUSED=1 bash "$CHECK" </dev/null)"
+silent "RED: a focused session is not asked to lift lessons (focused-session-quiet)" "$out"
 
 echo "== wiring =="
 hj="$REPO_ROOT/plugins/vdm/hooks/hooks.json"

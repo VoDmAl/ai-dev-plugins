@@ -409,6 +409,8 @@ printf '{"intercom": {"enabled": true, "mode": "conditional"}}\n' > "$TMP/widget
 out="$(printf '{}' | bash "$(dirname "$IC")/intercom-reminder.sh" 2>&1)"
 says "the opt-in reminder fires on a non-empty inbox" "$out" "pending message(s)"
 says "…and puts the user's pending steps before the mail" "$out" "the user's pending steps come first"
+out="$(printf '{}' | VDX_FOCUSED=1 bash "$(dirname "$IC")/intercom-reminder.sh" 2>&1)"
+eq "RED: a focused session gets no reminder, switched on or not" "$out" ""
 rm -f "$TMP/widget-clone/.claude/vdm-plugins.json"
 
 printf '\n[$HOME is not a project — and its basename is somebody'"'"'s name]\n'
@@ -1035,6 +1037,35 @@ out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-x VDM_INTERCOM_NOW="$NOW_E
 eq "RED: the receipt goes to one session of the sender, not each" "$(printf '%s\n' "$out" | grep -c '→ send a receipt to one:')" "1"
 rm -f "$SESS/live-a2.json"
 
+echo "-- a focused session is off the radar (focused-session-quiet)"
+# The owner, 2026-10-08: a session started with `vdx ai --focused` is not woken
+# and not called to its inbox. Field case the same day: a session opened as
+# "isolated, without intercom" was woken twice, being where the owner typed
+# last. The flag is read from the session's process environment — a python
+# sleeper here, because macOS hides a platform binary's environment (`sleep`).
+env VDX_FOCUSED=1 python3 -c 'import time; time.sleep(300)' & FOC_PID=$!; disown "$FOC_PID" 2>/dev/null || true
+trap 'kill "$LIVE_PID" "$FOC_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
+for _ in 1 2 3 4 5 6 7 8 9 10; do   # until the process has exec'd with its environment
+  { [ -r "/proc/$FOC_PID/environ" ] || ps -wwE -p "$FOC_PID" -o command= 2>/dev/null | grep -q 'VDX_FOCUSED=1'; } && break
+  python3 -c 'import time; time.sleep(0.2)'
+done
+mksession foc-b.json "$FOC_PID" "$TMP/hop-b" hop-b-focus idle "$SOCKS/b.sock"
+out="$(wake_out foc-hidden)"
+says_not "RED: a focused session is not listed among the live ones" "$out" "hop-b-focus"
+turn hb "sid-hop-b-focus" "$TMP/hop-b" "2026-10-04T10:55:00Z"
+out="$(wake_out foc-last-turn)"
+says_not "RED: the owner's last turn in a focused session here does not make the letter wait" "$out" "do not wake here"
+says "…the turn before it decides" "$out" "→ wake one: hop-b-11"
+out="$( cd "$TMP/hop-a" && VDM_INTERCOM_NOW="$NOW_EPOCH" VDM_INTERCOM_TODAY=2026-10-04 bash "$IC" sent 2>&1 )"
+says_not "RED: sent does not offer a focused session either" "$out" "hop-b-focus"
+mkdir -p "$TMP/hop-c"
+mksession foc-c.json "$FOC_PID" "$TMP/hop-c" hop-c-focus idle "$SOCKS/c.sock"
+out="$( cd "$TMP/hop-a" && bash "$IC" send hop-c foc-only --body "$B/live.md" 2>&1 )"
+says_not "RED: a recipient whose only live session is focused — no live list" "$out" "live session(s)"
+says_not "…and nothing to wake" "$out" "SendMessage"
+rm -f "$SESS/foc-b.json" "$SESS/foc-c.json" "$PROJ/hb/sid-hop-b-focus.jsonl" "$VDM_INTERCOM_ROOT"/hop-c/foc-only.md
+kill "$FOC_PID" 2>/dev/null
+
 echo "-- taken: a session that takes a letter marks it (wake-one-machine DL #3)"
 # Two sessions that each find the same letter by themselves both start on it.
 # `take` writes who took it into the envelope; the store carries it to the
@@ -1072,6 +1103,12 @@ says "session start counts letters unpicked for 3+ days" "$out" "1 of your lette
 says "…and names the oldest" "$out" "14d, hop-c/old-one"
 out="$( cd "$TMP/hop-a" && printf '{}' | VDM_INTERCOM_TODAY=2026-09-11 bash "$HOOK" )"
 says_not "a letter younger than three days is not shouted about" "$out" "unpicked for 3+ days"
+out="$( cd "$TMP/hop-a" && printf '{}' | VDX_FOCUSED=1 VDM_INTERCOM_TODAY=2026-09-24 bash "$HOOK" )"
+says "RED: a focused session is told it is focused" "$out" "Focused session"
+says "…and still who it is" "$out" "You are \`hop-a\`"
+says_not "RED: …with no count of its inbox" "$out" "pending message"
+says_not "…no call to read it" "$out" "/vdm:intercom check"
+says_not "…and no letters of its own to chase" "$out" "unpicked for 3+ days"
 
 echo ""
 echo "== reply: a brief is closed with its outcome, not with a receipt =="

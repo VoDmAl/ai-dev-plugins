@@ -65,6 +65,20 @@ if [ "$(intercom_identity_source)" = "cwd" ] && [ ! -f "$(intercom_registry_file
 fi
 
 names="$(intercom_registry_get "$id" '(.names // []) | join(", ")')"
+
+# A focused session (VDX_FOCUSED=1, `vdx ai --focused`) is deaf to mail: one
+# line saying who it is, and nothing that calls it to the inbox — no count, no
+# letters of its own waiting, no notice asking for work before other work. The
+# registration above still runs: it is silent, and routing depends on it.
+# @see intercom-common.sh → "Focused sessions"
+if intercom_focused; then
+  msg="[intercom] 🪪 You are \`${id}\`"
+  [ -n "$names" ] && msg="${msg} — aka: ${names}"
+  msg="${msg}. 🔇 Focused session: mail is not shown here and no other session wakes this one; read the inbox only when the user asks."
+  jq -c -n --arg c "$msg" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
+  exit 0
+fi
+
 aliases="$(intercom_registry_get "$id" '(.aliases // []) | join(", ")')"
 missing="$(intercom_registration_missing "$id")"
 mismatch="$(intercom_remote_mismatch "$id" 2>/dev/null || true)"

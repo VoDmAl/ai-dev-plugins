@@ -37,6 +37,8 @@ mode=$(vdm_get_mode "intercom" "smart")
 
 # intercom-common must be present to know the inbox; fail open (silent) if not.
 command -v intercom_inbox_count >/dev/null 2>&1 || exit 0
+# A focused session is not called to its inbox (intercom-common.sh → "Focused sessions").
+intercom_focused && exit 0
 
 id="$(intercom_identity 2>/dev/null)"
 count="$(intercom_inbox_count "$id" 2>/dev/null)"
