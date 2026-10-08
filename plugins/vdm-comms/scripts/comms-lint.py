@@ -806,7 +806,7 @@ def print_contract():
     print("draft\tseparator element: no `---`, or nothing after it\terror")
     print("draft\tgoal element: no `goal:` in the frontmatter, or an empty one (any YAML form)\terror")
     print("draft\tknown element: a question in the text, no `**What we know**` / `**Знаем сами**` line above the separator\twarning")
-    print("draft\t`register:` (or comms.register) not one of volunteer, executor, peer\terror")
+    print("draft\t`register:` (or comms.register) not one of %s\terror" % ", ".join(cfgmod.REGISTERS))
     print("draft\t`channel:` + a draft marker outside comms/ — not tracked there\terror")
     print("never\ta letter already sent (`sent:`) — history is not refitted")
 

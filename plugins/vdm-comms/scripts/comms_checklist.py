@@ -37,14 +37,14 @@ CHECKS = (
     "The decision and the request — not the reader's own decisions retold, not our own corrections.",
     "No exit: nothing lets them close or park it in one line (\"if not, fine\", \"let me know when convenient\", \"send X, then\"); the request ends with what happens once it is done — our next step goes to the owner above the separator, as a proposal.",
     "Everything needed to start is inside the letter; procedural asks run in parallel, not as a condition.",
-    "Every promise and date of ours was named by the owner (others go above the separator, as a proposal); the pronoun names who really acts: the owner's and their agent's work is \"I\", \"we\" only for what is truly shared.",
+    "Every promise and date of ours was named by the owner (others go above the separator, as a proposal); the pronoun names who really acts: the owner's and their agent's work is \"I\", \"we\" only for what is truly shared; the request's verb names who on their side does the work — a head asked for the team's work, in the plural — and the forms in one sentence agree.",
     "No obliging extras: no help nobody asked for, no \"happy to\", no \"while we're at it\" — \"please\" and \"thanks\" are the register's, not extras.",
     "Cut: what we already decided, our own status, what they already know.",
     "Questions only for the gap: a \"What we know\" line above the separator, with sources; not found = \"not seen in our sources\".",
     "Every fact about their system or a person has a source; \"always\" / \"any\" holds in every case; a ticket goes by its full key, never a bare number — under the ticket itself, \"this task\".",
     "Their field is not explained to them; nothing is prescribed inside their zone.",
     "Recipients' profiles read and applied, and their `trust` lets this project write: a hand writes to team and peer only — careful, exec and anyone not in people/ go through the HQ. No reproach for a past silence.",
-    "The channel's form: an email has a subject (the same thread keeps `RE:`, a new matter a new one), a greeting on its own line, a paragraph per thought; a ticket addresses people by mention — `[~login]` in Jira, `@login` in GitLab.",
+    "The channel's form: an email has a subject (the same thread keeps `RE:`, a new matter a new one), a greeting on its own line, a paragraph per thought, a signature only where the owner signs — none to people they know well; a ticket addresses people by mention — `[~login]` in Jira, `@login` in GitLab.",
     "Attachments: the text says \"attached\", and the file has a 📎 section.",
     "After sending: who has the ball, and where the waiting item with a review date lives; whoever else waits on this subject is in copy — not us in the middle; whoever saw the subject earlier and needs no part in what follows (a copy of the letter we answer, someone the document was shared with) gets a blind copy of this first answer — they see it is not dropped, and reply-all leaves them out.",
 )
@@ -53,6 +53,7 @@ REGISTER_LINES = {
     "volunteer": "ask, don't assign — what, by when, what counts as done, and what we take off them if the date is tight",
     "executor": "direct, no hedging about our own actions — the need and the outcome; where and how is theirs",
     "peer": "a request, not an order — no imperatives, no order of steps, no deadline for their answer; a favour outside their queue gets a please and a thanks",
+    "arbiter": "a report to whoever decides between the sides — positions without owners (no mine / theirs), our neutrality in our words and never \"your decision\", \"no answer yet\" only with our next move",
 }
 
 

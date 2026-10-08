@@ -84,6 +84,15 @@ is shown to anyone, and open the sections below when a line does not settle.
   thanks at the end where the register calls for it (§ 6). An email assembled as
   one block, like a chat message, is a defect of form even when every word is
   right. A messenger message may be one block.
+- **A signature only where the owner signs.** To people the owner knows well — a
+  correspondence already running, a short form of the name, a profile in the
+  HQ's `people/` — mail is like a message, and the owner does not sign it; a
+  first letter to someone they barely know may end with the name. The owner's
+  words: «если пишу хорошо известным людям, то почта это скорее как
+  sms/instant message, поэтому подпись не ставлю». A rule of form is checked
+  against what the owner actually sent, not against our drafts: across about
+  twenty letters to colleagues over three weeks, a name at the end stood only in
+  drafts the assistant wrote (2026-10-08).
 - **In a ticket system, a person is addressed by a mention**, never by a name in
   plain text: `[~login]` in Jira Server and Data Center, `@login` in GitLab.
   Everyone whose answer the comment needs is mentioned too. A name in prose
@@ -230,13 +239,14 @@ is shown to anyone, and open the sections below when a line does not settle.
 
 How direct to be depends on who the reader is to us. That is the project's
 declaration — `comms.register` in `.claude/vdm-plugins.json` — because no general
-skill can tell a volunteer from a contractor. Three profiles:
+skill can tell a volunteer from a contractor. Four profiles:
 
 | `comms.register` | The reader | How the request is made |
 |---|---|---|
 | `volunteer` | helps because they want to; refusing costs them nothing | concrete and bounded: what, by when, what counts as done — and what we take off them if the date is tight. Asked, not assigned: "your experience would help here", never "this is your task" or "this is your field". A refusal means the ask was cut wrong |
 | `executor` | does the work in their own zone (a contractor, the team that owns the system) | direct, active verbs, no hedging about our own actions ("maybe", "if we manage"). State the need and the outcome; where and how is up to them — do not prescribe inside their zone, do not pre-fill their fields |
 | `peer` | an equal: another team, a partner | a request, not an order: no imperatives ("how can we get this?" rather than "send"), no assigned order of steps, no deadline for their answer, and no "up to you" formula. Urgency created by a third party is not backed with our deadline. A favour outside their queue gets a "please" and a closing "thanks" |
+| `arbiter` | decides between the sides, by a rule or a mandate — we report, they choose | positions without owners: "the first version", "originally", never "mine" and "theirs" — two authors' versions read as a quarrel, and the arbiter is called to pick a winner. Our neutrality in our own words, not handed back as "your decision": an explicit "you decide" raises the stakes and returns what they delegated. "No answer yet" only next to our own move — before writing that someone is silent, look for the next contact with them, on any subject |
 
 Two cases look like a conflict and are not: the date of **the work our event
 depends on** can be named to a volunteer; a **deadline for a peer's reply** is
@@ -261,6 +271,14 @@ For every register:
   and a promise for people who never made one. "We" stays for what is truly
   shared — a decision taken together. Check before showing the draft: who
   actually did this, and who actually will?
+- **The request names who does the work on their side.** The verb of a request
+  says who will act there: the head of a team, asked for work the team will do,
+  is addressed in the plural where the language has one. And the forms of one
+  sentence agree — a plural "yourselves" beside a singular imperative shows at
+  proofreading with no context at all. Field case (2026-10-08): a draft offered
+  a branch to its reader in the singular, and the owner sent it in the plural;
+  that the reader heads the team that will finish it is our reading of the edit,
+  not the owner's word.
 - **The opponent test**: if agreeing with a phrase costs the other side nothing,
   the argument is theirs — rewrite or drop it. The same test catches singling
   one person out in a group.
@@ -447,7 +465,7 @@ And around them:
 
 | Key | Values | Default |
 |-----|--------|---------|
-| `register` | `volunteer` \| `executor` \| `peer` — how requests are made to this project's usual reader (§ 6) | not declared: the rules for every register apply, no profile |
+| `register` | `volunteer` \| `executor` \| `peer` \| `arbiter` — how requests are made to this project's usual reader (§ 6) | not declared: the rules for every register apply, no profile |
 | `language` | the language of outgoing letters, e.g. `en`, `ru` | not declared: the recipient's language, decided per letter |
 | `hq` | a hand's HQ: the intercom identity (or a name it goes by) of the project whose `people/` this one reads | not declared: the project is its own HQ, and reads its own `people-dir` |
 

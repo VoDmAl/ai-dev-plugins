@@ -263,6 +263,17 @@ expect_says "…a peer doing a favour outside their queue gets a please and a th
 expect_says "…and the language" "$OUT" "Language of the letter: en"
 OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-y-out.md" $'---\ndraft: true\nregister: volunteer\n---\n\nHi.\n' | bash "$GUARD" 2>/dev/null)
 expect_says "RED: the letter's own register wins" "$OUT" "Register: volunteer"
+# HQ, 2026-10-07 (parse-practice-home): letters to whoever decides between the
+# sides by regulation had their `register:` taken off — the linter knew no word
+# for that reader. The owner's three corrections to such a report are its line.
+OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-y-out.md" $'---\ndraft: true\nregister: arbiter\n---\n\nHi.\n' | bash "$GUARD" 2>/dev/null)
+expect_says "RED: an arbiter gets its own register line" "$OUT" "Register: arbiter"
+expect_says "…positions without owners" "$OUT" "no mine / theirs"
+# Another project's HQ, 2026-10-08 (letters-recipient-actor-signature): a request
+# named the wrong actor on the reader's side, and a signature went where the
+# owner never signs.
+expect_says "RED: the checklist names who does the work on their side" "$OUT" "who on their side does the work"
+expect_says "RED: …and a signature only where the owner signs" "$OUT" "a signature only where the owner signs"
 rm -f "$FX/.claude/vdm-plugins.json"
 OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-x-out.md" "$SENT" | bash "$GUARD" 2>/dev/null); rc=$?
 expect_exit "GREEN: a blocked letter is still blocked" 2 "$rc"
@@ -1144,7 +1155,10 @@ expect_says "RED: the scaffold writes the project's register into the letter" "$
 printf -- '---\ndraft: true\nchannel: email\nregister: friend\n---\n\n**Subject**: x\n\nHi.\n' > "$LF"
 run_skip "$LF"; rc=$?
 expect_exit "RED: an unknown register in a draft ⇒ exit 1" 1 "$rc"
-expect_says "…and the known ones are named" "$OUT" "volunteer, executor, peer"
+expect_says "…and the known ones are named" "$OUT" "volunteer, executor, peer, arbiter"
+printf -- '---\ndraft: true\nchannel: email\nregister: arbiter\n---\n\n**Subject**: x\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "RED: arbiter is a known register ⇒ exit 0" 0 "$rc"
 printf -- '---\ndraft: true\nchannel: email\nregister: peer\n---\n\n**Subject**: x\n\nHi.\n' > "$LF"
 run_skip "$LF"; rc=$?
 expect_exit "GREEN: a letter overriding the project's register ⇒ exit 0" 0 "$rc"

@@ -107,7 +107,7 @@ DEFAULTS = {
     "now": None,
 }
 
-REGISTERS = ("volunteer", "executor", "peer")
+REGISTERS = ("volunteer", "executor", "peer", "arbiter")
 
 # Wording for the files the generator writes INTO THE PROJECT. It is the one
 # part of this plugin that ends up in somebody else's document, so it cannot be

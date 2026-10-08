@@ -180,7 +180,7 @@ history as a defect.
 | `labels` | wording of the files the GENERATOR writes into your repository: `"en"` (default), `"ru"`, or an object overriding individual keys, merged over English. |
 | `link-style`, `registry-columns`, `series-columns`, `generate` | how the generated layer writes links, which columns it writes, and which of its three artefacts are this plugin's at all — see `/vdm-comms:index`. |
 | `letter-form` | what an outgoing **draft** must carry, per channel — see *The form of a draft* below. Merged over the default key by key. Default `{"email": ["subject"]}`. |
-| `register`, `language` | who the project usually writes to (`volunteer` \| `executor` \| `peer`) and in what language — see `/vdm-comms:letters`. A letter's own `register:` wins over the project's. |
+| `register`, `language` | who the project usually writes to (`volunteer` \| `executor` \| `peer` \| `arbiter`) and in what language — see `/vdm-comms:letters`. A letter's own `register:` wins over the project's. |
 | `enabled` | `false` switches the whole plugin off. |
 
 Fill `track-roots` and `series` from what the repository actually contains. The
@@ -259,6 +259,10 @@ What each channel requires is the project's own, in `comms.letter-form`:
 channel's own list adds to it. The default is only `{"email": ["subject"]}` —
 the one thing true of every email in every repository. A separator is a
 project's convention and is opted into.
+
+A draft for another agent (`channel: intercom`) goes out with `intercom send
+--body <file>`, which takes the text below the separator and leaves the
+frontmatter and the header in the kept copy (vdm 2.45.1 and later).
 
 Checked **only for drafts** (`draft: true` or `sent: false`, no `sent:` date). A letter already sent is
 history: fitting it to a form written later would falsify the record. Each
