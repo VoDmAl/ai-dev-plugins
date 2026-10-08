@@ -217,8 +217,9 @@ Sidetrack #2); до тех пор кристалл в `blocked`. Предлож�
       `hq <корень>`; `comms_people.py`, тесты, § 5 скилла, README; vdm-comms MINOR
 - [x] `exec` вместо `top` в шкале `trust`, старое `top` читается как `exec` (DL #6): `comms_people.py`, чеклист, § 5 и
       «People profiles» скилла, README, тесты; vdm-comms 0.21.0
-- [ ] Outcome to агенту хранилища заметок: `intercom reply trust-confidential-split` — шкала готова с 0.21.0;
-      профили штабов переводить после `confidential` у echelon
+- [x] Outcome to агенту хранилища заметок: `intercom reply trust-confidential-split` — ушёл
+      `trust-confidential-split-outcome` 2026-10-07: шкала с 0.21.0; профили штабов переводить после `confidential`
+      у echelon, письма штабам предложены ему
 - [ ] Outcome to `vdx`: intercom reply people-wiring-hq-decision --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
 - [x] Outcome to `hq`: letters-jira-mention-form — ушёл `letters-jira-mention-form-outcome` 2026-10-01
 - [x] Outcome to `hq`: comments-system-vdm — ушёл `comments-system-vdm-outcome` 2026-10-01
