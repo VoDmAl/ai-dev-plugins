@@ -427,6 +427,24 @@ If no commit-format source is detected (the hook reports `Source: fallback` or `
 
 If they decline, drop it — don't repeat. Don't add the section unilaterally; it's project-level convention, not a fix for the current commit. Until they add one, infer style from `git log` and match it (subject-only stays subject-only; with-body stays with-body).
 
+### The subject has a ceiling, held by the helper
+
+`git-guard-prepare` refuses a first line longer than the project's ceiling —
+`git-guard.subject-max` in `.claude/vdm-plugins.json`, else **72** characters
+(git's own documentation advises 50; a prefix and a scope need the margin).
+Characters, not bytes. The refusal names the length and where the detail goes:
+`PROJECT_CHANGELOG.md` when the project keeps one, otherwise a body after a blank
+line. Nothing is prepared; shorten the subject and run it again.
+
+A ceiling in words did not hold. Measured 2026-10-08 on the last 40 commits of
+every repository on one machine: a median first line of 675 characters in one
+project, 210–350 in several others prepared the same way, 136 in a repository
+whose own rules said "≤ 80"; repositories committed by hand stayed at 40–60. The
+mechanism is the format detection below: with no rule of its own, a project's
+`git log` is the sample, so every long subject licenses the next. A project that
+wants a different ceiling sets the number; there is no flag to pass one long
+subject, because the escape would become the habit.
+
 ### Recovery: if the assistant ran `git commit` directly
 
 The PreToolUse hook intercepts `git commit` and `git push` and emits PROJECT COMMIT FORMAT, STAGED CHANGES, and recovery instructions. Treat that output as a soft reminder to switch to the prep workflow above — do not retry `git commit` from Bash. Instead, prepare a message file via `git-guard-prepare` (using the format rules the hook just emitted) and hand off `git commit -F <path> -- <paths>`.
@@ -441,6 +459,9 @@ When the hook intercepts `git commit`, it detects the project's commit conventio
 4. Commit section in `CLAUDE.md`, `CONTRIBUTING.md`, `docs/CONTRIBUTING.md`, or `README.md`
 5. Pattern detection from `git log -30` (recognizes `[+]/[-]/[*]`, `feat:/fix:`, gitmoji)
 6. Generic fallback (brief imperative ≤ 50 chars)
+
+Whatever the source says about style, the length is capped by the helper (see
+[The subject has a ceiling](#the-subject-has-a-ceiling-held-by-the-helper)).
 
 The fallback table below applies only when nothing else can be detected (fresh repo, no log, no docs, no config — rare).
 
@@ -683,5 +704,6 @@ keeps the guard fail-closed (a missing or crashing `python3` blocks a commit-sha
 command instead of letting it through silently); the guard itself, including
 `BLOCKED_PATTERNS`, is `${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-hook.py`.
 Reminder: `${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-reminder.sh` — gated by `enabled` / `mode` in `.claude/vdm-plugins.json`.
+Subject ceiling: `git-guard.subject-max` in `.claude/vdm-plugins.json` (default 72) — see [The subject has a ceiling](#the-subject-has-a-ceiling-held-by-the-helper).
 Crystal backup: `${CLAUDE_PLUGIN_ROOT}/scripts/crystal-precommit-check.sh` — see [Crystal pre-commit backup](#crystal-pre-commit-backup) above.
 U+FFFD guard: `${CLAUDE_PLUGIN_ROOT}/scripts/fffd-precommit-check.sh` — see [U+FFFD](#ufffd-corruption-that-arrives-by-batch-write) above; the same check runs inside `git-guard-prepare`, where it needs no installation.

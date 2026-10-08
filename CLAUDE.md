@@ -122,7 +122,9 @@ When writing prompts, hook output, or instructions inside `plugins/**/skills/**/
 
 Subject-only, single line. **No body** — the detail belongs in `PROJECT_CHANGELOG.md` (one entry per change), not duplicated in the commit. The git-guard hook detects this section automatically when intercepting `git commit` and emits these rules to the assistant.
 
-Prefix + short imperative. Aim ≤ 80 chars (mild ceiling — recent commits run 50–80).
+Prefix + short imperative, **≤ 80 characters** — a ceiling `git-guard-prepare` holds (`git-guard.subject-max: 80` in
+`.claude/vdm-plugins.json`; vdm-git 2.18.0). The words alone did not hold it: the last 40 subjects had a median of
+136 on 2026-10-08. How and why go to `PROJECT_CHANGELOG.md`.
 
 | Prefix | Meaning |
 |--------|---------|

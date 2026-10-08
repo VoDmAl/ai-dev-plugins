@@ -1068,6 +1068,33 @@ run_emitted "$cmd" >/dev/null 2>&1
 out=$("$PREP" --verify-last 2>&1 >/dev/null)
 expect_not_says "a rewrite with HEAD unchanged (a formatting hook) is not reported" "${out:-(silent)}" "CHANGED SINCE PREP"
 
+printf '\n=== the subject has a ceiling ===\n'
+# Measured 2026-10-08: median first lines of 675 characters in one project and
+# 136 here, against a CLAUDE.md that says "<= 80". A ceiling in words did not
+# hold; the helper holds a number. No commit is needed for any of this.
+d=$(new_repo subject_max); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'x\n' > a.txt; git add a.txt
+s72=$(printf 'a%.0s' $(seq 1 72)); s73=$(printf 'a%.0s' $(seq 1 73)); scyr=$(printf 'ж%.0s' $(seq 1 70))
+out=$("$PREP" "$s72" -- a.txt 2>&1); rc=$?
+expect_exit "a 72-character subject is prepared" 0 "$rc"
+out=$("$PREP" "$s73" --supersede -- a.txt 2>&1); rc=$?
+expect_exit "RED: a 73-character subject is refused" 1 "$rc"
+expect_says "…naming its length and the ceiling" "$out" "73 characters — over this project's ceiling of 72"
+expect_not_says "…and preparing nothing" "$out" "git commit -F"
+out=$("$PREP" "$scyr" --supersede -- a.txt 2>&1); rc=$?
+expect_exit "RED: 70 Cyrillic letters (140 bytes) count as 70" 0 "$rc"
+out=$(printf '%s\n\n%s\n' "[*] short" "$(printf 'body %.0s' $(seq 1 60))" | "$PREP" - --supersede -- a.txt 2>&1); rc=$?
+expect_exit "a short subject with a long body is prepared — only the first line is capped" 0 "$rc"
+mkdir -p .claude; printf '{"git-guard": {"subject-max": 80}}\n' > .claude/vdm-plugins.json
+s80=$(printf 'b%.0s' $(seq 1 80)); s81=$(printf 'b%.0s' $(seq 1 81))
+out=$("$PREP" "$s80" --supersede -- a.txt 2>&1); rc=$?
+expect_exit "RED: the project's own ceiling is read — 80 passes under subject-max 80" 0 "$rc"
+printf '# Log\n' > PROJECT_CHANGELOG.md
+out=$("$PREP" "$s81" --supersede -- a.txt 2>&1); rc=$?
+expect_exit "…and 81 is refused" 1 "$rc"
+expect_says "…sending the detail to the project's changelog" "$out" "go to PROJECT_CHANGELOG.md"
+
 # ---------------------------------------------------------------------------
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

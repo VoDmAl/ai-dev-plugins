@@ -582,6 +582,42 @@ if [ -z "$repo_root" ]; then
 fi
 repo_name=$(basename "$repo_root")
 
+# ---------------------------------------------------------- subject length
+#
+# The first line says what changed; how and why go to the project's changelog,
+# or to the body where the project writes one. A ceiling in words did not hold.
+# Measured 2026-10-08 on the last 40 commits of every repository on the owner's
+# machine: a median first line of 675 characters in one project, 210-350 in
+# others prepared the same way, 136 in this plugin's own repository against a
+# CLAUDE.md that says "<= 80"; repositories committed by hand stayed at 40-60.
+# With no rule of its own, a project's `git log` is the sample for the next
+# subject, so every long one licenses a longer one. The ceiling is therefore a
+# number held here: `git-guard.subject-max` in the project's vdm-plugins.json,
+# else 72 — git's own documentation advises 50, and a prefix and a scope need
+# the margin. Counted in characters, not bytes: a Cyrillic letter is one.
+subject_max=72
+if . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/config-read.sh" 2>/dev/null \
+   && command -v vdm_config_read >/dev/null 2>&1; then
+  subject_max=$(vdm_config_read "git-guard" "subject-max" "72")
+fi
+case "$subject_max" in ''|*[!0-9]*|0) subject_max=72 ;; esac
+subj=${message%%$'\n'*}
+subj_len=$(printf '%s' "$subj" | LC_ALL=C tr -d '\200-\277' | wc -c | tr -d ' ')
+if [ "$subj_len" -gt "$subject_max" ]; then
+  if [ -f "$repo_root/PROJECT_CHANGELOG.md" ]; then
+    detail_home="PROJECT_CHANGELOG.md"
+  else
+    detail_home="the body, after a blank line, if the project writes one"
+  fi
+  {
+    echo "git-guard-prepare: the subject is $subj_len characters — over this project's ceiling of $subject_max."
+    echo "                   The first line names what changed; how and why go to $detail_home."
+    echo "                   Shorten it and run again. Nothing was prepared."
+    echo "                   The ceiling: \`git-guard.subject-max\` in .claude/vdm-plugins.json (default 72)."
+  } >&2
+  exit 1
+fi
+
 branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null \
   || git rev-parse --short HEAD 2>/dev/null \
   || echo detached)
