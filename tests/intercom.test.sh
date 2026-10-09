@@ -809,6 +809,15 @@ eq "RED: --body <(…) carries the body" "$(body_tail body-procsub 'Body from a 
 ')" "Body from a process."
 out="$( cd "$TMP/hop-a" && printf 'Said once.\n' | bash "$IC" send hop-b body-label --body /dev/stdin 2>&1 )"
 says "…and the report names what the sender gave, not a temporary copy" "$out" "body: /dev/stdin — 11 bytes"
+# The body's own status once overwrote the recipient's resolution (2.45.1): a
+# plain body to a registered agent was announced as first contact, and a real
+# first contact whose body was an outgoing text was not.
+says_not "RED: a body to a registered agent is not announced as first contact" "$out" "first contact"
+out="$( cd "$TMP/hop-a" && printf 'Hello.\n' | bash "$IC" send body-newcomer hi --first-contact --body /dev/stdin 2>&1 )"
+says "…a real first contact with a body still is" "$out" "first contact"
+printf -- '---\nchannel: intercom\n---\n\n> Notes to self.\n\n---\n\nHello.\n' > "$TMP/fc-comms.md"
+out="$( cd "$TMP/hop-a" && bash "$IC" send body-newcomer2 hi --first-contact --body "$TMP/fc-comms.md" 2>&1 )"
+says "RED: …and so is one whose body is an outgoing text" "$out" "first contact"
 o="$( cd "$TMP/hop-a" && : | bash "$IC" send hop-b body-stdin-empty --body /dev/stdin 2>&1 )"; r=$?
 if [ "$r" -ne 0 ] && [ ! -e "$VDM_INTERCOM_ROOT/hop-b/body-stdin-empty.md" ]; then ok "RED: an empty stdin is refused, no letter written"
 else bad "RED: an empty stdin is refused, no letter written" "rc=$r"; fi

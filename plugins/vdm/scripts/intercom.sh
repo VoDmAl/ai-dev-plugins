@@ -637,7 +637,11 @@ cmd_send() {
     # stands". Field case (HQ, 2026-10-07): a brief sent from such a file
     # arrived with its frontmatter and its notes-to-self on top, and was fixed
     # by hand before it was read. Any other file is still taken byte for byte.
-    local below rc
+    # Its own status variable: `rc` still holds the recipient's resolution, and
+    # the first-contact notice below reads it (2.45.1 shared it: every plain
+    # body was announced as first contact, and a real one with an outgoing
+    # text was not).
+    local below body_rc
     below="$(mktemp "${TMPDIR:-/tmp}/intercom-body.XXXXXX" 2>/dev/null)" \
       || _ic_die "send: cannot make a temporary copy of the body — not sending." 2
     awk '
@@ -648,8 +652,8 @@ cmd_send() {
       sep { print }
       END { if (rc) exit rc; if (!opened || fm) exit 1; if (!sep) exit 2 }
     ' "$body_file" > "$below" 2>/dev/null
-    rc=$?
-    case "$rc" in
+    body_rc=$?
+    case "$body_rc" in
       0) mv -f "$below" "$body_file"; _IC_BODY_BELOW=1 ;;
       2) rm -f "$below"
          _ic_die "send: body '$body_label' declares \`channel:\` but has no \`---\` line below its header — nothing marks where the letter starts. Put the line above the text to send. Not sending." 2 ;;
