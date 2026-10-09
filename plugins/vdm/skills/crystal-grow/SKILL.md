@@ -377,8 +377,12 @@ and the reminder is silently discarded. Declare those subtrees:
 { "crystal": { "capture-exclude": ["_import", "attachments"] } }
 ```
 
-Paths are relative to the project root. Absent = scan everything, which is
-what a code repo wants.
+Paths are relative to the project root. Absent = scan everything except the
+tooling names below. A code repo usually wants that, unless something that is
+not code fills most of its tree: a framework cache, container volumes,
+uploads. In one Symfony project `var/cache` held 21.8k of the 30.5k files
+walked, and under vdm 2.46.0 its turns ended with a median 7 s wait;
+`["var", "data"]` took the walk from 1–2.5 s to 0.04 s (2026-10-09).
 
 The end-of-turn Stop reminder asks the same question with the same walk and
 honours the same list (vdm 2.46.1). Before that it walked the whole tree once
