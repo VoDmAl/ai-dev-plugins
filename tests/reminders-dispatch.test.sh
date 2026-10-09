@@ -258,25 +258,27 @@ valid "RED: run by hand, a reminder with broken text still prints valid JSON" "$
 
 printf '\ndocs-sync: paths git would quote\n'
 
-# The real child, in a repository whose .md names are exactly what git quotes:
+# The real child, in a repository whose names are exactly what git quotes:
 # Cyrillic, a space, a double quote. Before the fix all three came out in
-# `"…\320…"` form, broke the JSON, and — for a changed file — also failed the
-# `[ -f ]` test, so its @see references were silently skipped.
+# `"…\320…"` form and broke the JSON. Since vdm 2.46.0 the hook speaks only
+# with a pair, so the fixture makes pairs: a Cyrillic code file loses a line
+# whose identifiers the two oddly named documents name. The pair exists only if
+# git's quoted diff header for that file was read back as the file.
 DS="$TMP/ds"; mkdir -p "$DS/docs" "$DS/src"
 ( cd "$DS" && git init -q . && git config user.email t@t && git config user.name t ) >/dev/null 2>&1
-printf 'a\n' > "$DS/docs/Документ с пробелом.md"
-printf 'b\n' > "$DS/docs/quote\"name.md"
+printf 'uses ledger_sync\n' > "$DS/docs/Документ с пробелом.md"
+printf 'uses retry_budget\n' > "$DS/docs/quote\"name.md"
 printf 'c\n' > "$DS/README.md"
+printf 'ledger_sync(retry_budget)\n' > "$DS/src/Модуль с пробелом.py"
 ( cd "$DS" && git add -A && git commit -qm init ) >/dev/null 2>&1
-printf 'x\n' > "$DS/src/app.py"
-printf '# @see docs/Документ с пробелом.md\n' > "$DS/docs/Новый.md"
+printf 'pass\n' > "$DS/src/Модуль с пробелом.py"
 ds=$( cd "$DS" && TMPDIR="$TMP/state3" bash "$REPO_ROOT/plugins/vdm/scripts/docs-sync-reminder.sh" \
         <<<'{"session_id":"ds"}' 2>/dev/null )
 valid "RED: docs-sync over Cyrillic, space and quote paths prints valid JSON" "$ds"
 dsctx=$(printf '%s' "$ds" | python3 -c 'import json,sys; print(json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"], end="")' 2>/dev/null)
 says "RED: …the Cyrillic path with a space reads as itself" "$dsctx" "docs/Документ с пробелом.md"
 says "RED: …the path with a quote reads as itself" "$dsctx" 'docs/quote"name.md'
-says "RED: …a changed Cyrillic file is listed as itself" "$dsctx" "docs/Новый.md"
+says "RED: …a changed Cyrillic file's diff is read as that file" "$dsctx" "\`ledger_sync\`"
 says_not "RED: …and no octal escape leaks through" "$ds" '\320'
 
 # The byte half, seen on a live repository on this machine: index entries whose
@@ -284,21 +286,24 @@ says_not "RED: …and no octal escape leaks through" "$ds" '\320'
 # will — show as deleted in `git status`. docs-sync read them with -z and then
 # ran `tr` and `sed` over the names in the user's locale; in a UTF-8 one macOS
 # stops at the first bad byte, and the hook printed "Changed files (4)" and one
-# name cut in half (Sidetrack #9, docs/tasks/crystal-wake/workitem.md).
+# name cut in half (Sidetrack #9, docs/tasks/crystal-wake/workitem.md). The
+# list of changed files is gone (vdm 2.46.0); what stays is that both files
+# around the bad name are read — each gives the README a pair of its own.
 DB="$TMP/dsbytes"; mkdir -p "$DB/src"
 ( cd "$DB" && git init -q . && git config user.email t@t && git config user.name t ) >/dev/null 2>&1
-printf 'x\n' > "$DB/README.md"; printf 'x\n' > "$DB/src/omega.py"; printf 'x\n' > "$DB/src/zeta.py"
+printf 'omega_rate and zeta_rate\n' > "$DB/README.md"
+printf 'omega_rate = 1\n' > "$DB/src/omega.py"; printf 'zeta_rate = 1\n' > "$DB/src/zeta.py"
 ( cd "$DB" && git add -A && git commit -qm init ) >/dev/null 2>&1
 ( cd "$DB" && blob=$(printf 'x\n' | git hash-object -w --stdin) &&
   git update-index --add --cacheinfo "100644,$blob,a$(printf '\320')b.jpg" ) >/dev/null 2>&1
-printf 'y\n' >> "$DB/src/omega.py"; printf 'y\n' >> "$DB/src/zeta.py"
+printf 'y\n' > "$DB/src/omega.py"; printf 'y\n' > "$DB/src/zeta.py"
 db=$( cd "$DB" && LC_ALL=en_US.UTF-8 TMPDIR="$TMP/state4" \
         bash "$REPO_ROOT/plugins/vdm/scripts/docs-sync-reminder.sh" <<<'{"session_id":"db"}' 2>"$TMP/db.err" )
 dbctx=$(printf '%s' "$db" | python3 -c '
 import json, sys
 print(json.loads(sys.stdin.buffer.read().decode("utf-8", "replace"))["hookSpecificOutput"]["additionalContext"], end="")' 2>/dev/null)
-says "RED: a name that is not UTF-8 does not cut the list of changed files" "$dbctx" "src/zeta.py"
-says "RED: …the file after it is listed too" "$dbctx" "src/omega.py"
+says "RED: a name that is not UTF-8 does not cut the change short" "$dbctx" "\`zeta_rate\`"
+says "RED: …the file after it is read too" "$dbctx" "\`omega_rate\`"
 if [ -s "$TMP/db.err" ]; then bad "RED: …and no tool complains about the bytes" "$(head -c 160 "$TMP/db.err")"
 else ok "RED: …and no tool complains about the bytes"; fi
 

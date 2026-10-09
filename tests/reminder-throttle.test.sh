@@ -190,24 +190,30 @@ eq "outside a work tree ⇒ silent" "$(run_guard "$NOGIT")" "0"
 
 printf '\nthe hooks print their OUTPUT, not their INPUT\n'
 
+# docs-sync since vdm 2.46.0: fourteen documents, each naming its own identifier
+# that the change removes. The list shows three; the count is all fourteen.
 DOCS="$TMP/docs"
-mkdir -p "$DOCS"
+mkdir -p "$DOCS/docs" "$DOCS/src"
 ( cd "$DOCS" && git init -q . ) >/dev/null 2>&1
-i=1
-while [ "$i" -le 14 ]; do printf '# doc %s\n' "$i" > "$DOCS/doc-$i.md"; i=$((i + 1)); done
-printf 'dirty\n' > "$DOCS/src.py"
+i=1; : > "$DOCS/src/app.py"
+while [ "$i" -le 14 ]; do
+  printf '# doc %s\nhow stage_%s_worker runs\n' "$i" "$i" > "$DOCS/docs/doc-$i.md"
+  printf 'stage_%s_worker()\n' "$i" >> "$DOCS/src/app.py"
+  i=$((i + 1))
+done
+( cd "$DOCS" && git add -A >/dev/null 2>&1 && git -c user.email=t@e.invalid -c user.name=t commit -qm fx >/dev/null 2>&1 )
+printf 'run()\n' > "$DOCS/src/app.py"
 rm -rf "$TMPDIR/vdm-reminder-throttle"
 out=$( cd "$DOCS" && printf '{"session_id":"d1"}' | bash "$DOCSSYNC" 2>/dev/null )
-says "the doc count is the true total"  "$out" "Project docs (14)"
-says "…but the list itself is truncated" "$out" "(+4)"
-# Order-independent: `find` does not sort, so asserting that one NAMED file is
-# missing would pass or fail by luck. Count what was actually listed.
+says "the doc count is the true total"  "$out" "14 document(s)"
+says "…but the list itself is truncated" "$out" "+11 more"
+# Count what was actually listed, rather than name one document that must be
+# missing: which three come first is the ranking's business, not this test's.
 listed=$(printf '%s' "$out" | python3 -c "
-import re, sys
-t = sys.stdin.read()
-m = re.search(r'Project docs \\(\\d+\\): (.*)', t)
-print(len(re.findall(r'doc-\\d+\\.md', m.group(1))) if m else -1)")
-eq "…to exactly ten entries, whatever order find returned them in" "$listed" "10"
+import json, re, sys
+t = json.load(sys.stdin)['hookSpecificOutput']['additionalContext']
+print(len(re.findall(r'docs/doc-\\d+\\.md', t)))" 2>/dev/null)
+eq "…to exactly three entries" "$listed" "3"
 
 CAP="$TMP/crystal"
 mkdir -p "$CAP/docs/tasks/probe" "$CAP/src"
@@ -252,40 +258,40 @@ says "the capture reminder reports HOW MANY files changed" "$out" "file(s) chang
 says "…and how long the workitem has sat untouched"        "$out" "workitem untouched for"
 says_not "…instead of the fixed verdict it used to print"  "$out" "Work happened this segment"
 
-printf '\ndocs-sync discovery, run the way a hook runs it (stock PATH)\n'
+printf '\ndocs-sync pairs, run the way a hook runs it (stock PATH)\n'
 # Field report (executor, 2026-09-23) plus what reproducing it turned up.
 # Run under PATH=/usr/bin:/bin on purpose: a session shell may wrap grep in
 # something that understands -P, and then the dead @see section looks alive.
+# Since vdm 2.46.0 the hook names pairs (lib/docs-pairs.py); the fixture keeps
+# its shape: 36 documents, the relevant one last by path, and fifty vendored
+# READMEs in an ignored .venv that name the same identifier.
 DS="$TMP/ds"; mkdir -p "$DS/docs" "$DS/src" "$DS/.venv/pkg"
 ( cd "$DS" && git init -q . && printf '.venv/\n' > .gitignore ) >/dev/null 2>&1
 i=0; while [ "$i" -lt 35 ]; do printf '# guide %s\n' "$i" > "$DS/docs/guide-$(printf %02d "$i").md"; i=$((i + 1)); done
-printf '# late guide\nhow the ledger_sync worker retries\n' > "$DS/docs/zz-ledger.md"
-i=0; while [ "$i" -lt 50 ]; do printf '# vendored\n' > "$DS/.venv/pkg/README-$i.md"; i=$((i + 1)); done
-printf 'x=1\n' > "$DS/src/ledger_sync.py"
+printf '# late guide\nhow the ledger_sync_worker retries\n' > "$DS/docs/zz-ledger.md"
+i=0; while [ "$i" -lt 50 ]; do printf '# vendored\nledger_sync_worker\n' > "$DS/.venv/pkg/README-$i.md"; i=$((i + 1)); done
+printf 'x=1\nworker = ledger_sync_worker()\n' > "$DS/src/ledger_sync.py"
 ( cd "$DS" && git add -A >/dev/null 2>&1 && git -c user.email=t@e.invalid -c user.name=t commit -qm fx >/dev/null 2>&1 )
-printf '# @see docs/guide-07.md\ny=2\n' >> "$DS/src/ledger_sync.py"
+printf '# @see docs/guide-07.md\nx=1\nworker = None\n' > "$DS/src/ledger_sync.py"
 rm -rf "$TMPDIR/vdm-reminder-throttle"
 out=$( cd "$DS" && printf '{"session_id":"ds1"}' | env -i HOME="$HOME" PATH=/usr/bin:/bin TMPDIR="$TMPDIR" bash "$DOCSSYNC" 2>/dev/null )
 ctx=$(printf '%s' "$out" | python3 -c "import json,sys; print(json.load(sys.stdin)['hookSpecificOutput']['additionalContext'])" 2>/dev/null)
 [ -n "$ctx" ] && ok "the hook output is valid JSON" || bad "the hook output is valid JSON" "$out"
-says "RED: an @see in a changed file is reported under the stock grep" "$ctx" "src/ledger_sync.py: docs/guide-07.md"
-says "RED: the doc count is the real total, not a ceiling of 30" "$ctx" "Project docs (36)"
-# Not marked RED, on purpose. The old list was the first thirty files in the
-# order `find` returned them, so whether it showed a vendored README or missed
-# docs/zz-ledger.md depended on the filesystem — no fixture makes that fail
-# deterministically. The deterministic red for the same root cause is the
-# count above: 30 for what is really 36.
+says "RED: an @see in a changed file is reported under the stock PATH" "$ctx" "docs/guide-07.md — @see in src/ledger_sync.py"
+says "a document that names the rewritten identifier is found wherever it sorts" "$ctx" "docs/zz-ledger.md — \`ledger_sync_worker\`"
+# The fifty vendored copies would count against the identifier — 51 holders of
+# 86 documents is past the fifth — and the pair above would vanish with them.
 says_not "an ignored .venv does not count as documentation" "$ctx" "README-"
-says "a relevant doc is found wherever it sorts" "$ctx" "docs/zz-ledger.md"
 grep -q '^export GIT_OPTIONAL_LOCKS=0' "$DOCSSYNC" && ok "git reads take no optional index lock" \
   || bad "git reads take no optional index lock" "GIT_OPTIONAL_LOCKS=0 not exported"
 
+# Outside git there is no change to pair with. The hook used to list every
+# document there (and walk .venv doing it); it now says nothing, even proactive.
 NG="$TMP/nogit"; mkdir -p "$NG/docs" "$NG/.venv/pkg"
 printf '# a\n' > "$NG/docs/a.md"; printf '# vendored\n' > "$NG/.venv/pkg/README.md"
 out=$( cd "$NG" && printf '{"session_id":"ds2"}' | env -i HOME="$HOME" PATH=/usr/bin:/bin TMPDIR="$TMPDIR" \
        bash -c "mkdir -p .claude && printf '{\"docs-sync\":{\"mode\":\"proactive\"}}' > .claude/vdm-plugins.json && bash '$DOCSSYNC'" 2>/dev/null )
-says "outside git: the project's own doc is listed" "$out" "docs/a.md"
-says_not "outside git: a .venv is pruned, not walked" "$out" ".venv"
+eq "outside git: silent, even proactive" "$out" ""
 
 printf '\nreminder-throttle: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

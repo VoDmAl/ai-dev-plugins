@@ -20,14 +20,14 @@ Adapts to any project documentation structure — not limited to `docs/features/
 |------------|------------------------------------------------------------|
 | `off` / `disable` | Set `enabled = false` (hook stays silent) |
 | `on` / `enable` | Set `enabled = true` |
-| `proactive` | Set `mode = "proactive"` (fires every prompt — skinny payload on clean tree) |
+| `proactive` | Set `mode = "proactive"` (looks on every prompt, no throttle — still silent without a pair) |
 | `conditional` | Set `mode = "conditional"` (fires only when tree has changes) |
 | `quiet` | Set `mode = "quiet"` (same as conditional today; tightened in fase 3) |
 | `silent` | Set `mode = "silent"` (never fires) |
 | `config` / `status` | Read and display the current section |
 | `reset` | Remove the `docs-sync` key (revert to defaults) |
 
-**Defaults when the section is missing:** `enabled: true`, `mode: "conditional"`.
+**Defaults when the section is missing:** `enabled: true`, `mode: "smart"` (looks while the tree is dirty, at most once per 10 minutes or 5 prompts).
 
 ### Config file path detection
 
@@ -46,12 +46,26 @@ Adapts to any project documentation structure — not limited to `docs/features/
 
 ## Automatic Activation
 
-**Via Hook (v2.0.0+):** A `UserPromptSubmit` hook performs lightweight discovery on every prompt:
-- Detects changed files via `git diff`
-- Maps all `.md` files in the project
-- Extracts `@see` references from changed files
-- Finds potentially affected docs via keyword matching
-- Suggests running `/vdm:docs-sync` for deep analysis
+**Via Hook (vdm 2.46.0+):** A `UserPromptSubmit` hook names **pairs** and is silent without one. A pair
+is a document outside the uncommitted change that names an identifier the change's code **removed or
+rewrote**, or that the changed code points at with `@see`. Identifiers are `--flags`, `snake_case`,
+`kebab-case`, `dotted.names`, `camelCase`, `ENV_VARS` from the old side of the diff, outside comments
+and test files (their lines are fixture data); a
+name that more than a fifth of the documents use (the project's own name) links nothing. Crystals,
+their `references/` and changelogs are records, never candidates.
+
+**At the commit (vdm-git 2.19.0+):** `git-guard-prepare` prints the same pairs for the paths it
+prepares. That is where "before completing" becomes an act: a document fixed now goes into the same
+commit (`git add` it, prepare again with `--supersede`).
+
+Both run `"${CLAUDE_PLUGIN_ROOT}/lib/docs-pairs.py"`. Why the hook was rebuilt: its list came from the
+path components of every dirty file, the project's name was one of them, and in one project 94
+reminders in 11 days showed the same first ten documents — the stale one third every time — while the
+skill ran once.
+
+**What the pairs cannot see** is a document that contradicts itself. In that field case the stale
+document was edited in the very commit that made it stale: a paragraph was appended, and the heading
+and the rule in its introduction still said the opposite. That is this skill's job (Step 6 below).
 
 **Via Skill:** Invoke `/vdm:docs-sync` explicitly for full deep discovery with relevance scoring.
 
@@ -115,13 +129,20 @@ crystal-cut gate is a separate skill, this is just a heads-up.
 - These are highest-priority matches
 
 **Step 4 — Keyword extraction:**
-- Extract meaningful identifiers from changed files: function names, class names, config keys, endpoint paths, service names, env variables
-- Search documentation files for these identifiers
+- Start from the pairs: `python3 "${CLAUDE_PLUGIN_ROOT}/lib/docs-pairs.py" --worktree --max-docs 20`
+  (`--staged` for what is staged, `--commit <rev>` for a commit already made)
+- Then extend by reading: function names, class names, config keys, endpoint paths, service names, env
+  variables the pairs missed — a behavior described in plain words has no identifier to match
 - Focus on specific terms (e.g., `STRIPE_API_KEY`, `UserService`, `/api/webhooks`) over generic ones
 
 **Step 5 — Cross-reference chains:**
 - Check found docs for links to other docs → follow one level deep
 - If doc A references doc B, and A is affected, B may need review too
+
+**Step 6 — Documents in the change itself:**
+- For every document the change edits, re-read its title, the heading of each edited section and its
+  introductory rules against the new lines. A document that grew by a paragraph while its heading
+  still says the opposite is stale, and no pair will name it: it is part of the change
 
 ### Phase 1.5: Orphan Audit (docs/llm/ + synthesis documents)
 

@@ -1095,6 +1095,32 @@ out=$("$PREP" "$s81" --supersede -- a.txt 2>&1); rc=$?
 expect_exit "…and 81 is refused" 1 "$rc"
 expect_says "…sending the detail to the project's changelog" "$out" "go to PROJECT_CHANGELOG.md"
 
+printf '\n=== documents this commit may leave behind ===\n'
+# Field case (echelon, 2026-10-08): a reminder printed the same ten documents on
+# 94 turns and the stale one went unread. The helper names the pair at the one
+# moment a fix still joins the commit — and never refuses over it.
+d=$(new_repo docs_pairs); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+mkdir -p src docs
+printf 'cfg = load(old_option=True)\n' > src/app.py
+printf '# Setup\nThe app reads `old_option`.\n' > docs/setup.md
+for i in 1 2 3 4 5 6 7 8 9; do printf 'filler\n' > "docs/f$i.md"; done
+git add -A && git commit -qm docs
+printf 'cfg = load()\n' > src/app.py; git add src/app.py
+out=$("$PREP" "[-] drop old_option" 2>&1); rc=$?
+expect_exit "code that drops what a document names is still prepared" 0 "$rc"
+expect_says "RED: …and the helper names the document with the name" "$out" "docs/setup.md — \`old_option\`"
+expect_says "…and what to do about it" "$out" "prepare again"
+printf 'The app reads nothing.\n' > docs/setup.md; git add docs/setup.md
+out=$("$PREP" --supersede "[-] drop old_option" 2>&1); rc=$?
+expect_exit "the document fixed in the same commit…" 0 "$rc"
+expect_not_says "…is not named again" "$out" "leave behind"
+git reset -q -- docs/setup.md; git checkout -q -- docs/setup.md
+mkdir -p .claude; printf '{"docs-sync": {"enabled": false}}\n' > .claude/vdm-plugins.json
+out=$("$PREP" --supersede "[-] drop old_option" -- src/app.py 2>&1); rc=$?
+expect_exit "docs-sync switched off in the project…" 0 "$rc"
+expect_not_says "…switches the note off too" "$out" "leave behind"
+
 # ---------------------------------------------------------------------------
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

@@ -73,7 +73,7 @@ configurable (`comms.meetings-dir`, `track-roots`, `series`).
 ### docs-sync
 Ensures project documentation always reflects current product state. Adapts to any documentation structure — not limited to `docs/features/`.
 
-**Hook (automatic)**: On every prompt, performs lightweight discovery — detects changed files, maps all `.md` docs, extracts `@see` references, finds potentially affected docs via keyword matching.
+**Hook (automatic)**: Speaks only when it has a **pair** — a document outside the uncommitted change that names an identifier the change's code removed or rewrote, or that the changed code points at with `@see`. Silent on a clean tree, on a change of documents alone, and when no document names what changed. A name most documents use (the project's own) links nothing and is left out. `git-guard-prepare` (vdm-git) prints the same pairs for the commit it prepares — the moment a fixed document still joins that commit (vdm 2.46.0, vdm-git 2.19.0). A document that contradicts itself is not a pair; finding it takes reading, which is the skill.
 
 **Skill (manual `/vdm:docs-sync`)**: Deep analysis with relevance scoring, cross-reference chains, and concrete "file X, section Y needs change Z" recommendations.
 
@@ -268,13 +268,13 @@ Since v2.1.1, `changelog` and `docs-sync` reminders **stay silent on a clean wor
 
 Since v2.2.0, every hook is **configurable per project** — see [Configuration](#configuration) below.
 
-**docs-sync discovery:**
+**docs-sync pairs:**
 ```
-[docs-sync] 📋 Documentation sync context:
-Changed files (3): src/auth.ts, src/config.ts, .env.example
-Project docs (5): README.md, docs/setup.md, docs/api.md, ...
-Potentially affected docs: docs/setup.md, docs/api.md
-For deep analysis with relevance scoring → run /vdm:docs-sync
+[docs-sync] 📋 2 document(s) name what the uncommitted code removed or rewrote, and did not change with it:
+  - docs/setup.md — `old_option`, `--legacy-auth`
+  - docs/api.md — @see in src/api.ts
+Read each before the commit: a line that is now wrong goes into the same commit.
+This finds pairs, not contradictions inside one document — for those, a full pass: /vdm:docs-sync
 ```
 
 **learn reminder:**
@@ -368,7 +368,7 @@ Each skill accepts subcommands as the first argument — no manual JSON editing 
 /vdm:learn off          # disable learn reminder in this project
 /vdm:changelog quiet    # changelog: fire only on strong signals
 /vdm-git:guard silent   # silence the git-guard reminder text
-/vdm:docs-sync proactive  # always fire, even on clean tree
+/vdm:docs-sync proactive  # look on every prompt, no throttle (still silent without a pair)
 /vdm:learn config       # show current config for this section
 /vdm:learn reset        # restore defaults for this section
 ```
@@ -576,6 +576,7 @@ git diff --cached --name-only -z | LC_ALL=C tr '\0' '\n' | bash scripts/suites-f
 bash tests/git-path-lists.test.sh          # every path list from git is read with -z, in the C locale
 bash tests/shell-syntax-check.test.sh      # the parse check after a write: the bash 3.2 incident, extglob, which interpreter
 bash tests/intercom.test.sh                # agent directory + name resolution, against a scratch store
+bash tests/docs-pairs.test.sh              # the docs-sync pairs: a name every document uses links nothing; old side of code only; no commit
 bash tests/crystal-capture-reminder.test.sh # capture reminder: throttle before scan (proven via a find shim), capture-exclude
 bash tests/gates-harness-isolation.test.sh # the gate harness must not write into the commit that runs it
 bash tests/hook-fail-closed.test.sh        # blocking hooks with python3 stripped from PATH: block in scope, silent out of it

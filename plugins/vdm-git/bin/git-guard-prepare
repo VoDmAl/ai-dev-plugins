@@ -979,6 +979,36 @@ if [ ${#corrupt[@]} -gt 0 ]; then
   exit 1
 fi
 
+# ---------------------------------------------- documents left behind
+#
+# The moment "verify the docs before completing" was always meant for: a
+# commit is being prepared, its exact paths are known, and a document fixed now
+# goes into the same commit. Printed, never refused — the pair is a reason to
+# read a document, not proof that it is wrong.
+#
+# A pair is a document outside this commit that names an identifier the
+# commit's code removed or rewrote, or that the code points at with `@see`.
+# Computed by lib/docs-pairs.py, the same function the vdm docs-sync reminder
+# runs on the work tree. Field case (echelon, 2026-10-08): a reminder printed
+# the same ten documents on 94 turns, the stale one third each time, and the
+# skill ran once — after the owner asked (docs/tasks/docs-sync-signal).
+# Off with the reminder: `docs-sync.enabled: false` in .claude/vdm-plugins.json.
+docs_pairs="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/docs-pairs.py"
+if [ -f "$docs_pairs" ] && command -v python3 >/dev/null 2>&1 \
+   && { ! command -v vdm_is_enabled >/dev/null 2>&1 || vdm_is_enabled "docs-sync"; }; then
+  pairs=$(cd "$path_base" && PYTHONIOENCODING=utf-8 GIT_OPTIONAL_LOCKS=0 \
+            python3 "$docs_pairs" --staged -- "${paths[@]}" 2>/dev/null || true)
+  if [ -n "$pairs" ]; then
+    {
+      echo "git-guard-prepare: documents this commit may leave behind — they name what its code removed or"
+      echo "                   rewrote, and are not in it:"
+      printf '%s\n' "$pairs" | sed 's/^/                     /'
+      echo "                   Read each. One that is now wrong: fix it, \`git add\` it, and prepare again"
+      echo "                   with --supersede. All still right: the line below stands."
+    } >&2
+  fi
+fi
+
 # ------------------------------------------------------------- write files
 
 tmpdir="${TMPDIR:-/tmp}"

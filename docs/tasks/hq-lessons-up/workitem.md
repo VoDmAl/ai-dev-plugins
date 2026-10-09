@@ -2,7 +2,7 @@
 title: "Общий слой правил доходит до сессий, уроки штабов поднимаются выше"
 slug: hq-lessons-up
 description: "Доставить общий слой правил целиком в контекст; дать записям памяти штабов класс и путь наверх"
-status: in-progress
+status: blocked
 session-type: prd-prep
 created: 2026-10-07
 last-updated: 2026-10-08

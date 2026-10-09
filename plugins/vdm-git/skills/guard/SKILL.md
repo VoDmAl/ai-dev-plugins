@@ -445,6 +445,21 @@ mechanism is the format detection below: with no rule of its own, a project's
 wants a different ceiling sets the number; there is no flag to pass one long
 subject, because the escape would become the habit.
 
+### Documents this commit may leave behind
+
+Before the line, `git-guard-prepare` names the documents outside the commit that name an identifier
+its code **removed or rewrote**, or that its code points at with `@see`:
+
+    git-guard-prepare: documents this commit may leave behind — they name what its code removed or
+                       rewrote, and are not in it:
+                         docs/setup.md — `old_option`
+
+It never refuses over it: a pair is a reason to read a document, not proof that it is wrong. Read
+each; one that is now wrong is fixed, `git add`-ed and prepared again with `--supersede`, so the fix
+goes into the same commit. When all are still right, the line stands as printed. Off together with
+the vdm reminder: `docs-sync.enabled: false` in `.claude/vdm-plugins.json`. The pairs come from
+`"${CLAUDE_PLUGIN_ROOT}/lib/docs-pairs.py"`, the same function as the vdm docs-sync reminder's.
+
 ### Recovery: if the assistant ran `git commit` directly
 
 The PreToolUse hook intercepts `git commit` and `git push` and emits PROJECT COMMIT FORMAT, STAGED CHANGES, and recovery instructions. Treat that output as a soft reminder to switch to the prep workflow above — do not retry `git commit` from Bash. Instead, prepare a message file via `git-guard-prepare` (using the format rules the hook just emitted) and hand off `git commit -F <path> -- <paths>`.
