@@ -73,35 +73,61 @@ roots_count=$(resolve_crystal_roots | grep -c '.' 2>/dev/null || echo 0)
 # the workitem.md. If yes, the assistant edited code without mirroring the
 # work into workitem capture; emit an extra soft hint. Same heuristic as
 # crystal-capture-reminder but at end-of-turn boundary instead of next-prompt
-# boundary. Cheap: bounded find, fails open on error.
+# boundary, and with the same prune rule (vdm_crystal_walk_prunes).
+#
+# ONE walk, whatever the number of crystals. It used to be one `find` per
+# crystal, each descending into every excluded directory: 10 s a walk on an
+# 11-crystal note vault, and the hook hit its 30 s ceiling on 96 of 115 runs
+# there in a week (docs/tasks/hook-timeout-fail-open, DL #9). The answer is
+# unchanged — a crystal is named when some file is newer than its workitem,
+# i.e. when the newest such file is. The walk lists files newer than ANY of
+# them; the newest of those is kept with bash's own `-nt`, no process per file,
+# and the walk stops as soon as one file is newer than every crystal, because
+# then all of them are named. Fails open: a find that errors finds nothing.
+# `-nt` in /bin/bash 3.2 compares whole seconds where `find -newer` compares
+# nanoseconds, so "newer" here means by a second at least: a source file and a
+# workitem written in the same second were edited together, and that is no
+# work-without-capture.
 work_without_capture=""
 if [ -n "$active_with_open" ]; then
-  # Single-quote each glob — without that, the eval below would expand globs
-  # before `find` sees them and the exclusion no-ops silently.
-  excludes=""
-  while IFS= read -r r; do
-    [ -n "$r" ] || continue
-    rel="${r#"$PWD"/}"
-    case "$rel" in
-      /*) excludes="$excludes -not -path '$rel/*'" ;;
-      *)  excludes="$excludes -not -path './$rel/*'" ;;
-    esac
-  done < <(resolve_crystal_roots 2>/dev/null)
-  excludes="$excludes -not -path './.git/*' -not -path './node_modules/*' -not -path './vendor/*' -not -path './.claude/*' -not -path './.serena/*' -not -path './.obsidian/*'"
-
+  prunes=$(vdm_crystal_walk_prunes)
+  newers=""
+  wi_newest=""
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     [ -f "$f" ] || continue
-    newer=$(eval "find . -newer \"$f\" -type f $excludes 2>/dev/null" | head -1)
-    if [ -n "$newer" ]; then
+    # A quote in the path would break out of the quoting below; such a path is
+    # pathological for a workitem, and skipping it costs only its own answer.
+    case "$f" in *"'"*) continue ;; esac
+    newers="${newers:+$newers -o }-newer '$f'"
+    if [ -z "$wi_newest" ] || [ "$f" -nt "$wi_newest" ]; then wi_newest="$f"; fi
+  done <<<"$active_with_open"
+
+  newest=""
+  if [ -n "$newers" ]; then
+    # eval is acceptable here: both strings are built from paths we
+    # constructed ourselves, each pattern single-quoted inside.
+    while IFS= read -r p; do
+      if [ -z "$newest" ] || [ "$p" -nt "$newest" ]; then
+        newest="$p"
+        [ "$newest" -nt "$wi_newest" ] && break
+      fi
+    done < <(eval "find . \\( $prunes \\) -prune -o \\( $newers \\) -type f -print" 2>/dev/null)
+  fi
+
+  if [ -n "$newest" ]; then
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      [ -f "$f" ] || continue
+      [ "$newest" -nt "$f" ] || continue
       slug=$(extract_slug "$f")
       if [ -z "$work_without_capture" ]; then
         work_without_capture="$slug"
       else
         work_without_capture="${work_without_capture}, ${slug}"
       fi
-    fi
-  done <<<"$active_with_open"
+    done <<<"$active_with_open"
+  fi
 fi
 
 lines=""

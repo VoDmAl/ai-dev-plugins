@@ -117,54 +117,12 @@ newer_count=""
 if [ "$mode" = "proactive" ]; then
   fire="yes"
 else
-  # Build the find prune list from resolved crystal roots + standard noise
-  # dirs. `-prune` rather than `-not -path`: the latter still descends into
-  # every excluded directory and stats every file inside it, the former skips
-  # the subtree outright. Measured on a 35k-note vault: 3.2s -> 0.4s per pass.
-  # Single-quote each glob inside the string — without that, the eval call
-  # below would expand globs *before* `find` sees them, silently no-opping the
-  # exclusion.
-  prunes=""
-  _add_prune() {
-    if [ -z "$prunes" ]; then prunes="$1"; else prunes="$prunes -o $1"; fi
-  }
-  # Roots come back as PHYSICAL paths (git resolves symlinks for the toplevel)
-  # while $PWD may be the logical one — on macOS /tmp and /var are symlinks
-  # into /private. Strip against both; otherwise the prune never matches, the
-  # crystal root is scanned like source, and every sibling file under tasks/
-  # counts as "evidence".
-  pwd_phys=$(pwd -P 2>/dev/null) || pwd_phys="$PWD"
-  while IFS= read -r r; do
-    [ -n "$r" ] || continue
-    rel="${r#"$pwd_phys"/}"
-    if [ "$rel" = "$r" ]; then rel="${r#"$PWD"/}"; fi
-    case "$rel" in
-      /*) _add_prune "-path '$rel'" ;;
-      *)  _add_prune "-path './$rel'" ;;
-    esac
-  done < <(resolve_crystal_roots 2>/dev/null)
-
-  # Noise dirs matched by name, so nested copies are pruned too.
-  for n in .git node_modules vendor .claude .serena .obsidian; do
-    _add_prune "-name '$n'"
-  done
-
-  # Project-declared exclusions (crystal.capture-exclude, array of paths
-  # relative to the project root). The standard noise list covers tooling
-  # dirs; a content-heavy repo — a note vault, a media archive, a dataset —
-  # carries tens of thousands of files that are content, not source, and
-  # walking them is the whole cost of this hook. Absent config = scan
-  # everything, which is the right default for a code repo.
-  while IFS= read -r x; do
-    [ -n "$x" ] || continue
-    x="${x#./}"
-    x="${x%/}"
-    case "$x" in
-      *"'"*) continue ;;
-      /*) _add_prune "-path '$x'" ;;
-      *)  _add_prune "-path './$x'" ;;
-    esac
-  done < <(vdm_config_read_array "crystal" "capture-exclude" 2>/dev/null)
+  # The prune list — crystal roots, noise dirs, crystal.capture-exclude — is
+  # one rule shared with the Stop reminder (lib/crystal-path.sh). `-prune`
+  # rather than `-not -path`: the latter still descends into every excluded
+  # directory and stats every file inside it, the former skips the subtree
+  # outright. Measured on a 35k-note vault: 3.2s -> 0.4s per pass.
+  prunes=$(vdm_crystal_walk_prunes)
 
   # ONE tree walk, not one per active workitem. `\( -newer A -o -newer B \)`
   # is find's own OR, so a single pass answers exactly the question the old

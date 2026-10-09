@@ -380,6 +380,13 @@ and the reminder is silently discarded. Declare those subtrees:
 Paths are relative to the project root. Absent = scan everything, which is
 what a code repo wants.
 
+The end-of-turn Stop reminder asks the same question with the same walk and
+honours the same list (vdm 2.46.1). Before that it walked the whole tree once
+per active crystal and ignored the list: on an eleven-crystal vault every turn
+ended with up to 30 s of it. Tooling directories need no declaration — `.git`,
+`node_modules`, `vendor`, `.claude`, `.serena`, `.obsidian` and Syncthing's
+`.stversions` are pruned by name in both hooks.
+
 **Entries are `find -path` globs, not plain prefixes.** `*` matches within a
 path segment and `?` a single character, so one line can cover a family of
 directories that a literal list would have to enumerate:

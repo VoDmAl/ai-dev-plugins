@@ -578,6 +578,7 @@ bash tests/shell-syntax-check.test.sh      # the parse check after a write: the 
 bash tests/intercom.test.sh                # agent directory + name resolution, against a scratch store
 bash tests/docs-pairs.test.sh              # the docs-sync pairs: a name every document uses links nothing; old side of code only; no commit
 bash tests/crystal-capture-reminder.test.sh # capture reminder: throttle before scan (proven via a find shim), capture-exclude
+bash tests/crystal-stop-reminder.test.sh   # Stop reminder: one walk for any number of crystals, same answer per crystal, the shared prune rule
 bash tests/gates-harness-isolation.test.sh # the gate harness must not write into the commit that runs it
 bash tests/hook-fail-closed.test.sh        # blocking hooks with python3 stripped from PATH: block in scope, silent out of it
 bash tests/reminder-throttle.test.sh       # the two-axis reminder window, and the hooks that print a measurement instead of a verdict

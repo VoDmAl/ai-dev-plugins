@@ -313,6 +313,68 @@ vdm_prime_crystal_roots() {
   return 0
 }
 
+vdm_crystal_walk_prunes() {
+  # Prints the `find` prune expression for "has work happened since this
+  # workitem?" — the crystal roots, noise directories by name, and the
+  # project's crystal.capture-exclude — for the caller to use as
+  #   eval "find . \\( $prunes \\) -prune -o … -type f -print"
+  # Run it from the project root, after vdm_prime_crystal_roots.
+  #
+  # One rule for both reminders that ask the question. The Stop hook kept its
+  # own copy, with `-not -path` (which still descends into every excluded
+  # directory) and without capture-exclude, after the capture reminder had been
+  # fixed: on an 11-crystal note vault it walked the whole tree once per crystal,
+  # 10 s a walk, and hit its 30 s ceiling on 96 of its 115 recorded runs in a week
+  # (docs/tasks/hook-timeout-fail-open, DL #9).
+  #
+  # `-prune` skips a subtree outright. Each pattern is single-quoted inside the
+  # string, so the caller's eval hands the glob to `find` instead of expanding it.
+  local prunes="" pwd_phys r rel n x
+  # Roots come back as PHYSICAL paths (git resolves symlinks for the toplevel)
+  # while $PWD may be the logical one — on macOS /tmp and /var are symlinks
+  # into /private. Strip against both; otherwise the prune never matches, the
+  # crystal root is scanned like source, and every sibling file under tasks/
+  # counts as "evidence".
+  pwd_phys=$(pwd -P 2>/dev/null) || pwd_phys="$PWD"
+  while IFS= read -r r; do
+    [ -n "$r" ] || continue
+    rel="${r#"$pwd_phys"/}"
+    if [ "$rel" = "$r" ]; then rel="${r#"$PWD"/}"; fi
+    case "$rel" in
+      /*) prunes="${prunes:+$prunes -o }-path '$rel'" ;;
+      *)  prunes="${prunes:+$prunes -o }-path './$rel'" ;;
+    esac
+  done < <(resolve_crystal_roots 2>/dev/null)
+
+  # Noise matched by name, so nested copies are pruned too. `.stversions` is
+  # Syncthing's archive of replaced versions: its files are newer than a
+  # workitem because a sync arrived, not because work happened — 139k of the
+  # vault's 279k files, and 3.4 s of a 4.1 s walk.
+  for n in .git node_modules vendor .claude .serena .obsidian .stversions; do
+    prunes="${prunes:+$prunes -o }-name '$n'"
+  done
+
+  # Project-declared exclusions (crystal.capture-exclude, array of paths
+  # relative to the project root). The standard noise list covers tooling
+  # dirs; a content-heavy repo — a note vault, a media archive, a dataset —
+  # carries tens of thousands of files that are content, not source, and
+  # walking them is the whole cost. Absent config = scan everything, which is
+  # the right default for a code repo.
+  if command -v vdm_config_read_array >/dev/null 2>&1; then
+    while IFS= read -r x; do
+      [ -n "$x" ] || continue
+      x="${x#./}"
+      x="${x%/}"
+      case "$x" in
+        *"'"*) continue ;;
+        /*) prunes="${prunes:+$prunes -o }-path '$x'" ;;
+        *)  prunes="${prunes:+$prunes -o }-path './$x'" ;;
+      esac
+    done < <(vdm_config_read_array "crystal" "capture-exclude" 2>/dev/null)
+  fi
+  printf '%s' "$prunes"
+}
+
 # ----------------------------------------------------------------------------
 # Singleton mode (DL #5)
 # ----------------------------------------------------------------------------

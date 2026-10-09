@@ -172,5 +172,28 @@ case "$OUT" in
   *)               ok "RED: …with no broken-pipe error beside the verdict" ;;
 esac
 
+# ---------------------------------------------------------------------------
+printf '\nan example in a fenced block is not an obligation\n'
+# ---------------------------------------------------------------------------
+# A workitem that documents the checkbox format shows `- [ ]` inside ``` — the
+# format, not a promise. The repo's own gate and the lib learned that on
+# 2026-09-05; this copy, the one shipped to other projects, kept a plain grep.
+# Found 2026-10-08, when a machine-wide hook first ran it on every commit and it
+# refused a closed crystal of this repository (hook-timeout-fail-open).
+R=$(fixture fenced)
+mkdir -p "$R/docs/tasks/fmt"
+printf -- '---\nslug: fmt\nstatus: done\n---\n\n## Syntax\n\n```markdown\n- [ ] an example (due: 2026-07-22)\n```\n\n~~~\n- [ ] a tilde-fenced one\n~~~\n\n## Next actions\n\n- [x] item\n' \
+  > "$R/docs/tasks/fmt/workitem.md"
+( cd "$R" && git add -- docs/tasks/fmt/workitem.md 2>/dev/null )
+gate "$R"
+eq "RED: done with only fenced examples unchecked passes" 0 "$RC"
+
+printf -- '---\nslug: fmt\nstatus: done\n---\n\n```\n- [ ] an example\n```\n\n- [ ] a real one after the fence\n' \
+  > "$R/docs/tasks/fmt/workitem.md"
+( cd "$R" && git add -- docs/tasks/fmt/workitem.md 2>/dev/null )
+gate "$R"
+eq "…but a real item after the fence still blocks" 1 "$RC"
+says "…and is counted alone" "$OUT" "1 unchecked"
+
 printf '\ncrystal-precommit-check: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

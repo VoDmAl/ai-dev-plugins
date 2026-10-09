@@ -245,7 +245,7 @@ fi
 # hooks of its own, the gate went on passing without covering any of them — and
 # that silence is indistinguishable from a clean run. Breadth costs a few
 # seconds on a plugin edit; the enumeration cost coverage without saying so.
-if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|tests/(hook-fail-closed|symlink-scope|comms|comms-pending|reminder-throttle|reminders-dispatch|shared-rules|hook-commands|hook-index-writes|crystal-lint|shell-syntax-check)\.test\.sh$)'; then
+if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|tests/(hook-fail-closed|symlink-scope|comms|comms-pending|reminder-throttle|reminders-dispatch|shared-rules|hook-commands|hook-index-writes|crystal-lint|shell-syntax-check|crystal-capture-reminder|crystal-stop-reminder)\.test\.sh$)'; then
   echo "gates: a plugin hook changed — re-running the shipped hooks' red tests (~40s)…"
   run_suite hook-fail-closed
   # Same subject, second question: a hook that CAN run still has to agree with
@@ -282,6 +282,11 @@ if printf '%s\n' "$staged" | grep -qE '^(plugins/[^/]+/(scripts|lib|hooks)/|test
   # without a checkbox) and the shell parse check's.
   run_suite crystal-lint
   run_suite shell-syntax-check
+  # The two crystal reminders walk the tree by one rule, which lives in the
+  # mirrored lib/crystal-path.sh — a file their suites do not own by name, so a
+  # change to the rule would run neither (hook-timeout-fail-open, DL #9).
+  run_suite crystal-capture-reminder
+  run_suite crystal-stop-reminder
 fi
 
 # Gate 8 — the shipped helpers' red tests. `plugins/*/bin/` is put on the

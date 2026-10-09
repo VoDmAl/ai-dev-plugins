@@ -110,8 +110,19 @@ EOF
   ' <<<"$staged_content")
   [ "$status" = "done" ] || continue
 
-  unchecked_count=$(printf '%s\n' "$staged_content" \
-    | grep -cE '^[[:space:]]*-[[:space:]]*\[[[:space:]]\]' 2>/dev/null) || unchecked_count=0
+  # Fenced blocks are excluded: a `- [ ]` inside ``` is the format being
+  # documented, not a promise being made. The repo's own gate and the lib
+  # learned that on 2026-09-05; this copy kept a plain grep until a machine-wide
+  # hook ran it on every commit (2026-10-08). The same awk as
+  # scripts/check-crystal-completion.sh, and tests/gates.test.sh holds all four
+  # copies to one count. A here-string, for the reason given above.
+  unchecked_count=$(awk '
+    /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+    fence { next }
+    /^[[:space:]]*-[[:space:]]*\[[[:space:]]\]/ { n++ }
+    END { print n+0 }
+  ' <<<"$staged_content" 2>/dev/null) || unchecked_count=0
+  case "$unchecked_count" in ''|*[!0-9]*) unchecked_count=0 ;; esac
   [ "${unchecked_count:-0}" -gt 0 ] || continue
 
   drift=1

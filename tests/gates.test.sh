@@ -70,6 +70,14 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
       GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR 2>/dev/null || true
 
+# The machine's git config is not the fixture's either. Git (2.54 here) takes
+# hooks declared in config, `hook.<name>.command`, and a global one runs on
+# every commit on the machine — this harness's baseline commit included, which
+# such a hook refused on 2026-10-08 over a closed crystal the clone copies from
+# the real tree. The fixture tests this repository's gates and nothing else, so
+# it reads no global and no system config.
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+
 # `--setup-only` stops after the baseline block. The isolation test
 # (tests/gates-harness-isolation.test.sh) uses it to exercise the setup — the
 # only part that can leak — without paying for all 54 assertions.
@@ -150,8 +158,12 @@ git init --quiet .
 git config user.email test@example.com
 git config user.name  Test
 git add -A >/dev/null 2>&1
-git commit --quiet -m 'baseline: working tree as of test start' >/dev/null 2>&1 || {
+# git's own words go out with the refusal: inside the pre-commit this suite runs
+# side by side with twenty others, and "could not" alone left nothing to go on
+# (2026-10-08, vdm 2.46.1's commit).
+baseline_err=$(git commit --quiet -m 'baseline: working tree as of test start' 2>&1) || {
   echo "gates.test: could not create the baseline commit — aborting" >&2
+  printf '%s\n' "$baseline_err" | sed 's/^/  git: /' >&2
   exit 1
 }
 
@@ -907,7 +919,7 @@ restore
 echo ""
 
 # ---------------------------------------------------------------------------
-printf '\n== conformance: three implementations of "what is an obligation" ==\n'
+printf '\n== conformance: four implementations of "what is an obligation" ==\n'
 # ---------------------------------------------------------------------------
 # The rule "an unchecked `- [ ]` is an obligation" is implemented THREE times,
 # and that is deliberate, not debt:
@@ -919,6 +931,13 @@ printf '\n== conformance: three implementations of "what is an obligation" ==\n'
 #                                                            dependency on the lib, so a
 #                                                            mid-refactor lib cannot
 #                                                            silently disable the gate
+#   crystal-precommit-check.sh   sees a STAGED   (awk)     — vdm-git's copy of that gate,
+#     (vdm-git)                  BLOB                        shipped to other projects
+#
+# The fourth was outside this test until 2026-10-08 and had kept a plain grep:
+# it counted the fenced examples below as obligations (10, not 8). Nothing ran
+# it here until a machine-wide git hook did, on every commit, and refused a
+# closed crystal of this repository (hook-timeout-fail-open).
 #
 # What went wrong on 2026-09-05 was NOT the duplication. All three diverged from
 # INTENT together — none skipped fenced code blocks, so a workitem documenting the
@@ -966,6 +985,14 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 print(len(m._unchecked_lines(open('$CONF').read())))
 " 2>/dev/null)
+# vdm-git's copy reads what is staged, so the fixture is staged in a repo of its
+# own (no commit), and the count is read from the refusal it prints.
+CONF_REPO="$TMP/conformance-repo"
+mkdir -p "$CONF_REPO/docs/tasks/conf"
+cp "$CONF" "$CONF_REPO/docs/tasks/conf/workitem.md"
+( cd "$CONF_REPO" && git init -q . && git add -- docs/tasks/conf/workitem.md ) >/dev/null 2>&1
+conf_ship=$(cd "$CONF_REPO" && bash "$REPO_ROOT/plugins/vdm-git/scripts/crystal-precommit-check.sh" 2>&1 \
+  | sed -n 's/.* \([0-9][0-9]*\) unchecked item(s).*/\1/p' | head -1)
 
 # 8 real obligations; the two fenced examples and the mid-sentence text are not.
 # The wrapped item and the nested checkbox are there for crystal-wake DL #1: the
@@ -982,13 +1009,14 @@ conf_eq() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "expected $2, got $3
 conf_eq "lib (file/awk) counts only real obligations"        "8" "$conf_lib"
 conf_eq "pre-commit gate (blob/awk) agrees"                  "8" "$conf_gate"
 conf_eq "PreToolUse guard (string/Python) agrees"            "8" "$conf_py"
+conf_eq "shipped pre-commit (vdm-git, staged blob) agrees"   "8" "$conf_ship"
 
 # And that they cannot drift apart without this failing.
-if [ "$conf_lib" = "$conf_gate" ] && [ "$conf_gate" = "$conf_py" ]; then
-  ok "all three implementations agree on the same document"
+if [ "$conf_lib" = "$conf_gate" ] && [ "$conf_gate" = "$conf_py" ] && [ "$conf_py" = "$conf_ship" ]; then
+  ok "all four implementations agree on the same document"
 else
-  bad "all three implementations agree on the same document" \
-      "lib=$conf_lib gate=$conf_gate py=$conf_py"
+  bad "all four implementations agree on the same document" \
+      "lib=$conf_lib gate=$conf_gate py=$conf_py shipped=$conf_ship"
 fi
 
 printf 'gates: %d passed, %d failed\n' "$PASS" "$FAIL"
