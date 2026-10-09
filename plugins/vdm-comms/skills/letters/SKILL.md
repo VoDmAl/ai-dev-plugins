@@ -22,8 +22,8 @@ Start a draft from the scaffold (`/vdm-comms:meetings` → *Start a draft from t
 scaffold*), not from a neighbouring letter.
 
 **The short form arrives by itself.** Creating a draft — with the scaffold, or
-with a write of a new `*/comms/*-out.md` — brings a sixteen-line checklist into
-the context, with the letter's register and the project's language when they are
+with a write of a new `*/comms/*-out.md` — brings a checklist into the
+context, with the letter's register and the project's language when they are
 declared. It is this skill compressed to checks; go through it before the draft
 is shown to anyone, and open the sections below when a line does not settle.
 
@@ -131,6 +131,22 @@ is shown to anyone, and open the sections below when a line does not settle.
   | Ticket comment | retelling the ticket to its author | a question or a fact the ticket lacks |
   | Brief to an agent | the history the agent ran itself | a link to the letter, and only what is new |
 
+- **The owner's voice carries nothing the agent perceived.** A letter in the
+  owner's name says what the owner could say themselves: they open the same file,
+  and they remember what they told the addressee. Before the draft is shown:
+  - "I saw / did not see / checked" — could the owner say it with their own eyes?
+    If not, rewrite it into what they can assert, or move it above the separator;
+  - a limit of the agent's tool ("the tool returns only the start of the file") is
+    a question to the owner or a note above the separator, never the letter's text;
+  - a guess where a line in someone else's text came from goes first to the owner
+    and the transcripts: they may have said it themselves.
+
+  Field case (2026-10-08): a reply in the owner's name said "what is in it I did not
+  see: the tool returns only the start" about a file the owner opens themselves,
+  and put a line of someone else's assignment down to "the agent who wrote it",
+  with no source. The owner: the letter does not say whose voice it is — and that
+  line they had said themselves. The pronoun "I" was right; what it said was the
+  agent's.
 - **Do not show the inside of our schemes**: write the result and the rule, not
   why it is built that way. A line that explains structure rather than behaviour
   is the sign.
@@ -359,6 +375,13 @@ And around them:
   no obliging extras ("happy to", "anything else you need"), no "while we're at
   it". A good question is one I am not the one to answer. "Please" and "thanks"
   are not extras — they belong to the register (§ 6).
+- **Criticising, propose.** In a reply that reviews someone's work, every "this
+  does not fit" carries its own "I propose"; a question to the addressee ("your
+  call") with no option is not a move either. The proposal commits the sender to
+  nothing (point 1 above): who would do it is named by zone. Field case
+  (2026-10-08): a review of an assignment someone had assembled with their own
+  tooling — five remarks, a proposal at two of them. The owner: «критикуя —
+  предлагай»; the letter went out with one at each.
 - **Nothing stale**: after a significant meeting, walk the open requests; what
   the meeting closed and "I'll send X" already done are not repeated.
 - **No question without substance**: first a request for the facts, and the wait

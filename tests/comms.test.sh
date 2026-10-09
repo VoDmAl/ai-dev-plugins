@@ -255,6 +255,12 @@ expect_says "RED: …and whoever saw it earlier, needing no continuation, gets a
 # reads the finished text and the error was in the material it was built from.
 expect_says "RED: …writing into someone else's artifact: read it live first, and build the draft from it" "$ctx" "it was read live first, and the draft is built from it"
 expect_says "RED: …and a ticket goes by its full key, never a bare number" "$ctx" "a ticket goes by its full key, never a bare number"
+# HQ lessons, 2026-10-08, by way of the access layer (hq-lesson-owner-voice-not-agent-eyes,
+# hq-lesson-critique-with-proposal). A reply in the owner's name said what the agent's
+# tool could not show, about a file the owner opens themselves; a review drafted five
+# remarks and two proposals, and the owner answered «критикуя — предлагай».
+expect_says "RED: …in the owner's voice, nothing the agent perceived" "$ctx" "nothing the agent perceived"
+expect_says "RED: …and every \"does not fit\" carries its own proposal" "$ctx" "carries its own \"I propose\""
 expect_not_says "…no register line when none is declared" "$ctx" "Register:"
 printf '{\n  "comms": {\n    "register": "peer",\n    "language": "en"\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
 OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-y-out.md" "$DRAFT" | bash "$GUARD" 2>/dev/null)
