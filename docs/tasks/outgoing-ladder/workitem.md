@@ -2,7 +2,7 @@
 title: "vdm-comms: лестница исходящих — черновик файлом по умолчанию, `sent:` только с доказательством"
 slug: outgoing-ladder
 description: "Шаг 1 исходящего — .md; подъём только по праву и слову владельца; пометка «отправлено» требует доказательства"
-status: in-progress
+status: done
 session-type: prd-work
 created: 2026-10-13
 last-updated: 2026-10-13
@@ -61,7 +61,11 @@ last-updated: 2026-10-13
 - **Сделано в vdm-comms 0.27.0 — журнал** (DL #7): id в `sent-proof:` сверяется с журналом отправок слоя доступа
   (`sent <каталог> <id>`), и в гарде, и после Bash. Отказ только на «нет»; «не сказать» и отсутствие слоя доступа на
   машине пропускают — тогда проверяется наличие поля. `owner` не спрашивается.
-- **Открыто:** итог слою доступа на его ответ `sent-check-command`.
+- **Итог на `sent-check-command` отправлен 2026-10-13** (`sent-check-command-outcome`, b09f96b), мяч ни у кого.
+  Открытого нет: кристалл закрыт 2026-10-13. Что выросло наружу — `docs/model/suite.md` (строки
+  `comms-draft-guard` и `comms-sent-check`; абзацы о `sent-proof:` в разделе «Две поверхности, намеренно
+  продублированные»), `letters` § 2 и § 12, `meetings` →
+  «Outgoing letters», записи 0.25.0–0.27.0 в `PROJECT_CHANGELOG.md`.
 
 ## Decision Log
 
@@ -238,7 +242,8 @@ Write — 148, Edit — 15. В 249 из 275 правок путь письма �
       `outgoing-levels-comms-outcome`
 - [x] Sidetrack #2: по ответу слоя доступа — встроить проверку по журналу в гард или закрыть побег. Встроено,
       vdm-comms 0.27.0 (DL #7)
-- [ ] Outcome to `echelon`: intercom reply sent-check-command — после пуша 0.27.0, с хэшем коммита
+- [x] Outcome to `echelon`: intercom reply sent-check-command — отправлен 2026-10-13, `sent-check-command-outcome`
+      (vdm-comms 0.27.0, b09f96b; мяч ни у кого)
 - [x] Outcome to `echelon`: intercom reply outgoing-levels-comms — отправлен 2026-10-13 (vdm-comms 0.25.0, b52471a;
       мяч у слоя доступа — вопрос Sidetrack #2)
 
