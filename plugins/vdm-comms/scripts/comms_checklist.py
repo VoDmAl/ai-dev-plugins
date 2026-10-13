@@ -32,6 +32,7 @@ import comms_frontmatter as fmmod  # noqa: E402
 
 CHECKS = (
     "Goal: what changes once it is answered — in `goal:`, one sentence. A likely answer of \"yes\" or \"we'll see\" → do not write it.",
+    "Answering a question: the asker does not already see the answer where they look themselves — their ticket, a bot's comment, the merge request; if they do, no draft — one line to the owner on why not.",
     "One subject: one request or one statement; every sentence carries it.",
     "Writing into someone else's ticket, document or thread: it was read live first, and the draft is built from it — the answer goes where its author called, in its terms, along its structure; what we ask for comes with the condition that lifts it.",
     "The decision and the request — not the reader's own decisions retold, not our own corrections.",
@@ -46,8 +47,8 @@ CHECKS = (
     "Every fact about their system or a person has a source; \"always\" / \"any\" holds in every case; a ticket goes by its full key, never a bare number — under the ticket itself, \"this task\".",
     "Their field is not explained to them; nothing is prescribed inside their zone.",
     "Recipients' profiles read and applied, and their `trust` lets this project write: a hand writes to team and peer only — careful, exec and anyone not in people/ go through the HQ. No reproach for a past silence.",
-    "The channel's form: an email has a subject (the same thread keeps `RE:`, a new matter a new one), a greeting on its own line, a paragraph per thought, a signature only where the owner signs — none to people they know well; a ticket addresses people by mention — `[~login]` in Jira, `@login` in GitLab.",
-    "Attachments: the text says \"attached\", and the file has a 📎 section.",
+    "The channel's form: an email has a subject (the same thread keeps `RE:` and the history under the text — without the history, a subject of its own; a new matter a new one), a greeting on its own line, a paragraph per thought, a signature only where the owner signs — none to people they know well; a ticket addresses people by mention — `[~login]` in Jira, `@login` in GitLab.",
+    "Attachments: the text says \"attached\", and the file has a 📎 section; a file that already went through the thread to the same people is named, not attached again.",
     "After sending: who has the ball, and where the waiting item with a review date lives; whoever else waits on this subject is in copy — not us in the middle; whoever saw the subject earlier and needs no part in what follows (a copy of the letter we answer, someone the document was shared with) gets a blind copy of this first answer — they see it is not dropped, and reply-all leaves them out.",
 )
 

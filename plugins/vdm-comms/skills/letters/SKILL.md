@@ -34,6 +34,16 @@ is shown to anyone, and open the sections below when a line does not settle.
   frontmatter. If it does not fit in one sentence, the letter is not ready.
 - **If the most likely answer is "yes, sure" or "we'll see", do not send it.**
   Ask about the mechanism, not for permission to do the obvious.
+- **A question whose answer the asker already sees gets no draft.** Before
+  answering, look where they look themselves: their ticket, a bot's comment on it,
+  the state of the merge request. If the answer is there, nothing is drafted, and
+  the item in the track says "not answering" with the reason. Test: what would
+  they learn from our message that the artifacts they read do not show? In doubt,
+  one line to the owner — "I do not propose answering, because …" — not a ready
+  text with a fork. Field case (2026-10-09): a colleague asked the owner in a work
+  chat whether the release went out and whether their commit was in it; a reply
+  was drafted, while the deploy bot had already said both in the colleague's own
+  ticket. The owner: no answer, it is clear as it is.
 - **A double goal** (for now and for later) needs a sentence in the text for each
   half. A half with no sentence is either written or dropped.
 - **One subject per letter**: one request or one statement, fixed before the
@@ -415,6 +425,24 @@ And around them:
 - **The subject follows the matter**: the same correspondence is a reply keeping
   `RE: <original subject>`; a new matter is a new letter with a new subject, not
   one more `Re:`.
+- **A reply in the thread carries the history under its text**: that is what
+  shows the recipient the conversation goes on. "Lies in the mail client's thread"
+  is not "reads as a reply to the recipient" — without the history they get a new
+  letter. A reply without the history takes a subject of its own, not `Re:` to a
+  letter that is not under it. The access layer's reply draft quotes the history
+  by default.
+- **The history is quoted for what it does — it is the chain — not
+  mechanically.** A file that already went through the thread to the same people
+  is not attached again: the text names the letter it came with. A new recipient
+  or a new version of the file gets it attached (`/vdm-comms:meetings` → *Attach
+  before sending*). The access layer's answer to a reply draft names the files
+  already in the thread; read it before attaching.
+- **Before telling the owner "drafted as a reply in the thread", look at the draft
+  as the recipient will**: the subject, the history under the text, the
+  attachments. Field case (2026-10-09): a reply went into the thread without the
+  history, and the recipient saw a new letter titled "Re: …". The owner had asked
+  for the same subject — as a reply to their sent letter, or else with a subject of
+  its own.
 - **When the other side wrote after us, our next text answers their message** —
   their points, in their order. Our earlier message is not rewritten or retold.
 - **Send when what the text says is true where the reader will check it.** "Already

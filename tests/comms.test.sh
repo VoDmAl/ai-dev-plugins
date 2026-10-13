@@ -261,6 +261,13 @@ expect_says "RED: …and a ticket goes by its full key, never a bare number" "$c
 # remarks and two proposals, and the owner answered «критикуя — предлагай».
 expect_says "RED: …in the owner's voice, nothing the agent perceived" "$ctx" "nothing the agent perceived"
 expect_says "RED: …and every \"does not fit\" carries its own proposal" "$ctx" "carries its own \"I propose\""
+# HQ lesson, 2026-10-09 (hq-lesson-no-reply-when-answer-visible): a reply was drafted
+# to a question the deploy bot had already answered in the asker's own ticket.
+expect_says "RED: …no draft when the asker already sees the answer" "$ctx" "does not already see the answer"
+# Access layer, 2026-10-09 (letters-reply-in-chain): a reply went into the thread
+# without the history and reached the recipient as a new letter titled "Re: …".
+expect_says "RED: …a reply without the history takes a subject of its own" "$ctx" "without the history, a subject of its own"
+expect_says "RED: …and a file already in the thread is named, not attached again" "$ctx" "not attached again"
 expect_not_says "…no register line when none is declared" "$ctx" "Register:"
 printf '{\n  "comms": {\n    "register": "peer",\n    "language": "en"\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
 OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-y-out.md" "$DRAFT" | bash "$GUARD" 2>/dev/null)
