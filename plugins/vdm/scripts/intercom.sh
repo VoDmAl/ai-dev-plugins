@@ -51,6 +51,22 @@ _ic_sanitize_slug() {
     | sed -E 's/-+/-/g; s/^-+//; s/-+$//'
 }
 
+# _ic_brief_went_to_others <sender> <slug> <own identity> — the sender's letter
+# under <slug> also lies in another agent's inbox or archive: one brief, several
+# recipients. The store is shared, so every inbox is visible from here.
+_ic_brief_went_to_others() {
+  local store d f
+  store="$(intercom_store_root)"
+  for d in "$store"/*/; do
+    d="${d%/}"
+    case "${d##*/}" in _*|"$3") continue ;; esac
+    for f in "$d/$2.md" "$d/_done/$2.md"; do
+      [ -f "$f" ] && [ "$(intercom_fm_field "$f" from)" = "$1" ] && return 0
+    done
+  done
+  return 1
+}
+
 # Comma-join a jq array field of this identity's registry entry.
 _ic_reg_list() { intercom_registry_get "$1" "($2 // []) | join(\", \")"; }
 
@@ -378,7 +394,16 @@ cmd_check() {
       printf '    continues:\n'
       _ic_print_chain "$prev" "      "
     fi
-    printf '    pickup: /vdm:intercom pickup %s\n\n' "$slug"
+    # pickup finds a letter by its file name, and a file name is not always the
+    # envelope's slug: two letters given one name on two machines leave
+    # Syncthing's copy of the second, `<slug>.sync-conflict-…`, carrying the
+    # same envelope. Offered the envelope's slug, pickup finds the first
+    # letter, or nothing once that is archived, and the copy stays for good.
+    case "${f##*/}" in
+      *.sync-conflict-*)
+        printf '    a second letter that got the name `%s` on another machine — Syncthing kept it under its own name\n' "$slug" ;;
+    esac
+    printf '    pickup: /vdm:intercom pickup %s\n\n' "$(basename "$f" .md)"
   done < <(intercom_inbox_list "$id")
 }
 
@@ -1194,10 +1219,20 @@ cmd_reply() {
   # A slug that is free in the recipient's inbox AND archive: a second outcome
   # of the same brief is normal (items close at different times), and a slug
   # taken in `_done/` would make the reference to it ambiguous later.
+  # Free HERE is not free: the check above sees this machine only. One brief
+  # sent to several agents gets one answer from each, and each answer would be
+  # `<slug>-outcome` — field case (reported 2026-10-13): echelon sent one
+  # brief to several agents, two of them answered from two machines 46 s
+  # apart, and Syncthing turned the second answer into a conflict copy. So when
+  # the sender's letter under this slug lies in another agent's inbox or
+  # archive too, the answer carries the answerer's identity: two answerers, two
+  # names, whatever either machine has seen yet.
   local rinbox base n
   rinbox="$(intercom_inbox_dir "$sender")"
   if [ -z "$slug_out" ]; then
-    base="$slug-outcome"; slug_out="$base"; n=2
+    base="$slug-outcome"
+    _ic_brief_went_to_others "$sender" "$slug" "$id" && base="$slug-outcome-$id"
+    slug_out="$base"; n=2
     while [ -e "$rinbox/$slug_out.md" ] || [ -e "$rinbox/_done/$slug_out.md" ]; do
       slug_out="$base-$n"; n=$((n + 1))
     done

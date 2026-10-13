@@ -1333,5 +1333,35 @@ eq "a relay naming a clash is refused" "$rc" "3"
 says "…with what tells the two apart" "$out" "gets a name of its own"
 says_not "…not the qualifying advice that cannot work" "$out" "Qualify it"
 
+echo "== one brief to several agents: every answer has a name of its own =="
+# Field case (reported 2026-10-13): echelon sent one brief to two agents; both
+# answered from two machines 46 s apart, both answers were `<slug>-outcome`, and
+# Syncthing turned the second into a conflict copy. reply's "is the name free?"
+# sees one machine only, so the name itself must differ.
+( cd "$TMP/hop-a" && bash "$IC" send hop-b bcast --title "To both" --body "$B/ask.md" >/dev/null 2>&1 )
+( cd "$TMP/hop-a" && bash "$IC" send hop-c bcast --title "To both" --body "$B/ask.md" >/dev/null 2>&1 )
+( cd "$TMP/hop-b" && bash "$IC" reply bcast --done "b did it" --ball "nobody — closed" >/dev/null 2>&1 )
+( cd "$TMP/hop-c" && bash "$IC" reply bcast --done "c did it" --ball "nobody — closed" >/dev/null 2>&1 )
+[ -f "$R/hop-a/bcast-outcome-hop-b.md" ] && [ -f "$R/hop-a/bcast-outcome-hop-c.md" ] \
+  && ok "RED: each answer to a brief sent to several agents carries its answerer's identity" \
+  || bad "RED: each answer to a brief sent to several agents carries its answerer's identity" "$(ls "$R/hop-a")"
+[ ! -e "$R/hop-a/bcast-outcome.md" ] && ok "…so no answer can take the bare name on another machine" \
+  || bad "…so no answer can take the bare name on another machine"
+eq "…and still chains to the brief" "$(grep '^reply-to:' "$R/hop-a/bcast-outcome-hop-c.md" 2>/dev/null)" "reply-to: hop-c/bcast"
+( cd "$TMP/hop-a" && bash "$IC" send hop-b solo --title "To one" --body "$B/ask.md" >/dev/null 2>&1 )
+( cd "$TMP/hop-b" && bash "$IC" reply solo --done "done" --ball "nobody — closed" >/dev/null 2>&1 )
+[ -f "$R/hop-a/solo-outcome.md" ] && ok "a brief to one agent keeps the plain name" \
+  || bad "a brief to one agent keeps the plain name" "$(ls "$R/hop-a")"
+
+# What is already on disk: Syncthing's copy of the second letter, with the first
+# letter's envelope. check lists it; pickup must reach it by its own name.
+C="$R/hop-b/clash.sync-conflict-20261009-114036-abcdefg.md"
+printf -- '---\nintercom: v1\nfrom: hop-a\nto: hop-b\nslug: clash\nstatus: pending\n---\n\n# The second\n' > "$C"
+out="$( cd "$TMP/hop-b" && bash "$IC" check 2>&1 )"
+says "RED: check offers the copy's pickup by its file name" "$out" "pickup clash.sync-conflict-20261009-114036-abcdefg"
+says "…and says what the copy is" "$out" "a second letter that got the name \`clash\` on another machine"
+( cd "$TMP/hop-b" && bash "$IC" pickup clash.sync-conflict-20261009-114036-abcdefg >/dev/null 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && [ ! -e "$C" ] && ok "…and that pickup archives it" || bad "…and that pickup archives it" "rc=$rc"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

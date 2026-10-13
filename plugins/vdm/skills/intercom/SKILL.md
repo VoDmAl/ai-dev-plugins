@@ -564,6 +564,14 @@ and `--ball` repeat, one per item. Each `--ball` is rendered as an open item,
 move it into its track as it stands. When nothing is left: `--ball "nobody —
 closed"`. A second outcome of the same brief gets a slug of its own.
 
+The outcome is named `<slug>-outcome`, and `<slug>-outcome-<your identity>` when
+the same brief also lies in another agent's inbox or archive — one brief sent to
+several agents. Whether a name is free is checked on this machine only; two
+agents answering one brief from two machines got one name, and Syncthing kept
+the second answer as `<slug>-outcome.sync-conflict-…` (2026-10-09). `check`
+lists such a copy as the second letter it is and offers its `pickup` by the
+copy's own file name.
+
 **One answer closing several briefs** names each of them in its text. `reply-to`
 holds one link, and intercom counts a brief as answered when **a letter from you
 to its sender names its slug** — measured on the store 2026-09-29, a third of the
