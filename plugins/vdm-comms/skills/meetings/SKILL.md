@@ -217,6 +217,19 @@ real id from an invented one; what it does is turn an accidental mark into a
 deliberate claim. Until vdm-comms 0.25.0 the guard watched only creation, while
 `sent:` was set by an edit — the one path the skill prescribed was unwatched.
 
+The shell is the other road, and the busier one: on this machine's transcripts,
+September–October 2026, 322 Bash calls wrote `sent:` into a letter (`sed -i`, a
+python `replace`, `cat >` a new file) against 163 Write and Edit. What a command
+will leave on disk is not in its text, so a `PostToolUse` check on Bash
+(`comms-sent-check`) looks after it: every `*/comms/*-out.md` that differs from
+HEAD or is not committed yet, and is sent without `sent-proof:` while HEAD does
+not have it sent, is named back with the same two ways out. It cannot undo the
+write; it stops the next step — reporting the letter as sent — while the file is
+there to fix. It looks only after a command that names `comms`, an `-out.md` or
+writes `sent:`; outside a git work tree there is no HEAD, and it says nothing.
+An edit in an editor has no tool call at all — it is named after the next such
+command.
+
 The guard keys off the **path shape**, not a list of track prefixes. The field
 version matched one prefix, and by the time anyone measured it that repository
 had grown two more: nineteen letters sat outside the guard, and nothing said

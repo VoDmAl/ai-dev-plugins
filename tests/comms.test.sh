@@ -365,6 +365,67 @@ case "$m" in
 esac
 
 echo ""
+echo "== after a shell command: a letter left sent without proof is named =="
+# Measured 2026-10-13 on this machine's transcripts: 322 Bash calls wrote `sent:`
+# into a letter (`sed -i`, a python replace, `cat >`) against 163 Write and Edit.
+# The guard cannot see them; this hook looks after the command, against HEAD.
+# Crystal `outgoing-ladder`, DL #6. The case of a letter committed as a draft
+# needs a commit in its fixture, and lives in tests/comms-pending.test.sh.
+SENTCHECK="${COMMS_SENT_CHECK_SH:-$P/scripts/comms-sent-check.sh}"
+mkdir -p "$TMP/sx/t/comms"
+SX=$(cd "$TMP/sx" && pwd -P)
+( cd "$SX" && git init -q . ) >/dev/null 2>&1
+bash_payload() { # bash_payload <command> <cwd>
+  python3 -c 'import json, sys
+print(json.dumps({"tool_name": "Bash", "tool_input": {"command": sys.argv[1]},
+                  "tool_response": {"stdout": ""}, "cwd": sys.argv[2]}))' "$1" "$2"
+}
+SL="t/comms/2026-10-13-shell-out.md"
+FLIP="sed -i '' 's/^draft: true\$/sent: 2026-10-13/' $SL"
+printf '%s' "$DRAFT" > "$SX/$SL"
+OUT=$(bash_payload "$FLIP" "$SX" | bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "GREEN: a draft is not named" 0 "$rc"
+expect_silent "…and nothing is said" "$OUT"
+printf '%s' "$SENT" > "$SX/$SL"
+OUT=$(bash_payload "$FLIP" "$SX" | bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "RED: a letter not committed yet, left sent without proof ⇒ exit 2" 2 "$rc"
+expect_says "…the letter is named, and why" "$OUT" "$SL — not committed yet"
+expect_says "…with the field that fixes it" "$OUT" "sent-proof: owner"
+OUT=$(bash_payload "$FLIP" "$SX/t/comms" | bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "RED: …from a subdirectory too" 2 "$rc"
+OUT=$(bash_payload "python3 fix.py" "$SX" | bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "GREEN: a command that names no letter and writes no sent: is not followed up" 0 "$rc"
+expect_silent "…and nothing is said" "$OUT"
+OUT=$(bash_payload "python3 -c \"p.write_text(s.replace('draft: true', 'sent: 2026-10-13'))\"" "$SX" | bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "RED: a script that writes sent: without naming the file is followed up" 2 "$rc"
+( cd "$SX" && git add -A )
+OUT=$(bash_payload "git add $SL" "$SX" | bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "RED: staged is not committed: still named" 2 "$rc"
+printf -- '---\nsent: 2026-10-13\nsent-proof: owner\n---\n\nтекст\n' > "$SX/$SL"
+OUT=$(bash_payload "$FLIP" "$SX" | bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "GREEN: with sent-proof: it is not named" 0 "$rc"
+expect_silent "…and nothing is said" "$OUT"
+printf -- '---\nsent: 2026-10-12\n---\n\nтекст\n' > "$SX/t/comms/2026-10-12-them-in.md"
+OUT=$(bash_payload "ls t/comms" "$SX" | bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "GREEN: an inbound letter carries sent: of its own — not ours" 0 "$rc"
+mkdir -p "$TMP/nogit/comms"
+NG=$(cd "$TMP/nogit" && pwd -P)
+printf '%s' "$SENT" > "$NG/comms/2026-10-13-x-out.md"
+OUT=$(bash_payload "ls comms" "$NG" | bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "GREEN: outside a git work tree there is no HEAD to compare with" 0 "$rc"
+expect_silent "…and nothing is said" "$OUT"
+m=$(python3 -c '
+import json, sys
+d = json.load(open(sys.argv[1]))
+for e in d["hooks"].get("PostToolUse", []):
+    if any("comms-sent-check" in h.get("command", "") for h in e["hooks"]):
+        print("yes" if "Bash" in e.get("matcher", "").split("|") else e.get("matcher", ""))' "$P/hooks/hooks.json")
+case "$m" in
+  yes) ok "RED: the check is registered after Bash" ;;
+  *) bad "RED: the check is registered after Bash" "matcher: ${m:-none}" ;;
+esac
+
+echo ""
 echo "== index: generated layer is proposed, never written behind your back =="
 
 rm -rf "$FX/meetings" && mkdir -p "$FX/meetings"
@@ -791,6 +852,15 @@ OUT=$(printf '%s' "$edit_json" | env -i HOME="$HOME" LC_ALL=C PATH="$FARM" \
       bash -c "bash '$GUARD'" 2>&1); rc=$?
 expect_exit "RED: an edit marking a letter sent, without python3 ⇒ NOT CHECKED, exit 2" 2 "$rc"
 rm -f "$FX/gaps/alpha/comms/2026-10-13-farm-out.md"
+sh_json=$(bash_payload "$FLIP" "$SX")
+OUT=$(printf '%s' "$sh_json" | env -i HOME="$HOME" LC_ALL=C PATH="$FARM" \
+      bash -c "bash '$SENTCHECK'" 2>&1); rc=$?
+expect_exit "RED: the check after a shell command that names a letter, without python3 ⇒ exit 2" 2 "$rc"
+expect_says "…and it says NOT CHECKED" "$OUT" "NOT CHECKED"
+sh_json=$(bash_payload "ls -la" "$SX")
+OUT=$(printf '%s' "$sh_json" | env -i HOME="$HOME" LC_ALL=C PATH="$FARM" \
+      bash -c "bash '$SENTCHECK'" 2>&1); rc=$?
+expect_exit "GREEN: same broken env, a command that touches no letter ⇒ exit 0" 0 "$rc"
 
 printf -- '---\ndraft: true\n---\n' > "$FX/gaps/alpha/comms/2026-09-23-farm-out.md"
 letter_payload=$(payload Write "$FX/gaps/alpha/comms/2026-09-23-farm-out.md" "x")

@@ -631,5 +631,36 @@ expect_exit "the reminder never blocks" 0 "$rc"
 # That it does not rewrite .git/index is held by tests/hook-index-writes.test.sh,
 # which runs every registered hook against a control that does write.
 
+echo ""
+echo "== after a shell command: a draft as committed, left sent without proof =="
+# The half of comms-sent-check that needs HEAD; the rest is in tests/comms.test.sh.
+# A letter committed as a draft and flipped by `sed -i` is the commonest way an
+# agent marks a letter sent (crystal `outgoing-ladder`, DL #6).
+SENTCHECK="${COMMS_SENT_CHECK_SH:-$P/scripts/comms-sent-check.sh}"
+SH="$TMP/shell"; mkdir -p "$SH/t/comms"
+( cd "$SH" && git init -q . ) >/dev/null 2>&1
+printf -- '---\ndraft: true\n---\n# to A\nbody\n' > "$SH/t/comms/2026-10-13-a-out.md"
+printf -- '---\nsent: 2026-10-01\n---\n# to B\nbody\n' > "$SH/t/comms/2026-10-01-b-out.md"
+( cd "$SH" && git add -A >/dev/null 2>&1 &&
+  git -c user.email=t@example.invalid -c user.name=t commit -q -m fixture >/dev/null 2>&1 )
+shell_payload() { # shell_payload <command>
+  python3 -c 'import json, sys
+print(json.dumps({"tool_name": "Bash", "tool_input": {"command": sys.argv[1]},
+                  "tool_response": {"stdout": ""}, "cwd": sys.argv[2]}))' "$1" "$SH"
+}
+OUT=$(shell_payload "ls t/comms" | bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "GREEN: every letter as committed ⇒ nothing to name" 0 "$rc"
+expect_silent "…and nothing is said" "$OUT"
+printf -- '---\nsent: 2026-10-13\n---\n# to A\nbody\n' > "$SH/t/comms/2026-10-13-a-out.md"
+printf 'a typo fixed\n' >> "$SH/t/comms/2026-10-01-b-out.md"
+OUT=$(shell_payload "sed -i '' 's/^draft: true\$/sent: 2026-10-13/' t/comms/2026-10-13-a-out.md" | bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "RED: a draft as committed, now sent without proof ⇒ exit 2" 2 "$rc"
+expect_says "…named, with HEAD's side of it" "$OUT" "t/comms/2026-10-13-a-out.md — unsent in HEAD"
+expect_not_says "…a letter sent in HEAD and edited since is history, not named" "$OUT" "b-out.md"
+printf -- '---\nsent: 2026-10-13\nsent-proof: owner\n---\n# to A\nbody\n' > "$SH/t/comms/2026-10-13-a-out.md"
+OUT=$(shell_payload "sed -i '' 's/x/y/' t/comms/2026-10-13-a-out.md" | bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "GREEN: the same, with sent-proof: ⇒ nothing to name" 0 "$rc"
+expect_silent "…and nothing is said" "$OUT"
+
 printf '\ncomms-pending: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
