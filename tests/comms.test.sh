@@ -268,6 +268,10 @@ expect_says "RED: …no draft when the asker already sees the answer" "$ctx" "do
 # without the history and reached the recipient as a new letter titled "Re: …".
 expect_says "RED: …a reply without the history takes a subject of its own" "$ctx" "without the history, a subject of its own"
 expect_says "RED: …and a file already in the thread is named, not attached again" "$ctx" "not attached again"
+# Access layer, 2026-10-09 (outgoing-levels-comms), the owner: a draft file by default,
+# a step up only when allowed; `sent:` by proof, not by the agent's word.
+expect_says "RED: …the step: up only with the right and the owner's word about this letter" "$ctx" "the owner's word about this letter"
+expect_says "RED: …and sent: only with sent-proof:" "$ctx" "only with \`sent-proof:\`"
 expect_not_says "…no register line when none is declared" "$ctx" "Register:"
 printf '{\n  "comms": {\n    "register": "peer",\n    "language": "en"\n  }\n}\n' > "$FX/.claude/vdm-plugins.json"
 OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-y-out.md" "$DRAFT" | bash "$GUARD" 2>/dev/null)
@@ -299,6 +303,66 @@ expect_silent "…and says nothing — the checklist is for a new draft" "$OUT"
 
 OUT=$(payload Write "$FX/gaps/alpha/notes.md" "$SENT" | bash "$GUARD" 2>&1); rc=$?
 expect_exit "GREEN: a file outside comms/ passes" 0 "$rc"
+
+echo ""
+echo "== draft guard: \"sent\" only with proof, on an edit too =="
+# Access layer, 2026-10-09 (outgoing-levels-comms), the owner: only the hooks keep
+# the agent from marking a draft as sent. The skill told the agent to set `sent:` by
+# an edit, and the guard watched only creation. Crystal `outgoing-ladder`, DL #2–#5.
+
+edit_payload() { # edit_payload <tool> <path> <old> <new>
+  python3 - "$1" "$2" "$3" "$4" <<'PY'
+import json, sys
+tool, path, old, new = sys.argv[1:5]
+edit = {"old_string": old, "new_string": new}
+ti = {"file_path": path, "edits": [edit]} if tool == "MultiEdit" else dict(file_path=path, **edit)
+print(json.dumps({"tool_name": tool, "tool_input": ti, "cwd": "."}))
+PY
+}
+
+L="$FX/gaps/alpha/comms/2026-10-13-ladder-out.md"
+printf '%s' "$DRAFT" > "$L"
+OUT=$(edit_payload Edit "$L" "draft: true" "sent: 2026-10-13" | bash "$GUARD" 2>&1); rc=$?
+expect_exit "RED: an edit that turns a draft into sent: without proof ⇒ exit 2" 2 "$rc"
+expect_says "…and the refusal names the field" "$OUT" "sent-proof: owner"
+OUT=$(edit_payload MultiEdit "$L" "draft: true" "sent: 2026-10-13" | bash "$GUARD" 2>&1); rc=$?
+expect_exit "RED: …the same by MultiEdit ⇒ exit 2" 2 "$rc"
+OUT=$(payload Write "$L" "$SENT" | bash "$GUARD" 2>&1); rc=$?
+expect_exit "RED: …and by a Write over the existing draft ⇒ exit 2" 2 "$rc"
+OUT=$(edit_payload Edit "$L" "draft: true" $'sent: 2026-10-13\nsent-proof: owner' | bash "$GUARD" 2>&1); rc=$?
+expect_exit "GREEN: with sent-proof: owner it passes" 0 "$rc"
+expect_silent "…and says nothing — the checklist is for a new draft" "$OUT"
+OUT=$(edit_payload Edit "$L" "draft: true" $'sent: 2026-10-13\nsent-proof: <CAF1x@mail.example.com>' | bash "$GUARD" 2>&1); rc=$?
+expect_exit "GREEN: …and with an id from the tool's answer" 0 "$rc"
+OUT=$(edit_payload Edit "$L" "draft: true" $'sent: 2026-10-13\nsent-proof: true' | bash "$GUARD" 2>&1); rc=$?
+expect_exit "RED: sent-proof: true is not a proof ⇒ exit 2" 2 "$rc"
+OUT=$(edit_payload Edit "$L" "no such text" "sent: 2026-10-13" | bash "$GUARD" 2>&1); rc=$?
+expect_exit "GREEN: an edit that would not apply writes nothing, and passes" 0 "$rc"
+# A project that keeps the send as yes/no: `sent: false` from the first day, `true` after.
+printf -- '---\nsent: false\n---\n\nтекст\n' > "$L"
+OUT=$(edit_payload Edit "$L" "sent: false" "sent: true" | bash "$GUARD" 2>&1); rc=$?
+expect_exit "RED: sent: false → true without proof ⇒ exit 2" 2 "$rc"
+# A letter already sent is history: a typo fixed in it needs no proof it never had.
+printf '%s' "$SENT" > "$L"
+OUT=$(edit_payload Edit "$L" "текст письма" "текст письма, исправленный" | bash "$GUARD" 2>&1); rc=$?
+expect_exit "GREEN: editing a letter already sent passes" 0 "$rc"
+rm -f "$L"
+# Recording a letter the tool itself sent: created sent, with its proof.
+OUT=$(payload Write "$L" $'---\nsent: 2026-10-13\nsent-proof: https://tracker.example.com/browse/PROJ-123?focusedCommentId=1\n---\n\nтекст\n' | bash "$GUARD" 2>&1); rc=$?
+expect_exit "GREEN: a new letter created sent, with its proof, passes" 0 "$rc"
+rm -f "$L"
+# A guard on Edit is only as good as the matcher that sends it the Edit.
+m=$(python3 -c '
+import json, sys
+d = json.load(open(sys.argv[1]))
+for e in d["hooks"]["PreToolUse"]:
+    if any("comms-draft-guard" in h.get("command", "") for h in e["hooks"]):
+        names = set(e.get("matcher", "").split("|"))
+        print("yes" if {"Write", "Edit", "MultiEdit"} <= names else e.get("matcher", ""))' "$P/hooks/hooks.json")
+case "$m" in
+  yes) ok "RED: the guard's matcher sends it Write, Edit and MultiEdit" ;;
+  *) bad "RED: the guard's matcher sends it Write, Edit and MultiEdit" "matcher: $m" ;;
+esac
 
 echo ""
 echo "== index: generated layer is proposed, never written behind your back =="
@@ -721,6 +785,12 @@ out_payload=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-new-out.md" "$SENT"
 OUT=$(printf '%s' "$out_payload" | env -i HOME="$HOME" LC_ALL=C PATH="$FARM" \
       bash -c "bash '$GUARD'" 2>&1); rc=$?
 expect_exit "RED: draft guard without python3 ⇒ exit 2" 2 "$rc"
+printf -- '---\ndraft: true\n---\n' > "$FX/gaps/alpha/comms/2026-10-13-farm-out.md"
+edit_json=$(edit_payload Edit "$FX/gaps/alpha/comms/2026-10-13-farm-out.md" "draft: true" "sent: 2026-10-13")
+OUT=$(printf '%s' "$edit_json" | env -i HOME="$HOME" LC_ALL=C PATH="$FARM" \
+      bash -c "bash '$GUARD'" 2>&1); rc=$?
+expect_exit "RED: an edit marking a letter sent, without python3 ⇒ NOT CHECKED, exit 2" 2 "$rc"
+rm -f "$FX/gaps/alpha/comms/2026-10-13-farm-out.md"
 
 printf -- '---\ndraft: true\n---\n' > "$FX/gaps/alpha/comms/2026-09-23-farm-out.md"
 letter_payload=$(payload Write "$FX/gaps/alpha/comms/2026-09-23-farm-out.md" "x")

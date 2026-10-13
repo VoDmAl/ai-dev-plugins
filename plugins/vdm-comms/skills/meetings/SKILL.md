@@ -192,20 +192,38 @@ Everything else is the floor, in code, identical everywhere.
 
 ## Outgoing letters
 
-A `PreToolUse` guard refuses to **create** `*/comms/*-out.md` that already
-carries `sent: <date>`. A letter is sent by a person: until then the file is a
-draft (`draft: true`), and `sent:` is the record of what actually went out.
-A project that marks drafts the other way round, `sent: false` from the first
+Until a letter has left, its file is a draft (`draft: true`); `sent:` is the
+record of what actually went out, and `sent-proof:` beside it is what shows it
+left:
+
+```yaml
+sent: 2026-10-13
+sent-proof: <id or link from the sending tool's answer>   # or: owner
+```
+
+The proof is the id or link the sending tool answered with — a mail's
+message_id, a ticket comment's link, a chat message's id — or `owner`, when the
+owner said in the conversation that they sent the letter themselves. A
+project that marks drafts the other way round, `sent: false` from the first
 day, is read the same: every check that asks "is this a draft?" takes both.
+
+A `PreToolUse` guard refuses a write — a new file, an edit, a rewrite — that
+makes `*/comms/*-out.md` sent without proof: not sent before (or no file yet),
+`sent:` after, and no `sent-proof:`. It asks at the transition, not of the file.
+A letter already sent is history and is never asked for a proof it was written
+without: of 616 sent letters in three projects, about 520 carry nothing that
+could serve, and nothing can be added now (2026-10-13). The field cannot tell a
+real id from an invented one; what it does is turn an accidental mark into a
+deliberate claim. Until vdm-comms 0.25.0 the guard watched only creation, while
+`sent:` was set by an edit — the one path the skill prescribed was unwatched.
 
 The guard keys off the **path shape**, not a list of track prefixes. The field
 version matched one prefix, and by the time anyone measured it that repository
 had grown two more: nineteen letters sat outside the guard, and nothing said
 so — a narrowed guard looks exactly like a quiet one.
 
-Editing an existing letter is never blocked. A new draft that passes gets the
-checklist of `/vdm-comms:letters` as context — the skill's short form, at the
-moment of writing; never a block.
+A new draft that passes gets the checklist of `/vdm-comms:letters` as context —
+the skill's short form, at the moment of writing; never a block.
 
 ### Start a draft from the scaffold
 

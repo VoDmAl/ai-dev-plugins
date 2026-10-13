@@ -11,7 +11,7 @@ files. One home for a tool three repositories had each copied and drifted.
 | a project's own meeting rules | same linter, `comms.meeting-rules` | only the rules the project named |
 | attachment checklist of a letter | same linter | after a write to an unsent `*/comms/*-out.md` that attaches something |
 | pending-item linter | `PostToolUse` hook + CLI | after a write into a `pending-paths` file — **new lines only** |
-| outgoing-draft guard | `PreToolUse` hook | when creating `*/comms/*-out.md`: refuses a letter already claiming `sent:`, and hands a new draft the checklist of `/vdm-comms:letters` |
+| outgoing-draft guard | `PreToolUse` hook | on a write to `*/comms/*-out.md` — new file or edit: refuses one that makes the letter sent without `sent-proof:`, and hands a new draft the checklist of `/vdm-comms:letters` |
 | draft scaffold | `scripts/comms-new.py` | on request: a new `*/comms/*-out.md` with the header the project's `letter-form` asks of the channel, and what `people/` says about the recipient |
 | who may write to a person | `scripts/comms-people.py` | on request: `trust` and the From pairs from the profile, and the next step for this project — a hand writes to `team` and `peer` only |
 | form of an outgoing draft | the meeting linter | after a write to a draft (`draft: true` or `sent: false`) — per `channel:`, from `comms.letter-form`; a declared draft outside `comms/` is named |

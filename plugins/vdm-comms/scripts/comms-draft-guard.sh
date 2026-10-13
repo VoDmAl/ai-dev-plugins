@@ -1,11 +1,18 @@
 #!/bin/bash
-# comms-draft-guard.sh — PreToolUse (Write) guard for outgoing correspondence.
+# comms-draft-guard.sh — PreToolUse (Write, Edit, MultiEdit) guard for outgoing
+# correspondence.
 #
-# Refuses to CREATE a `comms/*-out.md` that already claims `sent: <date>`.
-# A letter is sent by a person, not by the assistant: until that happened the
-# file is a draft (`draft: true`), and `sent:` is added afterwards. Writing it
-# up front records a send that never took place, in the one place the project
-# treats as the record of what went out.
+# Refuses a write that makes a `comms/*-out.md` SENT without proof: not sent
+# before (or no file yet), `sent:` after, and no `sent-proof:` beside it. Until
+# the letter has left, the file is a draft (`draft: true`); `sent:` is the record
+# of what went out, and the proof is what shows it left — an id or link from
+# the sending tool's answer, or `owner` when the owner said they sent it
+# themselves. The comparison lives in comms_sent_proof.py.
+#
+# Edits are guarded too (vdm-comms 0.25.0). Before that only the creation of a
+# letter was, while the skill told the assistant to set `sent:` by an edit — the
+# one path it prescribed was the one path nobody watched (crystal
+# `outgoing-ladder`, DL #3).
 #
 # Scope is the PATH SHAPE — `*/comms/*-out.md` — and deliberately not a list of
 # track prefixes. The field version of this guard matched ONE prefix, and by the
@@ -13,8 +20,8 @@
 # letters sat outside the guard, and nothing said so, because a narrowed guard
 # looks exactly like a quiet one.
 #
-# Editing an EXISTING file is allowed: fixing a typo in a letter that really
-# was sent is legitimate, and the guard has nothing to say about it.
+# A letter that was ALREADY sent is history: fixing a typo in it is legitimate,
+# and it is never asked for a proof it was written without.
 #
 # A new draft that passes gets the checklist of /vdm-comms:letters as context
 # (comms_checklist.py) — the skill's short form, at the moment of writing.
@@ -39,9 +46,9 @@ payload=$(cat)
 [ -z "$payload" ] && exit 0
 
 guard_in_scope() {
-  printf '%s' "$payload" | grep -qE '"tool_name"[[:space:]]*:[[:space:]]*"Write"' 2>/dev/null || return 1
+  printf '%s' "$payload" | grep -qE '"tool_name"[[:space:]]*:[[:space:]]*"(Write|Edit|MultiEdit)"' 2>/dev/null || return 1
   printf '%s' "$payload" | grep -qE '/comms/[^"]*-out\.md' 2>/dev/null || return 1
-  printf '%s' "$payload" | grep -qE 'sent:[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}' 2>/dev/null || return 1
+  printf '%s' "$payload" | grep -q 'sent' 2>/dev/null || return 1
   return 0
 }
 
@@ -49,11 +56,11 @@ guard_unverified() {
   guard_in_scope || exit 0
   if command -v vdm_gate_unverified >/dev/null 2>&1; then
     vdm_gate_unverified "comms-draft-guard" "$1" \
-      "a new outgoing letter carrying \`sent:\` — whether it is a draft claiming to have been sent was never checked" \
-      "install python3 or jq so the hook can read its payload, then write again, or" \
-      "check by hand: a letter that has not left yet carries \`draft: true\`, never \`sent:\`"
+      "a write to an outgoing letter that mentions \`sent\` — whether it marks the letter sent without proof was never checked" \
+      "install python3 so the hook can compare the letter before and after the write, then write again, or" \
+      "check by hand: a letter that has not left carries \`draft: true\`; \`sent:\` comes only with \`sent-proof:\` beside it"
   else
-    printf '\n[comms-draft-guard] NOT CHECKED — %s\n  A new outgoing letter with `sent:` arrived and the guard could not run.\n\n' "$1" >&2
+    printf '\n[comms-draft-guard] NOT CHECKED — %s\n  A write to an outgoing letter mentioning `sent` arrived and the guard could not run.\n\n' "$1" >&2
   fi
   exit 2
 }
@@ -82,7 +89,10 @@ if cur is not None:
 
 tool_name=$(read_field "tool_name")
 [ -z "$tool_name" ] && guard_unverified "could not read \`tool_name\` from the hook payload"
-[ "$tool_name" = "Write" ] || exit 0
+case "$tool_name" in
+  Write|Edit|MultiEdit) ;;
+  *) exit 0 ;;
+esac
 
 file_path=$(read_field "tool_input.file_path")
 [ -z "$file_path" ] && exit 0
@@ -92,35 +102,31 @@ case "$file_path" in
   *) exit 0 ;;
 esac
 
-# Only the CREATION of a letter is guarded.
-[ -e "$file_path" ] && exit 0
+creating=0
+[ -e "$file_path" ] || creating=1
 
-content=$(read_field "tool_input.content")
-if [ -z "$content" ]; then
-  # A Write with no readable content on a path we do guard: we cannot tell
-  # whether it claims to be sent.
-  guard_unverified "could not read \`tool_input.content\` from the hook payload"
-fi
-
-if printf '%s' "$content" | head -n 20 \
-   | grep -qE '^sent:[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}' 2>/dev/null; then
-  cat >&2 <<'EOF'
-🚫 comms-draft-guard: a NEW outgoing letter must not claim `sent:`.
-
-  A draft carries `draft: true` and no `sent:` field. `sent: <date>` is added
-  only after a person has actually sent the letter — it is the record of what
-  went out, and writing it in advance records a send that did not happen.
-
-  Fix: replace `sent: YYYY-MM-DD` with `draft: true`, then write again.
-EOF
-  exit 2
-fi
+# Sent before → sent after needs nothing; not sent → sent needs `sent-proof:`.
+# Working that out for an Edit means applying it to the file on disk, which is
+# python's job; without python3 the guard says so instead of passing quietly.
+SENT_PROOF="$SELF_DIR/comms_sent_proof.py"
+command -v python3 >/dev/null 2>&1 \
+  || guard_unverified "python3 is needed to see whether this write marks the letter sent"
+[ -f "$SENT_PROOF" ] || guard_unverified "comms_sent_proof.py is missing next to the guard"
+printf '%s' "$payload" | python3 "$SENT_PROOF"
+rc=$?
+case "$rc" in
+  0) ;;
+  2) exit 2 ;;
+  *) guard_unverified "could not work out the letter as this write would leave it" ;;
+esac
 
 # A new draft passed: hand over the checklist of /vdm-comms:letters, at the one
 # moment it is worth reading — as additionalContext, never a block. A reminder,
-# so it fails open: no python3, no checklist, the write goes through.
+# so it fails open: no checklist, the write goes through.
+[ "$tool_name" = "Write" ] && [ "$creating" -eq 1 ] || exit 0
+content=$(read_field "tool_input.content")
 CHECKLIST="$SELF_DIR/comms_checklist.py"
-if command -v python3 >/dev/null 2>&1 && [ -f "$CHECKLIST" ]; then
+if [ -n "$content" ] && [ -f "$CHECKLIST" ]; then
   printf '%s' "$content" | python3 "$CHECKLIST" --hook --file "$file_path" 2>/dev/null || true
 fi
 

@@ -2,10 +2,10 @@
 title: "Блокирующий гард, отменённый по таймауту, пропускает вызов: таймауты и matcher хуков суиты"
 slug: hook-timeout-fail-open
 description: "PreToolUse-гард, отменённый по таймауту, пропускает вызов — дать блокирующим гардам запас и matcher"
-status: in-progress
+status: dormant
 session-type: prd-prep
 created: 2026-10-01
-last-updated: 2026-10-09
+last-updated: 2026-10-13
 ---
 
 # Блокирующий гард, отменённый по таймауту, пропускает вызов: таймауты и matcher хуков суиты
@@ -27,6 +27,9 @@ Stop) при отмене просто молчат — их дефектом э
 конфиг; `git-guard-hook.sh` запускается только на нужные ему инструменты — или записано, почему на все.
 
 ## Текущая модель
+
+**На паузе с 2026-10-13 (`dormant`).** Открыт один пункт — Sidetrack #3, без срока, его никто не ждёт; активный
+кристалл — `outgoing-ladder`, со сроком. Вернуть в `in-progress`, когда до Sidetrack #3 дойдёт очередь.
 
 Состояние на 2026-10-01, после правок (vdm 2.40.2, vdm-git 2.16.3, vdm-comms 0.16.2):
 
@@ -293,6 +296,13 @@ fail-closed-ветки держат тесты, которые берут спи
 набора — но глобальный конфиг машины несёт и `core.checkStat=minimal`, `core.trustctime=false`, от которых зависят
 фикстуры «stat-dirty» (`tests/hook-index-writes.test.sh`). Сначала замерить, какие наборы от глобального конфига
 зависят, потом переносить.
+
+**2026-10-09, ответ vdx** (`global-hooks-in-test-fixtures-outcome`): у них тот же случай нашёлся в одном наборе, и
+он был изолирован через `core.hooksPath=/dev/null`. Этот ключ хуки из конфига не выключает — здесь проверено
+(`git -c core.hooksPath=/dev/null hook list pre-commit` в свежем `git init` называет оба, git 2.54.0). Значит, и наш
+`tests/git-guard-prepare.test.sh`, который ставит фикстуре свой `core.hooksPath`, хуки машины не отсекает. vdx
+перевёл набор на пустой `GIT_CONFIG_GLOBAL` и `GIT_CONFIG_NOSYSTEM=1`. `core.checkStat` и `core.trustctime` их тестам
+не нужны: чистоту дерева они смотрят по `git status`. Это их наборы, наши фикстуры «stat-dirty» замер всё ещё ждут.
 
 **Status:** open
 

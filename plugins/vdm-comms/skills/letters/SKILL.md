@@ -119,6 +119,14 @@ is shown to anyone, and open the sections below when a line does not settle.
   project key; the parameter was not taken for text a person reads. Linking a
   ticket to `PROJ-45`, the comment says `[~login] this task is blocked by PROJ-45 —
   …`, never `blocked by 45`.
+- **The step, too, comes from the owner's word.** An outgoing text is a draft
+  file by default. A step up — a draft in the channel itself (a mail draft) or
+  the send — only when the project has the right to that step and the owner said
+  so in the conversation about this letter. The right is the access layer's: its
+  tool for the step is there and does not refuse. A tool that is there is not the
+  owner's word, and a word about one letter does not carry to the next. Without
+  both, the text stays on the step it has. The owner (2026-10-09): «нельзя чтобы
+  агент сходу случайно перешел на шаг выше. Только если ему это разрешили».
 
 ## 3. What does not go into the letter
 
@@ -467,9 +475,13 @@ And around them:
   connect, do not relay). Whoever only saw it earlier is in BCC of the first
   answer (§ 5). Our waiting item is then one, on the one who does the work, with
   a date.
-- **`sent: <date>` is set by an edit once the owner confirms the letter left
-  their hands** — sent, or scheduled in the mail client. The date is the day of
-  confirmation. Until then it is a draft.
+- **`sent: <date>` comes with its proof, `sent-proof:`** — what shows the letter
+  left: the id or link from the answer of the tool that sent it (a mail's
+  message_id, a ticket comment's link, a chat message's id), or `owner` once the
+  owner said in this conversation that they sent it themselves, or scheduled it
+  in the mail client. The date is the day of the send or of the owner's word.
+  Neither in hand — it is still a draft. A guard refuses a write that makes a
+  letter sent without the field (`/vdm-comms:meetings` → *Outgoing letters*).
 - After a letter with strategic context (in or out), update the track's notes:
   hypotheses, conclusions, strategy.
 
