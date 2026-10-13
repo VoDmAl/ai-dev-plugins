@@ -230,6 +230,24 @@ writes `sent:`; outside a git work tree there is no HEAD, and it says nothing.
 An edit in an editor has no tool call at all — it is named after the next such
 command.
 
+Since vdm-comms 0.27.0 the field is checked, not only seen. The access layer
+writes every send it makes into its journal and answers for an id from it — its
+command `sent <directory of the letter> <id>`: 0 a send with this id from this
+project is there, 1 it is not (invented, or another project's), 2 cannot tell.
+Both hooks ask it when a letter becomes sent with an id, and only 1 refuses: a
+"no" about an id the journal never keeps — a link to a ticket comment — would
+throw out a real send. What the journal keeps with an id: a mail's
+`message_id` (`mail_send`), a chat message's `id` or `link` (`zulip_send`), the
+`audit` id of a write into a ticket or a board (`call_write`), the `id` of what
+a site created (`api_write`). `owner` is the owner's word and is never asked
+about. The access layer is found as everywhere in this plugin — the agent whose
+intercom entry declares the role access-layer, `bin/<its identity>` in its
+checkout; with none on the machine, or no answer within ten seconds, the
+presence of the field is what is checked. After a shell command only a letter
+written in the last five minutes is asked about: one question costs about a
+third of a second, and the uncommitted letters of a busy session would be asked
+about again on every command that mentions `comms`.
+
 The guard keys off the **path shape**, not a list of track prefixes. The field
 version matched one prefix, and by the time anyone measured it that repository
 had grown two more: nineteen letters sat outside the guard, and nothing said

@@ -39,7 +39,7 @@ P="$REPO_ROOT/plugins/vdm-comms"
 # Overridable so a change can be proved red against the previous version.
 LINT="${COMMS_LINT_BIN:-$P/scripts/comms-lint.py}"
 LINTSH="$P/scripts/comms-lint.sh"
-GUARD="$P/scripts/comms-draft-guard.sh"
+GUARD="${COMMS_DRAFT_GUARD_SH:-$P/scripts/comms-draft-guard.sh}"
 INDEX="${COMMS_INDEX_BIN:-$P/scripts/comms-index.py}"
 INDEXCHECK="${COMMS_INDEX_CHECK_SH:-$P/scripts/comms-index-check.sh}"
 
@@ -61,6 +61,26 @@ trap cleanup EXIT
 mkdir -p "$TMP/fx"
 FX=$(cd "$TMP/fx" && pwd -P)
 ( cd "$FX" && git init -q . ) >/dev/null 2>&1
+
+# The access layer's journal of sends, as a stub: the guard asks it about an id
+# in `sent-proof:` (vdm-comms 0.27.0). Exported for the whole suite, so no check
+# here reaches the access layer of the machine it runs on. Every question is
+# logged, to show which proofs are asked about at all.
+STUB_LOG="$TMP/echelon-asked.log"
+mkdir -p "$TMP/echelon-stub/bin"
+cat > "$TMP/echelon-stub/bin/echelon" <<STUB
+#!/bin/sh
+[ "\$1" = sent ] || exit 2
+printf '%s\n' "\$3" >> '$STUB_LOG'
+case "\$3" in
+  '<real@mail.example.com>') echo "2026-10-13T10:00:00-04:00 mail_send Re: plan"; exit 0 ;;
+  '<invented@mail.example.com>') echo "no send <invented@mail.example.com> from fx in the journal"; exit 1 ;;
+  '<garbled@mail.example.com>') echo "Traceback: boom" >&2; exit 5 ;;
+  *) echo "a kind of id the journal does not keep"; exit 2 ;;
+esac
+STUB
+chmod +x "$TMP/echelon-stub/bin/echelon"
+export ECHELON_BIN="$TMP/echelon-stub/bin/echelon"
 
 mkdir -p "$FX/meetings" "$FX/gaps/alpha" "$FX/org" "$FX/incidents/one" \
          "$FX/areas/advancement-records" "$FX/program/2026-2027/alpine-skills"
@@ -424,6 +444,54 @@ case "$m" in
   yes) ok "RED: the check is registered after Bash" ;;
   *) bad "RED: the check is registered after Bash" "matcher: ${m:-none}" ;;
 esac
+
+echo ""
+echo "== the proof is checked against the access layer's journal of sends =="
+# Access layer, 2026-10-13 (sent-check-command): `echelon sent <dir> <id>` — 0 the
+# send is there, 1 it is not, 2 cannot tell, and "do not refuse on 2". Crystal
+# `outgoing-ladder`, DL #7. The stub is the one exported at the top.
+J="$FX/gaps/alpha/comms/2026-10-13-journal-out.md"
+printf '%s' "$DRAFT" > "$J"
+proof_edit() { edit_payload Edit "$J" "draft: true" "sent: 2026-10-13"$'\n'"sent-proof: $1"; }
+: > "$STUB_LOG"
+OUT=$(proof_edit '<real@mail.example.com>' | bash "$GUARD" 2>&1); rc=$?
+expect_exit "GREEN: an id the journal has for this project passes" 0 "$rc"
+expect_says "…and the journal was asked" "$(cat "$STUB_LOG")" "<real@mail.example.com>"
+OUT=$(proof_edit '<invented@mail.example.com>' | bash "$GUARD" 2>&1); rc=$?
+expect_exit "RED: an id the journal does not have ⇒ refused, exit 2" 2 "$rc"
+expect_says "…with the journal's own line" "$OUT" "no send <invented@mail.example.com> from fx"
+expect_says "…and the way out" "$OUT" "sent-proof: owner"
+OUT=$(proof_edit 'https://tracker.example.com/browse/PROJ-123?focusedCommentId=1' | bash "$GUARD" 2>&1); rc=$?
+expect_exit "GREEN: a kind of id the journal does not keep — cannot tell, not refused" 0 "$rc"
+OUT=$(proof_edit '<garbled@mail.example.com>' | bash "$GUARD" 2>&1); rc=$?
+expect_exit "GREEN: an answer that is neither yes nor no is cannot tell" 0 "$rc"
+: > "$STUB_LOG"
+OUT=$(proof_edit 'owner' | bash "$GUARD" 2>&1); rc=$?
+expect_exit "GREEN: owner passes" 0 "$rc"
+expect_silent "…and the journal is not asked about the owner's word" "$(cat "$STUB_LOG")"
+OUT=$(proof_edit '<invented@mail.example.com>' | ECHELON_BIN="$TMP/no-such/bin/echelon" bash "$GUARD" 2>&1); rc=$?
+expect_exit "GREEN: no access layer on this machine — the field's presence is what is checked" 0 "$rc"
+printf -- '---\nsent: 2026-09-21\n---\n\nтекст письма\n' > "$J"
+: > "$STUB_LOG"
+OUT=$(edit_payload Edit "$J" "sent: 2026-09-21" $'sent: 2026-09-21\nsent-proof: <invented@mail.example.com>' | bash "$GUARD" 2>&1); rc=$?
+expect_exit "GREEN: a letter already sent is history — a proof added later is not asked about" 0 "$rc"
+expect_silent "…and the journal is not asked" "$(cat "$STUB_LOG")"
+rm -f "$J"
+
+# After a shell command: the same question, for a letter written just now.
+printf -- '---\nsent: 2026-10-13\nsent-proof: <invented@mail.example.com>\n---\n\nтекст\n' > "$SX/$SL"
+OUT=$(bash_payload "$FLIP" "$SX" | bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "RED: after a command, an id the journal does not have ⇒ exit 2" 2 "$rc"
+expect_says "…named, with the journal's line" "$OUT" "not in the access layer's journal: no send <invented@mail.example.com>"
+: > "$STUB_LOG"
+touch -t 202610010000 "$SX/$SL"
+OUT=$(bash_payload "ls t/comms" "$SX" | bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "GREEN: a letter written before this command is not asked about again" 0 "$rc"
+expect_silent "…and the journal is not asked" "$(cat "$STUB_LOG")"
+printf -- '---\nsent: 2026-10-13\nsent-proof: <real@mail.example.com>\n---\n\nтекст\n' > "$SX/$SL"
+OUT=$(bash_payload "$FLIP" "$SX" | bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "GREEN: after a command, an id the journal has passes" 0 "$rc"
+expect_silent "…and nothing is said" "$OUT"
 
 echo ""
 echo "== index: generated layer is proposed, never written behind your back =="

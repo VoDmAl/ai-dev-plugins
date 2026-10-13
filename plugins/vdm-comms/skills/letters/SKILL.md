@@ -476,14 +476,16 @@ And around them:
   answer (§ 5). Our waiting item is then one, on the one who does the work, with
   a date.
 - **`sent: <date>` comes with its proof, `sent-proof:`** — what shows the letter
-  left: the id or link from the answer of the tool that sent it (a mail's
-  message_id, a ticket comment's link, a chat message's id), or `owner` once the
-  owner said in this conversation that they sent it themselves, or scheduled it
-  in the mail client. The date is the day of the send or of the owner's word.
-  Neither in hand — it is still a draft. Write the two lines together, in one
-  write: a guard refuses a Write or an Edit that makes a letter sent without the
-  field, and a shell command that leaves one so — `sed -i`, a script — is named
-  back right after it runs (`/vdm-comms:meetings` → *Outgoing letters*).
+  left: the id from the answer of the tool that sent it (a mail's message_id, a
+  chat message's id or link, the `audit` id of a write into a ticket — a link to
+  the comment cannot be checked), or `owner` once the owner said in this
+  conversation that they sent it themselves, or scheduled it in the mail client.
+  The date is the day of the send or of the owner's word. Neither in hand — it is
+  still a draft. Write the two lines together, in one write: a guard refuses a
+  Write or an Edit that makes a letter sent without the field, or with an id the
+  access layer's journal of sends does not have for this project; a shell
+  command that leaves one so — `sed -i`, a script — is named back right after it
+  runs (`/vdm-comms:meetings` → *Outgoing letters*).
 - After a letter with strategic context (in or out), update the track's notes:
   hypotheses, conclusions, strategy.
 

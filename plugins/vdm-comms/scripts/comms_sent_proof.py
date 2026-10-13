@@ -39,6 +39,16 @@ this machine's transcripts, September–October: of the tool calls that wrote
 cannot be read off its text before it runs, so the check comes after it:
 whatever the command did, a letter that is sent without proof now and was not
 sent in HEAD — or is not committed yet — is named.
+
+The field is checked, not only seen (vdm-comms 0.27.0, DL #7). The access layer
+writes every send it makes into its journal and answers for an id from it:
+`<its command> sent <directory of the letter> <id>` — 0 a send with this id
+from this project is there, 1 it is not (invented, or another project's), 2
+cannot tell (an id of a kind the journal does not keep, such as a link to a
+ticket comment). Only 1 refuses; 2 must not — a "no" about what the journal
+never kept would throw out a real send. No access layer on this machine, or no
+answer: the presence of the field is all that is checked, as before. `owner`
+is the owner's word and is never asked about.
 """
 from __future__ import annotations
 
@@ -46,20 +56,32 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import comms_frontmatter as fmmod  # noqa: E402
 
 PROOF_KEY = "sent-proof"
+OWNER = "owner"
 
 HOWTO = """\
   A letter becomes "sent" by what shows it left, not by the assistant's word.
   Add to the frontmatter, next to `sent:`:
-    sent-proof: <id or link from the sending tool's answer>
-                 — a mail's message_id, the link to a ticket comment, a chat message's id
+    sent-proof: <id from the sending tool's answer>
+                 — a mail's message_id, a chat message's id or link, a ticket write's `audit` id;
+                   where the access layer is on this machine, it is checked against its journal of sends
     sent-proof: owner
                  — the owner said, in this conversation, that they sent this letter themselves
 """
+
+NOT_IN_JOURNAL = (
+    "🚫 comms-draft-guard: the proof in `sent-proof:` is not in the access layer's journal of sends:\n"
+    "    %s\n\n"
+    "  An id the journal does not have for this project is invented or another project's.\n"
+    + HOWTO
+    + "\n  Sent from the other machine a moment ago: its journal may not have arrived yet — write again in a minute.\n"
+    "  Neither in hand → the letter is still a draft: `draft: true`, and no `sent:`.\n"
+)
 
 REFUSAL = (
     "🚫 comms-draft-guard: this write marks an outgoing letter as sent (`sent:`) without proof.\n\n"
@@ -68,7 +90,7 @@ REFUSAL = (
 )
 
 AFTER_BASH = (
-    "🚫 comms-sent-check: an outgoing letter is marked sent (`sent:`) without proof, and HEAD does not have it sent:\n"
+    "🚫 comms-sent-check: an outgoing letter is marked sent (`sent:`) without a proof that holds, and HEAD does not have it sent:\n"
     "%s\n\n"
     "  The command has already run: the files are on disk as it left them.\n"
     + HOWTO
@@ -80,6 +102,12 @@ AFTER_BASH = (
 LETTERS = ":(glob)**/comms/*-out.md"
 READ_LIMIT = 65536
 SHOWN = 10
+# One question to the journal costs about 0.35 s (measured 2026-10-13). After a
+# shell command, only a letter written in this window is asked about: the
+# command that wrote it is followed up once, and later commands that mention
+# `comms` do not ask again about the same uncommitted letters.
+FRESH_SECONDS = 300
+JOURNAL_TIMEOUT = 10
 
 
 def _keys(text):
@@ -100,6 +128,60 @@ def is_sent(keys):
 def has_proof(keys):
     value = keys.get(PROOF_KEY)
     return isinstance(value, str) and value.strip() != ""
+
+
+def _access_layer():
+    """→ the access layer's command on this machine, or None. `ECHELON_BIN`
+    wins (tests, an unusual install), then `ECHELON_HOME`, then the agent whose
+    intercom entry declares the role access-layer — the order comms-now uses,
+    without its per-project setting."""
+    if os.environ.get("ECHELON_BIN"):
+        return os.environ["ECHELON_BIN"]
+    if os.environ.get("ECHELON_HOME"):
+        return os.path.join(os.environ["ECHELON_HOME"], "bin", "echelon")
+    try:
+        import comms_people as peoplemod
+        return peoplemod.access_layer_bin()
+    except Exception:  # no directory, no holder, no checkout here — no journal to ask
+        return None
+
+
+def _existing_dir(path):
+    d = os.path.dirname(os.path.abspath(path))
+    while d and not os.path.isdir(d):
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    return d
+
+
+def journal_says(letter_path, proof):
+    """Is `proof` a send from the project the letter lives in? Asks the access
+    layer's journal. → (code, line): 0 there · 1 not there, the line says why ·
+    2 cannot tell — also when there is no access layer here, it fails, or it is
+    slow; then the presence of the field is all that was checked."""
+    binary = _access_layer()
+    if not binary or not (os.path.isfile(binary) and os.access(binary, os.X_OK)):
+        return 2, ""
+    try:
+        run = subprocess.run([binary, "sent", _existing_dir(letter_path), proof],
+                             capture_output=True, text=True, timeout=JOURNAL_TIMEOUT)
+    except (OSError, subprocess.SubprocessError):
+        return 2, ""
+    lines = [l.strip() for l in ((run.stdout or "") + "\n" + (run.stderr or "")).splitlines() if l.strip()]
+    return (run.returncode if run.returncode in (0, 1) else 2), (lines[0] if lines else "")
+
+
+def proof_refused(letter_path, keys):
+    """→ the access layer's line when the letter's proof is an id its journal
+    does not have for this project; None otherwise (no proof is not this
+    function's question)."""
+    proof = keys.get(PROOF_KEY).strip() if has_proof(keys) else ""
+    if not proof or proof.lower() == OWNER:
+        return None
+    code, line = journal_says(letter_path, proof)
+    return (line or "no send with the id %s" % proof) if code == 1 else None
 
 
 def _apply(before, old, new, replace_all):
@@ -159,8 +241,14 @@ def verdict(payload):
     if before is not None and is_sent(_keys(before)):
         return 0
     keys = _keys(after)
-    if is_sent(keys) and not has_proof(keys):
+    if not is_sent(keys):
+        return 0
+    if not has_proof(keys):
         sys.stderr.write(REFUSAL)
+        return 2
+    line = proof_refused(path, keys)
+    if line is not None:
+        sys.stderr.write(NOT_IN_JOURNAL % line)
         return 2
     return 0
 
@@ -181,13 +269,14 @@ def _paths(raw):
 
 
 def unproven_since_head(cwd):
-    """Outgoing letters sent without proof now, and not sent in HEAD.
-    → [(path relative to the work tree, "unsent in HEAD" | "not committed yet")],
-    or None outside a git work tree — nothing to compare with, nothing is said.
+    """Outgoing letters sent now without a proof that holds, and not sent in HEAD.
+    → [(path relative to the work tree, why)], or None outside a git work tree —
+    nothing to compare with, nothing is said.
 
     Candidates are the letters that differ from HEAD (added or modified) and the
     untracked ones; a letter as committed is not read at all. A letter sent in
-    HEAD is history, as in the guard. No HEAD yet — every letter is new."""
+    HEAD is history, as in the guard. No HEAD yet — every letter is new. A proof
+    is asked of the journal only for a letter written in the last FRESH_SECONDS."""
     top = _git(cwd, "rev-parse", "--show-toplevel")
     top = top.decode("utf-8", "surrogateescape").strip() if top else ""
     if not top:
@@ -209,13 +298,31 @@ def unproven_since_head(cwd):
                 keys = _keys(fh.read(READ_LIMIT))
         except OSError:
             continue
-        if not is_sent(keys) or has_proof(keys):
+        if not is_sent(keys):
             continue
+        path = os.path.join(top, rel)
+        if has_proof(keys):
+            proof = keys[PROOF_KEY].strip()
+            if proof.lower() == OWNER:
+                continue
+            try:
+                if time.time() - os.path.getmtime(path) > FRESH_SECONDS:
+                    continue
+            except OSError:
+                continue
         committed = _git(top, "show", "HEAD:" + rel) if has_head else None
         if committed is None:
-            found.append((rel, "not committed yet"))
+            where = "not committed yet"
         elif not is_sent(_keys(committed.decode("utf-8", "replace")[:READ_LIMIT])):
-            found.append((rel, "unsent in HEAD"))
+            where = "unsent in HEAD"
+        else:
+            continue
+        if not has_proof(keys):
+            found.append((rel, where + ", no `sent-proof:`"))
+            continue
+        line = proof_refused(path, keys)
+        if line is not None:
+            found.append((rel, where + ", `sent-proof:` not in the access layer's journal: " + line))
     return found
 
 
