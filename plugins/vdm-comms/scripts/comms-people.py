@@ -6,7 +6,7 @@
     comms-people.py show <who>       [--project-root DIR]
 
 `where` prints the people directory this project reads: its own, or its HQ's
-(`comms.hq`, looked up in the intercom directory). `show` finds the person,
+(the HQ the access layer names, looked up in the intercom directory). `show` finds the person,
 by profile file name or by any token written in a profile (a login, an
 address, a handle), and prints `trust`, the From pairs and the next step for
 this project: a hand writes to `team` and `peer` itself and sends everyone else

@@ -131,17 +131,11 @@ def has_proof(keys):
 
 
 def _access_layer():
-    """→ the access layer's command on this machine, or None. `ECHELON_BIN`
-    wins (tests, an unusual install), then `ECHELON_HOME`, then the agent whose
-    intercom entry declares the role access-layer — the order comms-now uses,
-    without its per-project setting."""
-    if os.environ.get("ECHELON_BIN"):
-        return os.environ["ECHELON_BIN"]
-    if os.environ.get("ECHELON_HOME"):
-        return os.path.join(os.environ["ECHELON_HOME"], "bin", "echelon")
+    """→ the access layer's command on this machine, or None — the order
+    comms-now uses, without its per-project setting (`comms_people.access_layer`)."""
     try:
         import comms_people as peoplemod
-        return peoplemod.access_layer_bin()
+        return peoplemod.access_layer()
     except Exception:  # no directory, no holder, no checkout here — no journal to ask
         return None
 

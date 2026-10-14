@@ -12,13 +12,15 @@ Roles (owner with echelon, 2026-10-01 — echelon DL #75; here DL #2 of
     the HQ, and a new person turning up in its ticket is a reason to tell the
     HQ. A hand reads the HQ's profiles straight from disk.
 
-A hand names its HQ in `comms.hq` — the HQ's intercom identity, not a path.
-A path differs per machine and per clone, while the identity does not, and
-echelon knows projects by it too. The checkout comes from the intercom
-directory (`<store>/_registry/<identity>.json` → `paths`), the directory name
-from the HQ's own `comms.people-dir`. So an HQ that keeps its people under
-`wiki/entities/people` needs no special case. No `comms.hq` means the project is
-its own HQ.
+Which HQ a hand belongs to is recorded once, at the access layer (owner,
+2026-10-02: one record needs no reconciling, a second one in the hand's own
+repository would put the limit in the hands of the project it limits —
+DL #4, #5). It is asked, never configured here: `<access layer> hq <project
+root>` answers the HQ's intercom identity, or nothing for a project that is its
+own HQ (`hq_of`). The checkout comes from the intercom directory
+(`<store>/_registry/<identity>.json` → `paths`), the directory name from the
+HQ's own `comms.people-dir`. So an HQ that keeps its people under
+`wiki/entities/people` needs no special case.
 
 Two fields in a profile's frontmatter. Both are read by echelon as well, which
 is why their shape is fixed here and not left to each HQ:
@@ -72,6 +74,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -97,6 +100,11 @@ MIN_SEARCH = 3
 
 class Unresolved(Exception):
     """The people directory this project reads could not be found."""
+
+
+class NoAccessLayer(Unresolved):
+    """This machine has no access layer: no intercom directory, or no agent in
+    it declares the role. Not an error of one — there is nobody to ask."""
 
 
 # --- where the profiles are -------------------------------------------------
@@ -142,7 +150,7 @@ def registry_entry(identity):
     then by a folded identity / alias / name, as `intercom.sh resolve` does."""
     reg = os.path.join(store_root(), "_registry")
     if not os.path.isdir(reg):
-        raise Unresolved("comms.hq is `%s`, but there is no intercom directory at %s "
+        raise Unresolved("the HQ is `%s`, but there is no intercom directory at %s "
                          "(the vdm plugin keeps it)" % (identity, reg))
     direct = os.path.join(reg, identity + ".json")
     candidates = [direct] if os.path.isfile(direct) else entry_files(reg)
@@ -162,9 +170,9 @@ def registry_entry(identity):
     if len(hits) == 1:
         return hits[0]
     if hits:
-        raise Unresolved("comms.hq `%s` names several agents in the intercom directory: %s"
+        raise Unresolved("the HQ `%s` names several agents in the intercom directory: %s"
                          % (identity, ", ".join(sorted(str(h.get("identity")) for h in hits))))
-    raise Unresolved("comms.hq is `%s`, but no agent in the intercom directory goes by "
+    raise Unresolved("the HQ is `%s`, but no agent in the intercom directory goes by "
                      "that name — `/vdm:intercom resolve %s`" % (identity, identity))
 
 
@@ -176,11 +184,12 @@ ACCESS_ROLE = "access-layer"
 
 
 def role_holder(role):
-    """The one intercom directory entry that declares `role`. Raises Unresolved
-    when there is no directory, no holder, or several."""
+    """The one intercom directory entry that declares `role`. Raises
+    NoAccessLayer when there is no directory or no holder, Unresolved when
+    there are several."""
     reg = os.path.join(store_root(), "_registry")
     if not os.path.isdir(reg):
-        raise Unresolved("no intercom directory at %s (the vdm plugin keeps it)" % reg)
+        raise NoAccessLayer("no intercom directory at %s (the vdm plugin keeps it)" % reg)
     hits = []
     for path in entry_files(reg):
         try:
@@ -195,8 +204,8 @@ def role_holder(role):
     if hits:
         raise Unresolved("several agents in the intercom directory declare the role %s: %s"
                          % (role, ", ".join(sorted(str(h.get("identity")) for h in hits))))
-    raise Unresolved("no agent in the intercom directory declares the role %s "
-                     "(/vdm:intercom role %s)" % (role, role))
+    raise NoAccessLayer("no agent in the intercom directory declares the role %s "
+                        "(/vdm:intercom role %s)" % (role, role))
 
 
 def access_layer_bin():
@@ -213,31 +222,85 @@ def access_layer_bin():
                      % (ident, ACCESS_ROLE, ident, ", ".join(paths) or "no paths recorded"))
 
 
+def access_layer():
+    """→ the access layer's command. `ECHELON_BIN` wins (tests, an unusual
+    install), then `ECHELON_HOME`, then the agent whose intercom entry declares
+    the role access-layer. Raises NoAccessLayer / Unresolved as
+    `access_layer_bin` does; a command named by the environment is returned
+    unchecked."""
+    if os.environ.get("ECHELON_BIN"):
+        return os.environ["ECHELON_BIN"]
+    if os.environ.get("ECHELON_HOME"):
+        return os.path.join(os.environ["ECHELON_HOME"], "bin", "echelon")
+    return access_layer_bin()
+
+
+# echelon answers in about 0.3 s; this machine runs at a load of 40–70 at times.
+HQ_TIMEOUT = 10
+
+
+def hq_of(project_root):
+    """→ the intercom identity of this project's HQ, or None when the project
+    is its own. Asked of the access layer: `<its command> hq <project root>`
+    (agreed with echelon 2026-10-02, `people-hq-command-form-outcome`). A line
+    is the HQ; an empty answer with exit 0 is "its own HQ"; exit 1 with the
+    reason on stderr is "the HQ is unknown". A directory inside the project, a
+    worktree, answers for the nearest project.
+
+    Raises NoAccessLayer when this machine has none: nobody records hands
+    there, and `locate` reads the project's own people/. An access layer that
+    is there and cannot answer raises Unresolved — taking its failure for an
+    empty answer would let a hand pass for its own HQ, which is why echelon
+    gives a broken record exit 1 rather than an empty line."""
+    binary = access_layer()
+    name = os.path.basename(binary)
+    if not (os.path.isfile(binary) and os.access(binary, os.X_OK)):
+        raise Unresolved("the access layer's command is not on this machine: %s" % binary)
+    try:
+        run = subprocess.run([binary, "hq", project_root],
+                             capture_output=True, text=True, timeout=HQ_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise Unresolved("`%s hq` gave no answer in %d s" % (name, HQ_TIMEOUT))
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise Unresolved("`%s hq` did not run: %s" % (name, exc))
+    if run.returncode != 0:
+        # A crash exits 1 as well; its last line is the one that says why.
+        tail = [ln.strip() for ln in (run.stderr or "").splitlines() if ln.strip()]
+        raise Unresolved("the access layer does not know this project's HQ (`%s hq`, exit %d: %s)"
+                         % (name, run.returncode, tail[-1] if tail else "no reason given"))
+    lines = [ln.strip() for ln in (run.stdout or "").splitlines() if ln.strip()]
+    return lines[0] if lines else None
+
+
 def locate(project_root, cfg):
     """→ {"dir", "hq", "hq_root"}; `hq` is None for a project that is its own
     HQ. Raises Unresolved, saying what is missing."""
-    hq = cfg.get("hq")
-    if isinstance(hq, str) and hq.strip():
-        hq = hq.strip()
+    try:
+        hq, asked = hq_of(project_root), True
+    except NoAccessLayer:
+        hq, asked = None, False
+    if hq:
         entry = registry_entry(hq)
         paths = [p for p in (entry.get("paths") or []) if isinstance(p, str)]
         live = [p for p in paths if os.path.isdir(p)]
         if not live:
-            raise Unresolved("comms.hq `%s` is registered, but none of its checkouts is on "
+            raise Unresolved("the HQ `%s` is registered, but none of its checkouts is on "
                              "this machine: %s" % (hq, ", ".join(paths) or "no paths recorded"))
         for root in live:
             hq_cfg, err = cfgmod.load(root)
             pdir = os.path.join(root, str(hq_cfg.get("people-dir") or "people").strip("/"))
             if not err and os.path.isdir(pdir):
                 return {"dir": pdir, "hq": hq, "hq_root": root}
-        raise Unresolved("comms.hq `%s` → %s, but there is no people directory there"
+        raise Unresolved("the HQ `%s` → %s, but there is no people directory there"
                          % (hq, live[0]))
-    pdir = os.path.join(project_root, str(cfg.get("people-dir") or "people").strip("/"))
+    name = str(cfg.get("people-dir") or "people").strip("/")
+    pdir = os.path.join(project_root, name)
     if os.path.isdir(pdir):
         return {"dir": pdir, "hq": None, "hq_root": project_root}
-    raise Unresolved("no `%s/` here and no `comms.hq` — a hand names the HQ whose "
-                     "people/ it reads: \"hq\": \"<intercom identity>\" under `comms`"
-                     % str(cfg.get("people-dir") or "people").strip("/"))
+    if asked:
+        raise Unresolved("no `%s/` here, and the access layer names no HQ for this project — "
+                         "a hand's HQ is recorded there, not in this repository" % name)
+    raise Unresolved("no `%s/` here, and no access layer on this machine to name an HQ" % name)
 
 
 # --- one person --------------------------------------------------------------

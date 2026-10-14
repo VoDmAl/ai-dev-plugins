@@ -82,10 +82,9 @@ DEFAULTS = {
     "pending-paths": [],
     "pending-sections": {},
     "owners": [],
+    # A hand keeps no people/ and reads its HQ's; which HQ is the access
+    # layer's record, asked by comms_people.hq_of — not a key here.
     "people-dir": "people",
-    # A hand keeps no people/ and reads its HQ's (owner with echelon,
-    # 2026-10-01; comms_people.py). Unset: this project is its own HQ.
-    "hq": None,
     "pending-draft-days": 3,
     # Off by default: a repository that keeps no transcripts would be told
     # about every meeting it holds, for a reason it never chose.

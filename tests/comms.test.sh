@@ -1586,11 +1586,30 @@ expect_exit "RED: the next line does not become the copy's destination ⇒ exit 
 echo ""
 echo "== people/: may this project write to a person, and from which address =="
 # Owner with echelon, 2026-10-01 (echelon DL #75; vdm-comms-outward-checks DL #2):
-# an HQ keeps people/, a hand reads its HQ's from disk and names it in comms.hq;
-# `trust` in a profile says who may write, and anyone unmarked counts as careful.
+# an HQ keeps people/, a hand reads its HQ's from disk; `trust` in a profile says
+# who may write, and anyone unmarked counts as careful. Which HQ a hand belongs to
+# is the access layer's one record, asked by `<layer> hq <root>` (DL #4, #5).
 PEOPLE="${COMMS_PEOPLE_BIN:-$P/scripts/comms-people.py}"
-HQ="$TMP/hq"; HAND="$TMP/hand"; STORE="$TMP/store"
-mkdir -p "$HQ/.git" "$HQ/.claude" "$HQ/crew" "$HAND/.git" "$HAND/.claude" "$STORE/_registry"
+HQ="$TMP/hq"; HAND="$TMP/hand"; STORE="$TMP/store"; BROKEN="$TMP/broken"; OLD="$TMP/old"
+LAYER="$TMP/access layer"   # a space, as in the real checkout's path
+mkdir -p "$HQ/.git" "$HQ/.claude" "$HQ/crew" "$HAND/.git" "$HAND/.claude" "$STORE/_registry" \
+         "$BROKEN/.git" "$BROKEN/people" "$OLD/.git" "$OLD/people" "$LAYER/bin"
+# The access layer, found by the role its entry declares. What it answers for
+# the hand is the file hq-answer, so one stub serves every case below.
+printf '{"identity": "layer", "names": [], "roles": ["access-layer"], "paths": ["%s"]}\n' "$LAYER" > "$STORE/_registry/layer.json"
+cat > "$LAYER/bin/layer" <<STUB
+#!/bin/sh
+[ "\$1" = hq ] || exit 2
+case "\$2" in
+  '$HAND'|'$HAND'/*) cat '$TMP/hq-answer' ;;
+  '$BROKEN') echo "Traceback (most recent call last):" >&2; echo "ValueError: mcp.yaml: head of broken is not a name" >&2; exit 1 ;;
+  '$OLD') echo "unknown command: hq" >&2; exit 2 ;;
+esac
+STUB
+chmod +x "$LAYER/bin/layer"
+hq_answer() { printf '%s\n' "$1" > "$TMP/hq-answer"; }
+printf -- '---\ntrust: team\n---\n# Anna\n' > "$BROKEN/people/anna.md"
+cp "$BROKEN/people/anna.md" "$OLD/people/anna.md"
 # The HQ keeps its people under a name of its own: the hand must take it from
 # the HQ's config, not assume `people/`.
 printf '{"comms": {"people-dir": "crew"}}\n' > "$HQ/.claude/vdm-plugins.json"
@@ -1604,11 +1623,12 @@ printf '# Dina\n\n**Email**: dina@their.example\nWorks with Al on payments.\n' >
 printf -- '---\ntrust: peer\nlinks:\n  blocks:\n    - x: 1\nmail_from:\n  - to: e@their.example\n    from: me@ours.example\n---\n# Egor\n' > "$HQ/crew/egor.md"
 printf -- '---\ntrust: peer\n---\n# Another Anna\n' > "$HQ/crew/anna-k.md"
 printf -- '---\nreports: [anna-k]\n---\n# Lead\n' > "$HQ/crew/lead.md"   # names anna-k in ITS frontmatter
-run_people() { OUT=$(VDM_INTERCOM_ROOT="$STORE" python3 "$PEOPLE" "$@" 2>&1); return $?; }
+# The suite's ECHELON_BIN is the journal stub; here the layer is found by its role.
+run_people() { OUT=$(env -u ECHELON_BIN -u ECHELON_HOME VDM_INTERCOM_ROOT="$STORE" python3 "$PEOPLE" "$@" 2>&1); return $?; }
 
-printf '{"comms": {"hq": "hq-proj"}}\n' > "$HAND/.claude/vdm-plugins.json"
+hq_answer hq-proj
 run_people where --project-root "$HAND"; rc=$?
-expect_exit "RED: a hand finds its HQ's people through the intercom directory ⇒ exit 0" 0 "$rc"
+expect_exit "RED: a hand finds its HQ's people: the access layer names the HQ, the intercom directory its checkout ⇒ exit 0" 0 "$rc"
 expect_says "…the HQ's own people-dir, past a checkout that is gone" "$OUT" "$HQ/crew"
 run_people show anna --project-root "$HAND"; rc=$?
 expect_exit "RED: a profile by its file name ⇒ exit 0" 0 "$rc"
@@ -1652,9 +1672,9 @@ expect_says "…that file" "$OUT" "crew/anna-k.md"
 run_people show al --project-root "$HAND"; rc=$?
 expect_exit "GREEN: a two-letter search finds nobody rather than everybody ⇒ exit 2" 2 "$rc"
 
-printf '{"comms": {"hq": "The HQ"}}\n' > "$HAND/.claude/vdm-plugins.json"
+hq_answer "The HQ"
 run_people where --project-root "$HAND"; rc=$?
-expect_exit "RED: comms.hq may be a name the HQ goes by, folded as intercom folds ⇒ exit 0" 0 "$rc"
+expect_exit "RED: the answer may be a name the HQ goes by, folded as intercom folds ⇒ exit 0" 0 "$rc"
 # Two machines editing one entry leave `<id>.sync-conflict-*.json` beside it
 # (ten on the owner's store, 2026-10-03); read as an entry, the copy makes every
 # name of the HQ "several agents".
@@ -1662,19 +1682,45 @@ cp "$STORE/_registry/hq-proj.json" "$STORE/_registry/hq-proj.sync-conflict-20261
 run_people where --project-root "$HAND"; rc=$?
 expect_exit "RED: a sync-conflict copy of the HQ's entry is not a second agent ⇒ exit 0" 0 "$rc"
 rm -f "$STORE/_registry/hq-proj.sync-conflict-20261001-192610-ABCDEFG.json"
-printf '{"comms": {"hq": "no-such-hq"}}\n' > "$HAND/.claude/vdm-plugins.json"
+hq_answer no-such-hq
 run_people show anna --project-root "$HAND"; rc=$?
 expect_exit "RED: an HQ nobody is registered as ⇒ exit 1" 1 "$rc"
 expect_says "…says so, and that everyone counts as careful meanwhile" "$OUT" "everyone counts as careful"
 printf '{"identity": "far-hq", "paths": ["%s/elsewhere"]}\n' "$TMP" > "$STORE/_registry/far-hq.json"
-printf '{"comms": {"hq": "far-hq"}}\n' > "$HAND/.claude/vdm-plugins.json"
+hq_answer far-hq
 run_people where --project-root "$HAND"; rc=$?
 expect_exit "RED: an HQ with no checkout on this machine ⇒ exit 1" 1 "$rc"
 expect_says "…named as such" "$OUT" "none of its checkouts is on this machine"
-rm -f "$HAND/.claude/vdm-plugins.json"
+hq_answer ""
 run_people where --project-root "$HAND"; rc=$?
-expect_exit "RED: no people/ and no comms.hq ⇒ exit 1" 1 "$rc"
-expect_says "…and the fix is named" "$OUT" "comms.hq"
+expect_exit "RED: no people/ and no HQ named by the access layer ⇒ exit 1" 1 "$rc"
+expect_says "…and says where a hand's HQ is recorded" "$OUT" "a hand's HQ is recorded there, not in this repository"
+printf '{"comms": {"hq": "hq-proj"}}\n' > "$HAND/.claude/vdm-plugins.json"
+run_people where --project-root "$HAND"; rc=$?
+expect_exit "RED: comms.hq is not read any more — the access layer's record is the only one ⇒ exit 1" 1 "$rc"
+rm -f "$HAND/.claude/vdm-plugins.json"
+
+# The layer is there and cannot answer: its failure is not an empty answer, or
+# a hand would pass for its own HQ — even one that has a people/ of its own.
+run_people show anna --project-root "$BROKEN"; rc=$?
+expect_exit "RED: the access layer does not know the HQ (exit 1) ⇒ exit 1, not this project's own people/" 1 "$rc"
+expect_says "…everyone counts as careful meanwhile" "$OUT" "everyone counts as careful"
+expect_says "…and the reason is the last line of its stderr, not the traceback's head" "$OUT" "head of broken is not a name"
+run_people show anna --project-root "$OLD"; rc=$?
+expect_exit "RED: an access layer without \`hq\` (another exit code) is not an answer either ⇒ exit 1" 1 "$rc"
+expect_says "…named with its exit code" "$OUT" "exit 2: unknown command: hq"
+OUT=$(ECHELON_BIN="$TMP/no-such/bin/echelon" VDM_INTERCOM_ROOT="$STORE" python3 "$PEOPLE" where --project-root "$HQ" 2>&1); rc=$?
+expect_exit "RED: an access layer named by ECHELON_BIN but missing is not 'no access layer' ⇒ exit 1" 1 "$rc"
+expect_says "…named as such" "$OUT" "not on this machine"
+
+# A machine with no access layer has nobody who records hands.
+mv "$STORE/_registry/layer.json" "$TMP/layer.json.away"
+run_people show anna --project-root "$BROKEN"; rc=$?
+expect_exit "GREEN: no access layer on the machine ⇒ the project's own people/ ⇒ exit 0" 0 "$rc"
+run_people where --project-root "$HAND"; rc=$?
+expect_exit "RED: …and with no people/ either ⇒ exit 1" 1 "$rc"
+expect_says "…named as such" "$OUT" "no access layer on this machine"
+mv "$TMP/layer.json.away" "$STORE/_registry/layer.json"
 
 run_people show gleb --project-root "$HQ"; rc=$?
 expect_exit "GREEN: the HQ reads its own people/ ⇒ exit 0" 0 "$rc"
@@ -1685,13 +1731,13 @@ run_people show vera --project-root "$HQ"; rc=$?
 expect_says "…and careful is a draft the owner reads" "$OUT" "the owner reads it before it goes"
 
 mkdir -p "$HAND/gaps/alpha"
-printf '{"comms": {"hq": "hq-proj"}}\n' > "$HAND/.claude/vdm-plugins.json"
-OUT=$(cd "$HAND" && COMMS_TODAY="$TODAY" VDM_INTERCOM_ROOT="$STORE" python3 "$NEW" --project-root "$HAND" --channel email --to gleb --track gaps/alpha 2>&1); rc=$?
+hq_answer hq-proj
+OUT=$(cd "$HAND" && env -u ECHELON_BIN -u ECHELON_HOME COMMS_TODAY="$TODAY" VDM_INTERCOM_ROOT="$STORE" python3 "$NEW" --project-root "$HAND" --channel email --to gleb --track gaps/alpha 2>&1); rc=$?
 expect_exit "RED: the scaffold still writes the draft ⇒ exit 0" 0 "$rc"
 expect_says "RED: …and tells the hand who the recipient is, at the moment the letter is born" "$OUT" "Recipient \`gleb\`:"
 expect_says "…with the next step" "$OUT" "do not write — brief the HQ"
-rm -f "$HAND/.claude/vdm-plugins.json"
-OUT=$(cd "$HAND" && COMMS_TODAY="$TODAY" VDM_INTERCOM_ROOT="$STORE" python3 "$NEW" --project-root "$HAND" --channel email --to boris --track gaps/alpha 2>&1); rc=$?
+hq_answer ""
+OUT=$(cd "$HAND" && env -u ECHELON_BIN -u ECHELON_HOME COMMS_TODAY="$TODAY" VDM_INTERCOM_ROOT="$STORE" python3 "$NEW" --project-root "$HAND" --channel email --to boris --track gaps/alpha 2>&1); rc=$?
 expect_exit "GREEN: a project with no people/ at all still gets its draft ⇒ exit 0" 0 "$rc"
 expect_says "…and is told why the recipient counts as careful" "$OUT" "people: unresolved"
 

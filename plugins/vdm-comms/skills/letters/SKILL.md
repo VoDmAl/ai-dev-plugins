@@ -201,7 +201,7 @@ is shown to anyone, and open the sections below when a line does not settle.
 - **Who may write to this person is settled before a word of the text.** The
   profile's `trust:` decides it, together with the project's role:
 
-  | `trust` | A hand (declares `comms.hq`) | The HQ |
+  | `trust` | A hand (the access layer names its HQ) | The HQ |
   |---|---|---|
   | `team` | writes itself | writes |
   | `peer` | writes itself, tone by this skill | writes |
@@ -534,7 +534,6 @@ And around them:
 |-----|--------|---------|
 | `register` | `volunteer` \| `executor` \| `peer` \| `arbiter` — how requests are made to this project's usual reader (§ 6) | not declared: the rules for every register apply, no profile |
 | `language` | the language of outgoing letters, e.g. `en`, `ru` | not declared: the recipient's language, decided per letter |
-| `hq` | a hand's HQ: the intercom identity (or a name it goes by) of the project whose `people/` this one reads | not declared: the project is its own HQ, and reads its own `people-dir` |
 
 A letter to a different kind of reader says so in its own frontmatter —
 `register: peer` in a project whose default is `volunteer` — and that letter is
@@ -569,9 +568,11 @@ is set regardless of rank. This skill does not read it. A profile still saying
 `trust: top` (the former name, which answered both) becomes `trust: exec` plus
 `confidential: true`; until then it reads as `exec`, never as `careful`.
 
-A hand finds the HQ through the intercom directory, so `comms.hq` names a
-project, not a path. The people directory is the HQ's own `comms.people-dir`.
-`comms-people.py where` prints what it resolved to, or what is missing.
+Which HQ a hand belongs to is not a key of this config: the access layer keeps
+that one record, and the scripts ask it (`<access layer> hq <project root>`).
+The HQ's checkout comes from the intercom directory, its people directory from
+the HQ's own `comms.people-dir`. A layer that cannot answer leaves everyone
+`careful`. `comms-people.py where` prints what it resolved to, or what is missing.
 
 ## Integration
 
@@ -579,4 +580,4 @@ project, not a path. The people directory is the HQ's own `comms.people-dir`.
 |-------------|-------------|
 | `/vdm-comms:meetings` | the file of a letter: draft marker, `sent:`, form per channel (`comms.letter-form`, including `goal`, `known` and `recipients`), 📎, `.eml`, the scaffold |
 | `/vdm-comms:pending` | the waiting item "after the letter" (§ 12) lives there |
-| `/vdm:intercom` | letters to other agents; the relay form; a hand's brief to its HQ (§ 5); the directory that resolves `comms.hq` |
+| `/vdm:intercom` | letters to other agents; the relay form; a hand's brief to its HQ (§ 5); the directory that finds the access layer by its role and the HQ's checkout |

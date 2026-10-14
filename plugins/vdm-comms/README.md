@@ -70,7 +70,6 @@ is reported.
     "pending-sections": { "waiting": ["Waiting on"], "action": ["Our actions"] },
     "owners": ["research team", "legal", "John"],
     "people-dir": "people",
-    "hq": "ops-hq",
     "pending-draft-days": 3,
     "pending-transcript-days": 0,
 
@@ -99,11 +98,13 @@ repositories keep their open items in `gaps|org|incidents/*/index.md`, in
 `pending-sections` is what makes everything under that heading an obligation —
 elsewhere, only a line already carrying a date marker is an item at all.
 
-`hq` is set by a **hand** — a project that keeps no `people/` and reads its
-HQ's. It names the HQ by its intercom identity, not by a path, so it holds on
-every machine and clone; the checkout comes from the intercom directory, the
-directory name from the HQ's own `people-dir`. Without `hq` a project is its
-own HQ. Two fields in a profile decide who may write and from which address —
+A **hand** — a project that keeps no `people/` — reads its HQ's. Which HQ is
+not configured here: it is recorded once, at the access layer, and asked
+(`<access layer> hq <project root>`; the layer is the agent whose intercom entry
+declares the role `access-layer`). The checkout comes from the intercom
+directory, the directory name from the HQ's own `people-dir`. An empty answer,
+or no access layer on the machine, means the project is its own HQ; a layer that
+cannot answer makes everyone `careful` until it can. Two fields in a profile decide who may write and from which address —
 `trust: team | peer | careful | exec` (none = `careful`; the former `top` reads as `exec`) and `mail_from` pairs;
 the format is in `/vdm-comms:letters` → *People profiles*.
 
