@@ -11,7 +11,10 @@ license: MIT
 A text to a person — a letter, a chat message, an SMS, a ticket comment — is
 written in minutes and read by someone who was not in the session. The skill's
 id stays `letters`, for the links projects already hold; "letter" below is any
-of these texts unless a section names its channel. Everything the session knew
+of these texts unless a section names its channel. The pitch of a meeting
+(`pitch.md`) is one of them too — outgoing text, only spoken: every line of it
+goes by this skill, the cutting pass (§ 9) included (`/vdm-comms:meetings` →
+*Who reads which file*). Everything the session knew
 and the reader does not — the plan, the history, the correction that happened on
 the way — is noise to them, and some of it is harm. This skill is the discipline of the text itself: what goes in, what
 stays out, in what order it is checked.

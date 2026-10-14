@@ -830,6 +830,153 @@ expect_says "migrated_from: …the reference rules still say what is missing" "$
 rm -f "$FX/.claude/vdm-plugins.json"
 
 echo ""
+echo "== who reads which meeting file: the agenda is the owner's, the pitch the counterpart's =="
+# Field case (command-center, 2026-10-01): half an hour before a meeting the owner
+# could not use the agenda as it stood — the internal and the external were mixed
+# in one sentence — and the clean pitch was assembled minutes before it began.
+# The pitch names the agenda's topics; a spoken agenda topic says `pitch: true`.
+AUD="$FX/meetings/$FUTURE-audience"; mkdir -p "$AUD"
+# aud_agenda <topic-1 name> [extra frontmatter line] — the warning is line 18, the speech line 20.
+aud_agenda() {
+  cat > "$AUD/agenda.md" <<EOF
+---
+type: meeting
+date: $FUTURE
+tracks: [gaps/alpha]
+topics:
+  - name: "$1"
+    track: gaps/alpha
+    pitch: true
+  - name: "Recovery flow"
+    track: gaps/alpha
+${2:-series: null}
+---
+
+# The owner's sheet
+
+## Topic 1. $1
+
+⚠️ No branch is agreed yet; we name the dependency ourselves.
+
+**Pitch**: we ask for the requirements first.
+EOF
+}
+# aud_pitch <file> <topics list> [extra frontmatter line] — lines 15 and 17 are internal.
+aud_pitch() {
+  cat > "$AUD/$1" <<EOF
+---
+type: meeting
+date: $FUTURE
+tracks: [gaps/alpha]
+topics: $2
+${3:-series: null}
+---
+
+# Meeting
+
+## 1. Passwords: the request from sales
+
+Anna, we need the requirements before development starts.
+
+⚠ Do not name dates.
+
+for myself: they will push back on the timeline.
+EOF
+}
+aud_agenda "Password policy"
+run_lint "$AUD/agenda.md"; rc=$?
+expect_exit "RED: an agenda topic that is spoken, and no pitch ⇒ exit 1" 1 "$rc"
+expect_says "…names the topic and where its words belong" "$OUT" "topic «Password policy» is spoken (\`pitch: true\`), and no pitch*.md here lists it"
+aud_pitch pitch.md '["Password policy"]'
+run_lint "$AUD/agenda.md"; rc=$?
+expect_exit "GREEN: the pitch lists it by name ⇒ exit 0" 0 "$rc"
+run_lint "$AUD/pitch.md"; rc=$?
+expect_exit "GREEN: …and the pitch's topic is the meeting's ⇒ exit 0" 0 "$rc"
+aud_pitch pitch.md '["Passwords"]'
+run_lint "$AUD/pitch.md"; rc=$?
+expect_exit "RED: a pitch topic the meeting does not have ⇒ exit 1" 1 "$rc"
+expect_says "…matched by name, not by order" "$OUT" "pitch topic «Passwords» is not a topic of this meeting"
+run_lint "$AUD/agenda.md"; rc=$?
+expect_exit "RED: …and the agenda's spoken topic is unlisted again ⇒ exit 1" 1 "$rc"
+rm -f "$AUD/pitch.md"
+aud_pitch pitch-v2.md '["Password policy"]'
+run_lint "$AUD/agenda.md"; rc=$?
+expect_exit "GREEN: a later version of the pitch counts ⇒ exit 0" 0 "$rc"
+rm -f "$AUD/pitch-v2.md"
+aud_agenda "Password policy" "migrated_from: elsewhere"
+run_lint "$AUD/agenda.md"; rc=$?
+expect_exit "GREEN: an imported agenda is not failed for having no pitch ⇒ exit 0" 0 "$rc"
+mkdir -p "$FX/meetings/$FUTURE-solo"
+AUD_SAVE="$AUD"; AUD="$FX/meetings/$FUTURE-solo"
+aud_pitch pitch.md '["Anything"]'
+run_lint "$AUD/pitch.md"; rc=$?
+expect_exit "GREEN: a pitch with nothing to be matched against ⇒ exit 0" 0 "$rc"
+AUD="$AUD_SAVE"; rm -rf "$FX/meetings/$FUTURE-solo"
+
+aud_agenda "Password policy"
+aud_pitch pitch.md '["Password policy"]'
+run_lint "$AUD/agenda.md" "$AUD/pitch.md"; rc=$?
+expect_exit "GREEN: without the rules, speech in the agenda and the internal in the pitch pass the floor ⇒ exit 0" 0 "$rc"
+mkdir -p "$FX/.claude"
+cat > "$FX/.claude/vdm-plugins.json" <<'JSON'
+{"comms": {"meeting-rules": {"speech-markers": ["**Pitch**"], "internal-markers": ["⚠️", "For myself", "we hold"]}}}
+JSON
+run_lint "$AUD/agenda.md"; rc=$?
+expect_exit "RED: speech in the agenda ⇒ exit 1" 1 "$rc"
+expect_says "…named by its line in the file" "$OUT" "line 20 carries «**Pitch**» — what is said aloud lives in pitch.md"
+expect_not_says "GREEN: …while a warning in the agenda is the owner's to keep" "$OUT" "line 18 carries"
+run_lint "$AUD/pitch.md"; rc=$?
+expect_exit "RED: the internal in the pitch ⇒ exit 1" 1 "$rc"
+expect_says "…a warning sign without its variation selector is the same mark" "$OUT" "line 15 carries «⚠️»"
+expect_says "…and a marker is matched case-blind" "$OUT" "line 17 carries «For myself»"
+aud_agenda "Password policy: we hold the line"
+run_lint "$AUD/agenda.md"; rc=$?
+expect_says "RED: a position in a topic's name — the anchor and the record's heading" "$OUT" "topic name «Password policy: we hold the line» carries «we hold»"
+aud_pitch pitch.md '["Password policy"]' "migrated_from: elsewhere"
+run_lint "$AUD/pitch.md"; rc=$?
+expect_exit "GREEN: an imported pitch is history ⇒ exit 0" 0 "$rc"
+cat > "$FX/.claude/vdm-plugins.json" <<'JSON'
+{"comms": {"topic-sections": true}}
+JSON
+aud_agenda "Password policy"
+cat > "$AUD/pitch.md" <<EOF
+---
+type: meeting
+date: $FUTURE
+tracks: [gaps/alpha]
+topics:
+  - name: "Password policy"
+    track: gaps/alpha
+---
+
+# Meeting
+
+## 1. Passwords: the request from sales
+
+Anna, we need the requirements before development starts.
+EOF
+run_lint "$AUD/pitch.md"; rc=$?
+expect_exit "GREEN: topic-sections does not ask a pitch for the topics' names as headings ⇒ exit 0" 0 "$rc"
+rm -rf "$AUD"
+
+# The plugin's templates, filled the way a meeting fills them, meet the floor and
+# the audience rules a project would name.
+TPL="$FX/meetings/$FUTURE-from-templates"; mkdir -p "$TPL"
+cat > "$FX/.claude/vdm-plugins.json" <<'JSON'
+{"comms": {"topic-sections": true, "meeting-rules": {"speech-markers": ["**Pitch**"], "internal-markers": ["⚠️", "For myself"]}}}
+JSON
+for role in agenda prep pitch index; do
+  sed -e "s/YYYY-MM-DD/$FUTURE/" -e 's/name: ""/name: "Password policy"/' -e 's/track: null/track: gaps\/alpha/' -e 's/<name>/Password policy/' \
+      -e 's/tracks: \[\]/tracks: [gaps\/alpha]/' -e 's/^topics: \[\]/topics: ["Password policy"]/' \
+      "$P/templates/meeting/$role.md" > "$TPL/$role.md"
+done
+run_lint "$TPL/agenda.md" "$TPL/prep.md" "$TPL/pitch.md" "$TPL/index.md"; rc=$?
+expect_exit "GREEN: the four templates, filled, are clean under the rules ⇒ exit 0" 0 "$rc"
+expect_silent "…without a single warning" "$OUT"
+rm -rf "$TPL"
+rm -f "$FX/.claude/vdm-plugins.json"
+
+echo ""
 echo "== outgoing letters: what to attach is a checklist the sender can click =="
 
 # Field report 2026-09-23: a draft said "attached", listed the file in

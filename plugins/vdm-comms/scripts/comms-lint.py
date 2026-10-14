@@ -51,6 +51,11 @@ only when the project names them — `comms.meeting-rules`:
     covered-bool      true     a record's `covered:` is true or false (warning)
     unique-topics     true     topic names do not repeat (warning)
     required-keys     [keys]   keys that must be present (null and [] allowed)
+    speech-markers    [marks]  agenda.md carries none of them: what is said aloud
+                               lives in pitch.md
+    internal-markers  [marks]  pitch.md carries none of them, and no topic name
+                               does: the pitch is read to the counterpart as it
+                               stands, a topic's name is the record's heading
 
 A file carrying `migrated_from` is a record imported as it was: the authoring
 rules (topic-owner, max-must, topic-track-line) skip it, and the reference
@@ -585,10 +590,14 @@ def _lint_meeting(rep, data, body, path, rel, kind, dir_name, leaf, cfg, project
             if not t_track and not topic.get("tail"):
                 rep.warn("topic %d has no track and is not marked `tail: true`" % idx)
 
-    _lint_meeting_rules(rep, data, body, leaf, cfg, project_root)
+    _lint_pitch_link(rep, data, path, leaf)
+    _lint_meeting_rules(rep, data, body, leaf, cfg, project_root, path)
     _lint_hidden_promises(rep, data, path, cfg, project_root)
 
-    if cfg.get("topic-sections") and not data.get("migrated_from"):
+    # A pitch's headings are the topics as the counterpart knows them, not their
+    # names: demanding `## Topic N. <name>` there would put the internal anchor
+    # into the text read aloud — the defect the pitch exists to keep out.
+    if cfg.get("topic-sections") and not data.get("migrated_from") and not leaf.startswith("pitch"):
         _lint_topic_sections(rep, data, body)
 
 
@@ -652,7 +661,89 @@ def _lint_hidden_promises(rep, data, path, cfg, project_root):
              "(or add this file to comms.pending-paths)" % (it["line_no"], where))
 
 
-def _lint_meeting_rules(rep, data, body, leaf, cfg, project_root):
+def _topic_names(data):
+    """The topic names a role file declares: `- name: …` items, or plain
+    strings — the form a pitch writes, since its topics are only references."""
+    raw = data.get("topics")
+    out = []
+    for t in raw if isinstance(raw, list) else []:
+        name = t.get("name") if isinstance(t, dict) else t
+        if isinstance(name, str) and name.strip():
+            out.append(name.strip())
+    return out
+
+
+def _lint_pitch_link(rep, data, path, leaf):
+    """A pitch and the agenda are matched by topic NAME, never by order
+    (crystal `vdm-comms-meeting-audience`). The agenda is the owner's — order,
+    owners, warnings; the pitch is what the counterpart hears. A pitch lists
+    in `topics:` the names of the topics it speaks; an agenda topic that is
+    spoken says `pitch: true`. Both checks fire only when the field is used.
+
+    Field case (command-center, 2026-10-01): seven agendas had no pitch, and
+    the clean pitch for one meeting was assembled minutes before it began —
+    out of an agenda the owner could not read aloud."""
+    role = leaf[:-3].split("-")[0] if leaf.endswith(".md") else leaf
+    if role not in ("pitch", "agenda") or data.get("migrated_from"):
+        return
+    here = os.path.dirname(os.path.abspath(path))
+    siblings = {}
+    try:
+        names = sorted(os.listdir(here))
+    except OSError:
+        names = []
+    for f in names:
+        if f == leaf or not ROLE_RE.match(f):
+            continue
+        try:
+            sdata, _ = fm.read(os.path.join(here, f))
+        except (fm.FrontmatterError, OSError, UnicodeDecodeError):
+            continue
+        siblings[f] = sdata or {}
+    if role == "pitch":
+        known = {n for f, d in siblings.items() if not f.startswith("pitch")
+                 for n in _topic_names(d)}
+        if known:
+            for name in _topic_names(data):
+                if name not in known:
+                    rep.error("pitch topic «%s» is not a topic of this meeting — the pitch "
+                              "names the agenda's topics by their `name`, so the two are "
+                              "matched by name, not by order" % name)
+        return
+    raw = data.get("topics")
+    spoken = [str(t.get("name")).strip() for t in (raw if isinstance(raw, list) else [])
+              if isinstance(t, dict) and t.get("pitch") is True and t.get("name")]
+    if spoken:
+        pitched = {n for f, d in siblings.items() if f.startswith("pitch")
+                   for n in _topic_names(d)}
+        for name in spoken:
+            if name not in pitched:
+                rep.error("topic «%s» is spoken (`pitch: true`), and no pitch*.md here "
+                          "lists it in `topics:` — what is said aloud lives in the pitch, "
+                          "the agenda is the owner's" % name)
+
+
+def _marker_lines(path, body, markers):
+    """(file line, marker) for every body line holding one of `markers` —
+    case-blind, and blind to the emoji variation selector, so `⚠` and `⚠️`
+    are one mark."""
+    def norm(s):
+        return s.replace("\ufe0f", "").casefold()
+    marks = [(m, norm(m)) for m in markers if m.strip()]
+    try:
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        before = text.count("\n") - body.count("\n")
+    except (OSError, UnicodeDecodeError):
+        before = 0
+    for i, line in enumerate(body.split("\n"), before + 1):
+        low = norm(line)
+        hit = next((m for m, nm in marks if nm in low), None)
+        if hit is not None:
+            yield i, hit
+
+
+def _lint_meeting_rules(rep, data, body, leaf, cfg, project_root, path=None):
     """The project's own conventions — see `comms.meeting-rules` in the module
     docstring. Each rule is off until the project names it; the floor above
     never depends on any of them."""
@@ -739,6 +830,30 @@ def _lint_meeting_rules(rep, data, body, leaf, cfg, project_root):
         for name in sorted({n for n in names if names.count(n) > 1}):
             rep.warn("topic name «%s» repeats — a link to its section becomes ambiguous" % name)
 
+    # Who reads the file (crystal `vdm-comms-meeting-audience`): the agenda is the
+    # owner's, the pitch is the counterpart's. The words that mark either side
+    # are the project's own, so both lists are.
+    speech = _str_list(rules.get("speech-markers"))
+    if speech and role == "agenda" and not migrated and path:
+        for line, mark in _marker_lines(path, body, speech):
+            rep.error("line %d carries «%s» — what is said aloud lives in pitch.md; the "
+                      "agenda is the owner's (comms.meeting-rules.speech-markers)" % (line, mark))
+    internal = _str_list(rules.get("internal-markers"))
+    if internal and not migrated:
+        if role == "pitch" and path:
+            for line, mark in _marker_lines(path, body, internal):
+                rep.error("line %d carries «%s» — every line of the pitch is read to the "
+                          "counterpart as it stands; the internal goes to agenda.md or "
+                          "prep.md (comms.meeting-rules.internal-markers)" % (line, mark))
+        marks = [(m, m.replace("\ufe0f", "").casefold()) for m in internal if m.strip()]
+        for name in _topic_names(data):
+            low = name.replace("\ufe0f", "").casefold()
+            hit = next((m for m, nm in marks if nm in low), None)
+            if hit is not None:
+                rep.error("topic name «%s» carries «%s» — a topic's name is its anchor and "
+                          "the record's heading, which the counterpart may read; name the "
+                          "subject (comms.meeting-rules.internal-markers)" % (name, hit))
+
 
 def _lint_track_lines(rep, body, prefix):
     """Under every `## Topic N. …` heading the first non-empty line starts with
@@ -816,6 +931,8 @@ def print_contract():
     print("warning\tunknown type")
     print("warning\tseries file missing")
     print("warning\ttopic without track and without tail")
+    print("error\ta pitch's `topics:` name that no other role file of the meeting declares")
+    print("error\tan agenda topic with `pitch: true` that no pitch*.md lists in `topics:`")
     print("never\tbody of a series file")
     print("# opt-in, comms.meeting-rules — a project's own conventions, off until named")
     print("rule\tforbidden-keys [keys]\terror: a retired key in a meeting file or a topic")
@@ -829,6 +946,8 @@ def print_contract():
     print("rule\tcovered-bool true\twarning: `covered:` in index.md neither true nor false")
     print("rule\tunique-topics true\twarning: a topic name that repeats")
     print("rule\trequired-keys [keys]\terror: a key absent from a meeting file (null and [] allowed)")
+    print("rule\tspeech-markers [marks]\terror: a line of agenda.md holding one — speech lives in pitch.md")
+    print("rule\tinternal-markers [marks]\terror: a line of pitch.md, or a topic name, holding one")
     print("relax\tmigrated_from\tauthoring rules skip it; people-profiles and tail-owner only warn")
     print("# outgoing letters — */comms/*-out.md, not yet sent, that attach something")
     print("letter\tattachments: in frontmatter without a `## 📎 …` section\terror")

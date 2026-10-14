@@ -2,7 +2,7 @@
 title: "Исходящий текст без жёстких переносов: проверка черновика по каналу"
 slug: outgoing-text-unwrapped
 description: "Ловит свёрнутые абзацы в тексте для вставки вне Markdown — письмо, СМС, поле CMS"
-status: in-progress
+status: blocked
 session-type: prd-prep
 created: 2026-10-08
 last-updated: 2026-10-14

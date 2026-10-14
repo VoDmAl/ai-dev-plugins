@@ -26,10 +26,10 @@ reported.
   INDEX.md                          registry — generated (see /vdm-comms:index)
   <series>.md                       one file per series, type: meeting-series
   <YYYY-MM-DD>-<slug>/
-    prep.md                         before: reasoning, branches
-    agenda.md                       before: what we walk through
+    prep.md                         before, for the owner: reasoning, branches
+    agenda.md                       before, for the owner at the meeting: order, owners, warnings
+    pitch.md, pitch-v2.md           before, for the counterpart: what is said aloud
     index.md                        after: the record
-    pitch.md, pitch-v2.md           optional
     anything-else.md                raw material — NOT under contract
 ```
 
@@ -42,6 +42,59 @@ meetings, and another grew its own `type` vocabulary — keying the contract off
 `type` would have shouted about both while leaving the real role files
 unchecked.
 
+## Who reads which file
+
+The role files are split by **who reads them**, not only by phase. A file read by
+two audiences at once is the defect: the owner could not use an agenda as it
+stood half an hour before a meeting, because the internal and the external were
+mixed in one sentence, and the clean pitch was assembled minutes before it began
+(command-center, 2026-10-01).
+
+| File | Read by | What it holds | Test |
+|---|---|---|---|
+| `prep.md` | the owner, before | the reasoning, objections and answers, the tree of branches | — |
+| `agenda.md` | the owner, at the meeting | the order, the owners, what to do when someone is missing, warnings; internal wording is fine. No speech | would the owner mind the counterpart seeing it? It is not for them anyway |
+| `pitch.md` | the counterpart | only what is said aloud or shown on the screen; headings are the topics as the counterpart knows them — from the letter, if there was one | every line can be read to them as it stands |
+| `index.md` | the participants, later | the record | it may be forwarded to anyone who was there |
+
+**The pitch is outgoing text, spoken.** It goes by `/vdm-comms:letters` line by
+line: the cutting pass, no denial of motives, no reference to an unanswered
+question, no internal corrections. Tactics, "what I do not say" and the record
+of edits between versions go to the agenda or the prep, never into the pitch.
+
+**A topic's `name` is neutral: the subject, as the counterpart would name it** —
+no position, tactic or ball status. The one string is the heading read on the
+screen, the anchor links point at, and the heading of the record that may be
+forwarded. A second, "spoken" name would split the anchor in two; a neutral one
+serves all three. "Passwords: the request from sales", not "Pressure on
+passwords: we hold the line".
+
+**The pitch names the agenda's topics; it is not matched by order.** Its
+`topics:` is a list of the topic names it speaks, in the order spoken; an agenda
+topic that is spoken says `pitch: true`. The names are plain strings: the pitch
+only refers to topics the agenda declares, and `topic-sections` never asks a
+pitch for `## Topic N. <name>` headings — its headings are the counterpart's:
+
+```yaml
+# agenda.md                          # pitch.md
+topics:                              topics: ["Password policy"]
+  - name: "Password policy"
+    track: projects/auth
+    pitch: true
+```
+
+**Start a meeting file from the template** — `agenda`, `prep`, `pitch` or
+`index` — not from a neighbouring meeting:
+
+```bash
+cp "${CLAUDE_PLUGIN_ROOT}/templates/meeting/agenda.md" meetings/<YYYY-MM-DD>-<slug>/agenda.md
+```
+
+The templates carry the split: the agenda's own sections for a missing owner and
+for time running short, the pitch's guidance in comments of its frontmatter so
+that no line of its body is anything but speech. Write them in the project's
+language.
+
 ## What the linter enforces
 
 | Rule | Level |
@@ -53,6 +106,8 @@ unchecked.
 | each track in `tracks:` resolves as `<track>/` **or** `<track>.md` | error |
 | a track's first segment is a configured root (when configured) | error |
 | `topics[].track` is one of this meeting's `tracks:` | error |
+| a pitch's `topics:` names a topic no other role file of the meeting declares | error |
+| an agenda topic says `pitch: true` and no `pitch*.md` beside it lists it | error |
 | a series file's `slug:`, when present, disagrees with its file name | error |
 | a series file's `next:`, when present, is not a date (`YYYY-MM-DD`) | error |
 | a role file holds a **dated promise** (`⏰` / `(due:)`) while the pending summary is on and does not read that file | error (warning on a `migrated_from` record) |
@@ -147,9 +202,12 @@ floor, because none of them was shared by all three field repositories.
 | `covered-bool` | `true` | a record's `covered:` is `true` or `false` — a warning |
 | `unique-topics` | `true` | a topic name does not repeat within a meeting — a warning |
 | `required-keys` | list of keys | keys that must be present; `null` and `[]` count as present |
+| `speech-markers` | list of marks, e.g. `["**Pitch**"]` | no line of `agenda.md` holds one: what is said aloud lives in `pitch.md` |
+| `internal-markers` | list of marks, e.g. `["⚠️", "for myself", "not to say"]` | no line of `pitch.md` holds one, and no topic name does — the pitch is read to the counterpart as it stands, the name is the record's heading. Matched case-blind; `⚠` and `⚠️` are one mark |
 
 A file carrying `migrated_from` was imported as it was: the authoring rules
-(`topic-owner`, `max-must`, `topic-track-line`) skip it, and `people-profiles` /
+(`topic-owner`, `max-must`, `topic-track-line`, the two marker lists and the
+pitch's link to the agenda) skip it, and `people-profiles` /
 `tail-owner` only warn. Failing a record for predating a convention reports
 history as a defect.
 
