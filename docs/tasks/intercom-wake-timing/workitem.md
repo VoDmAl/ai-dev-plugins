@@ -2,7 +2,7 @@
 title: "intercom: когда будить сессию, а когда письму подождать"
 slug: intercom-wake-timing
 description: "Будильник intercom не должен становиться ходом, пока человек читает или пишет ответ"
-status: in-progress
+status: done
 session-type: prd-prep
 created: 2026-10-01
 last-updated: 2026-10-13
@@ -42,7 +42,10 @@ last-updated: 2026-10-13
   взятых; `intercom.arrival-line: false` выключает. Общее напоминание по-прежнему выключено.
 - **Правило получателя** в скиле (`Receiving / picking up` → «The user's pending steps come first»): почта посреди
   разговора — одна строка в конце, без пересказа; шаги повторяются, только если ушли за экран.
-- **Открыто:** итог echelon после пуша.
+- **Итог echelon отправлен 2026-10-13** (`intercom-wake-interrupts-owner-outcome-2`, d61af79), мяч ни у кого.
+  Кристалл закрыт 2026-10-13. Что выросло наружу — `docs/model/suite.md` (строки `intercom_live_sessions` и
+  `intercom-reminder`, абзац «Четвёртая цена — не та минута»), скил `intercom`, запись 2.47.0 в
+  `PROJECT_CHANGELOG.md`. Не наблюдено: что делает с `status` `!`-команда человека в сессии без фоновой задачи.
 
 Состояние на 2026-10-01 (история):
 
@@ -157,7 +160,8 @@ last-updated: 2026-10-13
       `send` — будится только `idle` 15+ мин; иначе строка прихода к сообщению владельца (DL #3), vdm 2.47.0
 - [x] Правило получателя в скилле: будильник посреди разговора с человеком — одна строка «письмо X в очереди»,
       без пересказа открытых шагов; правило про шаги — для шагов, ушедших за экран — vdm 2.47.0
-- [ ] Outcome to `echelon`: intercom reply intercom-wake-interrupts-owner --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
+- [x] Outcome to `echelon`: intercom reply intercom-wake-interrupts-owner — отправлен 2026-10-13,
+      `intercom-wake-interrupts-owner-outcome-2` (vdm 2.47.0, d61af79; мяч ни у кого)
 
 ## References
 
