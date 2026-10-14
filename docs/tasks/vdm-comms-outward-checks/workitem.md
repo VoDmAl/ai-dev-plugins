@@ -253,7 +253,8 @@ Sidetrack #2); до тех пор кристалл в `blocked`. Предлож�
 - [x] Outcome to агенту хранилища заметок: `intercom reply trust-confidential-split` — ушёл
       `trust-confidential-split-outcome` 2026-10-07: шкала с 0.21.0; профили штабов переводить после `confidential`
       у echelon, письма штабам предложены ему
-- [ ] Outcome to `vdx`: intercom reply people-wiring-hq-decision --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
+- [x] Outcome to `vdx`: people-wiring-hq-decision — ушёл `people-wiring-hq-decision-outcome` 2026-10-13: форма с
+      echelon, vdm-comms 0.28.0, проверять в репозиториях нечего; мяч — никто
 - [x] Outcome to `hq`: letters-jira-mention-form — ушёл `letters-jira-mention-form-outcome` 2026-10-01
 - [x] Outcome to `hq`: comments-system-vdm — ушёл `comments-system-vdm-outcome` 2026-10-01
 - [x] Outcome to `echelon`: outward-writes-split — ушёл `outward-writes-split-outcome` 2026-10-01
