@@ -227,6 +227,13 @@ is shown to anyone, and open the sections below when a line does not settle.
   up, what the ticket needs from them. The HQ adds the profile and its `trust`.
 - **Then read the profile and apply its patterns** — what they take, how they
   answer, what triggers them — to the actual wording.
+- **The form of address is the profile's `addressed_as:`**, printed with the
+  level when the draft is born: the greeting and every mention of the person in
+  the text use it. With no field, the form comes from how the person writes and
+  signs — the thread you answer — never shortened from the name in the profile's
+  title: a short form the person did not use themselves reads as familiarity they
+  did not offer. A form agreed in the project's notes goes into the profile: in
+  notes, the draft never sees it.
 - **From is the profile's when it has a pair.** A `mail_from` pair — this person's
   address, our sender for it — is the owner's word on the sender. Pass its
   `from` when the draft is made (echelon's `mail_draft` takes it as `from`). With
@@ -545,13 +552,14 @@ values and names any other.
 
 ### People profiles
 
-The two fields this skill and echelon read from a profile's frontmatter, in
-`<people-dir>/<slug>.md` of the HQ. A profile with no frontmatter gets one;
-every other key stays as the HQ keeps it.
+The fields this skill reads from a profile's frontmatter, in
+`<people-dir>/<slug>.md` of the HQ; echelon reads `trust` and `mail_from` too. A
+profile with no frontmatter gets one; every other key stays as the HQ keeps it.
 
 ```yaml
 ---
 trust: peer                       # team | peer | careful | exec; none = careful
+addressed_as: "Mr. Smith"         # one line: the form of address in the text (§ 5)
 mail_from:                        # the owner's word on From, per address of theirs
   - to: ivan@their.example
     from: Our Name <me@ours.example>

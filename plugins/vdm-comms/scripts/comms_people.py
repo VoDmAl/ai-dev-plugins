@@ -59,6 +59,15 @@ without a word (crystal `vdm-comms-outward-checks`, DL #6).
 «этому человеку — с моего ящика y на его ящик x». In echelon's order of From,
 this pair comes first.
 
+A third field serves the draft: `addressed_as`, one line — the form the
+person is addressed by in the text: «Mr. Smith», «Dr. Doe», a short name the
+person uses themselves. It is printed with the level, when the draft is
+born, because a form of address that lives in a project's notes and not in the
+profile never reaches the draft (crystal `vdm-comms-outward-checks`, DL #10).
+A short form taken from the profile's title instead is a guess, and one that
+went out twice. No field — nothing is printed, and the form comes from how the
+person writes, not from their name.
+
 Not to be confused with `comms.register` (`letters` § 6). That one says how a
 request is made. `trust` says who may write at all, and how much checking it
 takes. `peer` exists on both axes and means different things on each; `exec`
@@ -354,8 +363,9 @@ def find(pdir, who):
 
 
 def read_profile(path):
-    """→ {"trust", "trust_note", "mail_from", "notes"}. Never raises on a
-    readable file: a profile the reader cannot fully parse still has a level."""
+    """→ {"trust", "trust_note", "addressed_as", "mail_from", "notes"}. Never
+    raises on a readable file: a profile the reader cannot fully parse still has
+    a level."""
     with open(path, encoding="utf-8", errors="replace") as fh:
         text = fh.read()
     notes = []
@@ -364,8 +374,12 @@ def read_profile(path):
     except fmmod.FrontmatterError as exc:
         fm_text = ""
         notes.append("frontmatter unreadable: %s" % exc)
-    raw = fmmod.scalar_keys(fm_text).get("trust") if fm_text else None
-    level, note = level_of(raw)
+    keys = fmmod.scalar_keys(fm_text) if fm_text else {}
+    level, note = level_of(keys.get("trust"))
+    form = keys.get("addressed_as")
+    addressed_as = form.strip() if isinstance(form, str) and form.strip() else None
+    if addressed_as is None and "addressed_as" in keys:
+        notes.append("addressed_as: no line of text — the field is one line, the form the person is addressed by")
     pairs = []
     if fm_text and re.search(r"(?m)^mail_from:", fm_text):
         try:
@@ -380,7 +394,8 @@ def read_profile(path):
                 notes.append("mail_from: an item without both `to:` and `from:` — skipped: %r" % (item,))
         if value is not None and not isinstance(value, list):
             notes.append("mail_from is a list of `- to: … / from: …` pairs — not read")
-    return {"trust": level, "trust_note": note, "mail_from": pairs, "notes": notes}
+    return {"trust": level, "trust_note": note, "addressed_as": addressed_as,
+            "mail_from": pairs, "notes": notes}
 
 
 def level_of(raw):
@@ -438,6 +453,8 @@ def describe(project_root, cfg, who):
     lines.append("profile: %s" % os.path.relpath(hits[0], where["hq_root"]))
     note = " (%s)" % info["trust_note"] if info["trust_note"] else ""
     lines.append("trust: %s%s — %s" % (info["trust"], note, MEANING[info["trust"]]))
+    if info["addressed_as"]:
+        lines.append("addressed_as: %s — the form of address in the text" % info["addressed_as"])
     for to, frm in info["mail_from"]:
         lines.append("mail_from: to %s → from %s" % (to, frm))
     for n in info["notes"]:

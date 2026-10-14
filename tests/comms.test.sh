@@ -1615,12 +1615,12 @@ cp "$BROKEN/people/anna.md" "$OLD/people/anna.md"
 printf '{"comms": {"people-dir": "crew"}}\n' > "$HQ/.claude/vdm-plugins.json"
 printf '{"identity": "hq-proj", "aliases": [], "names": ["the hq"], "paths": ["%s/gone", "%s"]}\n' "$TMP" "$HQ" > "$STORE/_registry/hq-proj.json"
 printf -- '---\nslug: anna\ntrust: team\nidentity:\n  jira: anna_k\n---\n# Anna\n' > "$HQ/crew/anna.md"
-printf -- '---\ntrust: Peer\nmail_from:\n  - to: boris@their.example\n    from: Owner <me@ours.example>\n---\n# Boris\n' > "$HQ/crew/boris.md"
+printf -- '---\ntrust: Peer\naddressed_as:\n  - Boris\n  - Bob\nmail_from:\n  - to: boris@their.example\n    from: Owner <me@ours.example>\n---\n# Boris\n' > "$HQ/crew/boris.md"
 printf -- '---\ntrust: carefull\n---\n# Vera — writes to anna_k often\n' > "$HQ/crew/vera.md"
-printf -- '---\ntrust: exec\n---\n# Gleb\n' > "$HQ/crew/gleb.md"
+printf -- '---\ntrust: exec\naddressed_as: "Mr. Gleb"   # as he signs\n---\n# Gleb\n' > "$HQ/crew/gleb.md"
 printf -- '---\ntrust: top\nconfidential: true\n---\n# Legacy lead\n' > "$HQ/crew/legacy-lead.md"   # the former name of exec
 printf '# Dina\n\n**Email**: dina@their.example\nWorks with Al on payments.\n' > "$HQ/crew/dina.md"   # no frontmatter at all
-printf -- '---\ntrust: peer\nlinks:\n  blocks:\n    - x: 1\nmail_from:\n  - to: e@their.example\n    from: me@ours.example\n---\n# Egor\n' > "$HQ/crew/egor.md"
+printf -- '---\ntrust: peer\naddressed_as: Egor\nlinks:\n  blocks:\n    - x: 1\nmail_from:\n  - to: e@their.example\n    from: me@ours.example\n---\n# Egor\n' > "$HQ/crew/egor.md"
 printf -- '---\ntrust: peer\n---\n# Another Anna\n' > "$HQ/crew/anna-k.md"
 printf -- '---\nreports: [anna-k]\n---\n# Lead\n' > "$HQ/crew/lead.md"   # names anna-k in ITS frontmatter
 # The suite's ECHELON_BIN is the journal stub; here the layer is found by its role.
@@ -1634,6 +1634,7 @@ run_people show anna --project-root "$HAND"; rc=$?
 expect_exit "RED: a profile by its file name ⇒ exit 0" 0 "$rc"
 expect_says "…its level" "$OUT" "trust: team"
 expect_says "…and the hand writes to team itself" "$OUT" "hand of \`hq-proj\`: write it yourself"
+expect_not_says "GREEN: no \`addressed_as:\` — no form of address is printed, none guessed from the title" "$OUT" "addressed_as"
 run_people show anna_k --project-root "$HAND"; rc=$?
 expect_exit "RED: a profile by the login a hand meets in its ticket ⇒ exit 0" 0 "$rc"
 expect_says "…the one whose frontmatter holds it, though another profile mentions it in prose" "$OUT" "profile: crew/anna.md"
@@ -1647,12 +1648,15 @@ rm -f "$HQ/crew/anna-2.md"
 run_people show boris --project-root "$HAND"; rc=$?
 expect_says "RED: a level is read case-blind" "$OUT" "trust: peer"
 expect_says "RED: the owner's From pair is printed for the mail" "$OUT" "mail_from: to boris@their.example → from Owner <me@ours.example>"
+expect_says "RED: \`addressed_as\` as a list is named, not read as a form" "$OUT" "addressed_as: no line of text"
+expect_not_says "…and neither item is printed as the form" "$OUT" "addressed_as: Boris"
 run_people show vera --project-root "$HAND"; rc=$?
 expect_says "RED: an unknown level reads as careful" "$OUT" "trust: careful"
 expect_says "…and names the typo, not just the default" "$OUT" "unknown \`trust: carefull\`"
 expect_says "…and a hand does not write to careful: it briefs the HQ" "$OUT" "do not write — brief the HQ"
 run_people show gleb --project-root "$HAND"; rc=$?
 expect_says "RED: exec goes through the HQ as well" "$OUT" "do not write — brief the HQ"
+expect_says "RED: the profile's form of address is printed, its quotes and comment gone" "$OUT" "addressed_as: Mr. Gleb — the form of address in the text"
 run_people show legacy-lead --project-root "$HAND"; rc=$?
 expect_says "RED: the former \`trust: top\` reads as exec, not as an unknown value" "$OUT" "trust: exec (\`trust: top\` is the former name"
 expect_says "…the note names what the profile becomes" "$OUT" "\`trust: exec\` plus \`confidential: true\`"
@@ -1663,6 +1667,7 @@ expect_says "…and, with no trust field, it is careful" "$OUT" "careful (no \`t
 run_people show egor --project-root "$HAND"; rc=$?
 expect_says "RED: trust survives frontmatter the reader cannot parse" "$OUT" "trust: peer"
 expect_says "…while mail_from there is reported, not guessed" "$OUT" "mail_from unreadable"
+expect_says "RED: …and the form of address survives it too" "$OUT" "addressed_as: Egor"
 run_people show nobody-here --project-root "$HAND"; rc=$?
 expect_exit "RED: not in people/ ⇒ exit 2" 2 "$rc"
 expect_says "…and counts as careful" "$OUT" "trust: careful"
@@ -1736,6 +1741,7 @@ OUT=$(cd "$HAND" && env -u ECHELON_BIN -u ECHELON_HOME COMMS_TODAY="$TODAY" VDM_
 expect_exit "RED: the scaffold still writes the draft ⇒ exit 0" 0 "$rc"
 expect_says "RED: …and tells the hand who the recipient is, at the moment the letter is born" "$OUT" "Recipient \`gleb\`:"
 expect_says "…with the next step" "$OUT" "do not write — brief the HQ"
+expect_says "RED: …and the form of address, before a word of the greeting" "$OUT" "addressed_as: Mr. Gleb"
 hq_answer ""
 OUT=$(cd "$HAND" && env -u ECHELON_BIN -u ECHELON_HOME COMMS_TODAY="$TODAY" VDM_INTERCOM_ROOT="$STORE" python3 "$NEW" --project-root "$HAND" --channel email --to boris --track gaps/alpha 2>&1); rc=$?
 expect_exit "GREEN: a project with no people/ at all still gets its draft ⇒ exit 0" 0 "$rc"

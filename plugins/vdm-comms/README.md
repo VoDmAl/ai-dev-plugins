@@ -105,7 +105,8 @@ declares the role `access-layer`). The checkout comes from the intercom
 directory, the directory name from the HQ's own `people-dir`. An empty answer,
 or no access layer on the machine, means the project is its own HQ; a layer that
 cannot answer makes everyone `careful` until it can. Two fields in a profile decide who may write and from which address —
-`trust: team | peer | careful | exec` (none = `careful`; the former `top` reads as `exec`) and `mail_from` pairs;
+`trust: team | peer | careful | exec` (none = `careful`; the former `top` reads as `exec`) and `mail_from` pairs —
+and a third, `addressed_as`, is the form of address the draft is told when it is born;
 the format is in `/vdm-comms:letters` → *People profiles*.
 
 `labels` is the wording of the files the generator writes **into your
