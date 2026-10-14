@@ -2,7 +2,7 @@
 title: "Скилл коммуникаций: форма обращения по каналу, проверка до отправки, сверка после"
 slug: vdm-comms-outward-checks
 description: "Тексты людям от агентов: форма по каналу, проверка до отправки, сверка после — что в скилле, что у echelon"
-status: ready
+status: done
 session-type: prd-prep
 created: 2026-10-01
 last-updated: 2026-10-14
@@ -324,8 +324,8 @@ DL #1. Копия этой проверки в плагине стала бы в
       0.17.0, 0.21.0, 0.28.0. Субагенты в журнале не отличимы, гейт стоит на проекте (замер 2026-10-13)
 - [x] Форма обращения по человеку: поле `addressed_as:` в профиле `people/`, печатается в блоке получателя скаффолда
       и в `comms-people.py show` (DL #10); vdm-comms 0.29.0
-- [ ] Outcome to `hq`: comments-system-vdm — предложение одним письмом (мяч 01.10 — у нас): что в скилле и
-      правилах, что у echelon, что у проектов
+- [x] Outcome to `hq`: comments-system-vdm — ушёл `comments-system-vdm-proposal` 2026-10-14: что в скилле и
+      правилах, что у echelon, что у проектов; мяч — hq (формы обращения и логины в профили, разметка `trust`)
 - [x] Штаб из команды слоя доступа вместо `comms.hq` (DL #4, #5, #7): `comms_people.hq_of()` по роли
       `access-layer`, `comms.hq` убран; `comms_people.py`, `comms_sent_proof.py`, тесты, § 5 и конфиг скилла, README,
       `suite.md`; vdm-comms 0.28.0
