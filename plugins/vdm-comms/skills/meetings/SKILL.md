@@ -386,9 +386,11 @@ separator, or the whole body when there is none), on **every channel except
 those whose receiver renders Markdown**: `comms.markdown-channels`, default
 `["intercom", "gitlab"]`. A channel joins the list on a render of the live
 receiver, not on memory: GitLab's own Markdown endpoint joined the lines, while
-mail and a chat showed the break (2026-10-14). A project adds its own the same
-way (`["wiki"]`), and the list is added to the default. Not an element of
-`letter-form`: it is on without being listed.
+mail, a chat and a Jira comment showed the break (2026-10-14). A project adds its
+own the same way (`["wiki"]`), and the list is added to the default. Not an
+element of `letter-form`: it is on without being listed. The channel is declared
+by a file, not by a section: a text to paste that sits inside a larger document
+is not checked, so give it its own draft with `channel:`.
 
 The finding names the lines and the command that joins exactly this file:
 

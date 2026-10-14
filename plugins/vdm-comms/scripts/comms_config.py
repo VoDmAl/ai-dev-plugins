@@ -105,7 +105,8 @@ DEFAULTS = {
     # the eleven configs on the machine on 2026-10-14.
     # A channel enters this list on a render of the live system, never on
     # memory: GitLab's own Markdown endpoint returned `<p>a\nb</p>` with no
-    # `<br>` (the access layer, 2026-10-14). Mail and a chat rendered the break.
+    # `<br>` (the access layer, 2026-10-14). Mail, a chat and a Jira comment
+    # rendered the break.
     "markdown-channels": ["intercom", "gitlab"],
     # Who the project usually writes to, and in what language (owner, 2026-09-28;
     # skill `letters` § 6). Undeclared = no profile: the rules for every register
