@@ -202,7 +202,8 @@ exit 2 и называет строки, которые склеить рука�
 
 - [x] Подтвердить на коде и тесте, что `comms-lint --hook` проверяет черновик вне `comms/` — да («Текущая модель»)
 - [ ] Выяснить, какие каналы отображают Markdown, кроме `intercom`: почта — нет, по коду echelon (DL #6); Jira,
-      GitLab, доска Space, Zulip, Express, Telegram — спросить echelon после выпуска, по живой системе
+      GitLab, доска Space, Zulip, Express, Telegram — спрошено у echelon 2026-10-14 (`line-breaks-per-channel`), ждём;
+      склеивающие — в умолчание `markdown-channels` следующей версией
 - [x] Красные синтетические фикстуры: семь классов (DL #7), склейка заголовка и чек-листа под `--fix` (DL #8)
 - [x] Детектор в `plugins/vdm-comms/scripts/comms_unwrap.py` + `comms-unwrap.py`; тесты — в `tests/comms.test.sh`,
       который pre-commit запускает явно на любую правку `plugins/*/scripts/` (имя `comms_` правилу имён не подходит)
@@ -211,7 +212,8 @@ exit 2 и называет строки, которые склеить рука�
 - [x] Правило в `letters` § 2, раздел *One paragraph, one line* и строка конфигурации в `meetings`, README
 - [x] Версия vdm-comms 0.30.0, каталог, `PROJECT_CHANGELOG.md`, дрейф `docs/model/suite.md`
 - [ ] Sidetrack #1: решить после выпуска — нужен ли маркер раздела, или вынос в черновик достаточен
-- [ ] Итог посреднику после выпуска: `intercom reply markdown-hard-wrap-rollout --slug <свой> --done … --ball …`
+- [x] Итог посреднику: ушёл `markdown-hard-wrap-shipped` 2026-10-14 — выпуск 0.30.0, классы, инварианты, замер; мяч у
+      посредника — ничего
 
 ## References
 

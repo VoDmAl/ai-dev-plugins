@@ -110,7 +110,7 @@ When the assistant has finished work that warrants a commit — implementation d
 
 ### Steps
 
-1. **Stage explicit files.** `git add <file1> <file2> ...`. Never `git add -A`. Never `git add .`. Untracked files belonging to other tasks must stay unstaged; report them separately under "not staged (other tickets)" so the user knows they exist.
+1. **Stage explicit files.** `git add <file1> <file2> ...`. Never `git add -A`. Never `git add .`. Untracked files belonging to other tasks must stay unstaged; report them separately under "not staged (other tickets)" so the user knows they exist. Then read `git diff --cached -- <those files>` in full (see [A file someone else staged](#a-file-someone-else-staged-is-not-yours-to-edit)).
 
 2. **Compose the subject** in the project's commit format. The PreToolUse hook would emit format rules if `git commit` were attempted directly — prefer that source. Otherwise infer from session context: a `## Commit Message Format` section in the project's AI-context file (CLAUDE.md, QWEN.md, AGENTS.md, GEMINI.md — whichever harness the project uses), or in `CONTRIBUTING.md` / `README.md`; failing those, `commitlint*`, `.gitmessage*`, or recent `git log` patterns. **Match the local style: if recent commits are subject-only single-line, do not write a body** — the body, if any, belongs in `PROJECT_CHANGELOG.md` or equivalent. Only fall through to the [default table](#default-fallback-table-when-nothing-else-detected) when nothing else is detected.
 
@@ -230,6 +230,26 @@ Without an explicit list the helper snapshots the index with
 git reports a `git mv` as a single rename entry naming only the destination, and
 a commit built from that list records the addition without the deletion, leaving
 the old path in the tree.
+
+### A file someone else staged is not yours to edit
+
+The pathspec closes one direction: a neighbour's files do not ride into your
+commit. The other direction it opens. A pathspec commit takes its paths from the
+working tree when it runs, so an edit you make to a file another session has
+staged — or named in a line still waiting — goes into *its* commit, under *its*
+message. Field report (`echelon`, 2026-10-07): four lines edited in a file the
+dashboard session held in its index went out in that session's commit. Its review
+of the change had been clean: the edit landed between the review and its
+`git add`. Where the checkout and `.git` are shared between machines by a sync
+tool, the neighbour may be a session on the other machine.
+
+- **Before editing a tracked file, look at its index state:**
+  `git status --short -- <file>`. Staged (`M `, `MM`, `A `) and not by you — leave
+  the file until the neighbour's commit lands. Keep your change in the scratchpad
+  and apply it after.
+- **Committing yourself, read the full `git diff --cached -- <paths>` after
+  `git add`, right before `git-guard-prepare`** — not a review made earlier. What
+  a neighbour slipped in between shows there and nowhere else.
 
 ### The detector: did the commit match what was prepared?
 

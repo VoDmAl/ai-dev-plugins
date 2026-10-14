@@ -5,7 +5,7 @@ description: "Не готовить коммит и не делать вывод
 status: blocked
 session-type: prd-prep
 created: 2026-10-01
-last-updated: 2026-10-02
+last-updated: 2026-10-14
 relates-to:
   - "[[git-guard-sync-conflicts/workitem|git-guard-sync-conflicts]]"
 ---
@@ -36,6 +36,16 @@ echelon — решить вместе с executor, владелец спраши
 подготовка коммита знает об отставании; правило записано там, где его читают все проекты.
 
 ## Текущая модель
+
+Дополнение 2026-10-14 — итог агента машин `index-read-locks-outcome`:
+
+- **Обе защиты индекса стоят на обеих машинах** (его коммит `ccd592f`): `diff.autoRefreshIndex=false` в `~/.gitconfig`,
+  `GIT_OPTIONAL_LOCKS=0` в `~/.zshenv` (терминал, сессии ассистента, `ssh host cmd`), в `~/.profile` (`bash -l`) и через
+  `launchctl setenv` в домене gui для приложений не из терминала. Проверено им копией репозитория с другим mtime при
+  том же содержимом: хэш индекса после `git status` и `git diff` тот же. Исключение — приложение, открытое при входе
+  раньше первого цикла (до 15 минут), до своего перезапуска.
+- Значит, запасной путь DL #3 — `GIT_OPTIONAL_LOCKS=0` из SessionStart vdm-git (п. 2 предложения) — не нужен: переменная
+  у приложений есть.
 
 Состояние на 2026-10-01:
 
