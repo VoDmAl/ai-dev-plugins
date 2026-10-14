@@ -41,6 +41,9 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Overridable so a change can be proved red against the previous version.
 PREP="${FFFD_PREP_BIN:-$REPO_ROOT/plugins/vdm-git/bin/git-guard-prepare}"
+# The prep asks Syncthing about the commit's files; these tests are about U+FFFD
+# (tests/git-guard-prepare.test.sh owns that check).
+export GIT_GUARD_SYNC_CHECK=off
 CHECK="${FFFD_CHECK_BIN:-$REPO_ROOT/plugins/vdm-git/scripts/fffd-precommit-check.sh}"
 
 PASS=0; FAIL=0

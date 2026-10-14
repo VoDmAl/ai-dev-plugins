@@ -40,6 +40,12 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
 # every other assertion would silently test whichever scope the runner is in.
 unset CLAUDE_CODE_SESSION_ID 2>/dev/null || true
 
+# The helper asks Syncthing about the commit's files when the machine has the
+# command. Every test but the ones about it runs with the check off: they are
+# about other refusals, and a real Syncthing answer would make them depend on
+# the machine and cost a launch each.
+export GIT_GUARD_SYNC_CHECK=off
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PREP="$REPO_ROOT/plugins/vdm-git/bin/git-guard-prepare"
 
@@ -1120,6 +1126,69 @@ mkdir -p .claude; printf '{"docs-sync": {"enabled": false}}\n' > .claude/vdm-plu
 out=$("$PREP" --supersede "[-] drop old_option" -- src/app.py 2>&1); rc=$?
 expect_exit "docs-sync switched off in the project…" 0 "$rc"
 expect_not_says "…switches the note off too" "$out" "leave behind"
+
+printf '\n=== Syncthing still bringing files of the commit ===\n'
+
+# A stand-in for the machines agent's command: answers with the code in
+# $STUB_RC and one row per path, and records what it was asked.
+stub_dir="$TMP/stub"; mkdir -p "$stub_dir"
+stub="$stub_dir/syncthing-caught-up"
+cat > "$stub" <<'STUB'
+#!/bin/bash
+printf '%s\n' "$@" > "${STUB_LOG:-/dev/null}"
+rc="${STUB_RC:-0}"
+case "$rc" in 1) v=incoming; t="едут изменения" ;; 3) v=unknown; t="Syncthing не отвечает" ;;
+              2) v=outside; t="не в папке Syncthing" ;; *) v=caught-up; t="здесь та же версия" ;; esac
+printf '{"paths": ['
+sep=""
+for a in "$@"; do
+  case "$a" in --*) continue ;; esac
+  printf '%s{"path": "%s", "verdict": "%s", "detail": "%s"}' "$sep" "$a" "$v" "$t"; sep=", "
+done
+printf '], "exit": %s}\n' "$rc"
+exit "$rc"
+STUB
+chmod +x "$stub"
+
+d=$(new_repo sync-incoming); cd "$d" || exit 1
+export TMPDIR="$d/tmp" STUB_LOG="$d/stub.log"
+printf 'x\n' > x.md; git add x.md
+out=$(GIT_GUARD_SYNC_CHECK="$stub" STUB_RC=1 "$PREP" "[*] x" 2>&1); rc=$?
+expect_exit "RED: Syncthing still bringing a file of the commit → nothing prepared" 1 "$rc"
+expect_says "…and says what is happening" "$out" "still bringing changes"
+expect_says "…names the file, with the command's own words" "$out" "$d/x.md — едут изменения"
+expect_says "…and how to ask again" "$out" "syncthing-caught-up --fast"
+expect_not_says "…and hands out no line" "$out" "git commit -F"
+expect_says "the command is asked in its cheap form" "$(cat "$STUB_LOG")" "--fast"
+expect_says "…about the commit's file, by its full path" "$(cat "$STUB_LOG")" "$d/x.md"
+
+out=$(GIT_GUARD_SYNC_CHECK="$stub" STUB_RC=0 "$PREP" "[*] x" 2>&1); rc=$?
+expect_exit "nothing coming → prepared" 0 "$rc"
+expect_not_says "…without a word about Syncthing" "$out" "Syncthing"
+
+out=$(GIT_GUARD_SYNC_CHECK="$stub" STUB_RC=2 "$PREP" --supersede "[*] x" 2>&1); rc=$?
+expect_exit "not in Syncthing → prepared" 0 "$rc"
+expect_not_says "…without a word about Syncthing" "$out" "Syncthing"
+
+out=$(GIT_GUARD_SYNC_CHECK="$stub" STUB_RC=3 "$PREP" --supersede "[*] x" 2>&1); rc=$?
+expect_exit "Syncthing cannot tell → still prepared" 0 "$rc"
+expect_says "…but says it is not counted as caught up" "$out" "not counted as caught up"
+expect_says "…names the file" "$out" "$d/x.md — Syncthing не отвечает"
+expect_says "…and the line is there" "$out" "git commit -F"
+
+rm -f "$STUB_LOG"
+out=$(GIT_GUARD_SYNC_CHECK=off STUB_RC=1 "$PREP" --supersede "[*] x" 2>&1); rc=$?
+expect_exit "the check off → prepared" 0 "$rc"
+[ -e "$STUB_LOG" ] && bad "…and nothing is asked" "the command was called" || ok "…and nothing is asked"
+
+# Found by name on PATH — the machine's own install, nothing to configure.
+out=$(env -u GIT_GUARD_SYNC_CHECK PATH="$stub_dir:$PATH" STUB_RC=1 "$PREP" --supersede "[*] x" 2>&1); rc=$?
+expect_exit "RED: the command found on PATH is asked" 1 "$rc"
+bare_path=$(printf '%s' "$PATH" | tr ':' '\n' | while IFS= read -r e; do
+  [ -x "$e/syncthing-caught-up" ] || printf '%s:' "$e"; done)
+out=$(env -u GIT_GUARD_SYNC_CHECK PATH="${bare_path%:}" STUB_RC=1 "$PREP" --supersede "[*] x" 2>&1); rc=$?
+expect_exit "no command on PATH → no check, prepared" 0 "$rc"
+unset STUB_LOG
 
 # ---------------------------------------------------------------------------
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"

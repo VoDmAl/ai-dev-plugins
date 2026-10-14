@@ -909,6 +909,66 @@ if [ ${#untracked[@]} -gt 0 ]; then
   relative_flag=()
 fi
 
+# ------------------------------------- Syncthing: still bringing these files
+#
+# The copies and the early branch ref above are what Syncthing already did.
+# This is what it is still doing: the other machine changed a file of this
+# commit and its version has not arrived. A commit now races it — Syncthing
+# then overwrites the file under the commit or lays a conflict copy beside it
+# (echelon `syncthing-lag-false-absence`, 2026-10-01). The answer is the
+# machines agent's command, `syncthing-caught-up` (2026-10-14): one call,
+# about 0.3 s with --fast, asked about the commit's files — a file is
+# answered exactly, a directory under --fast is not. Codes: 0 nothing coming,
+# 1 changes coming, 2 not in Syncthing, 3 cannot tell. Only 1 refuses; 3 is
+# said and the line is still prepared, since a paused folder would otherwise
+# stop every commit. No command on PATH — no check: the prep runs in a
+# session, whose PATH carries it wherever the machines agent installed it.
+# GIT_GUARD_SYNC_CHECK: `off`, or the command to ask instead.
+
+sync_cmd="${GIT_GUARD_SYNC_CHECK:-}"
+if [ -z "$sync_cmd" ]; then
+  sync_cmd=$(command -v syncthing-caught-up 2>/dev/null || true)
+fi
+if [ -n "$sync_cmd" ] && [ "$sync_cmd" != off ]; then
+  sync_files=()
+  for p in "${paths[@]}"; do sync_files+=("$(path_file "$p")"); done
+  sync_rc=0
+  sync_json=$("$sync_cmd" --fast --json "${sync_files[@]}" 2>/dev/null) || sync_rc=$?
+  sync_list=$(printf '%s' "$sync_json" | python3 -c '
+import json, sys
+try:
+    rows = json.load(sys.stdin).get("paths", [])
+except Exception:
+    sys.exit(0)
+for r in rows:
+    if r.get("verdict") not in ("caught-up", "outside", "ignored"):
+        print("  • %s — %s" % (r.get("path", "?"), r.get("detail", r.get("verdict", "?"))))
+' 2>/dev/null || true)
+  case "$sync_rc" in
+    0|2) ;;
+    1)
+      {
+        echo "git-guard-prepare: ✗ Syncthing is still bringing changes to files of this commit — nothing prepared."
+        echo "  The other machine changed them and its version has not arrived here yet; a commit now"
+        echo "  races it, and Syncthing would then overwrite the file or lay a conflict copy beside it."
+        [ -n "$sync_list" ] && printf '%s\n' "$sync_list"
+        echo "  Wait until it arrives and run git-guard-prepare again. To ask yourself:"
+        echo "      $(basename "$sync_cmd") --fast <file>..."
+      } >&2
+      exit 1
+      ;;
+    *)
+      {
+        echo "git-guard-prepare: ⚠ Syncthing cannot tell whether files of this commit are up to date"
+        echo "  (it does not answer, or the folder is paused or in error) — not counted as caught up."
+        [ -n "$sync_list" ] && printf '%s\n' "$sync_list"
+        echo "  This does not stop the prep; before the line is run, make sure the other machine"
+        echo "  has no unsynced edits to these files."
+      } >&2
+      ;;
+  esac
+fi
+
 # ----------------------------------------------------------- U+FFFD check
 #
 # Refuse to prepare a commit whose content carries U+FFFD (the replacement

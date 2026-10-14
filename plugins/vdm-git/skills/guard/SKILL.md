@@ -221,6 +221,17 @@ lost: do not recreate it, do not reset it; wait, then prepare again. The same
 holds for a conflict copy of another branch whose live ref is ahead of its
 object — the helper says so instead of calling that branch gone.
 
+**Files Syncthing is still bringing.** The two checks above see what Syncthing
+already did. Before preparing, the helper also asks what it is still doing:
+whether the other machine changed a file of this commit and its version has not
+arrived. It asks the machine's own command, `syncthing-caught-up --fast <files>`,
+once — about a third of a second. Changes coming: it refuses and names the
+files; wait, then prepare again — a commit now races the other version, and
+Syncthing would overwrite the file or lay a conflict copy. Syncthing cannot tell
+(it does not answer, the folder is paused): the line is prepared with a warning,
+and it is not a "caught up". A file outside Syncthing, or a machine without the
+command, is not asked about. `GIT_GUARD_SYNC_CHECK=off` switches the check off.
+
 **Committing a subset.** When you want fewer paths than are staged, name them:
 
     git-guard-prepare "[+] Add foo helper" -- src/foo.ts
