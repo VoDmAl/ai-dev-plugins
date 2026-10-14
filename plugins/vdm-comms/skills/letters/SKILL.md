@@ -1,17 +1,19 @@
 ---
 name: letters
-description: "What an outgoing letter carries and what stays out of it — goal, one subject, the addressee, register, claims with a source, the sender's commitments, who may write to a person (`trust` in the HQ's people/), the cutting pass, replying in a thread, incoming mail, other agents as addressees. Use before and while drafting any text a person outside this session will read: a letter, a chat message, a ticket comment (including the comment of a link or a transition), a brief to another agent — and when reviewing one before it goes. The file mechanics (draft marker, sent:, form per channel, attachments) are /vdm-comms:meetings. Triggers include: «письмо», «написать», «ответить», «черновик», «сообщение в чат», «комментарий в тикет», «комментарий к связи», «бриф агенту», draft a letter, write to, reply, message, ticket comment, link comment."
+description: "The communications skill: what an outgoing text — a letter, a chat message, an SMS, a ticket comment — carries and what stays out of it: goal, one subject, the addressee, register, claims with a source, the sender's commitments, who may write to a person (`trust` in the HQ's people/), the cutting pass, replying in a thread, incoming mail, other agents as addressees. Use before and while drafting any text a person outside this session will read: a letter, a chat message, a ticket comment (including the comment of a link or a transition), a brief to another agent — and when reviewing one before it goes. The file mechanics (draft marker, sent:, form per channel, attachments) are /vdm-comms:meetings. Triggers include: «письмо», «написать», «ответить», «черновик», «сообщение в чат», «комментарий в тикет», «комментарий к связи», «бриф агенту», draft a letter, write to, reply, message, ticket comment, link comment."
 license: MIT
 ---
 
-# letters — what an outgoing letter carries
+# Communications — what an outgoing text carries
 
 ## Purpose
 
-A letter is written in minutes and read by someone who was not in the
-session. Everything the session knew and the reader does not — the plan, the
-history, the correction that happened on the way — is noise to them, and some of
-it is harm. This skill is the discipline of the text itself: what goes in, what
+A text to a person — a letter, a chat message, an SMS, a ticket comment — is
+written in minutes and read by someone who was not in the session. The skill's
+id stays `letters`, for the links projects already hold; "letter" below is any
+of these texts unless a section names its channel. Everything the session knew
+and the reader does not — the plan, the history, the correction that happened on
+the way — is noise to them, and some of it is harm. This skill is the discipline of the text itself: what goes in, what
 stays out, in what order it is checked.
 
 The **file** a letter lives in — `draft: true` until a person sends it, `sent:`

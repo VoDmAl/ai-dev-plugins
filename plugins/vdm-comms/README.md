@@ -22,7 +22,7 @@ files. One home for a tool three repositories had each copied and drifted.
 | `/vdm-comms:meetings` | skill | the contract, configuration, onboarding |
 | `/vdm-comms:index` | skill | rebuild the registry, series lists and track pointers |
 | `/vdm-comms:pending` | skill | who owes what, to whom, and by when |
-| `/vdm-comms:letters` | skill | what an outgoing letter carries and what stays out of it |
+| `/vdm-comms:letters` | skill | the communications skill: what an outgoing text — letter, message, SMS, ticket comment — carries and what stays out of it |
 
 ## The model
 
