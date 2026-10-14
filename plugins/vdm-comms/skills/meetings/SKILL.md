@@ -337,6 +337,44 @@ The empty `goal:` is deliberate: the goal is the one thing a scaffold cannot
 know, and in a project that switched on the `goal` element the linter reminds
 you of it at the first edit.
 
+### The letter file is the record
+
+The file in `comms/` is the one place that says what was written, to whom, and
+whether it left. Everything else that mentions a letter points at it.
+
+- **The file first, then the chat.** A text that goes out is written into its
+  file before the owner sees it, and the chat shows that file — its text or a
+  link. The checks run at the write: a draft that lives only in the chat gets
+  none of them, and the owner's edits have nowhere to land.
+- **Every edit goes into the file.** Sent with changes — by the owner in the
+  mail client, after a review — the file is first brought to what went out, and
+  only then marked `sent:`. What the recipient read is what the file says.
+- **The state is read from the file**: `draft:`, `sent:`. A pending item, a
+  ledger line or a row in the track's index carries a link to the letter, never
+  a copy of its state.
+- **A letter lies in the `comms/` of the track it is about**, not where the
+  thread began; a `track:` in its frontmatter, where the project writes one,
+  names the same track. Correspondence with other agents may keep a folder of
+  its own: there the folder is the channel, not the subject.
+- **The date in the name is the day of the send.** The scaffold names a draft by
+  the day it was started; a draft sent on another day is renamed in the step
+  that sets `sent:`, together with the links to it.
+- **A reply names what it answers**: a `> In reply to:` line in the service
+  header (`> Ответ на:`) or `reply-to:` in the frontmatter, with a link to the
+  previous letter; a letter that opens a subject names its context instead
+  (`> Context:`, `> Контекст:`). The chain then reads back to its first request.
+- **The heading says the direction**: `# → <name>` going out — the scaffold
+  writes it — and `# ← <name>` coming in.
+- **Where the track's `index.md` keeps a table of its correspondence**, the
+  letter gets its row in the same step: the date, a link, one line of what it is
+  about.
+- **A withdrawn draft is deleted**, not left in `comms/`, where it would count as
+  waiting to be sent. The track's notes say why it was withdrawn and where its
+  obligations went.
+- **The letter is a means; the matter is its own item.** Rewriting a letter does
+  not close or merge the pending item it serves, and the letter's service header
+  says how and why it changed.
+
 ### The form of a draft, per channel
 
 A letter says which channel it goes out through — `channel:` in its frontmatter
@@ -358,7 +396,7 @@ What each channel requires is the project's own, in `comms.letter-form`:
 |---|---|
 | `channel` | a `channel:` in the frontmatter |
 | `subject` | a `**Subject**: …` line (or `**Тема**:`) **on its own line**, between the `>` service header and the separator — not inside the `>` quote, where it is neither seen nor copied with the letter |
-| `separator` | a `---` line after the service header, and the text to send after it — everything below the line is pasted as it stands |
+| `separator` | a `---` line after the service header, and the text to send after it — everything below the line is pasted as it stands, so it carries no quote marks, bold or other markup the channel will not show |
 | `goal` | a non-empty `goal:` in the frontmatter: what should change once the letter is answered. Any YAML form — a multi-line block is read as text. If it does not fit in one sentence, the letter is not ready yet |
 | `known` | when the text below the separator asks a question: a `**What we know**` (or `**Знаем сами**`) line above the separator — what the sources already hold on the subject, where it came from, and what they cannot show. A **warning**, not a failure: a question mark is a loose sign |
 | `recipients` | a recipients line before the separator — `**To:** … · **Cc:** … · **Bcc:** …` (or `**Кому:** … · **копия:** … · **скрытая копия:** …`; the colon inside the bold or after it) — **with the blind-copy segment**, `—` when nobody: whoever saw the subject earlier and needs no part in what follows is in BCC of the first answer (`letters` § 5), and the segment shows that was decided. The scaffold writes the line with every segment `—` |
@@ -367,6 +405,10 @@ What each channel requires is the project's own, in `comms.letter-form`:
 channel's own list adds to it. The default is only `{"email": ["subject"]}` —
 the one thing true of every email in every repository. A separator is a
 project's convention and is opted into.
+
+Several messages into one channel from one file go below the separator under
+their own headings, `## Message 1`, `## Message 2`: a heading marks where one
+message ends and is not pasted.
 
 A draft for another agent (`channel: intercom`) goes out with `intercom send
 --body <file>`, which takes the text below the separator and leaves the
@@ -419,12 +461,18 @@ with a link.
 A letter that arrived goes into the repository as what was read, not as the raw
 mail file:
 
-- the text of the letter or the thread → `comms/<date>-<slug>-in.md`;
+- the text of the letter or the thread → `comms/<date>-<slug>-in.md` of the track
+  the letter is about, dated by the letter itself, not by the day it was filed,
+  under the heading `# ← <name>`;
 - the attachments that matter → extracted from the `.eml` into
   `comms/attachments/` — the documents and screenshots under discussion, not the
   logos from signatures;
 - the `.eml` itself stays where it is (`~/Downloads`, the mail system). Read it
   there — python's `email` module parses it.
+
+The text is kept as it was read: the sender's words, quotes and terms as they
+stand at the source. A comment of ours goes beside it, marked as ours, never into
+the text.
 
 Why: the text is already in the `.md`; the `.eml` duplicates it in size (27 files,
 22 MB in one repository, synced to three devices), in CRLF noise, and in
@@ -451,6 +499,8 @@ itself:
 ```
 
 - one `- [ ]` per file; the link is relative to the letter and clickable;
+- the file lies where its subject lives — a meeting's handout in the meeting's
+  folder — and in `attachments/` beside the letter when it has no other home;
 - the line says what the file is and why it goes **now** — e.g. «the recipient is
   new to the thread, and attachments of the earlier letter do not carry over to a
   reply»;
