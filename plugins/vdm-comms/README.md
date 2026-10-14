@@ -18,7 +18,7 @@ files. One home for a tool three repositories had each copied and drifted.
 | draft scaffold | `scripts/comms-new.py` | on request: a new `*/comms/*-out.md` with the header the project's `letter-form` asks of the channel, and what `people/` says about the recipient |
 | who may write to a person | `scripts/comms-people.py` | on request: `trust` and the From pairs from the profile, and the next step for this project — a hand writes to `team` and `peer` only |
 | form of an outgoing draft | the meeting linter | after a write to a draft (`draft: true` or `sent: false`) — per `channel:`, from `comms.letter-form`; a declared draft outside `comms/` is named |
-| one paragraph, one line | the meeting linter + `scripts/comms-unwrap.py` | after a write to a draft whose channel keeps line breaks (every one but `comms.markdown-channels`, default `intercom`): hard-wrapped paragraphs of the text it sends, with the command that joins them |
+| one paragraph, one line | the meeting linter + `scripts/comms-unwrap.py` | after a write to a draft whose channel keeps line breaks (every one but `comms.markdown-channels`, default `intercom` and `gitlab`): hard-wrapped paragraphs of the text it sends, with the command that joins them |
 | raw `.eml` guard | `PreToolUse` hook | a `Write`, or a `cp`/`mv`/`>`/… in Bash, that puts an `.eml` into `comms/` or the meetings tree |
 | generated-layer drift signal | `SessionStart` hook | once per session, and only when something is behind |
 | overdue signal | `SessionStart` hook | once per session, and only when something is due, unsent or untranscribed |

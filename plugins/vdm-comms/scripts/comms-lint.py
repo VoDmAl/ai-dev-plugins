@@ -356,7 +356,7 @@ def _lint_unwrapped(rep, path, text, keys, cfg):
     markdown = cfg.get("markdown-channels")
     if not isinstance(markdown, list):
         rep.error("`comms.markdown-channels` is a list of channels whose receiver renders "
-                  "Markdown, e.g. [\"gitlab\"] — intercom is always one")
+                  "Markdown, e.g. [\"wiki\"] — intercom and gitlab are always in it")
         return True
     if channel in {channel_of(c) for c in markdown}:
         return False
@@ -366,7 +366,9 @@ def _lint_unwrapped(rep, path, text, keys, cfg):
     if paras:
         rep.error("a `channel: %s` draft has %d hard-wrapped paragraph(s) in the text it "
                   "sends, at %s — this channel keeps every line break, so the text arrives "
-                  "broken mid-sentence; one paragraph is one line. Join them: %s --fix %s"
+                  "broken mid-sentence; one paragraph is one line. Join them: %s --fix %s. "
+                  "If a render of the live receiver joins the lines, name the channel in "
+                  "comms.markdown-channels"
                   % (channel, len(paras),
                      ", ".join("L%d–%d" % (p[0][0] + 1, p[-1][0] + 1) for p in paras),
                      shlex.quote(UNWRAP_BIN), shlex.quote(path)))
@@ -964,7 +966,7 @@ def print_contract():
     print("draft\tknown element: a question in the text, no `**What we know**` / `**Знаем сами**` line above the separator\twarning")
     print("draft\t`register:` (or comms.register) not one of %s\terror" % ", ".join(cfgmod.REGISTERS))
     print("draft\t`channel:` + a draft marker outside comms/ — not tracked there\terror")
-    print("config\tmarkdown-channels\tdefault: [\"intercom\"]; a project's list is added to it")
+    print("config\tmarkdown-channels\tdefault: [\"intercom\", \"gitlab\"]; a project's list is added to it")
     print("draft\ta hard-wrapped paragraph after the separator, channel not in comms.markdown-channels\terror")
     print("never\ta letter already sent (`sent:`) — history is not refitted")
 

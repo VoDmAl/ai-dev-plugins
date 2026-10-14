@@ -238,7 +238,7 @@ history as a defect.
 | `labels` | wording of the files the GENERATOR writes into your repository: `"en"` (default), `"ru"`, or an object overriding individual keys, merged over English. |
 | `link-style`, `registry-columns`, `series-columns`, `generate` | how the generated layer writes links, which columns it writes, and which of its three artefacts are this plugin's at all — see `/vdm-comms:index`. |
 | `letter-form` | what an outgoing **draft** must carry, per channel — see *The form of a draft* below. Merged over the default key by key. Default `{"email": ["subject"]}`. |
-| `markdown-channels` | channels whose receiver renders Markdown, so a line break inside a paragraph is joined there; a draft on any other channel is checked for hard-wrapped paragraphs — see *One paragraph, one line* below. Added to the default. Default `["intercom"]`. |
+| `markdown-channels` | channels whose receiver renders Markdown, so a line break inside a paragraph is joined there; a draft on any other channel is checked for hard-wrapped paragraphs — see *One paragraph, one line* below. Added to the default. Default `["intercom", "gitlab"]`. |
 | `register`, `language` | who the project usually writes to (`volunteer` \| `executor` \| `peer` \| `arbiter`) and in what language — see `/vdm-comms:letters`. A letter's own `register:` wins over the project's. |
 | `enabled` | `false` switches the whole plugin off. |
 
@@ -384,8 +384,11 @@ or a CMS field, which keep every line break. So a draft that declares its
 channel is checked for hard-wrapped paragraphs in the text it sends (after the
 separator, or the whole body when there is none), on **every channel except
 those whose receiver renders Markdown**: `comms.markdown-channels`, default
-`["intercom"]`. A project adds its own (`["gitlab"]`), and the list is added to
-the default. Not an element of `letter-form`: it is on without being listed.
+`["intercom", "gitlab"]`. A channel joins the list on a render of the live
+receiver, not on memory: GitLab's own Markdown endpoint joined the lines, while
+mail and a chat showed the break (2026-10-14). A project adds its own the same
+way (`["wiki"]`), and the list is added to the default. Not an element of
+`letter-form`: it is on without being listed.
 
 The finding names the lines and the command that joins exactly this file:
 

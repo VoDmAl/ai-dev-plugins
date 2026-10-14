@@ -1561,6 +1561,7 @@ run_skip "$UW"; rc=$?
 expect_exit "RED: an sms draft with a wrapped paragraph ⇒ exit 1" 1 "$rc"
 expect_says "…names its lines in the file" "$OUT" "at L10–12"
 expect_says "…and the command that joins this file" "$OUT" "comms-unwrap.py --fix $UW"
+expect_says "…and the way out for a channel whose receiver joins the lines" "$OUT" "name the channel in comms.markdown-channels"
 OUT=$(payload Write "$UW" "x" | (cd "$FX" && bash "$LINTSH" --hook) 2>&1); rc=$?
 expect_exit "HOOK: it comes back at write time (exit 2)" 2 "$rc"
 expect_says "HOOK: …with the finding" "$OUT" "hard-wrapped paragraph"
@@ -1582,22 +1583,33 @@ expect_exit "GREEN: wrapped notes above the separator stay ours, they are not se
 draft_text intercom "$W1" "$W2" "$W3"
 run_skip "$UW"; rc=$?
 expect_exit "GREEN: intercom renders Markdown ⇒ exit 0" 0 "$rc"
+# GitLab's own Markdown endpoint joined the lines (the access layer, 2026-10-14);
+# mail and a chat showed the break, so they stay checked.
+draft_text gitlab "$W1" "$W2" "$W3"
+run_skip "$UW"; rc=$?
+expect_exit "GREEN: GitLab joins the lines, by default ⇒ exit 0" 0 "$rc"
+draft_text zulip "$W1" "$W2" "$W3"
+run_skip "$UW"; rc=$?
+expect_exit "RED: a chat that showed the break is checked ⇒ exit 1" 1 "$rc"
 { printf -- '---\nsent: 2026-10-01\nchannel: sms\n---\n\n> to: the parents\n\n---\n\n'; printf '%s\n' "$W1" "$W2" "$W3"; } > "$UW"
 run_skip "$UW"; rc=$?
 expect_exit "GREEN: a letter already sent is history ⇒ exit 0" 0 "$rc"
 
 mkdir -p "$FX/.claude"
-printf '{"comms": {"markdown-channels": ["GitLab"]}}\n' > "$FX/.claude/vdm-plugins.json"
-draft_text gitlab "$W1" "$W2" "$W3"
+printf '{"comms": {"markdown-channels": ["Wiki"]}}\n' > "$FX/.claude/vdm-plugins.json"
+draft_text wiki "$W1" "$W2" "$W3"
 run_skip "$UW"; rc=$?
 expect_exit "GREEN: a channel the project names as Markdown is not checked, read by its first word ⇒ exit 0" 0 "$rc"
 draft_text intercom "$W1" "$W2" "$W3"
 run_skip "$UW"; rc=$?
 expect_exit "GREEN: …and intercom stays one: the project's list is added to the default ⇒ exit 0" 0 "$rc"
+draft_text gitlab "$W1" "$W2" "$W3"
+run_skip "$UW"; rc=$?
+expect_exit "GREEN: …and so does gitlab ⇒ exit 0" 0 "$rc"
 draft_text sms "$W1" "$W2" "$W3"
 run_skip "$UW"; rc=$?
 expect_exit "RED: …while sms is still checked ⇒ exit 1" 1 "$rc"
-printf '{"comms": {"markdown-channels": "gitlab"}}\n' > "$FX/.claude/vdm-plugins.json"
+printf '{"comms": {"markdown-channels": "wiki"}}\n' > "$FX/.claude/vdm-plugins.json"
 run_skip "$UW"; rc=$?
 expect_exit "RED: markdown-channels as a string ⇒ exit 1" 1 "$rc"
 expect_says "…says it is a list" "$OUT" "is a list of channels"

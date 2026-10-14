@@ -35,7 +35,7 @@ Config lives in `.claude/vdm-plugins.json` (or `.qwen/…`) under `comms`:
     markdown-channels channels whose receiver renders Markdown, so a line break
                       inside a paragraph is joined there; a draft on any other
                       channel is checked for hard-wrapped paragraphs (comms_unwrap.py);
-                      added to the default               (default ["intercom"])
+                      added to the default     (default ["intercom", "gitlab"])
     now               the live signals/now.md (comms-now.py): {"owner": [names
                       that mean the owner], "instructions": path, "path":
                       output, default "signals/now.md", "echelon": false | path
@@ -103,7 +103,10 @@ DEFAULTS = {
     # element of `letter-form`: that one is merged key by key, and a default
     # under `*` would vanish in every project that writes its own `*` — two of
     # the eleven configs on the machine on 2026-10-14.
-    "markdown-channels": ["intercom"],
+    # A channel enters this list on a render of the live system, never on
+    # memory: GitLab's own Markdown endpoint returned `<p>a\nb</p>` with no
+    # `<br>` (the access layer, 2026-10-14). Mail and a chat rendered the break.
+    "markdown-channels": ["intercom", "gitlab"],
     # Who the project usually writes to, and in what language (owner, 2026-09-28;
     # skill `letters` § 6). Undeclared = no profile: the rules for every register
     # apply. A letter to someone else carries its own `register:`.
@@ -305,8 +308,8 @@ def load(project_root):
     # default's `email`, and one that wants no email rule says `"email": []`.
     if isinstance(section.get("letter-form"), dict):
         cfg["letter-form"] = dict(DEFAULTS["letter-form"], **section["letter-form"])
-    # markdown-channels adds to the default: intercom is read as Markdown
-    # everywhere, and a project naming its own should not have to repeat it.
+    # markdown-channels adds to the default: intercom and GitLab join the lines
+    # everywhere, and a project naming its own should not have to repeat them.
     if isinstance(section.get("markdown-channels"), list):
         cfg["markdown-channels"] = DEFAULTS["markdown-channels"] + [
             c for c in section["markdown-channels"] if c not in DEFAULTS["markdown-channels"]]

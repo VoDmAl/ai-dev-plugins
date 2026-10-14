@@ -2,7 +2,7 @@
 title: "Файлы встречи по аудитории: agenda — владельцу, pitch — то, что звучит вслух"
 slug: vdm-comms-meeting-audience
 description: "Развести файлы встречи по аудитории: agenda для владельца, pitch для контрагента; проверки и шаблоны"
-status: in-progress
+status: done
 session-type: prd-prep
 created: 2026-10-01
 last-updated: 2026-10-14
@@ -160,7 +160,9 @@ CLAUDE.md правило 5.
       на синтетических образцах, мутации (DL #3, #4)
 - [x] Развилка: правило «`name` нейтрален», второго поля нет (DL #5)
 - [x] Шаблоны agenda / prep / pitch / index — `plugins/vdm-comms/templates/meeting/` (DL #6); vdm-comms 0.31.0
-- [ ] Outcome to `command-center`: intercom reply meeting-files-audience --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
+- [x] Outcome to `command-center`: `meeting-files-audience-shipped` (intercom, 2026-10-14) — все шесть просьб, метки по
+      замеру на копии их встреч (`**Питч**` — три находки, ложных нет; 🎤 дал бы девять ложных, его место —
+      `pitch: true`), подпись строки трека в шаблонах против их правила, чего в шаблонах плагина нет; мяч — у них
 
 ## References
 
