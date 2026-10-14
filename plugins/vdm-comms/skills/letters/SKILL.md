@@ -96,6 +96,11 @@ is shown to anyone, and open the sections below when a line does not settle.
   thanks at the end where the register calls for it (§ 6). An email assembled as
   one block, like a chat message, is a defect of form even when every word is
   right. A messenger message may be one block.
+- **One paragraph is one line** in the text that goes out. Mail, SMS, a chat and
+  a CMS field keep every line break, so a paragraph wrapped in the editor arrives
+  broken mid-sentence; only a receiver that renders Markdown joins the lines. A
+  draft that declares its channel is checked for it at the write
+  (`/vdm-comms:meetings` → *One paragraph, one line*).
 - **A signature only where the owner signs.** To people the owner knows well — a
   correspondence already running, a short form of the name, a profile in the
   HQ's `people/` — mail is like a message, and the owner does not sign it; a

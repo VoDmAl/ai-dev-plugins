@@ -180,6 +180,7 @@ history as a defect.
 | `labels` | wording of the files the GENERATOR writes into your repository: `"en"` (default), `"ru"`, or an object overriding individual keys, merged over English. |
 | `link-style`, `registry-columns`, `series-columns`, `generate` | how the generated layer writes links, which columns it writes, and which of its three artefacts are this plugin's at all — see `/vdm-comms:index`. |
 | `letter-form` | what an outgoing **draft** must carry, per channel — see *The form of a draft* below. Merged over the default key by key. Default `{"email": ["subject"]}`. |
+| `markdown-channels` | channels whose receiver renders Markdown, so a line break inside a paragraph is joined there; a draft on any other channel is checked for hard-wrapped paragraphs — see *One paragraph, one line* below. Added to the default. Default `["intercom"]`. |
 | `register`, `language` | who the project usually writes to (`volunteer` \| `executor` \| `peer` \| `arbiter`) and in what language — see `/vdm-comms:letters`. A letter's own `register:` wins over the project's. |
 | `enabled` | `false` switches the whole plugin off. |
 
@@ -316,6 +317,30 @@ frontmatter and the header in the kept copy (vdm 2.45.1 and later).
 Checked **only for drafts** (`draft: true` or `sent: false`, no `sent:` date). A letter already sent is
 history: fitting it to a form written later would falsify the record. Each
 missing element comes back as feedback right after the write.
+
+### One paragraph, one line
+
+A paragraph wrapped at ~100 columns looks right in the editor — the Markdown
+renderer joins its lines — and arrives broken mid-sentence in mail, SMS, a chat
+or a CMS field, which keep every line break. So a draft that declares its
+channel is checked for hard-wrapped paragraphs in the text it sends (after the
+separator, or the whole body when there is none), on **every channel except
+those whose receiver renders Markdown**: `comms.markdown-channels`, default
+`["intercom"]`. A project adds its own (`["gitlab"]`), and the list is added to
+the default. Not an element of `letter-form`: it is on without being listed.
+
+The finding names the lines and the command that joins exactly this file:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/comms-unwrap.py" --fix <draft.md>
+```
+
+It joins each paragraph into one line and writes only when the words and the
+structure are as they were — the same headings, list items, `[x]` and `label:`
+lines; otherwise it writes nothing and names the lines to join by hand.
+Detection keeps quiet about lines that end where their author meant them to: a
+heading, a `[x]` line, `label: value`, an identifier opening the line, a line
+ending with a link, a colon or an arrow.
 
 ### Outgoing text outside comms/
 

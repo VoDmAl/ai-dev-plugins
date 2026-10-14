@@ -1188,10 +1188,16 @@ printf -- '---\ndraft: true\nchannel: "Email (to Anna, cc the team)"\n---\n\nHel
 run_skip "$LF"; rc=$?
 expect_exit "RED: free-text channel is read by its first word — 'Email (…)' is email" 1 "$rc"
 
-printf -- '---\ndraft: true\nchannel: telegram\n---\n\nHi.\n' > "$LF"
+# Since 0.30.0 every channel whose receiver does not render Markdown is checked
+# for wrapped paragraphs, so only a Markdown channel asks nothing by default.
+printf -- '---\ndraft: true\nchannel: intercom\n---\n\nHi.\n' > "$LF"
 run_skip "$LF"; rc=$?
 expect_exit "GREEN: a channel the default asks nothing of ⇒ exit 0" 0 "$rc"
 expect_says "…and says it was skipped, not ok" "$OUT" "skipped (a letter that attaches nothing"
+printf -- '---\ndraft: true\nchannel: telegram\n---\n\nHi.\n' > "$LF"
+run_skip "$LF"; rc=$?
+expect_exit "GREEN: a telegram draft on one line is checked and clean ⇒ exit 0" 0 "$rc"
+expect_not_says "…and is not reported as skipped: the wrap check applied" "$OUT" "skipped (a letter that attaches nothing"
 
 printf -- '---\nsent: 2026-09-20\nchannel: email\n---\n\nGone.\n' > "$LF"
 run_skip "$LF"; rc=$?
@@ -1389,6 +1395,117 @@ run_skip "$LF"; rc=$?
 expect_exit "RED: an unknown comms.register is reported on the draft it governs ⇒ exit 1" 1 "$rc"
 expect_says "…naming the key" "$OUT" "comms.register"
 rm -f "$FX/.claude/vdm-plugins.json" "$LF" "$SC"
+
+echo ""
+echo "== a draft's outgoing text, hard-wrapped =="
+# A paragraph wrapped at ~70 columns looks right wherever Markdown is rendered and
+# arrives broken mid-sentence in mail, SMS or a chat: those keep every line break
+# (crystal outgoing-text-unwrapped). Checked for a draft that declares a channel
+# whose receiver does not render Markdown, in the text after the separator.
+UNWRAP="${COMMS_UNWRAP_BIN:-$P/scripts/comms-unwrap.py}"
+UW="$FX/gaps/alpha/comms/2026-10-14-unwrap-out.md"
+W1="We have moved the meeting to Thursday because the room on Tuesday was"
+W2="booked by another team, and the projector there does not work either,"
+W3="so please bring your laptop and the printed agenda if you can manage."
+# draft_text <channel> <line>... — the text starts at line 10, after the separator.
+draft_text() { local ch="$1"; shift; { printf -- '---\ndraft: true\nchannel: %s\n---\n\n> to: the parents\n\n---\n\n' "$ch"; printf '%s\n' "$@"; } > "$UW"; }
+draft_text sms "$W1" "$W2" "$W3"
+run_skip "$UW"; rc=$?
+expect_exit "RED: an sms draft with a wrapped paragraph ⇒ exit 1" 1 "$rc"
+expect_says "…names its lines in the file" "$OUT" "at L10–12"
+expect_says "…and the command that joins this file" "$OUT" "comms-unwrap.py --fix $UW"
+OUT=$(payload Write "$UW" "x" | (cd "$FX" && bash "$LINTSH" --hook) 2>&1); rc=$?
+expect_exit "HOOK: it comes back at write time (exit 2)" 2 "$rc"
+expect_says "HOOK: …with the finding" "$OUT" "hard-wrapped paragraph"
+OUT=$(python3 "$UNWRAP" --fix "$UW" 2>&1); rc=$?
+expect_exit "RED: the named command joins it ⇒ exit 0" 0 "$rc"
+expect_says "…one paragraph, one line" "$(sed -n 10p "$UW")" "$W1 $W2 $W3"
+expect_says "…and the header above the separator is as it was" "$(sed -n 6p "$UW")" "> to: the parents"
+run_skip "$UW"; rc=$?
+expect_exit "GREEN: the joined draft is clean ⇒ exit 0" 0 "$rc"
+OUT=$(python3 "$UNWRAP" --fix "$UW" 2>&1); rc=$?
+expect_exit "GREEN: a second --fix finds nothing ⇒ exit 0" 0 "$rc"
+
+{ printf -- '---\ndraft: true\nchannel: sms\n---\n\n%s\n%s\n%s\n' "$W1" "$W2" "$W3"; } > "$UW"
+run_skip "$UW"; rc=$?
+expect_exit "RED: with no separator the whole body is what is sent ⇒ exit 1" 1 "$rc"
+{ printf -- '---\ndraft: true\nchannel: sms\n---\n\n%s\n%s\n%s\n\n---\n\nSee you on Thursday.\n' "$W1" "$W2" "$W3"; } > "$UW"
+run_skip "$UW"; rc=$?
+expect_exit "GREEN: wrapped notes above the separator stay ours, they are not sent ⇒ exit 0" 0 "$rc"
+draft_text intercom "$W1" "$W2" "$W3"
+run_skip "$UW"; rc=$?
+expect_exit "GREEN: intercom renders Markdown ⇒ exit 0" 0 "$rc"
+{ printf -- '---\nsent: 2026-10-01\nchannel: sms\n---\n\n> to: the parents\n\n---\n\n'; printf '%s\n' "$W1" "$W2" "$W3"; } > "$UW"
+run_skip "$UW"; rc=$?
+expect_exit "GREEN: a letter already sent is history ⇒ exit 0" 0 "$rc"
+
+mkdir -p "$FX/.claude"
+printf '{"comms": {"markdown-channels": ["GitLab"]}}\n' > "$FX/.claude/vdm-plugins.json"
+draft_text gitlab "$W1" "$W2" "$W3"
+run_skip "$UW"; rc=$?
+expect_exit "GREEN: a channel the project names as Markdown is not checked, read by its first word ⇒ exit 0" 0 "$rc"
+draft_text intercom "$W1" "$W2" "$W3"
+run_skip "$UW"; rc=$?
+expect_exit "GREEN: …and intercom stays one: the project's list is added to the default ⇒ exit 0" 0 "$rc"
+draft_text sms "$W1" "$W2" "$W3"
+run_skip "$UW"; rc=$?
+expect_exit "RED: …while sms is still checked ⇒ exit 1" 1 "$rc"
+printf '{"comms": {"markdown-channels": "gitlab"}}\n' > "$FX/.claude/vdm-plugins.json"
+run_skip "$UW"; rc=$?
+expect_exit "RED: markdown-channels as a string ⇒ exit 1" 1 "$rc"
+expect_says "…says it is a list" "$OUT" "is a list of channels"
+rm -f "$FX/.claude/vdm-plugins.json"
+
+# The five classes of false findings met on a live tree (2026-10-07), and two
+# more met on the letters of three projects (2026-10-14). Each pair of lines is
+# 55–125 characters, within the spread, the first ending mid-sentence: what a
+# wrap looks like to the band alone.
+uw_quiet() { draft_text sms "$2" "$3"; run_skip "$UW"; rc=$?; expect_exit "GREEN: $1 ⇒ exit 0" 0 "$rc"; }
+uw_quiet "class 1, a heading and the line under it" \
+  "## The meeting moved to Thursday and the room changed as well" "$W1"
+uw_quiet "class 2, checklist lines with no list marker" \
+  "[x] PROJ-123 the export to the archive runs every night at two and" \
+  "[ ] PROJ-124 the import from the archive still needs a manual start"
+uw_quiet "class 3, label: value lines without bold" \
+  "Now: the client enters the number by hand and the portal checks it" \
+  "Goal: the client picks the number from the list kept in the profile"
+uw_quiet "class 4, identifiers one per line without a fence" \
+  "auth_login_success_total counts every login that ended with a token" \
+  "auth_login_failure_total counts every login that ended without one"
+uw_quiet "class 5, a first line that ends with a link" \
+  "Here is the task for the change in the profile: https://example.com/PROJ-45" \
+  "Is anything needed from me so that it gets into the next plan?"
+uw_quiet "a bold label whose colon stands inside the emphasis" \
+  "**The table is a link, keep no copy of it, there is one source:**" \
+  "\`/srv/records/summer-camp/participation-final-table-for-the-troop.csv\`"
+uw_quiet "a line that ends with an arrow before its example" \
+  "For example, the body with two paragraphs and a signature becomes →" \
+  "\`<div dir=\"ltr\">Hi,<br><br>Thanks for registering.<br><br>Thanks</div>\`"
+
+# The fix keeps the structure, not only the words. Joining with a space keeps
+# the text identical by construction, so that invariant could never see a
+# heading or a checklist swallowed — the way --fix broke both on 2026-10-07.
+OUT=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import comms_unwrap as u
+lines = ["# A heading", "and the line that would be glued to it", ""]
+try:
+    u.unwrap(lines, [[(0, lines[0]), (1, lines[1])]]); print("written")
+except u.Refused as exc:
+    print("refused: %s" % exc)' "$P/scripts" 2>&1)
+expect_says "RED: a join that would swallow a heading is refused, whatever grouped it" "$OUT" "refused: a heading"
+OUT=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import comms_unwrap as u
+lines = ["[x] PROJ-1 the export runs every night", "[ ] PROJ-2 the import needs a start", ""]
+try:
+    u.unwrap(lines, [[(0, lines[0]), (1, lines[1])]]); print("written")
+except u.Refused as exc:
+    print("refused: %s" % exc)' "$P/scripts" 2>&1)
+expect_says "RED: …and so is one that would merge two checklist items" "$OUT" "refused: a list item"
+draft_text sms "$W1" "2FA: the codes go to the number kept in the table of connected phones"
+cp "$UW" "$TMP/uw-before.md"
+OUT=$(python3 "$UNWRAP" --fix "$UW" 2>&1); rc=$?
+expect_exit "RED: a label that detection does not know refuses the fix ⇒ exit 2" 2 "$rc"
+expect_says "…says it was not written" "$OUT" "not written"
+if cmp -s "$UW" "$TMP/uw-before.md"; then ok "…and the file is as it was"; else bad "…and the file is as it was" "the refused fix changed the file"; fi
+rm -f "$UW" "$TMP/uw-before.md"
 
 echo ""
 echo "== an outgoing draft declared outside comms/ =="

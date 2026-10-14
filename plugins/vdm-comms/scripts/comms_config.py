@@ -24,9 +24,6 @@ Config lives in `.claude/vdm-plugins.json` (or `.qwen/…`) under `comms`:
     pending-sections  {"waiting": [...], "action": [...]}    (default: none)
     owners            accepted owner names, in report order  (default: none)
     people-dir        directory of people profiles           (default "people")
-    hq                a hand's HQ: the intercom identity of the project whose
-                      people/ this one reads (comms_people.py) (default: none —
-                      the project is its own HQ)
     pending-draft-days unsent-draft age threshold, 0 = off   (default 3)
     pending-transcript-days  window for "held, no transcript", 0 = off (default 0)
     register          how requests are made to the usual reader: volunteer |
@@ -35,6 +32,10 @@ Config lives in `.claude/vdm-plugins.json` (or `.qwen/…`) under `comms`:
     letter-form       per channel: what an outgoing DRAFT must carry — `channel`,
                       `subject`, `separator`, `goal`, `known`, `recipients`; `*` applies to every draft; merged
                       over the default key by key       (default {"email": ["subject"]})
+    markdown-channels channels whose receiver renders Markdown, so a line break
+                      inside a paragraph is joined there; a draft on any other
+                      channel is checked for hard-wrapped paragraphs (comms_unwrap.py);
+                      added to the default               (default ["intercom"])
     now               the live signals/now.md (comms-now.py): {"owner": [names
                       that mean the owner], "instructions": path, "path":
                       output, default "signals/now.md", "echelon": false | path
@@ -96,6 +97,13 @@ DEFAULTS = {
     # half of command-center's letters do not), so it is opted into, not
     # imposed. `*` applies to every draft, including one with no channel yet.
     "letter-form": {"email": ["subject"]},
+    # Where a line break inside a paragraph is joined by the receiver. On every
+    # other channel a draft's wrapped paragraph arrives broken mid-sentence, so
+    # it is checked there by default (crystal `outgoing-text-unwrapped`). Not an
+    # element of `letter-form`: that one is merged key by key, and a default
+    # under `*` would vanish in every project that writes its own `*` — two of
+    # the eleven configs on the machine on 2026-10-14.
+    "markdown-channels": ["intercom"],
     # Who the project usually writes to, and in what language (owner, 2026-09-28;
     # skill `letters` § 6). Undeclared = no profile: the rules for every register
     # apply. A letter to someone else carries its own `register:`.
@@ -297,6 +305,11 @@ def load(project_root):
     # default's `email`, and one that wants no email rule says `"email": []`.
     if isinstance(section.get("letter-form"), dict):
         cfg["letter-form"] = dict(DEFAULTS["letter-form"], **section["letter-form"])
+    # markdown-channels adds to the default: intercom is read as Markdown
+    # everywhere, and a project naming its own should not have to repeat it.
+    if isinstance(section.get("markdown-channels"), list):
+        cfg["markdown-channels"] = DEFAULTS["markdown-channels"] + [
+            c for c in section["markdown-channels"] if c not in DEFAULTS["markdown-channels"]]
     cfg["enabled"] = section.get("enabled", True)
     return cfg, None
 

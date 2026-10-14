@@ -66,6 +66,7 @@ import datetime
 import json
 import os
 import re
+import shlex
 import sys
 import urllib.parse
 
@@ -73,6 +74,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import comms_config as cfgmod  # noqa: E402
 import comms_frontmatter as fm  # noqa: E402
+import comms_unwrap as unwrapmod  # noqa: E402
 
 DIR_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-([^/]+)$")
 ROLE_RE = re.compile(r"^(index|prep|agenda|pitch(-v\d+)?)\.md$")
@@ -108,6 +110,8 @@ QUOTED_SUBJECT_RE = re.compile(r"^\s*>.*\*\*(Subject|Тема)\*\*:")
 SEPARATOR_RE = re.compile(r"^\s{0,3}(-{3,}|\*{3,}|_{3,})\s*$")
 
 KNOWN_TYPES = ("meeting", "meeting-series", "index", "readme", "meeting-link")
+
+UNWRAP_BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "comms-unwrap.py")
 
 channel_of = cfgmod.channel_of
 
@@ -333,6 +337,37 @@ def _lint_letter_form(rep, keys, body, cfg, fm_text=""):
     return bool(need)
 
 
+def _lint_unwrapped(rep, path, text, keys, cfg):
+    """A draft whose receiver keeps every line break sends each paragraph as
+    one line. Wrapped at ~100 columns, the text looks right in the editor — the
+    Markdown renderer joins the lines — and arrives broken mid-sentence in mail,
+    SMS, a chat or a CMS field (crystal `outgoing-text-unwrapped`). Checked for a
+    draft that declares its channel, unless the channel is one whose receiver
+    renders Markdown (`comms.markdown-channels`); only the text it sends, after
+    the separator. Returns whether the check applied."""
+    channel = channel_of(keys.get("channel"))
+    if channel is None:
+        return False
+    markdown = cfg.get("markdown-channels")
+    if not isinstance(markdown, list):
+        rep.error("`comms.markdown-channels` is a list of channels whose receiver renders "
+                  "Markdown, e.g. [\"gitlab\"] — intercom is always one")
+        return True
+    if channel in {channel_of(c) for c in markdown}:
+        return False
+    lines = text.split("\n")
+    start, end = unwrapmod.outgoing(lines)
+    paras = unwrapmod.wrapped(lines, start, end)
+    if paras:
+        rep.error("a `channel: %s` draft has %d hard-wrapped paragraph(s) in the text it "
+                  "sends, at %s — this channel keeps every line break, so the text arrives "
+                  "broken mid-sentence; one paragraph is one line. Join them: %s --fix %s"
+                  % (channel, len(paras),
+                     ", ".join("L%d–%d" % (p[0][0] + 1, p[-1][0] + 1) for p in paras),
+                     shlex.quote(UNWRAP_BIN), shlex.quote(path)))
+    return True
+
+
 def _lint_letter(rep, path, cfg, outside=False):
     """An outgoing letter that attaches files lists them where the person who
     sends it will look: a `📎` section in the body, one `- [ ]` per file, each a
@@ -365,6 +400,8 @@ def _lint_letter(rep, path, cfg, outside=False):
         return rep
     is_draft = fm.marks_unsent(keys)
     checked = _lint_letter_form(rep, keys, body, cfg, fm_text) if is_draft else False
+    if is_draft:
+        checked = _lint_unwrapped(rep, path, text, keys, cfg) or checked
     if outside:
         if not is_draft:
             rep.skip("declares a channel but is not a draft — nothing to check")
@@ -808,6 +845,8 @@ def print_contract():
     print("draft\tknown element: a question in the text, no `**What we know**` / `**Знаем сами**` line above the separator\twarning")
     print("draft\t`register:` (or comms.register) not one of %s\terror" % ", ".join(cfgmod.REGISTERS))
     print("draft\t`channel:` + a draft marker outside comms/ — not tracked there\terror")
+    print("config\tmarkdown-channels\tdefault: [\"intercom\"]; a project's list is added to it")
+    print("draft\ta hard-wrapped paragraph after the separator, channel not in comms.markdown-channels\terror")
     print("never\ta letter already sent (`sent:`) — history is not refitted")
 
 
