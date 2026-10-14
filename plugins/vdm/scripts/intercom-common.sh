@@ -192,7 +192,7 @@ intercom_inbox_list() {
   local f base
   for f in "$dir"/*.md; do
     [ -e "$f" ] || continue          # literal glob when no match
-    base="$(basename "$f")"
+    base="${f##*/}"                  # no process per letter: the reminder runs this on every prompt
     if [ "$base" != "README.md" ]; then
       printf '%s\n' "$f"
     fi
@@ -1300,16 +1300,58 @@ intercom_live_sessions() {
 #     recently active (a message cannot reach the other machine anyway).
 # A focused session is never chosen, and a turn typed into one here is passed
 # over for the next (focused-session-quiet, 2026-10-08).
+# The session chosen is woken only when the owner is likely away from it — idle
+# for INTERCOM_WAKE_QUIET_MIN or longer (intercom-wake-timing, DL #3); otherwise
+# the letter waits for the owner's next message there.
 # A turn older than the window is not presence: the session may be closed, and
 # the owner gone since. Nothing is stored — both operands are on disk.
 # ---------------------------------------------------------------------------
 
 INTERCOM_PRESENCE_WINDOW_H=12
 
+# A session the owner may be at is not woken (docs/tasks/intercom-wake-timing,
+# DL #2, #3). A message into an idle session starts a turn at once, and into a
+# busy one it lands in the middle of the work: either way on the owner's screen
+# while they read or type. Field case (echelon, 2026-10-01): the owner was
+# answering a round of questions, a wake made a turn, and the turn retold what
+# already stood on the screen. Measured 2026-10-13 on 4327 owner turns: half
+# came within 3.3 min of the end of the turn before them, 78% within 15. So a
+# session is woken only once it has stood idle this long; any other keeps the
+# letter for the owner's next message there, where the reminder hook names it
+# in one line with no turn of its own (intercom-reminder.sh → arrivals).
+# `shell` counts as idle (DL #4): a finished turn with a background task of
+# the session still running.
+INTERCOM_WAKE_QUIET_MIN=15
+
 # _intercom_now — seconds since the epoch; VDM_INTERCOM_NOW pins it for tests.
 _intercom_now() {
   if [ -n "${VDM_INTERCOM_NOW:-}" ]; then printf '%s' "$VDM_INTERCOM_NOW"; return; fi
   date -u +%s
+}
+
+# _intercom_engaged <status> <statusUpdatedAt ms> — prints why the owner may be
+# at that session and succeeds; fails when it may be woken. Observed 2026-10-13:
+# `busy` is a running turn, `waiting` a question or a permission on the screen
+# (two hours and more, until the owner answers), `idle` a finished turn with
+# the stamp of when it finished, `shell` a finished turn while a background
+# shell task of the session still runs (this one sat in it from the end of its
+# turn until the task's notice woke it). Both of the last two are the owner's
+# move, and both are woken after the quiet window. Any other status waits. No
+# status, or idle with no stamp, gives no verdict — woken, as before this rule.
+_intercom_engaged() {
+  local status="$1" upd="$2" mins
+  case "$status" in
+    ''|'?') return 1 ;;
+    idle|shell)
+      case "$upd" in ''|*[!0-9]*) return 1 ;; esac
+      mins=$(( ($(_intercom_now) - upd / 1000) / 60 ))
+      [ "$mins" -lt "$INTERCOM_WAKE_QUIET_MIN" ] || return 1
+      printf '%s for %s min, and most replies come within %s' "$status" "$mins" "$INTERCOM_WAKE_QUIET_MIN" ;;
+    busy)    printf 'busy: a turn is running' ;;
+    waiting) printf 'waiting: a question or a permission is on its screen' ;;
+    *)       printf '%s' "$status" ;;
+  esac
+  return 0
 }
 
 # _intercom_iso_utc <epoch> — YYYY-MM-DDTHH:MM:SSZ, comparable as a string with
@@ -1400,6 +1442,14 @@ intercom_wake_choice() {
                return 0
              fi ;;
         esac
+        # Where the owner typed last is where they may be now: that session is
+        # not swapped for another when it is engaged — the letter waits for it.
+        local engaged
+        if engaged="$(_intercom_engaged "$status" "$upd")"; then
+          printf 'wait\037\037\037your last turn in `%s` (%s) was in %s, which is %s — you are likely at it; the letter reaches it as one line with your next message there\n' \
+            "$id" "$top_ts" "$name" "$engaged"
+          return 0
+        fi
         printf 'wake\037%s\037%s\037your last turn in `%s` was there (%s)\n' "$name" "$status" "$id" "$top_ts"
         return 0
       fi
@@ -1409,17 +1459,27 @@ intercom_wake_choice() {
     return 0
   done <<<"$turns"
   # No presence: the most recently active live session (its file's status
-  # stamp), the first listed on a tie or when the harness writes none.
-  local best="" best_upd=-1 best_status="" why
+  # stamp), the first listed on a tie or when the harness writes none — among
+  # those nobody may be at. When every one is engaged, the letter waits.
+  local best="" best_upd=-1 best_status="" why engaged skipped="" u
   while IFS=$'\t' read -r name status sid upd; do
-    case "$upd" in ''|*[!0-9]*) upd=0 ;; esac
-    if [ "$upd" -gt "$best_upd" ]; then best="$name"; best_status="$status"; best_upd="$upd"; fi
+    if engaged="$(_intercom_engaged "$status" "$upd")"; then
+      skipped="${skipped:+$skipped; }$name is $engaged"
+      continue
+    fi
+    case "$upd" in ''|*[!0-9]*) u=0 ;; *) u="$upd" ;; esac
+    if [ "$u" -gt "$best_upd" ]; then best="$name"; best_status="$status"; best_upd="$u"; fi
   done <<<"$live"
+  if [ -z "$best" ]; then
+    printf 'wait\037\037\037%s — the letter reaches one as a line with your next message there\n' "$skipped"
+    return 0
+  fi
   if [ -n "$passed" ]; then
     why="your last turn in \`$id\` was in a focused session, which nobody wakes — one session here, the most recently active"
   else
     why="no turn of yours in \`$id\` in the last $INTERCOM_PRESENCE_WINDOW_H h — one session here, the most recently active"
   fi
+  [ -z "$skipped" ] || why="$why; passed over: $skipped"
   printf 'wake\037%s\037%s\037%s\n' "$best" "$best_status" "$why"
 }
 

@@ -517,9 +517,14 @@ to make. Then, in that turn:
   reply;
 - leave the full review — memory, docs, answers, new work — until the user has
   closed their steps or tells you to switch;
-- end the reply with the user's open steps again, as ready commands, even when
-  the turn was about mail. A step that scrolled out of sight is a step the user
-  has to go and find.
+- **mail that comes in while the user is in the conversation gets one line**, at
+  the end: "letter X is waiting". That holds for the arrival line on the user's
+  message (§ Delivery is not receipt) and for a wake that started a turn anyway.
+  No retelling of the open steps or questions: they stand on the screen right
+  above, and a table of them only pushes the user's own text away;
+- repeat the user's open steps, as ready commands, only when the turn went
+  into the mail and the steps scrolled out of sight. A step that scrolled out of
+  sight is a step the user has to go and find.
 
 Field case (product, 2026-09-25): the user had been handed a commit, a push,
 an MR and a Jira comment; a mail reminder arrived, the session switched to the
@@ -527,6 +532,13 @@ mail, and the steps ended up far up the screen. The owner: *"if something
 important is expected from the user — don't grab it; or do, but briefly, and
 only what needs no human."* That is why every wake pointer and the opt-in
 reminder end with "not urgent: the user's pending steps come first".
+
+The second field case runs the other way (echelon, 2026-10-01): the user was
+answering a round of questions, a wake made a turn, and the turn ended with a
+table of the open questions — the very ones the user was answering, already on
+the screen. The user: *"you are busy with me, you can't answer automatically
+anyway — you just keep me from focusing."* Retelling the steps is for steps that
+are out of sight, not for a conversation in progress.
 
 ### Closing a brief with its outcome
 
@@ -612,9 +624,19 @@ So three things happen on top of the inbox, and none of them replaces it:
   the slug and the sender, and it ends with how to read the letter. Never paste
   the brief into it — the inbox stays the truth. After a scaffolding `send`,
   wake only once the body is written; with `--body` the letter is complete and
-  you wake at once. A busy session is woken too: the message queues until its
-  next tool round, it does not interrupt. When it prints `→ do not wake here`,
-  wake nobody: the letter waits for the session named in that line.
+  you wake at once. When it prints `→ do not wake here`, wake nobody: the
+  letter waits, and the line says for what.
+- **Not a session the user may be at.** A message into an idle session starts a
+  turn at once, and into a busy one it lands in the middle of the work — either
+  way on the screen the user is reading or typing into. So the session is woken
+  only after standing **idle for 15 minutes** or longer — `idle`, or `shell`
+  (the turn is over, a background task of the session still runs); `busy` (a
+  turn is running), `waiting` (a question or a permission on its screen) and any
+  other status make the letter wait. Measured 2026-10-13 on 4327 of the user's turns:
+  half came within 3.3 minutes of the turn before them, 78% within 15. A letter
+  that waits reaches that session as **one line with the user's next message**
+  there (below) — no turn of its own. A session file without a status, or idle
+  with no time stamp, gives no verdict and is woken as before.
 - **One session, where the user typed last.** A project may have sessions on
   two of the user's machines, and a cross-session message reaches only this
   one. The harness marks every turn the user typed (`"turnOrigin":"human"` in
@@ -622,7 +644,18 @@ So three things happen on top of the inbox, and none of them replaces it:
   machines). `send` wakes the live session here that holds the user's last turn
   in the recipient's project; if that turn is in a session not on this machine,
   nobody is woken here; with no turn of the user's in the last 12 hours, it
-  wakes one session here, the most recently active.
+  wakes one session here, the most recently active of those nobody may be at.
+  The session where the user typed last is not swapped for another when the
+  user may be at it: the letter waits for it.
+- **The arrival line — on by default.** On the user's next message in a
+  session, the `UserPromptSubmit` hook names every letter that came into the
+  inbox after that session started and has not been named in it yet — each
+  once, none that a session has taken — as context of that message:
+  `📬 Arrived while the user was in this session …`. Letters that were there
+  at the start were named by the session-start line. This is how a letter that
+  was not woken still reaches the session within minutes; answer it by the rule
+  in § Receiving / picking up → "The user's pending steps come first": one line at the end. Off per project
+  with `intercom.arrival-line: false`.
 - **`pickup` offers a receipt**: when the sender has a live session, it prints
   `→ send a receipt to one: <session>` and the text
   `✅ intercom: <slug> picked up by <you>` — send it the same way, by the same
@@ -686,7 +719,7 @@ above, behave as the regular skill described here.
 | `reset` | Remove the `intercom` key (revert to defaults) |
 
 **Defaults when the section is missing:** `enabled: false` (opt-in), `mode: "smart"`,
-`identity-check: true`. The two defaults differ on purpose: the *reminder*
+`identity-check: true`, `arrival-line: true` (no subcommand: set it in the file). The two defaults differ on purpose: the *reminder*
 interrupts ongoing work, so it is opt-in (see § Automatic activation); the
 *identity check* fires once at session start and never mid-session, so it is on.
 Once the reminder is on: throttle window `intercom.throttle` seconds (default
@@ -739,6 +772,11 @@ An opt-in `UserPromptSubmit` reminder (`scripts/intercom-reminder.sh`) is
 available for those who want it — enable with `/vdm:intercom on`. When enabled it
 reuses the shared `config-read` + `reminder-throttle` helpers and fires only when
 the current project's inbox is non-empty.
+
+**Arrival line: on by default** (§ Delivery is not receipt). It is not the inbox
+reminder: it names only letters that came in *during* this session, each once,
+and only because the sender did not wake the session — the user may have been at
+it. It rides on the user's own message and starts no turn.
 
 **Identity check: on by default** (§ Session-start identity check) — it is the
 new session itself, not an interruption of one, and it carries the pending count

@@ -949,7 +949,7 @@ printf 'The body.\n' > "$B/live.md"
 out="$( cd "$TMP/hop-a" && CLAUDE_CODE_SESSION_ID=self-sid bash "$IC" send hop-b body-live --title "Wake up" --body "$B/live.md" 2>&1 )"; rc=$?
 eq "send still succeeds with live sessions around" "$rc" "0"
 says "a live session of the recipient is named" "$out" "hop-b-11 (idle)"
-says "…a busy one too — a pointer queues, it does not interrupt" "$out" "hop-b-22 (busy)"
+says "…a busy one is listed too" "$out" "hop-b-22 (busy)"
 says "…and the tool that wakes it" "$out" "SendMessage"
 says "the pointer's first line names the slug and the sender" "$out" '📬 intercom: `body-live` from `hop-a` — Wake up'
 says "…and says the mail waits behind the user's steps (a woken session may be mid-handoff)" "$out" "the user's pending steps come first"
@@ -1105,6 +1105,106 @@ says_not "RED: a recipient whose only live session is focused — no live list" 
 says_not "…and nothing to wake" "$out" "SendMessage"
 rm -f "$SESS/foc-b.json" "$SESS/foc-c.json" "$PROJ/hb/sid-hop-b-focus.jsonl" "$VDM_INTERCOM_ROOT"/hop-c/foc-only.md
 kill "$FOC_PID" 2>/dev/null
+
+echo "-- the owner may be at it: the wake waits (intercom-wake-timing DL #3)"
+# Field case (echelon, 2026-10-01): the owner was answering a round of
+# questions; a wake made a turn in that session, and the turn retold what
+# already stood on the screen. Measured 2026-10-13: half of the owner's replies
+# come within 3.3 min of the turn before, 78% within 15. A session is woken
+# only after 15 min idle (or shell); busy and waiting are never woken.
+stamp() {  # stamp <session file> <status> <minutes before NOW_EPOCH>
+  jq --arg st "$2" --argjson ms "$(( (NOW_EPOCH - $3 * 60) * 1000 ))" '.status = $st | .statusUpdatedAt = $ms' \
+    "$SESS/$1" > "$SESS/$1.tmp" && mv "$SESS/$1.tmp" "$SESS/$1"
+}
+stamp live-b.json idle 5
+out="$(wake_out eng-idle-fresh)"
+says "RED: idle for 5 min where the owner typed last — not woken" "$out" "do not wake here"
+says_not "…no wake line" "$out" "→ wake one:"
+says "…the line says why" "$out" "idle for 5 min, and most replies come within 15"
+says "…and how the letter gets there" "$out" "with your next message there"
+stamp live-b.json busy 40
+out="$(wake_out eng-busy)"
+says "RED: busy — not woken, however long ago it started" "$out" "busy: a turn is running"
+# 30 min, not more: a stamp older than the owner's last turn there (10:20)
+# means that turn went into the same conversation elsewhere — another verdict.
+stamp live-b.json waiting 30
+out="$(wake_out eng-waiting)"
+says "RED: waiting on a question — not woken" "$out" "waiting: a question or a permission is on its screen"
+# `shell`: the turn is over, a background task of the session still runs — the
+# owner's move, as idle (observed 2026-10-13, DL #4).
+stamp live-b.json shell 5
+out="$(wake_out eng-shell)"
+says "RED: shell for 5 min — not woken, named as it is" "$out" "which is shell for 5 min"
+stamp live-b.json shell 20
+out="$(wake_out eng-shell-quiet)"
+says "…shell for 20 min — woken, as idle" "$out" "→ wake one: hop-b-11"
+stamp live-b.json idle 20
+out="$(wake_out eng-idle-quiet)"
+says "idle for 20 min — woken, as before" "$out" "→ wake one: hop-b-11"
+stamp live-b.json busy 1
+out="$( cd "$TMP/hop-a" && VDM_INTERCOM_NOW="$NOW_EPOCH" VDM_INTERCOM_TODAY=2026-10-04 bash "$IC" sent 2>&1 )"
+says "RED: sent follows the same rule" "$(printf '%s\n' "$out" | grep -m1 'eng-busy' -A1)" "do not wake here"
+# No turn of the owner's: the most recently active session nobody is at.
+mv "$PROJ" "$PROJ.off"
+out="$(wake_out eng-all)"
+says "RED: with no turn of the owner's, every session engaged — nobody woken" "$out" "do not wake here"
+says "…each named with its state" "$out" "hop-b-22 is busy"
+stamp live-b.json idle 20
+stamp busy-b.json busy 1        # the most recently active one — and busy
+out="$(wake_out eng-pass)"
+says "RED: …and with one idle long enough, that one — the busy one passed over" "$out" "→ wake one: hop-b-11"
+says "…named as passed over" "$out" "passed over: hop-b-22 is busy"
+stamp live-a.json busy 1
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-x VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" pickup eng-pass 2>&1 )"
+says "RED: no receipt into a session the sender may be at" "$out" "no receipt here"
+mv "$PROJ.off" "$PROJ"
+jq 'del(.statusUpdatedAt) | .status = "idle"' "$SESS/live-a.json" > "$SESS/live-a.tmp" && mv "$SESS/live-a.tmp" "$SESS/live-a.json"
+jq '.status = "idle" | .statusUpdatedAt = 1791109205000' "$SESS/live-b.json" > "$SESS/live-b.tmp" && mv "$SESS/live-b.tmp" "$SESS/live-b.json"
+jq 'del(.statusUpdatedAt) | .status = "busy"' "$SESS/busy-b.json" > "$SESS/busy-b.tmp" && mv "$SESS/busy-b.tmp" "$SESS/busy-b.json"
+rm -f "$VDM_INTERCOM_ROOT"/hop-b/eng-*.md
+
+echo "-- a letter that was not woken arrives with the owner's next message"
+# The owner's choice (DL #3): the letter reaches that session as context of the
+# owner's next message, with no turn of its own — on by default, each letter
+# once per session, only those that came in after the session started.
+mkrepo "$TMP/hop-r" "git@example.com:acme/hop-r.git"
+( cd "$TMP/hop-r" && bash "$IC" register --name "hop-r" --describe "arrivals fixture" >/dev/null 2>&1 )
+RI="$VDM_INTERCOM_ROOT/hop-r"; mkdir -p "$RI"
+letter() {  # letter <file> <created> <title> [<extra envelope line>]
+  printf -- '---\nintercom: v1\nfrom: hop-a\nto: hop-r\ncreated: %s\nslug: %s\nstatus: pending\n%s---\n\n# %s\n' \
+    "$2" "$1" "${4:+$4
+}" "$3" > "$RI/$1.md"
+}
+letter early "2026-10-04T09:00:00Z" "Before the session"
+letter late  "2026-10-04T10:30:00Z" 'A late one, "quoted"'
+letter held  "2026-10-04T10:31:00Z" "Taken already" "taken: m1/hop-r-1 2026-10-04T10:32:00Z"
+STARTED_MS=$(( $(python3 -c 'import calendar,time; print(calendar.timegm(time.strptime("2026-10-04T10:00:00Z","%Y-%m-%dT%H:%M:%SZ")))') * 1000 ))
+jq -n --argjson ms "$STARTED_MS" '{pid: 1, sessionId: "arr-sid", startedAt: $ms, status: "idle"}' > "$SESS/arr.json"
+jq -n --argjson ms "$STARTED_MS" '{pid: 1, sessionId: "arr-sid-2", startedAt: $ms, status: "idle"}' > "$SESS/arr2.json"
+REM="$(dirname "$IC")/intercom-reminder.sh"
+arrive() { ( cd "$TMP/hop-r" && printf '{"session_id":"%s"}' "$1" | TMPDIR="$TMP/arr-tmp" bash "$REM" 2>&1 ); }
+mkdir -p "$TMP/arr-tmp"
+out="$(arrive arr-sid)"
+says "RED: a letter that came in during the session is named, with no config at all" "$out" '`late` from `hop-a`'
+says_not "…not one that was there before the session started" "$out" "early"
+says_not "…nor one a session has taken" "$out" "held"
+says "…with the receiver's rule: the user's message first, one line, no retelling" "$out" "retell nothing else"
+printf '%s' "$out" | jq -e . >/dev/null 2>&1 && ok "…as valid hook JSON, a quote in the title included" \
+  || bad "…as valid hook JSON, a quote in the title included" "$out"
+out="$(arrive arr-sid)"
+eq "named once per session" "$out" ""
+out="$(arrive arr-sid-2)"
+says "…another session hears of it on its own" "$out" '`late` from `hop-a`'
+out="$(arrive no-such-sid)"
+eq "no session file, no verdict — silent" "$out" ""
+out="$( cd "$TMP/hop-r" && printf '{"session_id":"arr-sid-3"}' | VDX_FOCUSED=1 TMPDIR="$TMP/arr-tmp" bash "$REM" 2>&1 )"
+eq "a focused session hears nothing" "$out" ""
+jq -n --argjson ms "$STARTED_MS" '{pid: 1, sessionId: "arr-sid-4", startedAt: $ms}' > "$SESS/arr4.json"
+mkdir -p "$TMP/hop-r/.claude"
+printf '{"intercom": {"arrival-line": false}}\n' > "$TMP/hop-r/.claude/vdm-plugins.json"
+out="$(arrive arr-sid-4)"
+eq "intercom.arrival-line: false turns it off" "$out" ""
+rm -rf "$TMP/hop-r/.claude" "$SESS"/arr*.json "$RI"
 
 echo "-- taken: a session that takes a letter marks it (wake-one-machine DL #3)"
 # Two sessions that each find the same letter by themselves both start on it.
