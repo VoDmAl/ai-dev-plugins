@@ -18,7 +18,7 @@ relates-to:
 > — это v2 под отдельным принципалом, свой кристалл после инфраструктуры.
 >
 > **Номер версии.** Задумывался как 0.3, но 0.3.0 занял `vdm-comms-pending`, 0.4.0 —
-> `vdm-comms-gag-onboarding` (его Sidetrack #2). Ломоть выйдет под следующим свободным номером.
+> `vdm-comms-command-center-onboarding` (его Sidetrack #2). Ломоть выйдет под следующим свободным номером.
 
 ## Назначение
 
@@ -49,7 +49,7 @@ Code и какие у него инструменты. В сессии 2026-09-2
 нулевой ценой (`suite.md`: гейт по имени — настоящий). Если коннектора нет — локальный
 MCP или скрипт с `gmail.readonly`-токеном (Google Workspace, владелец — администратор).
 
-**Что уже есть у `gag`** (дополнение §3): соглашения `comms/` — `-in`/`-out`, `draft: true`
+**Что уже есть у `command-center`** (дополнение §3): соглашения `comms/` — `-in`/`-out`, `draft: true`
 ↔ `sent:`, `comms/attachments/`, правило 29 (исток цепочки — первое письмо), хук
 `check-draft-comms.sh` (уходит в 0.1.0).
 
@@ -125,6 +125,6 @@ MCP или скрипт с `gmail.readonly`-токеном (Google Workspace, в
 - Родитель: `[[comms-plugin/workitem|comms-plugin]]` DL #13;
   `references/intercom-brief-command-center-addendum.md` §3 (требования, приёмка).
 - Scope'ы: `https://developers.google.com/gmail/api/auth/scopes` (прочитано 2026-09-21).
-- Соглашения `comms/` у `gag`: их `CLAUDE.md` § «Работа с gap-каталогами», правила 29–31.
+- Соглашения `comms/` у `command-center`: их `CLAUDE.md` § «Работа с gap-каталогами», правила 29–31.
 - Гейт по имени инструмента: `docs/model/suite.md` § «Две поверхности» (таблица
   отделимости).

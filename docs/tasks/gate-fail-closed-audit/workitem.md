@@ -35,7 +35,7 @@ relates-to:
 ## Текущая модель
 
 **Замер сделан, гипотеза оказалась мягче реальности** (2026-09-21, `Basis: observed`; метод —
-PATH-фарм из симлинков, как `gag` §2 эстафеты; фикстура — `git init` + воркайтем с открытым
+PATH-фарм из симлинков, как `command-center` §2 эстафеты; фикстура — `git init` + воркайтем с открытым
 `- [ ]` + полезная нагрузка `status: done`):
 
 | Хук | python3+jq | без python3 | без jq | python3 падает |
@@ -192,7 +192,7 @@ PATH-фарм из симлинков, как `gag` §2 эстафеты; фик
 
 - Родитель: `[[comms-plugin/workitem|comms-plugin]]` Sidetrack #1, DL #10;
   `comms-plugin/references/intercom-brief-program-relay.md` §Б §1–§2 (воспроизведение
-  дефекта у `gag`), §12 §1 (фикс `hq` — различать код возврата и наличие `✖`).
+  дефекта у `command-center`), §12 §1 (фикс `hq` — различать код возврата и наличие `✖`).
 - Потомок: `[[gate-scope-symlink/workitem|gate-scope-symlink]]`.
 - Код: `plugins/{vdm,vdm-git}/lib/gate-guard.sh`,
   `plugins/vdm/scripts/{crystal-completion-guard.sh,crystal-lint.sh,orphan-guard-hook.sh}`,

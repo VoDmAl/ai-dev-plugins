@@ -867,7 +867,7 @@ steps come first», процедура — в «Receiving» скилла. Тес
 - [ ] Sidetrack #21: имя набора перед безымянной строкой итога в `run-suites.sh`; red-тест; отдельный коммит
 - [x] Sidetrack #19: гард `.eml` — перевод строки как разделитель команд, перенос склеивается; red-тесты; отдельный коммит → vdm-git 2.15.11, vdm-comms 0.6.5
 - [ ] Sidetrack #20: выход из NOT CHECKED по причине в шести обёртках; red-тест на упавший гейт; отдельный коммит
-- [x] Sidetrack #22: `sent: false` — черновик для `pending` и линтера, одно определение в `comms_frontmatter.py`; red-тесты; сверка на executor и gag; отдельный коммит → vdm-comms 0.6.6
+- [x] Sidetrack #22: `sent: false` — черновик для `pending` и линтера, одно определение в `comms_frontmatter.py`; red-тесты; сверка на executor и command-center; отдельный коммит → vdm-comms 0.6.6
 - [x] Sidetrack #23: ключ «какие артефакты генерирует плагин» — реестр, серии, указатели; `--check` и хук молчат об остальных; red-тест; отдельный коммит → vdm-comms 0.7.0
 - [x] Ответить hq на `comms-index-registry-columns` после коммита: ключ `comms.generate`, `registry-columns` уже был, три расхождения формата, 72 указателя — их выбор → письмо `comms-index-generate-key`, забрано
 - [x] Sidetrack #25: `Broken pipe` в гейте завершения — `awk` читает до конца или данные идут не трубой; соседи той же формы; red-тест на stderr; отдельный коммит → vdm-git 2.16.5

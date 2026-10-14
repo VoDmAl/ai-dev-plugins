@@ -1,6 +1,6 @@
 ---
 title: "vdm-comms на первом переключении: ссылки указателей, пропавшие черновики, владельцы, правила линтера, wikilink"
-slug: vdm-comms-gag-onboarding
+slug: vdm-comms-command-center-onboarding
 description: "Довести vdm-comms до переключения command-center: 4 дефекта, 3 сигнала, 9 правил линтера, wikilink"
 status: done
 session-type: prd-work
@@ -14,7 +14,7 @@ relates-to:
 
 # vdm-comms на первом переключении: ссылки указателей, пропавшие черновики, владельцы, правила линтера, wikilink
 
-> Вырос из интерком-брифа `vdm-comms-gag-onboarding-findings` (`command-center`,
+> Вырос из интерком-брифа `vdm-comms-command-center-onboarding-findings` (`command-center`,
 > 2026-09-23): первый репозиторий, который попробовал **заменить** свои локальные
 > `lint-meetings.py` и `pending.py` плагином, прошёл наш порядок (конфиг → `--check` → сверка
 > со старыми скриптами на копии) и остановился. Решение их владельца — дорабатываем плагин,
@@ -75,7 +75,7 @@ relates-to:
 **Basis:** observed
 **Basis-detail:** в §1.3 брифа дословно процитированы четыре живых пункта с фамилиями
 коллег владельца, в §2.1 — внутренние номера заявок и пути приватного дерева. Оригинал после
-`pickup` лежит в `~/.claude/vdm/intercom/ai-dev-plugins/_done/vdm-comms-gag-onboarding-findings.md`;
+`pickup` лежит в `~/.claude/vdm/intercom/ai-dev-plugins/_done/vdm-comms-command-center-onboarding-findings.md`;
 всё, что в нём утверждается, воспроизводится на `~/AI Projects/command-center` (read-only, их
 конфиг уже в `.claude/vdm-plugins.json`) — таблица в «Текущей модели» собрана именно так.
 **Context:** правило провенанса предлагает два ответа — хранить в `references/` или
@@ -388,7 +388,7 @@ HEAD, после этого 63/63.
 
 ## References
 
-- Бриф: `~/.claude/vdm/intercom/ai-dev-plugins/_done/vdm-comms-gag-onboarding-findings.md`
+- Бриф: `~/.claude/vdm/intercom/ai-dev-plugins/_done/vdm-comms-command-center-onboarding-findings.md`
   (после `pickup`) — пересказан, не скопирован (DL #1).
 - Второй бриф: `~/.claude/vdm/intercom/ai-dev-plugins/_done/comms-outgoing-attachments-checklist.md`
   (после `pickup`).

@@ -7,7 +7,7 @@ session-type: prd-work
 created: 2026-09-24
 last-updated: 2026-09-24
 relates-to:
-  - "[[vdm-comms-gag-onboarding/workitem|vdm-comms-gag-onboarding]]"
+  - "[[vdm-comms-command-center-onboarding/workitem|vdm-comms-command-center-onboarding]]"
   - "[[vdm-comms-core/workitem|vdm-comms-core]]"
 ---
 
@@ -23,7 +23,7 @@ relates-to:
 - `program` → `comms-lint-goal-block-scalar`: (1) `goal: |` роняет линтер, хук
   блокирует запись; (2) файл вне контракта даёт пустой вывод, неотличимый от «прошло»;
   попутно — сигнал на старте сессии не называет, что именно отстало.
-- `command-center` → `vdm-comms-0-4-0-acceptance-gag`, пункт 1: старый линтер предупреждал о
+- `command-center` → `vdm-comms-0-4-0-acceptance-command-center`, пункт 1: старый линтер предупреждал о
   `counterparts` серии без профиля, в 0.4.0 проверки нет.
 
 **Ограничения.** Контракт — пол, не потолок: новых обязательств проектам не добавлять.
@@ -159,6 +159,6 @@ relates-to:
 ## References
 
 - Письма: `~/.claude/vdm/intercom/ai-dev-plugins/comms-lint-goal-block-scalar.md`,
-  `…/vdm-comms-0-4-0-acceptance-gag.md`.
+  `…/vdm-comms-0-4-0-acceptance-command-center.md`.
 - Их старый линтер: `~/AI Projects/command-center/.claude/hooks/lint-meetings.py`.
 - Код: `plugins/vdm-comms/scripts/{comms_frontmatter.py,comms-lint.py,comms-index-check.sh}`.
