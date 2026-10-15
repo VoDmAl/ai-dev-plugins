@@ -57,7 +57,6 @@ fi
 # not UTF-8 and keeps only what came before — the real roots after it were lost
 # (Sidetrack #12, docs/tasks/crystal-wake/workitem.md).
 roots_colon=$(resolve_crystal_roots | LC_ALL=C tr '\n' ':' | LC_ALL=C sed 's/:$//')
-[ -z "$roots_colon" ] && exit 0
 
 # Build gate value sets — canonical terminal status + any status-aliases that
 # resolve to it. Status-aliases let projects use their own vocab while still
@@ -86,6 +85,20 @@ simulator="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/crystal-completion-guar
 # The payload is consumed by whoever reads stdin first, so capture it here and
 # hand a copy to the checker. The copy is also what the prefilter below reads.
 payload=$(cat)
+
+# A repository's first workitem is written before its root exists: discovery
+# finds a root by the files in it, so a first workitem written straight to
+# `done` with open items was outside every root and went through (canon-gate-scope
+# Sidetrack #5). For a file that is not on disk yet, the root its write would make
+# is added — the same answer the canon gate uses.
+if command -v vdm_first_root_for >/dev/null 2>&1 && command -v vdm_json_field >/dev/null 2>&1; then
+  new_path=$(vdm_json_field "$payload" "tool_input.file_path")
+  if [ -n "$new_path" ] && [ ! -e "$new_path" ]; then
+    first_root=$(vdm_first_root_for "$(vdm_real_path_of "$new_path")")
+    [ -n "$first_root" ] && roots_colon="${roots_colon:+$roots_colon:}$first_root"
+  fi
+fi
+[ -z "$roots_colon" ] && exit 0
 
 # Dependency-free scope prefilter. Answers "is this call one this gate is
 # responsible for?" using nothing but grep, so the answer is available exactly

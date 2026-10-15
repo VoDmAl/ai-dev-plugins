@@ -187,18 +187,6 @@ canonicalize_path() {
   printf '%s/%s' "$real" "$base"
 }
 
-# real_path_of <path> — canonicalize_path for a path whose directories may not
-# exist yet: the first workitem's crystal folder is created by the write itself.
-# The nearest existing ancestor is resolved, the rest is appended as it is.
-real_path_of() {
-  local p="$1" tail=""
-  while [ ! -d "$p" ] && [ "$p" != "/" ] && [ "$p" != "." ]; do
-    tail="/$(basename "$p")$tail"
-    p=$(dirname "$p")
-  done
-  printf '%s%s' "$(cd "$p" 2>/dev/null && pwd -P)" "$tail"
-}
-
 is_workitem_path() {
   local path="$1" root="$2" rel
   path=$(canonicalize_path "$path")
@@ -216,33 +204,6 @@ is_workitem_path() {
     *.md)           return 0 ;;   # <slug>.md, flat legacy
     *)              return 1 ;;
   esac
-}
-
-# first_root_for <path> — the tasks/ directory that writing <path> would turn
-# into a crystal root. Discovery finds a root by the files in it, so the first
-# workitem of a repository is written while there is no root yet. On PostToolUse
-# that never mattered — the file was there by then; on PreToolUse the first
-# workitem would pass unchecked. Auto-discovery only: with roots in the config,
-# the config names them, and this does not guess.
-first_root_for() {
-  local path="$1" top rel cand
-  [ -z "$(vdm_config_read_array crystal paths 2>/dev/null)" ] || return 0
-  [ "$(vdm_config_read crystal path __VDM_UNSET__ 2>/dev/null)" = "__VDM_UNSET__" ] || return 0
-  case "$path" in
-    */tasks/*/workitem.md) cand=$(dirname "$(dirname "$path")") ;;
-    */tasks/*.md)          cand=$(dirname "$path") ;;
-    *) return 0 ;;
-  esac
-  [ "$(basename "$cand")" = "tasks" ] || return 0
-  top=$(git rev-parse --show-toplevel 2>/dev/null) || top=$(pwd -P)
-  case "$cand" in
-    "$top"/*) rel="${cand#"$top"/}" ;;
-    *) return 0 ;;
-  esac
-  case "/$rel/" in
-    */.*|*/node_modules/*|*/vendor/*) return 0 ;;
-  esac
-  printf '%s\n' "$cand"
 }
 
 # orphans_at_head <workitem> — the orphan sidetracks of the version committed at
@@ -348,9 +309,13 @@ if cur is not None:
       if is_workitem_path "$file_path" "$r"; then under_root="yes"; break; fi
     done < <(resolve_crystal_roots)
   fi
-  if [ -z "$under_root" ] && [ "$mode" = "pre-hook" ] && [ ! -e "$file_path" ]; then
-    p=$(real_path_of "$file_path")
-    r=$(first_root_for "$p")
+  # A repository's first workitem is written before its root exists: roots are
+  # found by their files. On PostToolUse the file was there by then; here the
+  # lib names the root the write would make (vdm_first_root_for).
+  if [ -z "$under_root" ] && [ "$mode" = "pre-hook" ] && [ ! -e "$file_path" ] \
+     && command -v vdm_first_root_for >/dev/null 2>&1; then
+    p=$(vdm_real_path_of "$file_path")
+    r=$(vdm_first_root_for "$p")
     [ -n "$r" ] && is_workitem_path "$p" "$r" && under_root="yes"
   fi
   [ -z "$under_root" ] && exit 0

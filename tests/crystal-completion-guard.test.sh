@@ -110,5 +110,27 @@ badname "$R"
 guard "$R"
 eq "done with every item checked passes there" 0 "$RC"
 
+# ---------------------------------------------------------------------------
+printf '\nthe first workitem of a repository, before any tasks/ exists\n'
+# ---------------------------------------------------------------------------
+# Roots are found by the files in them, so the first workitem is written while
+# there is no root: written straight to `done` with an open item, it went
+# through (canon-gate-scope Sidetrack #5). The root its write would make counts.
+FR="$REAL/first"
+mkdir -p "$FR"
+( cd "$FR" && git init -q . ) >/dev/null 2>&1
+first() {
+  # first <path under FR> <box> — a Write that creates the file; sets OUT and RC.
+  OUT=$(cd "$FR" && python3 -c 'import json, sys; print(json.dumps({"tool_name": "Write", "tool_input": {"file_path": sys.argv[1], "content": "---\ntitle: \"f\"\nslug: f\nstatus: done\nsession-type: other\ncreated: 2026-10-15\nlast-updated: 2026-10-15\n---\n# f\n## Next actions\n" + sys.argv[2] + " an obligation\n"}, "cwd": sys.argv[3]}))' "$FR/$1" "$2" "$FR" \
+        | bash "$GUARD" 2>&1)
+  RC=$?
+}
+first docs/tasks/f/workitem.md '- [ ]'
+eq "RED: a first workitem written done with an open item is blocked" 2 "$RC"
+first docs/tasks/f/workitem.md '- [x]'
+eq "…and with every item checked it passes" 0 "$RC"
+first .hidden/tasks/f/workitem.md '- [ ]'
+eq "a tasks/ under a hidden directory is no root" 0 "$RC"
+
 printf '\ncrystal-completion-guard: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

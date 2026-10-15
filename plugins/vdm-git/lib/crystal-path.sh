@@ -313,6 +313,48 @@ vdm_prime_crystal_roots() {
   return 0
 }
 
+vdm_real_path_of() {
+  # vdm_real_path_of <path> — the path with symlinks resolved, for a path whose
+  # directories may not exist yet: the first workitem's crystal folder is made
+  # by the write itself. The nearest existing ancestor is resolved, and the rest
+  # is appended as it stands.
+  local p="$1" tail=""
+  while [ ! -d "$p" ] && [ "$p" != "/" ] && [ "$p" != "." ]; do
+    tail="/$(basename "$p")$tail"
+    p=$(dirname "$p")
+  done
+  printf '%s%s' "$(cd "$p" 2>/dev/null && pwd -P)" "$tail"
+}
+
+vdm_first_root_for() {
+  # vdm_first_root_for <real path> — the tasks/ directory that writing <path>
+  # would turn into a crystal root, or nothing. Discovery finds a root by the
+  # files in it, so a repository's first workitem is written while there is no
+  # root yet, and a PreToolUse gate that asks resolve_crystal_roots lets it
+  # through unchecked (canon-gate-scope DL #8, Sidetrack #5). The shape is the
+  # one auto-discovery would find once the file exists — `…/tasks/<slug>/workitem.md`
+  # or `…/tasks/<slug>.md` in the project, no hidden segment, no vendor tree.
+  # Auto-discovery only: with roots in the config, the config names them.
+  local path="$1" top rel cand
+  [ -z "$(vdm_config_read_array crystal paths 2>/dev/null)" ] || return 0
+  [ "$(vdm_config_read crystal path __VDM_UNSET__ 2>/dev/null)" = "__VDM_UNSET__" ] || return 0
+  case "$path" in
+    */tasks/*/workitem.md) cand=$(dirname "$(dirname "$path")") ;;
+    */tasks/*.md)          cand=$(dirname "$path") ;;
+    *) return 0 ;;
+  esac
+  [ "$(basename "$cand")" = "tasks" ] || return 0
+  top=$(git rev-parse --show-toplevel 2>/dev/null) || top=$(pwd -P)
+  case "$cand" in
+    "$top"/*) rel="${cand#"$top"/}" ;;
+    *) return 0 ;;
+  esac
+  case "/$rel/" in
+    */.*|*/node_modules/*|*/vendor/*) return 0 ;;
+  esac
+  printf '%s\n' "$cand"
+}
+
 vdm_crystal_walk_prunes() {
   # Prints the `find` prune expression for "has work happened since this
   # workitem?" — the crystal roots, noise directories by name, and the
