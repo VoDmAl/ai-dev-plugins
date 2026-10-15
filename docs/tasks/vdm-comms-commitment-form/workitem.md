@@ -2,7 +2,7 @@
 title: "vdm-comms: полная форма обязательства в pending — кто двигает, состояние, срок, напоминания, трек"
 slug: vdm-comms-commitment-form
 description: "Одна полная форма строки обязательства для всех проектов; ⏰ читается на время перехода"
-status: in-progress
+status: done
 session-type: prd-prep
 created: 2026-09-28
 last-updated: 2026-10-15
@@ -48,6 +48,16 @@ relates-to:
   `state`, `nudges`, `track`.
 - **Замер 2026-10-14:** у program все пять полей — на 380 из 381 открытой строки `dashboard.md`; у command-center и
   hq полей нет ни в одном файле. Все три проекта — хранилища Obsidian; Dataview стоит у program и command-center.
+
+Сделано 2026-10-15 (vdm 2.48.0, vdm-git 2.20.1, DL #4):
+
+- **Кристалл читает срок во всех трёх записях** — `(due:)`, `[due::]` и `⏰ <дата>`: старт сессии, `crystal-cave`,
+  `crystal-lint`. `[due:: скоро]` — сломанный срок; `⏰ after:` — текст. Пишется в кристалле по-прежнему `(due:)`.
+- **Проверка на копии `dashboard.md` program** (15.10, только чтение): плагин читает 379 открытых строк, все в
+  полной форме, линтер — ноль замечаний. Критерий успеха выполнен на живых данных, а не только на фикстуре.
+- **Письма 15.10:** бриф о полной форме command-center и hq (`commitment-full-form-0330`), ответ program на §2
+  (`commitment-full-form-shipped`, `reply-to` их брифа). Всем трём: полная форма читается с vdm-comms 0.33.0,
+  а на машине пока стоит 0.27.0.
 
 Состояние на 2026-09-28, до начала работы:
 
@@ -183,7 +193,7 @@ Routed from: `hook-timeout-fail-open`. Срок в чекбоксе криста
 - [x] Один маркер срока на суиту или два — и чем кристалл встречает `⏰ <дата>` в своём чекбоксе (Sidetrack #1) — читает все три записи (DL #4)
 - [x] Чтение ⏰ на переход: старая строка даёт пункт без состояния, а не теряется; red-тест (DL #3)
 - [x] Отчёт `pending`: группировка по `who::`, просрочка — прежние корзины, `nudged N` (DL #3)
-- [ ] Бамп vdm-comms, `PROJECT_CHANGELOG.md`, `docs/model/suite.md`; бриф command-center и hq; ответ program
+- [x] Бамп vdm-comms, `PROJECT_CHANGELOG.md`, `docs/model/suite.md`; бриф command-center и hq; ответ program — 0.33.0 и 2.48.0, письма 15.10
 
 ## References
 
