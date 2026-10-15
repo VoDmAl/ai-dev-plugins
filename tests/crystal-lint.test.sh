@@ -323,6 +323,35 @@ OUT=$(bash "$LINT" "$MDW/workitem.md" 2>&1)
 expect_says "the lint names the date on the wrapped tail" "$OUT" "(due: soon)"
 expect_not_says "…and not the done item's" "$OUT" "whenever"
 
+# The ledger's spellings (vdm-comms-commitment-form DL #4): `⏰ <date>` and
+# `[due:: <date>]` are dates, `[due:: soon]` is broken like `(due: soon)`, and
+# `⏰ after:` is an event. The lint and the lib must say the same.
+MDL="$TMP/tasks/malformed-ledger"
+mkdir -p "$MDL"
+{
+  printf -- '---\ntitle: "Malformed ledger"\nslug: malformed-ledger\nstatus: in-progress\n'
+  printf 'session-type: prd-work\ncreated: 2026-10-15\nlast-updated: 2026-10-15\n---\n\n# Malformed ledger\n\n'
+  printf '## Назначение\nx\n\n## Текущая модель\nx\n\n## Sidetracks\nx\n\n## Next actions\n'
+  printf -- '- [ ] **Petrov** — the form ⏰ 2026-09-01 → followup\n'
+  printf -- '- [ ] **Confirm the quota** [who:: ivan-petrov] [state:: sent] [due:: 2026-09-02]\n'
+  printf -- '- [ ] an event ⏰ after: the transcript arrives\n'
+  printf -- '- [ ] a broken full-form date [due:: soon]\n'
+  printf '\n## References\nx\n'
+} >"$MDL/workitem.md"
+ml_lib=$(bash -c ". '$REPO_ROOT/plugins/vdm/lib/crystal-path.sh' 2>/dev/null; audit_malformed_due '$MDL/workitem.md'" | grep -c .)
+ml_py=$(python3 -c "
+import importlib.util
+spec = importlib.util.spec_from_file_location('cl', '$REPO_ROOT/plugins/vdm/scripts/crystal-lint.py')
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+print(len(m.malformed_due(open('$MDL/workitem.md', encoding='utf-8').read().splitlines())))
+" 2>&1)
+expect_exit "lib: one broken date — \`[due:: soon]\`; \`⏰\` dates and events are not broken" 1 "$ml_lib"
+expect_exit "lint: the same one" 1 "$ml_py"
+OUT=$(bash "$LINT" "$MDL/workitem.md" 2>&1)
+expect_says "the lint names it" "$OUT" "[due:: soon]"
+expect_not_says "…and not the \`⏰\` date" "$OUT" "2026-09-01"
+
 # ---------------------------------------------------------------------------
 printf '\nhook — an open sidetrack this change introduced must carry a checkbox\n'
 # ---------------------------------------------------------------------------

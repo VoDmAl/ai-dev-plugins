@@ -435,6 +435,41 @@ TPL="$REPO_ROOT/plugins/vdm/templates/workitem-template.md"
 expect_eq "RED: the template's own dated example is read (overdue once its date passes)" \
   "2026-12-31" "$(lib "list_overdue '$TPL' 2027-01-01" | cut -f1)"
 
+printf '\n=== a date in the ledger'"'"'s spelling is a date too ===\n'
+# vdm-comms-commitment-form DL #4. The commitment ledger of vdm-comms writes its
+# dates as `[due:: YYYY-MM-DD]` (the full form) or `⏰ YYYY-MM-DD` (the old one),
+# and an agent that keeps both kinds of list writes a crystal promise in the
+# spelling it learned there. Measured 2026-10-15: 23 open checkboxes in live
+# crystals on this machine carried `⏰ <date>`, some already past, and the
+# overdue check saw none of them. Read, not flagged: the date is on disk.
+LS="$TMP/ledger-spelling.md"
+cat > "$LS" <<'FIXTURE'
+## Next actions
+- [ ] **Petrov** — send the access form ⏰ 2026-09-01 → followup
+- [ ] **Confirm the quota** — with the vendor [who:: ivan-petrov] [state:: sent] [due:: 2026-09-02] [nudges:: 1]
+- [ ] a wrapped promise in the ledger's spelling, whose date
+      sits on the tail ⏰ 2026-09-03
+- [ ] the crystal's own spelling still reads (due: 2026-09-04)
+- [ ] an event names no date ⏰ after: the transcript arrives
+- [ ] not yet late ⏰ 2026-12-31
+- [ ] a broken full-form date [due:: soon]
+- [x] done, its date owes nothing ⏰ 2026-01-01
+FIXTURE
+expect_eq "RED: \`⏰ <date>\` and \`[due:: <date>]\` are read — four overdue" \
+  "4" "$(lib "count_overdue '$LS' 2026-09-30")"
+expect_eq "RED: …the \`⏰\` date is the one returned" \
+  "2026-09-01" "$(lib "list_overdue '$LS' 2026-09-30" | cut -f1 | grep -x 2026-09-01)"
+expect_eq "RED: …and the marker leaves the text, wherever it stood" \
+  "**Petrov** — send the access form → followup" "$(lib "list_overdue '$LS' 2026-09-30" | grep '^2026-09-01' | cut -f2)"
+expect_eq "RED: …the full-form date is read among the other fields" \
+  "2026-09-02" "$(lib "list_overdue '$LS' 2026-09-30" | cut -f1 | grep -x 2026-09-02)"
+expect_eq "RED: \`[due:: soon]\` is a broken date, as \`(due: soon)\` is" \
+  "1" "$(lib "audit_malformed_due '$LS'" | grep -c 'due:: soon')"
+expect_eq "GREEN: \`⏰ after:\` is an event, not a broken date" \
+  "0" "$(lib "audit_malformed_due '$LS'" | grep -c 'after:')"
+expect_eq "GREEN: the batch reader counts the same — 4 overdue, 1 broken" \
+  "$LS	4	1" "$(printf '%s\n' "$LS" | lib "due_counts_batch 2026-09-30")"
+
 printf '\n=== root resolution: found once, and found at all ===\n'
 # Two defects found during the 2.24.0 acceptance run, both of the same shape as
 # everything else this suite keeps rediscovering: a mechanism that LOOKS like it

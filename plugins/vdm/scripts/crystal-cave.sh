@@ -85,7 +85,7 @@ SINGLETON_MODE=$(derive_singleton_mode)
 #   $9  description   optional one-liner for cave/base overview
 #   $10 icon          ●/⏸/○/◦/✓/!
 #   $11 canon         ""|off-canon|legacy — STRUCTURAL canon, from crystal-lint
-#   $12 overdue       count of `- [ ]` items whose `(due: YYYY-MM-DD)` has passed
+#   $12 overdue       count of `- [ ]` items whose due date (`(due:)`, `[due::]`, `⏰`) has passed
 #
 # Structural canon is a SEPARATE axis from the status taxonomy, and the two are
 # reported separately on purpose: a workitem can carry a perfectly canonical
@@ -377,7 +377,7 @@ fi
 MALFORMED=$(printf '%s\n' "$DUES" | awk -F'\t' '{ s += $3 } END { print s + 0 }')
 if [ "${MALFORMED:-0}" -gt 0 ]; then
   printf '\n⚠ Malformed `due:` markers: %d. They look like a deadline and are invisible to the\n' "$MALFORMED"
-  printf '   overdue check. Expected form: `- [ ] promise (due: YYYY-MM-DD)`.\n'
+  printf '   overdue check. Expected form: `- [ ] promise (due: YYYY-MM-DD)` or `[due:: YYYY-MM-DD]`.\n'
 fi
 
 N_OVERDUE=$(printf '%s\n' "$META" | awk -F'\t' '{ s += $12 } END { print s+0 }')

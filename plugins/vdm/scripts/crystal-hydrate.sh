@@ -115,7 +115,7 @@ if [ -n "$active" ]; then
       [ -n "$f" ] || continue
       slug=$(extract_slug "$f")
       n=$(count_unchecked "$f")
-      # A promise carrying `(due: YYYY-MM-DD)` that has passed. Surfaced here
+      # A promise whose due date (`(due:)`, `[due::]`, `⏰ <date>`) has passed. Surfaced here
       # because session start is the moment a stale checklist is still cheap to
       # notice — the failure it answers to is a checklist that reads as current
       # for six weeks (checkbox-decay-signal, field report from executor).

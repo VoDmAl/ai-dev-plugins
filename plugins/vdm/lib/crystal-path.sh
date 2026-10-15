@@ -708,16 +708,32 @@ _vdm_today() {
   date +%Y-%m-%d 2>/dev/null || printf '0000-00-00'
 }
 
-# A well-formed due marker, `(due: YYYY-MM-DD)` — one definition for every
-# reader of promised dates: list_overdue, audit_malformed_due, due_counts_batch.
-# It is spliced into their awk programs as text, not handed over with -v, which
-# would reinterpret its backslashes.
-_VDM_DUE_RE='\(due:[[:space:]]*[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][[:space:]]*\)'
+# A well-formed due marker — one definition for every reader of promised dates:
+# list_overdue, audit_malformed_due, due_counts_batch. It is spliced into their
+# awk programs as text, not handed over with -v, which would reinterpret its
+# backslashes.
+#
+# Three spellings, one meaning (vdm-comms-commitment-form DL #4): the crystal's
+# own `(due: YYYY-MM-DD)`, and the two the commitment ledger of vdm-comms writes,
+# `[due:: YYYY-MM-DD]` (its full form) and `⏰ YYYY-MM-DD` (its old one). Agents
+# keep both kinds of list, and a date carries the spelling of the list it was
+# learned in. Measured 2026-10-15 across this machine: 23 open checkboxes in live
+# crystals carried `⏰ <date>`, some of them already past — written down, and
+# seen by nobody, because only `(due:)` was read. Reading what is written beats
+# flagging it: the promise needs a date someone sees, not a lesson in syntax.
+# `⏰ after: <event>` names no date and stays prose here.
+_VDM_DUE_D='[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+_VDM_DUE_RE='(\(due:[[:space:]]*'"$_VDM_DUE_D"'[[:space:]]*\)|\[due::[[:space:]]*'"$_VDM_DUE_D"'[[:space:]]*]|⏰[[:space:]]*'"$_VDM_DUE_D"')'
+# A marker that claims a date: what the malformed check looks for. `⏰` is not
+# in it — in the ledger's form it also opens an event (`⏰ after:`), which is
+# not a broken date.
+_VDM_DUE_ANY_RE='\(due:|\[due::'
 
 list_overdue() {
   # list_overdue <file> [today]
-  # Prints one line per unchecked checkbox whose `(due: YYYY-MM-DD)` is in the
-  # past (strictly before today): "<due-date>\t<the promise text>".
+  # Prints one line per unchecked checkbox whose due date (any spelling of
+  # _VDM_DUE_RE) is in the past (strictly before today):
+  # "<due-date>\t<the promise text>".
   # Silent for checked items, for undated ones, and for dates not yet reached.
   #
   # `today` is injectable so tests can pin it; production callers omit it.
@@ -737,9 +753,11 @@ list_overdue() {
         due = substr(line, RSTART, RLENGTH)
         gsub(/[^0-9-]/, "", due)
         if (due < today) {
-          text = line
+          # The marker goes from the text wherever it stood: `(due:)` closes
+          # the sentence, `⏰` and `[due::]` often sit in the middle of it.
+          text = substr(line, 1, RSTART - 1) " " substr(line, RSTART + RLENGTH)
           sub(/^[[:space:]]*-[[:space:]]*\[[[:space:]]\][[:space:]]*/, "", text)
-          sub(/[[:space:]]*\(due:[[:space:]]*[0-9-]+[[:space:]]*\)[[:space:]]*$/, "", text)
+          gsub(/[[:space:]][[:space:]]+/, " ", text)
           sub(/[[:space:]]+$/, "", text)
           print due "\t" text
         }
@@ -767,7 +785,7 @@ audit_malformed_due() {
   local file="$1"
   [ -f "$file" ] || return 0
   _unchecked_lines "$file" | awk '
-    /\(due:/ {
+    /'"$_VDM_DUE_ANY_RE"'/ {
       if (!match($0, /'"$_VDM_DUE_RE"'/)) {
         print $0
       }
@@ -855,7 +873,7 @@ due_counts_batch() {
         due = substr(line, RSTART, RLENGTH)
         gsub(/[^0-9-]/, "", due)
         if (due < today) { od[f]++; seen[f] = 1 }
-      } else if (line ~ /\(due:/) { bad[f]++; seen[f] = 1 }
+      } else if (line ~ /'"$_VDM_DUE_ANY_RE"'/) { bad[f]++; seen[f] = 1 }
     }
     END { for (f in seen) printf "%s\t%d\t%d\n", f, od[f], bad[f] }
   ' 2>/dev/null

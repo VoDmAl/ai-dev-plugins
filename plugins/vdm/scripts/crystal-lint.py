@@ -155,8 +155,17 @@ def parse_canon(template_text):
 # invisible to the overdue check, which is this repository's recurring failure —
 # a mechanism that silently narrows its own scope. So the canon requires nothing
 # and rejects only what claims to be a projection without being one.
-DUE_OK_RE = re.compile(r"\(due:\s*\d{4}-\d{2}-\d{2}\s*\)")
-DUE_ANY_RE = re.compile(r"\(due:")
+#
+# A date reads in three spellings: `(due: …)`, and the vdm-comms ledger's
+# `[due:: …]` and `⏰ …` — the same ones as `_VDM_DUE_RE` in lib/crystal-path.sh
+# (vdm-comms-commitment-form DL #4). A broken `[due:: soon]` is malformed like a
+# broken `(due: soon)`; `⏰` alone claims nothing, since `⏰ after:` is an event.
+DUE_OK_RE = re.compile(
+    r"\(due:\s*\d{4}-\d{2}-\d{2}\s*\)"
+    r"|\[due::\s*\d{4}-\d{2}-\d{2}\s*\]"
+    r"|⏰\s*\d{4}-\d{2}-\d{2}"
+)
+DUE_ANY_RE = re.compile(r"\(due:|\[due::")
 UNCHECKED_RE = re.compile(r"^[ \t]*-[ \t]*\[[ \t]\]")
 CHECKBOX_RE = re.compile(r"^[ \t]*-[ \t]*\[([ \t]|x|X)\]")
 FENCE_RE = re.compile(r"^[ \t]*(```|~~~)")
@@ -327,7 +336,7 @@ def lint(path, text, canon, terminal, canonical, aliases):
     bad_due = malformed_due(body)
     if bad_due:
         problems.append(
-            "malformed `due:` marker(s) — expected `(due: YYYY-MM-DD)`:\n    %s"
+            "malformed `due:` marker(s) — expected `(due: YYYY-MM-DD)` or `[due:: YYYY-MM-DD]`:\n    %s"
             % "\n    ".join(bad_due[:5])
         )
 
