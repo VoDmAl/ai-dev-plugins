@@ -662,5 +662,64 @@ OUT=$(shell_payload "sed -i '' 's/x/y/' t/comms/2026-10-13-a-out.md" | bash "$SE
 expect_exit "GREEN: the same, with sent-proof: ⇒ nothing to name" 0 "$rc"
 expect_silent "…and nothing is said" "$OUT"
 
+printf '\n=== the full form: who moves now, state, due, nudges, track ===\n'
+
+# The form one project wrote on 380 of 381 open lines before the plugin read
+# it (crystal vdm-comms-commitment-form). Its own fixture, so that the counts
+# above stay what they were.
+FF="$TMP/full"; mkdir -p "$FF/.claude" "$FF/people" "$FF/tracks/a"
+( cd "$FF" && git init -q . ) >/dev/null 2>&1
+cat > "$FF/.claude/vdm-plugins.json" <<'JSON'
+{ "comms": { "pending-paths": ["tracks/*/index.md", "ledger.md"],
+             "pending-sections": { "waiting": ["Ожидаем"] },
+             "owners": ["legal", "Dmitry"] } }
+JSON
+printf '# Ivan Petrov\n' > "$FF/people/ivan-petrov.md"
+cat > "$FF/tracks/a/index.md" <<'MD'
+# a
+
+## Ожидаем
+
+- [ ] **[[../../people/ivan-petrov|Петров]]** — the old form, a person owns it ⏰ 2026-09-30
+- [ ] **Договор** — signature [who:: ivan-petrov] [state:: ack] [due:: 2026-09-20] [nudges:: 2] [track:: tracks/a]
+MD
+cat > "$FF/ledger.md" <<'MD'
+# Ledger
+
+- [ ] **Access request** — letter went out [who:: Dmitry] [state:: sent] [due:: 2026-09-25] [nudges:: 0]
+- [ ] **legal** — the bold is the subject here [who:: we] [state:: ask] [due:: 2026-09-24]
+- [ ] **No date yet** — [who:: legal] [state:: ask]
+- [ ] **Bad fields** — [who:: ivan-petrov] [state:: done] [due:: 2026-13-01] [nudges:: two]
+- [ ] **No state** — [who:: legal] [due:: 2026-09-26]
+- [ ] a plain checkbox outside any section, no marker — not an item
+MD
+ff() { OUT=$(cd "$FF" && COMMS_TODAY="$TODAY" python3 "$PEND" --project-root "$FF" "$@" 2>&1); rc=$?; }
+
+ff --owner --all
+expect_says "RED: [due::] is read as the date" "$OUT" "2026-09-20 · ivan-petrov · ack"
+expect_says "RED: …state and reminders are printed" "$OUT" "ack · nudged 2"
+expect_not_says "…and zero reminders are not" "$OUT" "nudged 0"
+expect_says "RED: [who::] wins over the bold — the bold is the subject" "$OUT" "2026-09-24 · us · ask"
+expect_says "RED: a slug in [who::] groups with the wikilink to the same profile" "$OUT" "## Петров (3)"
+expect_says "RED: a name from comms.owners in [who::] is that owner" "$OUT" "## Dmitry (1)"
+expect_says "…the fields are not printed as text" "$OUT" "Договор — signature"
+expect_not_says "…nor any of them" "$OUT" "[who::"
+expect_not_says "a plain checkbox outside a section is still not an item" "$OUT" "a plain checkbox"
+expect_before "the order stays: people, the listed owners, us" "$OUT" "## Петров" "## us"
+
+ff --lint
+expect_exit "RED: the full form is checked wherever it stands" 1 "$rc"
+expect_says "RED: …a line with [who::] and no date is under the full contract" "$OUT" 'ledger.md:5 — no `[due:: YYYY-MM-DD]`'
+expect_says "RED: …a state outside ask, sent, ack" "$OUT" '`[state:: done]` — the state is ask, sent or ack'
+expect_says "RED: …a broken [due::]" "$OUT" "ledger.md:6 — broken date marker"
+expect_says "RED: …reminders that are not a number" "$OUT" '`[nudges:: two]`'
+expect_says "RED: …no state at all" "$OUT" 'ledger.md:7 — no `[state:: ask|sent|ack]`'
+expect_not_says "GREEN: a complete line is clean" "$OUT" "ledger.md:3"
+expect_not_says "GREEN: …and so is the old form, read as before" "$OUT" "index.md:5"
+
+ff --json
+expect_says "the JSON carries the state" "$OUT" '"state": "ack"'
+expect_says "…and the track" "$OUT" '"track": "tracks/a"'
+
 printf '\ncomms-pending: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

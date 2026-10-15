@@ -117,6 +117,14 @@ EMOJI_RE = re.compile(r"[\U0001F100-\U0001F2FF\U0001F300-\U0001FAFF☀-➿️⬀
 # `(due:)` — the crystal marker. A broken value is a violation in its own right:
 # it looks like a promise and is invisible to every detector, which is the one
 # state this marker exists to rule out.
+# The full form (vdm-comms 0.33.0, crystal `vdm-comms-commitment-form`): Dataview
+# inline fields on the line — who moves now, the state, the review date, how
+# many times we reminded, where the matter lives. One project wrote exactly this
+# on 380 of its 381 open lines before the plugin read it; the old form below is
+# read during the transition and gives an item with no state.
+FIELD_RE = re.compile(r"\[(who|state|due|nudges|track)::\s*([^\]]*?)\s*\]")
+DUE_FIELD_RE = re.compile(r"\[due::\s*([^\]]*?)\s*\]")
+STATES = ("ask", "sent", "ack")
 DUE_ISO_RE = re.compile(r"\(due:\s*(\d{4})-(\d{2})-(\d{2})\s*\)")
 DUE_ANY_RE = re.compile(r"\(due:\s*([^)]*)\)")
 
@@ -205,6 +213,11 @@ def _mkdate(y, m, d):
 
 def parse_date(line, today):
     """→ (date | None, kind) with kind ∈ iso | dmy | loose | event | broken | none."""
+    m = DUE_FIELD_RE.search(line)
+    if m:
+        dm = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", m.group(1))
+        d = _mkdate(*dm.groups()) if dm else None
+        return (d, "iso") if d else (None, "broken")
     m = DUE_ISO_RE.search(line)
     if m:
         d = _mkdate(*m.groups())
@@ -248,6 +261,15 @@ def parse_date(line, today):
 # --------------------------------------------------------------------------- #
 # owners
 # --------------------------------------------------------------------------- #
+
+def line_fields(body):
+    """The full form's inline fields on one line, `{name: value}`; the first of
+    each name wins."""
+    out = {}
+    for name, value in FIELD_RE.findall(body):
+        out.setdefault(name, value.strip())
+    return out
+
 
 def people_re(cfg):
     d = re.escape(str(cfg.get("people-dir") or "people").strip("/"))
@@ -365,6 +387,24 @@ def parse_owner(body, side, cfg, prx, today):
     slug behind the wikilink does not decline.
     """
     owners = [o for o in (cfg.get("owners") or []) if isinstance(o, str)]
+    fields = line_fields(body)
+
+    # The full form names who moves now in `[who::]`, and then the bold that
+    # opens the line is the SUBJECT, not the owner — the reverse of the old
+    # form. The two are told apart by the field, never by the bold. The value is
+    # a profile slug, a name from `comms.owners`, or our side; a slug groups with
+    # the wikilink form of the same profile.
+    if "who" in fields:
+        who = fields["who"]
+        if not who:
+            return None, "missing", "missing"
+        listed = _match_listed(who, owners)
+        if listed:
+            return listed, "owner", "owner:" + fold(listed)
+        if fold(who) in US_WORDS:
+            return US_LABEL, "us", "us"
+        return who, "person", "person:" + fold(who)
+
     lead = lead_segment(body)
 
     # A person is the owner only when the link OPENS the head of the item —
@@ -596,7 +636,14 @@ def scan_file(path, root, cfg, sides, today, prx):
         # all is not an obligation — the checkbox is what declares one, and
         # treating every bullet in a section as a promise is how a linter earns
         # its first `|| true`.
-        marked = dkind != "none" or "⏰" in body or "(due:" in body
+        fields = line_fields(body) if checkbox else {}
+        # A line that writes `[who::]` has named itself an obligation, so it is
+        # under the full contract wherever it stands — soft until named, binding
+        # once named, applied to the line instead of the heading.
+        full = "who" in fields
+        strict = strict or full
+        marked = (dkind != "none" or "⏰" in body or "(due:" in body
+                  or "[due::" in body or full)
         if not marked and not (checkbox and strict):
             continue
 
@@ -606,12 +653,16 @@ def scan_file(path, root, cfg, sides, today, prx):
             "line_no": lineno,
             "section": side or "",
             "strict": strict,
+            "full": full,
             "owner": owner or NO_OWNER,
             "owner_kind": okind,
             "owner_key": okey,
             "due": due.isoformat() if due else None,
             "date_kind": dkind,
-            "text": re.sub(r"\*\*", "", clean(body)).strip(),
+            "state": fields.get("state"),
+            "nudges": fields.get("nudges"),
+            "track": fields.get("track"),
+            "text": re.sub(r"\s{2,}", " ", re.sub(r"\*\*", "", clean(FIELD_RE.sub("", body)))).strip().rstrip(" —–"),
             "line": line,
         })
     return items
@@ -938,6 +989,10 @@ def _fmt(it, with_file=True, with_owner=True):
     head = "%s %s" % (flag, when)
     if with_owner:
         head += " · %s" % it["owner"]
+    if it.get("state"):
+        head += " · %s" % it["state"]
+    if it.get("nudges") not in (None, "", "0"):
+        head += " · nudged %s" % it["nudges"]
     if with_file:
         head += " · %s" % it["file"]
     text = it["text"]
@@ -1133,11 +1188,25 @@ def lint(root, cfg, items, changed_only=False, cap=None):
                                  % (m.group(1), ", ".join(elsewhere)))
         if it["date_kind"] == "broken":
             warns.append("broken date marker — invisible to every detector, so it promises nothing")
+        if it.get("full"):
+            state = (it.get("state") or "").lower()
+            if not state:
+                warns.append("no `[state:: ask|sent|ack]` — ask: not sent yet, sent: waiting, ack: they confirmed")
+            elif state not in STATES:
+                warns.append("`[state:: %s]` — the state is ask, sent or ack; a finished item is `[x]`"
+                             % it["state"])
+            if it.get("nudges") not in (None, "") and not str(it["nudges"]).isdigit():
+                warns.append("`[nudges:: %s]` — the number of reminders sent, 0 or more" % it["nudges"])
         if it["strict"]:
             if it["owner_kind"] == "missing":
-                warns.append("no owner (a people link, an emphasised name, or a name from comms.owners)")
-            if it["date_kind"] == "none":
-                warns.append("no `⏰ <YYYY-MM-DD>`, `⏰ after: <event>` or `(due: YYYY-MM-DD)`")
+                warns.append("no owner (a people link, an emphasised name, a name from comms.owners, "
+                             "or `[who:: <slug>]`)" if not it.get("full") else
+                             "`[who::]` is empty — who moves now: us until they confirm")
+            if it["date_kind"] == "none" and it.get("full"):
+                warns.append("no `[due:: YYYY-MM-DD]` — the day we come back to it")
+            elif it["date_kind"] == "none":
+                warns.append("no `⏰ <YYYY-MM-DD>`, `⏰ after: <event>` or `(due: YYYY-MM-DD)` — "
+                             "or the full form, `[due:: YYYY-MM-DD]`")
             elif it["date_kind"] in ("dmy", "loose"):
                 warns.append("date not in ISO form (read as %s)" % it["due"])
         if warns:
@@ -1163,6 +1232,11 @@ def print_contract():
     print("config\tpeople-dir\tdirectory of people profiles (default: people)")
     print("config\tpending-draft-days\tunsent-draft age threshold, 0 = off (default: 3)")
     print("config\tpending-transcript-days\twindow for 'held, no transcript', 0 = off (default: 0)")
+    print("form\t- [ ] **<what>** — … [who:: <slug>] [state:: ask|sent|ack] [due:: YYYY-MM-DD] [nudges:: N] [track:: <path>]")
+    print("form\twho: who moves now — us until they confirm (ack); a profile slug, a name from comms.owners, or we")
+    print("form\ta line with [who::] is under the full contract wherever it stands; the bold is then the subject")
+    print("form\tthe old form below is read during the transition and gives an item with no state")
+    print("marker\t[due:: YYYY-MM-DD]\tthe full form's date")
     print("marker\t⏰ YYYY-MM-DD")
     print("marker\t⏰ after: <event>\tany of после|при|когда|after|when|once|upon|on")
     print("marker\t(due: YYYY-MM-DD)\tthe crystal suite's own form")
@@ -1179,6 +1253,8 @@ def print_contract():
     print("error\tno owner (declared section only)")
     print("error\tno date (declared section only)")
     print("error\tdate not in ISO form (declared section only)")
+    print("error\tfull form: no [state::], or a state other than ask, sent, ack")
+    print("error\tfull form: [nudges::] that is not a number")
 
 
 def main(argv):

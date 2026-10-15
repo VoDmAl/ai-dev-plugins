@@ -20,6 +20,38 @@ comparison, and this tool is that comparison.
 
 ## The line
 
+One line per obligation, in the full form — Dataview inline fields, so a vault
+can query them:
+
+```
+- [ ] **<what>** — <details> [who:: <slug>] [state:: ask] [due:: 2026-09-26] [nudges:: 0] [track:: tracks/x]
+```
+
+- **`who::` — who moves now.** Until the other side confirms, that is us: a
+  request becomes theirs only once they said yes. A profile slug from `people/`
+  (it groups with a wikilink to the same profile), a name from `comms.owners`,
+  or `we`. The person we wait on is named in the text.
+- **`state::`** — `ask`: not sent yet; `sent`: gone out, we wait; `ack`: they
+  confirmed, and `who::` is now them. Done is `[x]`, when the matter is done,
+  not when it was handed over. Whether a letter left is read from the letter's
+  own file (`sent:`), not from this line.
+- **`due::`** — the review date: the day we come back to it if nothing
+  happened. It stays ours after the hand-off.
+- **`nudges::`** — how many times we reminded; the report shows it from 1 up.
+- **`track::`** — where the matter lives, when the line is not in that track's
+  own file (a central ledger).
+- **Not in a table.** A cell is neither a checkbox nor a queryable field.
+
+A line that writes `[who::]` is under the full contract wherever it stands —
+who, state and date are required — and the bold that opens it is then the
+subject, not the owner.
+
+### The old form, read during the transition
+
+Lines written before the full form are read as before and give an item with no
+state. New lines are written in the full form; an old one is rewritten when it
+is next touched — the check after a write looks at new lines only.
+
 ```
 - [ ] <flag>? **<owner>** — <what, and what we do when the date arrives> ⏰ 2026-09-26
 - [ ] <flag>? **<owner>** — <what> ⏰ after: <the event that will signal>
@@ -88,7 +120,8 @@ read first. Our own actions are recoverable at any time by doing them.
 
 The same ordering is why the owner is mandatory in a waiting section and
 defaults to "us" in an action section — an action section has already said whose
-ball it is, and repeating it on every line is noise.
+ball it is, and repeating it on every line is noise. A line in the full form says
+it itself, in `who::`, and the section around it no longer decides.
 
 `--owner` reads the same way: **people first, then the names in `comms.owners`
 in the order listed, then us, then items nobody owns.** A name that stands for
@@ -143,6 +176,8 @@ half over capitalisation.
 
 * A line **inside a declared section** is under the full contract: owner and
   date are both required.
+* A line **in the full form** (`[who::]`) is under it wherever it stands, and
+  needs `state::` too.
 * **Anywhere else** in a `pending-paths` file, only a line that already carries
   a marker is an item at all, and the only violation available is a broken
   marker.
@@ -153,7 +188,7 @@ half over capitalisation.
   next column's.
 
 That is the suite's standing law — soft until named, binding once named —
-applied to a heading. Declaring `## Ожидаем ответы` is the act that makes
+applied to a heading, and in the full form to the line itself. Declaring `## Ожидаем ответы` is the act that makes
 everything under it an obligation. Without a declaration a checkbox is just a
 checkbox, and a linter that fires on every checkbox in a repository is one that
 gets switched off, which costs the real findings too.
