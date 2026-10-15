@@ -31,6 +31,11 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
       GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR 2>/dev/null || true
 
+# Nor the machine's git config: git 2.54 runs a hook declared there
+# (`hook.<name>.command`) on every commit, a fixture's included — the case is
+# in tests/gates.test.sh.
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CAVE="$REPO_ROOT/plugins/vdm/scripts/crystal-cave.sh"

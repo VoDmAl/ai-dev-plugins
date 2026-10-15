@@ -36,6 +36,12 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION \
       GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
       GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR 2>/dev/null || true
+
+# Nor the machine's git config: git 2.54 runs a hook declared there
+# (`hook.<name>.command`) on every commit, a fixture's included — the case is
+# in tests/gates.test.sh.
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+
 # The gate finds the address books, the private terms and the access layer
 # through these. Each is pinned to the fixture below, never to the owner's.
 unset VDM_INTERCOM_ROOT PII_SCAN_TERMS 2>/dev/null || true

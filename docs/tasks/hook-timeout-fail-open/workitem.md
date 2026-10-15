@@ -2,10 +2,10 @@
 title: "Блокирующий гард, отменённый по таймауту, пропускает вызов: таймауты и matcher хуков суиты"
 slug: hook-timeout-fail-open
 description: "PreToolUse-гард, отменённый по таймауту, пропускает вызов — дать блокирующим гардам запас и matcher"
-status: dormant
+status: done
 session-type: prd-prep
 created: 2026-10-01
-last-updated: 2026-10-13
+last-updated: 2026-10-15
 ---
 
 # Блокирующий гард, отменённый по таймауту, пропускает вызов: таймауты и matcher хуков суиты
@@ -28,8 +28,8 @@ Stop) при отмене просто молчат — их дефектом э
 
 ## Текущая модель
 
-**На паузе с 2026-10-13 (`dormant`).** Открыт один пункт — Sidetrack #3, без срока, его никто не ждёт; активный
-кристалл — `outgoing-ladder`, со сроком. Вернуть в `in-progress`, когда до Sidetrack #3 дойдёт очередь.
+**Закрыт 2026-10-15.** Последний пункт, Sidetrack #3, решён: ни один из 39 наборов `tests/` не читает git-конфиг
+машины, и `tests/gates-harness-isolation.test.sh` спрашивает об этом каждый файл (DL #12).
 
 Состояние на 2026-10-01, после правок (vdm 2.40.2, vdm-git 2.16.3, vdm-comms 0.16.2):
 
@@ -265,6 +265,29 @@ fail-closed-ветки держат тесты, которые берут спи
 **Implication:** executor получил замер и готовую строку `capture-exclude`; решать ему. Скил — vdm 2.46.2. «Текущая
 модель» исправлена на месте, потому что это живая часть файла, а прежнее число и ошибка записаны здесь.
 
+### #12 / 2026-10-15 / Конфиг машины не читает ни один набор; проверка — по каждому файлу
+
+**Source:** assistant
+**Basis:** observed
+**Basis-detail:** `git config --global --list --name-only` на этой машине, git 2.54.0: два хука pre-commit
+(`hook.vdm-crystal`, `hook.echelon-guard`), `core.checkstat=minimal`, `core.trustctime=false`, `core.autocrlf=input`,
+`diff.autorefreshindex=false`, `user.useconfigonly=true`; в системном конфиге — только `credential.helper`. Коммитят в
+фикстурах 12 из 39 наборов (вызовы `git … commit` вне комментариев), ещё один — через `gates.test.sh --setup-only`.
+Остальные 26 прогнаны с `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1` до правки и без него после: все зелёные,
+`hook-index-writes` с его фикстурами «stat-dirty» — 57/0. Коммитящие я не запускаю: их прогоняет pre-commit этого
+коммита, каждый изменённый набор идёт сам.
+**Context:** Sidetrack #3 ждал замера: не держатся ли фикстуры «stat-dirty» на `core.checkStat` и `core.trustctime`
+из глобального конфига.
+**Why:** не держатся: `touch -t` двигает mtime на целые секунды, а их видит и `checkStat=minimal`. Ни скрипты плагинов,
+ни наборы не читают глобальный конфиг явно — `--global` и `GIT_CONFIG` есть только в `gates.test.sh`. Строка идёт в
+каждый набор, а не только в коммитящие, по той же причине, что и очистка сессии: коммитит ли набор — факт про
+сегодня. `core.hooksPath`, который ставит `git-guard-prepare.test.sh`, хуки из конфига не выключает (Sidetrack #3,
+ответ vdx).
+**Implication:** `tests/gates-harness-isolation.test.sh` спрашивает каждый `tests/*.test.sh` о строке
+`export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1`; на копии, где строки нет в одном файле, проверка краснеет
+ровно на нём. Фикстура, коммитящая без подписи, раньше падала бы на `user.useconfigonly`, теперь git подставит
+угаданную; все 12 ставят подпись там, где заводят репозиторий, — по коду, не прогоном.
+
 ## Sidetracks
 
 ### #1 / 2026-10-01 / git-guard не видит shell-команд, пришедших не через Bash
@@ -306,7 +329,7 @@ fail-closed-ветки держат тесты, которые берут спи
 перевёл набор на пустой `GIT_CONFIG_GLOBAL` и `GIT_CONFIG_NOSYSTEM=1`. `core.checkStat` и `core.trustctime` их тестам
 не нужны: чистоту дерева они смотрят по `git status`. Это их наборы, наши фикстуры «stat-dirty» замер всё ещё ждут.
 
-**Status:** open
+**Status:** resolved — 2026-10-15: все 39 наборов не читают конфиг машины, проверка по каждому файлу (DL #12).
 
 ## Next actions
 
@@ -322,7 +345,8 @@ fail-closed-ветки держат тесты, которые берут спи
       — 2026-10-08: гарды 0 отмен под 60 с, дверей 0 новых (DL #8); Stop-хук в хранилище — DL #9
 - [x] Stop-хук: один обход по общему правилу `vdm_crystal_walk_prunes`, `.stversions` в шумовых именах; красные
       тесты `tests/crystal-stop-reminder.test.sh` (DL #9) — vdm 2.46.1, vdm-git 2.19.1; 14/0, против HEAD красные пять
-- [ ] Sidetrack #3: изолировать от конфига машины остальные наборы, коммитящие в фикстурах — после замера, какие от него зависят
+- [x] Sidetrack #3: изолировать от конфига машины остальные наборы, коммитящие в фикстурах — после замера, какие от него зависят
+      — 2026-10-15: замер — никто не зависит; строка во всех 39 наборах, проверка в `gates-harness-isolation` (DL #12)
 - [x] Outcome to `executor`: перемер — `git-guard-hook-timeouts-remeasure` (2026-10-09, коммит `ed02a04`), с
       замером его Stop-хука и строкой `capture-exclude` (DL #11)
 - [x] vdx: глобальные хуки машины идут в фикстурах тестов, и копия гейта в них несла дефект —

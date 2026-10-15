@@ -62,6 +62,11 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
       GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR 2>/dev/null || true
 
+# Nor the machine's git config: git 2.54 runs a hook declared there
+# (`hook.<name>.command`) on every commit, a fixture's included — the case is
+# in tests/gates.test.sh.
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HARNESS="$REPO_ROOT/tests/gates.test.sh"
 
@@ -252,6 +257,37 @@ for f in "$REPO_ROOT"/tests/*.test.sh; do
   else
     bad "$name scrubs the session a commit hands its hooks" \
         "missing: $missing — the block right after \`set -u\`, see tests/gates.test.sh"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+printf '\nevery test harness reads no machine git config\n'
+# ---------------------------------------------------------------------------
+# The scrub keeps the caller's session out; the machine's config comes in by
+# another door. Git 2.54 runs hooks declared in config (`hook.<name>.command`),
+# and from 2026-10-08 two global pre-commit hooks ran inside every fixture
+# commit of every suite — one of them refused tests/gates.test.sh's baseline
+# (DL #10, docs/tasks/hook-timeout-fail-open/workitem.md). That suite was
+# isolated and the others that commit were not; `core.hooksPath`, which some of
+# them set, does not switch config hooks off. Asked of every file for the
+# scrub's reason: whether a suite commits is a fact about today.
+CONFIG_LINE='export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1'
+reads_machine_config() { ! grep -qxF -- "$CONFIG_LINE" "$1"; }
+
+printf '#!/bin/bash\nset -u\n# %s\n' "$CONFIG_LINE" > "$FX"
+if reads_machine_config "$FX"; then
+  ok "RED: a file that only mentions the line is caught"
+else
+  bad "RED: a file that only mentions the line is caught"
+fi
+
+for f in "$REPO_ROOT"/tests/*.test.sh; do
+  name=$(basename "$f")
+  if reads_machine_config "$f"; then
+    bad "$name reads no machine git config" \
+        "missing: \`$CONFIG_LINE\` — after the scrub, see tests/gates.test.sh"
+  else
+    ok "$name reads no machine git config"
   fi
 done
 
