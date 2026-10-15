@@ -134,19 +134,19 @@ s = open(p, encoding="utf-8").read().replace("## Текущая модель\n\n
 s = s.replace("status: done", "status: in-progress")
 open(p, "w", encoding="utf-8").write(s)
 PY
-OUT=$(cd "$REAL/proj" && payload "$WI_LINK" "$NONCANON" | bash "$LINT" --hook 2>&1); rc=$?
+OUT=$(cd "$REAL/proj" && payload "$WI_LINK" "$NONCANON" | bash "$LINT" --pre-hook 2>&1); rc=$?
 expect_exit "crystal-lint: off-canon workitem ⇒ exit 2" 2 "$rc"
 
 echo ""
 echo "== the same path, given in its real form — unchanged behaviour =="
 
-OUT=$(cd "$REAL/proj" && payload "$WI_REAL" "$NONCANON" | bash "$LINT" --hook 2>&1); rc=$?
+OUT=$(cd "$REAL/proj" && payload "$WI_REAL" "$NONCANON" | bash "$LINT" --pre-hook 2>&1); rc=$?
 expect_exit "crystal-lint: real path still in scope ⇒ exit 2" 2 "$rc"
 
 echo ""
 echo "== scope is not blindness: out-of-scope stays out, symlink or not =="
 
-OUT=$(cd "$REAL/proj" && payload "$LINK/src/app.py" "-" | bash "$LINT" --hook 2>&1); rc=$?
+OUT=$(cd "$REAL/proj" && payload "$LINK/src/app.py" "-" | bash "$LINT" --pre-hook 2>&1); rc=$?
 expect_exit "crystal-lint: source file through the symlink ⇒ exit 0" 0 "$rc"
 
 OUT=$(cd "$REAL/proj" && payload "$LINK/src/app.py" "-" | bash "$GUARD" 2>&1); rc=$?

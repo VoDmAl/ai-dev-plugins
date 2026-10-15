@@ -24,6 +24,7 @@
 #   Done: N crystals (use --all)
 #   ⚠ Non-canonical statuses: N workitems.    [only if drift detected]
 #   ⚠ Off-canon shape: N workitems.           [only if any]
+#   ℹ Past log entries off canon: N workitems. [only if any]
 #   ℹ Legacy schema: N workitems.             [only if any]
 #   Legend: ● active · ⏸ paused · ○ ready · ◦ idea
 #
@@ -84,7 +85,9 @@ SINGLETON_MODE=$(derive_singleton_mode)
 #   $8  updated       raw last-updated for display
 #   $9  description   optional one-liner for cave/base overview
 #   $10 icon          ●/⏸/○/◦/✓/!
-#   $11 canon         ""|off-canon|legacy — STRUCTURAL canon, from crystal-lint
+#   $11 canon         ""|off-canon|past-log|legacy — from crystal-lint: off-canon
+#                     is the structure, owed by the next edit; past-log is only
+#                     past Decision Log entries or promises, owed by none
 #   $12 overdue       count of `- [ ]` items whose due date (`(due:)`, `[due::]`, `⏰`) has passed
 #
 # Structural canon is a SEPARATE axis from the status taxonomy, and the two are
@@ -167,7 +170,8 @@ META=$(build_meta | _LINT="$LINT_SUMMARY" _DUES="$DUES" awk -F'\t' '
     for (i = 1; i <= n; i++) {
       split(L[i], c, "\t")
       if (c[1] == "" || (c[1] in canon)) continue
-      canon[c[1]] = (c[2] == "violations") ? "off-canon" : ((c[2] == "legacy") ? "legacy" : "")
+      canon[c[1]] = (c[2] == "violations") ? "off-canon" : \
+                    ((c[2] == "log-debt") ? "past-log" : ((c[2] == "legacy") ? "legacy" : ""))
     }
     n = split(ENVIRON["_DUES"], D, "\n")
     for (i = 1; i <= n; i++) { split(D[i], c, "\t"); if (c[1] != "") od[c[1]] = c[2] + 0 }
@@ -198,6 +202,7 @@ count_canon() {
 }
 N_OFFCANON=$(count_canon off-canon); N_OFFCANON=${N_OFFCANON:-0}
 N_LEGACY=$(count_canon legacy);      N_LEGACY=${N_LEGACY:-0}
+N_PASTLOG=$(count_canon past-log);   N_PASTLOG=${N_PASTLOG:-0}
 
 # ----------------------------------------------------------------------------
 # Header
@@ -340,6 +345,7 @@ END {
     desc_suffix = (desc != "") ? "  — \"" desc "\"" : ""
     if (overdue > 0)            desc_suffix = desc_suffix "  ⏰ " overdue " overdue"
     if (canon == "off-canon")   desc_suffix = desc_suffix "  ⚠ off-canon"
+    else if (canon == "past-log") desc_suffix = desc_suffix "  ℹ past log"
     else if (canon == "legacy") desc_suffix = desc_suffix "  ℹ legacy"
     if (typew == 0)
       printf "  %s %s   %s%s\n", icon, pad(short, maxw), updated, desc_suffix
@@ -361,9 +367,16 @@ if [ "$N_NONCANON" -gt 0 ]; then
   printf '\n⚠ Non-canonical statuses: %d workitems. The assistant will offer remap targets.\n' "$N_NONCANON"
 fi
 
-# Structural canon — a separate axis from status, so a separate line.
+# Structural canon — a separate axis from status, so a separate line. And two
+# lines, not one: what blocks and what is only shown are different to act on.
+# The canon gate stops an edit that leaves the structure off, so each of these
+# owes it at its next edit; a past Decision Log entry is owed by no edit — the
+# log is append-only — and is listed so the debt stays visible, nothing more.
 if [ "$N_OFFCANON" -gt 0 ]; then
-  printf '\n⚠ Off-canon shape: %d workitems. Details: crystal-lint.sh --all\n' "$N_OFFCANON"
+  printf '\n⚠ Off-canon shape: %d workitems — the next edit of each owes the structure. Details: crystal-lint.sh --all\n' "$N_OFFCANON"
+fi
+if [ "$N_PASTLOG" -gt 0 ]; then
+  printf '\nℹ Past log entries off canon: %d workitems — owed by no edit, the log is append-only. Details: crystal-lint.sh --all\n' "$N_PASTLOG"
 fi
 
 # Overdue promises — a third axis again, and the one with no gate behind it: a

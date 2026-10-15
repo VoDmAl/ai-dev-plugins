@@ -46,6 +46,11 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-completion-guard.sh\"",
             "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh\" --pre-hook",
+            "timeout": 60
           }
         ]
       }

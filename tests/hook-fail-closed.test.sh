@@ -171,9 +171,11 @@ def write(path, content):
 put("p-done.json", write(wi, src.replace("status: in-progress", "status: done")))
 # out of scope for the completion gate: same workitem, no terminal status
 put("p-inprogress.json", write(wi, src))
-# in scope for the canon linter: a workitem write (file on disk is canonical
+# in scope for the canon gate: a workitem write (file on disk is canonical
 # here; the degraded runs never get far enough to lint it)
 put("p-workitem.json", write(wi, src))
+# the canon gate's real verdict: the same workitem losing a required section
+put("p-offcanon.json", write(wi, src.replace("## Текущая модель", "## Something else")))
 # out of scope for both crystal hooks: a source file
 put("p-src.json", write(os.path.join(fx, "src/app.py"), "print('hi')\n"))
 # in scope for orphan-guard
@@ -227,6 +229,9 @@ run full p-inprogress.json "bash '$GUARD'"; expect_exit "completion-guard silent
 run full p-llm.json "bash '$ORPHAN'"; expect_exit "orphan-guard blocks a real orphan" 2 "$?"
 run full p-sh.json "bash '$SHELLSYN' --hook"; expect_exit "shell-syntax blocks a script that does not parse" 2 "$?"
 expect_says "  and it is the real verdict" "$OUT" "does not parse"
+run full p-offcanon.json "bash '$LINT' --pre-hook"; expect_exit "crystal-lint gate blocks a workitem off canon" 2 "$?"
+expect_says "  and names what is missing" "$OUT" "## Текущая модель"
+run full p-workitem.json "bash '$LINT' --pre-hook"; expect_exit "crystal-lint gate passes a canonical write" 0 "$?"
 for t in $SHELL_TOOLS; do
   run full "p-commit-$t.json" "bash '$GITGUARD'"; expect_exit "git-guard blocks a commit via $t" 2 "$?"
 done
@@ -242,9 +247,9 @@ for e in nopy crashpy; do
   expect_says "completion-guard: says NOT CHECKED" "$OUT" "NOT CHECKED"
   expect_says "completion-guard: names itself" "$OUT" "crystal-completion-guard"
 
-  run "$e" p-workitem.json "bash '$LINT' --hook"
-  expect_exit "crystal-lint: workitem write ⇒ exit 2" 2 "$?"
-  expect_says "crystal-lint: says NOT CHECKED" "$OUT" "NOT CHECKED"
+  run "$e" p-workitem.json "bash '$LINT' --pre-hook"
+  expect_exit "crystal-lint gate: workitem write ⇒ exit 2" 2 "$?"
+  expect_says "crystal-lint gate: says NOT CHECKED" "$OUT" "NOT CHECKED"
 
   run "$e" p-llm.json "bash '$ORPHAN'"
   expect_exit "orphan-guard: docs/llm write ⇒ exit 2 (blocked either way)" 2 "$?"
@@ -273,6 +278,9 @@ for e in nopy crashpy; do
   run "$e" p-src.json "bash '$LINT' --hook"
   expect_exit "crystal-lint: source-file write ⇒ exit 0" 0 "$?"
 
+  run "$e" p-src.json "bash '$LINT' --pre-hook"
+  expect_exit "crystal-lint gate: source-file write ⇒ exit 0" 0 "$?"
+
   run "$e" p-readme.json "bash '$ORPHAN'"
   expect_exit "orphan-guard: ordinary markdown ⇒ exit 0" 0 "$?"
 
@@ -289,6 +297,18 @@ run nojq p-done.json "bash '$GUARD'"; expect_exit "completion-guard still blocks
 expect_says "  and it is the real verdict, not NOT CHECKED" "$OUT" "crystal-cut"
 run nojq p-llm.json "bash '$ORPHAN'"; expect_exit "orphan-guard still blocks without jq" 2 "$?"
 run nojq p-src.json "bash '$GUARD'"; expect_exit "completion-guard still silent without jq" 0 "$?"
+run nojq p-offcanon.json "bash '$LINT' --pre-hook"; expect_exit "crystal-lint gate still blocks without jq" 2 "$?"
+expect_says "  and it is the real verdict" "$OUT" "## Текущая модель"
+
+echo ""
+echo "== the sidetrack check on PostToolUse needs no python3: jq reads the payload =="
+# Since the canon moved to the PreToolUse gate, --hook checks only for new
+# sidetracks without a checkbox, and that check is shell. Where python3 is
+# missing, jq reads the payload and the verdict is the real one; where python3
+# crashes, the reader that tries it first gets nothing, and that is NOT CHECKED.
+run nopy p-workitem.json "bash '$LINT' --hook"; expect_exit "crystal-lint --hook: real verdict without python3" 0 "$?"
+run crashpy p-workitem.json "bash '$LINT' --hook"; expect_exit "crystal-lint --hook: crashing python3 ⇒ exit 2" 2 "$?"
+expect_says "  and says NOT CHECKED" "$OUT" "NOT CHECKED"
 
 printf '\nhook-fail-closed: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

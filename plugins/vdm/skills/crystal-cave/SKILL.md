@@ -276,13 +276,18 @@ different questions about different things:
 | Line | Axis | What is wrong | Who decides the verdict |
 |------|------|---------------|-------------------------|
 | `⚠ Non-canonical statuses: N` | **status taxonomy** | the `status:` value is outside the 4 tiers | `lib/crystal-path.sh` → `derive_status_tier()` |
-| `⚠ Off-canon shape: N` | **structure** | required sections / frontmatter keys / DL fields missing | `crystal-lint.sh --summary` |
+| `⚠ Off-canon shape: N` | **structure** | required sections / frontmatter keys missing — the next edit of the file owes them, the canon gate refuses it otherwise | `crystal-lint.sh --summary` |
+| `ℹ Past log entries off canon: N` | Decision Log (informational) | only past entries (or promises) lack a field or a valid `Basis` — owed by no edit, the log is append-only | `crystal-lint.sh --summary` |
 | `ℹ Legacy schema: N` | structure (informational) | imported by `crystal-migrate`, shape never asserted | `crystal-schema: legacy` in frontmatter |
 
 A workitem can have a flawless `status:` and a broken shape, or the
 reverse — so a single merged warning would leave the reader unable to
 tell which thing to fix. Rows carry the same distinction inline
-(`⚠ off-canon`, `ℹ legacy`).
+(`⚠ off-canon`, `ℹ past log`, `ℹ legacy`).
+
+`ℹ Past log entries off canon` is debt kept visible, not a task. Do not
+offer to fill in a `Basis` for a past entry: nobody can say now what a
+months-old decision rested on, and an invented one is worse than none.
 
 `ℹ Legacy schema` is **not** a defect report and needs no triage. It marks
 files that `crystal-migrate` moved without rewriting their bodies into
@@ -294,7 +299,7 @@ drop the `crystal-schema:` key.
 
 For `⚠ Off-canon shape`, run
 `"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh" --all` to see what each file
-is missing. Never guess the list: canon is derived from the template and is
+is missing (it lists the past entries too; only the structure is owed). Never guess the list: canon is derived from the template and is
 the linter's to report.
 
 ### Step 3: Detail / Sidetracks → assistant-rendered

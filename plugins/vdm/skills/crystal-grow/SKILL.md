@@ -153,9 +153,29 @@ Decision Log written as prose. Signals (1)–(4) were all silent, correctly — 
 session genuinely was not planning work. Only the path was evidence, and nothing
 was watching it.
 
-A `PostToolUse` hook (`crystal-lint.sh --hook`) now catches this deterministically
-after the fact. Treat that as the backstop, not the mechanism: getting it right
-on the first write costs nothing, while being corrected costs a rewrite.
+A `PreToolUse` gate (`crystal-lint.sh --pre-hook`) now stops this write: the
+edit does not happen until the file has the canonical shape. Treat that as the
+backstop, not the mechanism: getting it right on the first write costs nothing,
+while being refused costs a second attempt.
+
+**What the gate asks of an edit.** It compares the file before and after:
+
+- **The structure, in full, at every edit** — required sections and frontmatter
+  keys. An empty section is enough: adding one asserts nothing. A workitem that
+  lacks one owes it at its next edit, whatever that edit is about, so add the
+  section in the same edit.
+- **In the Decision Log, only the entries the edit adds** carry every field and a
+  `Basis` from the taxonomy. Entries already in the file are not checked: the log
+  is append-only, and writing a `Basis` into a past entry would be inventing it.
+  An entry is known by its number, so fixing a typo in a past heading is not a
+  new entry. A new entry under a host's own numbering (`### D-12 / …`) is written
+  in the canonical form all the same.
+- **A file that did not exist owes everything**, whatever its status — a
+  workitem born `done` has no record to protect.
+
+`crystal-schema: legacy` still exempts the whole file; it is the mark
+`/vdm:crystal-migrate` puts on an import. The same comparison runs at commit time
+against `HEAD` (`crystal-lint.sh --staged`) where a project wires it.
 
 ### Why "forced" matters
 

@@ -232,7 +232,10 @@ them):
    picks the nearest file, which in a freshly-migrated tree is almost always an
    import. The marker makes the population machine-separable and tells
    `crystal-lint` to emit a single "not canon, don't copy this" line instead of
-   a violation list it would repeat forever.
+   a violation list it would repeat forever. Since vdm 2.49.0 the canon gate
+   holds this on its own: the edit that gives an import its frontmatter is
+   refused while the file stays off canon, unless the same edit stamps the
+   marker.
 
    Drop the marker only when a file has been genuinely brought to canon —
    verify with `"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh" <file>` and remove

@@ -25,7 +25,8 @@
 #   crystal-lint.sh --staged               lint the STAGED version of staged workitems
 #   crystal-lint.sh --print-canon          print the derived canon
 #   [--summary]                            machine-readable: path<TAB>label<TAB>n
-#   crystal-lint.sh --hook                 read a hook JSON payload on stdin
+#   crystal-lint.sh --hook                 PostToolUse payload on stdin: new sidetracks without a checkbox
+#   crystal-lint.sh --pre-hook             PreToolUse payload on stdin: the canon gate — blocks the edit
 #   [--quiet]                              suppress per-file OK lines
 #   [--project-root <path>]                root for resolving relative paths
 #
@@ -47,6 +48,19 @@
 set -u
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Both hooks run on every Write and Edit in every project, and nearly none of
+# those is a workitem. Drop them before the libraries load and the crystal roots
+# are walked, which is the costly part: a workitem is a `.md` written by one of
+# three tools. The full scope test comes later; this one only has to be wider.
+case " $* " in
+  *" --hook "*|*" --pre-hook "*)
+    payload=$(cat)
+    [ -z "$payload" ] && exit 0
+    printf '%s' "$payload" | grep -qE '"tool_name"[[:space:]]*:[[:space:]]*"(Write|Edit|MultiEdit)"' 2>/dev/null || exit 0
+    printf '%s' "$payload" | grep -qE '"file_path"[[:space:]]*:[[:space:]]*"[^"]*\.md"' 2>/dev/null || exit 0
+    ;;
+esac
 
 # shellcheck disable=SC1091
 . "$SELF_DIR/../lib/config-read.sh" 2>/dev/null || true
@@ -85,6 +99,7 @@ while [ $# -gt 0 ]; do
     --staged)       mode="staged" ;;
     --print-canon)  mode="canon" ;;
     --hook)         mode="hook" ;;
+    --pre-hook)     mode="pre-hook" ;;
     --quiet)        quiet="--quiet" ;;
     --summary)      summary="--summary" ;;
     --project-root) shift; project_root="${1:-}" ;;
@@ -128,12 +143,17 @@ run_linter() {
     python3 "$LINTER" ${quiet:+$quiet} ${summary:+$summary} "$@"
 }
 
-# --- --hook: PostToolUse payload on stdin ------------------------------------
-# Informational, never blocking the write itself (PostToolUse fires after the
-# edit landed). exit 2 routes stderr back to the assistant as feedback — which
-# is the whole point: the correction arrives within one tool call, whether or
-# not the skill was ever invoked. THIS is the trigger on the ACTION rather than
-# on the shape of the session.
+# --- --pre-hook / --hook: the two hook surfaces --------------------------------
+# --pre-hook is the canon gate, on PreToolUse: exit 2 there stops the edit. It
+# was on PostToolUse until 2026-10-15, where exit 2 only reports an edit that
+# has already landed — 87 Decision Log entries written off canon after
+# 2026-08-31 (canon-gate-scope DL #5). It blocks only what the edit may not
+# leave behind: the file's structure in full, and in the Decision Log and the
+# promises only what is new (DL #2, #6).
+#
+# --hook stays on PostToolUse for one thing: an open sidetrack this change
+# introduced without a checkbox. That is advice, and it arrives within one tool
+# call, whether or not the skill was ever invoked.
 # is_workitem_path <path> <root>
 #
 # True only for the two shapes `find_workitems` enumerates:
@@ -167,10 +187,24 @@ canonicalize_path() {
   printf '%s/%s' "$real" "$base"
 }
 
+# real_path_of <path> — canonicalize_path for a path whose directories may not
+# exist yet: the first workitem's crystal folder is created by the write itself.
+# The nearest existing ancestor is resolved, the rest is appended as it is.
+real_path_of() {
+  local p="$1" tail=""
+  while [ ! -d "$p" ] && [ "$p" != "/" ] && [ "$p" != "." ]; do
+    tail="/$(basename "$p")$tail"
+    p=$(dirname "$p")
+  done
+  printf '%s%s' "$(cd "$p" 2>/dev/null && pwd -P)" "$tail"
+}
+
 is_workitem_path() {
   local path="$1" root="$2" rel
   path=$(canonicalize_path "$path")
-  root=$(cd "$root" 2>/dev/null && pwd -P) || root="$root"
+  # `|| root="$2"`, not `|| root="$root"`: the failed `$(…)` has already
+  # emptied `$root`. A root that is not on disk yet is the first workitem's.
+  root=$(cd "$root" 2>/dev/null && pwd -P) || root="$2"
   case "$path" in
     "$root"/*) rel="${path#"$root"/}" ;;
     *) return 1 ;;
@@ -182,6 +216,33 @@ is_workitem_path() {
     *.md)           return 0 ;;   # <slug>.md, flat legacy
     *)              return 1 ;;
   esac
+}
+
+# first_root_for <path> — the tasks/ directory that writing <path> would turn
+# into a crystal root. Discovery finds a root by the files in it, so the first
+# workitem of a repository is written while there is no root yet. On PostToolUse
+# that never mattered — the file was there by then; on PreToolUse the first
+# workitem would pass unchecked. Auto-discovery only: with roots in the config,
+# the config names them, and this does not guess.
+first_root_for() {
+  local path="$1" top rel cand
+  [ -z "$(vdm_config_read_array crystal paths 2>/dev/null)" ] || return 0
+  [ "$(vdm_config_read crystal path __VDM_UNSET__ 2>/dev/null)" = "__VDM_UNSET__" ] || return 0
+  case "$path" in
+    */tasks/*/workitem.md) cand=$(dirname "$(dirname "$path")") ;;
+    */tasks/*.md)          cand=$(dirname "$path") ;;
+    *) return 0 ;;
+  esac
+  [ "$(basename "$cand")" = "tasks" ] || return 0
+  top=$(git rev-parse --show-toplevel 2>/dev/null) || top=$(pwd -P)
+  case "$cand" in
+    "$top"/*) rel="${cand#"$top"/}" ;;
+    *) return 0 ;;
+  esac
+  case "/$rel/" in
+    */.*|*/node_modules/*|*/vendor/*) return 0 ;;
+  esac
+  printf '%s\n' "$cand"
 }
 
 # orphans_at_head <workitem> — the orphan sidetracks of the version committed at
@@ -217,9 +278,7 @@ $now
 EOF
 }
 
-if [ "$mode" = "hook" ]; then
-  payload=$(cat)
-  [ -z "$payload" ] && exit 0
+if [ "$mode" = "hook" ] || [ "$mode" = "pre-hook" ]; then
 
   # Dependency-free scope prefilter — the answer is available precisely when
   # the linter is not. See lib/gate-guard.sh for why an unrunnable check
@@ -280,9 +339,6 @@ if cur is not None:
   file_path=$(read_field "tool_input.file_path")
   [ -z "$file_path" ] && exit 0
 
-  # The linter itself is python, so jq alone parses the payload but cannot lint.
-  command -v python3 >/dev/null 2>&1 || lint_unverified "python3 is not on PATH"
-
   # Only workitems, and only in one of the two canonical shapes — a stray .md
   # outside a crystal root, or a reference artifact inside one, is not linted.
   under_root=""
@@ -292,17 +348,53 @@ if cur is not None:
       if is_workitem_path "$file_path" "$r"; then under_root="yes"; break; fi
     done < <(resolve_crystal_roots)
   fi
+  if [ -z "$under_root" ] && [ "$mode" = "pre-hook" ] && [ ! -e "$file_path" ]; then
+    p=$(real_path_of "$file_path")
+    r=$(first_root_for "$p")
+    [ -n "$r" ] && is_workitem_path "$p" "$r" && under_root="yes"
+  fi
   [ -z "$under_root" ] && exit 0
-  [ -f "$file_path" ] || exit 0
 
-  out=$(run_linter "$file_path" 2>&1 >/dev/null)
-  rc=$?
-  # 0 clean / 1 violations. Anything else means the linter never reached a
-  # verdict, which must not be reported as "clean".
-  case "$rc" in
-    0|1) ;;
-    *)   lint_unverified "the linter exited $rc without reaching a verdict" ;;
-  esac
+  if [ "$mode" = "pre-hook" ]; then
+    # The linter itself is python, so jq alone parses the payload but cannot lint.
+    command -v python3 >/dev/null 2>&1 || lint_unverified "python3 is not on PATH"
+    out=$(printf '%s' "$payload" | run_linter --pre-tool-use "$file_path" 2>&1 >/dev/null)
+    rc=$?
+    # 0 clean / 1 findings. A 1 that names no finding is a crash that happened
+    # to exit 1, and anything else is no verdict; neither may read as clean,
+    # and neither may read as a finding.
+    case "$rc" in
+      0) exit 0 ;;
+      1) printf '%s\n' "$out" | grep -q '^  ✗ ' \
+           || lint_unverified "the linter exited 1 without naming a finding" ;;
+      *) lint_unverified "the linter exited $rc without reaching a verdict" ;;
+    esac
+    printf '%s\n' "$out" >&2
+    cat >&2 <<'EOF'
+
+[crystal-lint] Blocked: after this edit the workitem would be off canon. The
+edit did not happen. What is owed:
+
+  - the STRUCTURE in full, at every edit: required sections and frontmatter
+    keys. An empty section is enough — adding one asserts nothing. Add them in
+    this same edit (or one before it) and repeat the change.
+  - in the Decision Log, only the entries this edit ADDS carry every field
+    and a `Basis` from the taxonomy. Entries already in the file are not
+    checked: the log is append-only, and writing a Basis into someone's past
+    entry would be inventing it.
+
+Print the canon:
+  "${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh" --print-canon
+
+Do NOT infer a workitem's shape from a neighbouring file: a repo may hold files
+imported by /vdm:crystal-migrate and files written under an older canon. The
+only sources are the template and /vdm:crystal-grow. Extra sections and keys
+are always fine.
+EOF
+    exit 2
+  fi
+
+  [ -f "$file_path" ] || exit 0
 
   # Open sidetracks without a checkbox — only the ones THIS change introduced.
   # The rule is crystal-multi-root DL #14, and until now it was enforced at one
@@ -321,25 +413,8 @@ if cur is not None:
     fi
   fi
 
-  [ "$rc" -eq 0 ] && [ -z "$orphans_new" ] && exit 0
+  [ -z "$orphans_new" ] && exit 0
 
-  if [ "$rc" -eq 1 ]; then
-    printf '%s\n' "$out" >&2
-    cat >&2 <<'EOF'
-
-[crystal-lint] This file is a workitem, so it owes the canonical shape. The
-canon is derived from the template — print it with:
-  "${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh" --print-canon
-
-Do NOT infer a workitem's shape from a neighbouring file: a repo may hold
-files imported by /vdm:crystal-migrate from a pre-crystal era, and files
-written under an older canon. Neither is authoritative. The only sources of
-truth are the template and /vdm:crystal-grow.
-
-Canon is a FLOOR: extra sections and extra frontmatter keys are fine — only
-the missing ones above are the problem. Fix them before this turn ends.
-EOF
-  fi
   if [ -n "$orphans_new" ]; then
     first_n=$(printf '%s\n' "$orphans_new" | head -n 1)
     first_n="${first_n%%.*}"
@@ -415,7 +490,16 @@ if [ "$mode" = "staged" ]; then
     target="$holder/$(basename "$f")"
     printf '%s\n' "$blob" >"$target"
 
-    out=$(run_linter "$target" 2>&1)
+    # The state before is the blob at HEAD — the same comparison the PreToolUse
+    # gate makes against the disk (canon-gate-scope DL #7). A file HEAD does not
+    # have is new, and then everything in it is checked, whatever its status.
+    before=""
+    if git cat-file -e "HEAD:$f" 2>/dev/null; then
+      before="$holder/before"
+      git show "HEAD:$f" >"$before" 2>/dev/null || before=""
+    fi
+
+    out=$(run_linter --against "$before" "$target" 2>&1)
     lrc=$?
     if [ "$lrc" -ne 0 ]; then
       rc=1
@@ -437,6 +521,8 @@ crystal-canon: 🚨 a staged workitem does not match the canonical shape.
   Print the canon:  bash plugins/vdm/scripts/crystal-lint.sh --print-canon
   The canon is derived from plugins/vdm/templates/workitem-template.md.
   Only MISSING items are reported — extra sections and keys are always legal.
+  Compared with HEAD: the structure is owed in full, Decision Log entries and
+  promises only where this commit adds them. A file new to HEAD owes all of it.
 
   This gate reads the STAGED content, so fix the file AND re-stage it.
 EOF

@@ -36,7 +36,13 @@ Env contract (all optional except CRYSTAL_TEMPLATE):
   CRYSTAL_CANONICAL    comma-separated canonical statuses      (default: the 9 canonical ones)
   CRYSTAL_ALIASES      comma-separated `from=to` status aliases
 
-Exit: 0 = clean, 1 = violations found, 2 = usage error.
+Exit: 0 = clean, 1 = violations found, 2 = usage error, 3 = no verdict.
+
+Two readings of one file (canon-gate-scope). The plain one reports everything
+off canon — the debt, for `--all`, `crystal-cave` and a person. The gate
+(`--pre-tool-use`, `--against`) compares the file before and after an edit and
+reports only what the edit may not leave behind: the structure in full, and in
+the Decision Log and the promises only what is new. See `blocking()`.
 """
 
 import os
@@ -256,32 +262,57 @@ def declares_itself_a_workitem(path):
     return os.path.basename(path) == "workitem.md"
 
 
-def lint(path, text, canon, terminal, canonical, aliases):
-    """Return (status_label, [problem strings])."""
+# What a finding belongs to — the line the blocking gate draws (canon-gate-scope
+# DL #2, #6). STRUCTURE is the file's shape: sections, frontmatter keys, the
+# status, a log with no entries. Supplying it asserts nothing, so it is owed in
+# full at every edit. ENTRY is anything inside a Decision Log entry — heading,
+# fields, the Basis value — and DUE is a malformed date in a promise. Fixing
+# either in a past entry or someone else's item means writing a claim nobody
+# can stand behind, and the log is append-only besides, so the gate checks them
+# only where they are new.
+STRUCTURE, ENTRY, DUE = "structure", "entry", "due"
+DUE_HINT = "malformed `due:` marker(s) — expected `(due: YYYY-MM-DD)` or `[due:: YYYY-MM-DD]`:\n    %s"
+
+
+def findings(path, text, canon, terminal, canonical, aliases, history=True):
+    """Return (status_label, [(scope, key, message)]).
+
+    `key` says which part of the file a finding is about: None for STRUCTURE;
+    for ENTRY, ("n", number, heading) when the heading carries `#N`, else
+    ("h", heading); for DUE, the list of malformed items.
+
+    history=False: the file has no earlier state, so a terminal status exempts
+    nothing — a workitem born `done` has no record to protect (DL #7).
+    """
     fm, body = split_frontmatter(text)
-    problems = []
+    out = []
     named_workitem = declares_itself_a_workitem(path)
+
+    def structure(message):
+        out.append((STRUCTURE, None, message))
 
     if not fm:
         if not named_workitem:
             return "skipped-artifact", []
-        return "checked", ["no YAML frontmatter — not a workitem shape at all"]
+        structure("no YAML frontmatter — not a workitem shape at all")
+        return "checked", out
 
     raw_status = frontmatter_value(fm, "status")
     if raw_status is None:
         if not named_workitem:
             return "skipped-artifact", []
-        return "checked", ["frontmatter has no `status:` key"]
+        structure("frontmatter has no `status:` key")
+        return "checked", out
     status = aliases.get(raw_status, raw_status)
 
-    if status in terminal:
+    if status in terminal and history:
         return "skipped-terminal", []
 
     if frontmatter_value(fm, "crystal-schema") == "legacy":
         return "legacy", []
 
     if status not in canonical:
-        problems.append(
+        structure(
             "`status: %s` is not in the canonical taxonomy (%s)"
             % (raw_status, ", ".join(sorted(canonical)))
         )
@@ -290,13 +321,13 @@ def lint(path, text, canon, terminal, canonical, aliases):
     present_keys = frontmatter_keys(fm)
     missing_keys = [k for k in canon["fm_keys"] if k not in present_keys]
     if missing_keys:
-        problems.append("frontmatter missing: %s" % ", ".join(missing_keys))
+        structure("frontmatter missing: %s" % ", ".join(missing_keys))
 
     # --- sections (floor: missing only) -------------------------------------
     present = [text_ for text_, _ in headings(body)]
     missing = [s for s in canon["sections"] if s not in present]
     if missing:
-        problems.append(
+        structure(
             "missing required section(s): %s"
             % ", ".join("## " + s for s in missing)
         )
@@ -305,13 +336,15 @@ def lint(path, text, canon, terminal, canonical, aliases):
     if "Decision Log" in present:
         entries = dl_entries(body)
         if not entries:
-            problems.append("`## Decision Log` present but contains no `### #N / …` entries")
+            structure("`## Decision Log` present but contains no `### #N / …` entries")
         for lineno, heading, entry_body in entries:
             label = heading.strip()
+            num = DL_HEAD_RE.match(heading)
+            key = ("n", num.group(1), label) if num else ("h", label)
             if not DL_HEAD_STRICT_RE.match(heading):
-                problems.append(
+                out.append((ENTRY, key,
                     "DL entry heading is not `### #N / YYYY-MM-DD / title`: %r" % label
-                )
+                ))
                 continue
             fields = {}
             for line in entry_body:
@@ -320,27 +353,115 @@ def lint(path, text, canon, terminal, canonical, aliases):
                     fields[m.group(1).strip()] = m.group(2).strip()
             absent = [f for f in canon["dl_fields"] if f not in fields]
             if absent:
-                problems.append(
+                out.append((ENTRY, key,
                     "DL entry %s missing field(s): %s"
                     % (label.replace("### ", ""), ", ".join(absent))
-                )
+                ))
             basis = fields.get("Basis")
             allowed = canon["basis_values"]
             if basis and allowed and basis not in allowed:
-                problems.append(
+                out.append((ENTRY, key,
                     "DL entry %s has `Basis: %s` — allowed: %s"
                     % (label.replace("### ", ""), basis, ", ".join(allowed))
-                )
+                ))
 
     # --- due markers (floor: absent is legal, malformed is not) -------------
     bad_due = malformed_due(body)
     if bad_due:
-        problems.append(
-            "malformed `due:` marker(s) — expected `(due: YYYY-MM-DD)` or `[due:: YYYY-MM-DD]`:\n    %s"
-            % "\n    ".join(bad_due[:5])
-        )
+        out.append((DUE, bad_due, DUE_HINT % "\n    ".join(bad_due[:5])))
 
-    return "checked", problems
+    return "checked", out
+
+
+def lint(path, text, canon, terminal, canonical, aliases):
+    """Return (status_label, [problem strings]) — everything off canon."""
+    label, found = findings(path, text, canon, terminal, canonical, aliases)
+    return label, [message for _, _, message in found]
+
+
+def _entry_identities(text):
+    """(Counter of entry numbers, set of heading lines) under ## Decision Log."""
+    from collections import Counter
+    numbers, heads = Counter(), set()
+    for _, heading, _ in dl_entries(split_frontmatter(text)[1]):
+        heads.add(heading.strip())
+        m = DL_HEAD_RE.match(heading)
+        if m:
+            numbers[m.group(1)] += 1
+    return numbers, heads
+
+
+def blocking(path, before, after, canon, terminal, canonical, aliases):
+    """Return (status_label, [problem strings]) that an edit from `before` to
+    `after` may not leave behind. `before` is None for a file that did not exist.
+
+    Two states compared, no dates and no markers (DL #1): STRUCTURE is owed in
+    full; an ENTRY finding only for an entry the earlier state did not have, and
+    a DUE finding only for an item that was not already malformed. An entry is
+    known by its number, the way only_new_orphans in crystal-lint.sh knows a
+    sidetrack card — a retitled entry is the same entry. When a number repeats,
+    the new entries under it are the ones whose heading the earlier state did
+    not have; a heading with no `#N` is known by its text (DL #6).
+    """
+    label, found = findings(path, after, canon, terminal, canonical, aliases,
+                            history=before is not None)
+    if label != "checked":
+        return label, []
+    if before is None:
+        return label, [message for _, _, message in found]
+
+    was_numbers, was_heads = _entry_identities(before)
+    now_numbers, _ = _entry_identities(after)
+    was_due = set(malformed_due(split_frontmatter(before)[1]))
+    out = []
+    for scope, key, message in found:
+        if scope == STRUCTURE:
+            out.append(message)
+        elif scope == ENTRY:
+            if key[0] == "n":
+                _, number, heading = key
+                if number not in was_numbers or (
+                    now_numbers[number] > was_numbers[number] and heading not in was_heads
+                ):
+                    out.append(message)
+            elif key[1] not in was_heads:
+                out.append(message)
+        elif scope == DUE:
+            new = [item for item in key if item not in was_due]
+            if new:
+                out.append(DUE_HINT % "\n    ".join(new[:5]))
+    return label, out
+
+
+def _post_edit_content(tool_name, tool_input, path):
+    """What the file will hold after the tool runs, or None to skip.
+
+    Borrowed from crystal-completion-guard.py rather than copied: two answers to
+    "what will this edit leave on disk" would drift, and that guard's answer is
+    the one that already gates every workitem write. Loaded by path, since a
+    file name with a hyphen cannot be imported by name.
+    """
+    import importlib.util
+    here = os.path.dirname(os.path.abspath(__file__))
+    spec = importlib.util.spec_from_file_location(
+        "crystal_completion_guard", os.path.join(here, "crystal-completion-guard.py"))
+    guard = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(guard)
+    return guard._build_post_edit_content(tool_name, tool_input, path)
+
+
+def _read(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+    except FileNotFoundError:
+        return None
+
+
+def _report(path, problems):
+    sys.stderr.write("%s\n" % path)
+    for p in problems:
+        sys.stderr.write("  ✗ %s\n" % p)
 
 
 def csv_env(name, default=""):
@@ -381,6 +502,49 @@ def main(argv):
             k, v = pair.split("=", 1)
             aliases[k.strip()] = v.strip()
 
+    # --pre-tool-use <file>: the PreToolUse gate. The payload is on stdin; the
+    # state before the edit is the file on disk, the state after is what the
+    # payload would leave there. Exit 1 with the findings on stderr when the
+    # edit may not go through; any other non-zero exit is "no verdict".
+    if "--pre-tool-use" in argv:
+        i = argv.index("--pre-tool-use")
+        path = argv[i + 1] if i + 1 < len(argv) else ""
+        try:
+            import json
+            payload = json.loads(sys.stdin.read())
+            tool_input = payload.get("tool_input") or {}
+            after = _post_edit_content(payload.get("tool_name") or "", tool_input, path)
+            if after is None:
+                return 0
+            before = _read(path)
+            _, problems = blocking(path, before, after, canon, terminal, canonical, aliases)
+        except Exception as exc:  # no verdict — the wrapper says NOT CHECKED
+            sys.stderr.write("crystal-lint: %s: %s\n" % (type(exc).__name__, exc))
+            return 3
+        if problems:
+            _report(path, problems)
+            return 1
+        return 0
+
+    # --against <earlier> <file>: the same verdict for two files — <earlier> is
+    # the state before (empty: the file is new), <file> the state after. The
+    # pre-commit surface passes the blob at HEAD and the staged one.
+    if "--against" in argv:
+        i = argv.index("--against")
+        earlier = argv[i + 1] if i + 1 < len(argv) else ""
+        rest = [a for a in argv[:i] + argv[i + 2:] if not a.startswith("--")]
+        if len(rest) != 1:
+            return 2
+        after = _read(rest[0])
+        if after is None:
+            return 0
+        before = _read(earlier) if earlier else None
+        _, problems = blocking(rest[0], before, after, canon, terminal, canonical, aliases)
+        if problems:
+            _report(rest[0], problems)
+            return 1
+        return 0
+
     quiet = "--quiet" in argv
     # --summary: one TSV row per file — `path <TAB> label <TAB> problem-count`.
     # Exists so other tools (crystal-cave) can ASK the linter instead of
@@ -399,10 +563,17 @@ def main(argv):
                 text = fh.read()
         except OSError:
             continue
-        label, problems = lint(path, text, canon, terminal, canonical, aliases)
+        label, found = findings(path, text, canon, terminal, canonical, aliases)
+        problems = [message for _, _, message in found]
         if summary:
+            # `violations`: the structure is off, and the next edit owes it.
+            # `log-debt`: only past entries and promises are — shown, owed by
+            # no edit, because the log is append-only (canon-gate-scope DL #6).
             if label == "checked":
-                label = "violations" if problems else "ok"
+                if any(scope == STRUCTURE for scope, _, _ in found):
+                    label = "violations"
+                else:
+                    label = "log-debt" if found else "ok"
             print("%s\t%s\t%d" % (path, label, len(problems)))
             if problems:
                 failed += 1
@@ -418,9 +589,7 @@ def main(argv):
             continue
         if problems:
             failed += 1
-            sys.stderr.write("%s\n" % path)
-            for p in problems:
-                sys.stderr.write("  ✗ %s\n" % p)
+            _report(path, problems)
         elif not quiet:
             print("%s: ok" % path)
 

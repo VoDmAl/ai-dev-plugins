@@ -59,7 +59,7 @@ trap cleanup EXIT
 
 cd "$TMP" || exit 1
 git init -q .; git config user.email t@t; git config user.name t
-mkdir -p docs/tasks/good docs/tasks/broken docs/tasks/imported
+mkdir -p docs/tasks/good docs/tasks/broken docs/tasks/imported docs/tasks/pastlog
 
 cat >docs/tasks/good/workitem.md <<'EOF'
 ---
@@ -112,6 +112,39 @@ last-updated: 2024-03-01
 x
 EOF
 
+# The structure is on canon; only a past Decision Log entry is not. No edit owes
+# it — the log is append-only (canon-gate-scope DL #6) — so it is shown on a line
+# of its own, not counted with the shapes the next edit has to fix.
+cat >docs/tasks/pastlog/workitem.md <<'EOF'
+---
+title: "Pastlog"
+slug: pastlog
+status: in-progress
+session-type: prd-work
+created: 2026-08-01
+last-updated: 2026-08-01
+---
+# Pastlog
+## Назначение
+x
+## Текущая модель
+x
+## Sidetracks
+x
+## Next actions
+- [ ] x
+## References
+x
+## Decision Log
+
+### #1 / 2026-08-01 / written before Basis
+
+**Source:** assistant
+**Context:** c
+**Why:** w
+**Implication:** i
+EOF
+
 git add -A >/dev/null 2>&1
 
 OUT=$(bash "$CAVE" 2>&1)
@@ -125,6 +158,13 @@ says "legacy import is marked on its row"      "$OUT" "legacy"
 says "footer counts legacy imports"            "$OUT" "Legacy schema"
 says "footer warns against copying legacy"     "$OUT" "Do not infer"
 says "points at the detail command"            "$OUT" "crystal-lint.sh --all"
+says "a past log off canon is marked on its row" "$OUT" "past log"
+says "…and counted on a line of its own"         "$OUT" "Past log entries off canon: 1"
+pastlog_line=$(printf '%s\n' "$OUT" | grep ' pastlog ' || true)
+case "$pastlog_line" in
+  *off-canon*) bad "…not as an off-canon shape" "got: $pastlog_line" ;;
+  *)           ok  "…not as an off-canon shape" ;;
+esac
 
 # The two axes must stay separate: every status here is canonical, so the
 # STATUS audit line must not appear even though the SHAPE audit did.
@@ -147,11 +187,12 @@ says "renders the legend"       "$OUT" "Legend:"
 # ---------------------------------------------------------------------------
 printf '\nclean tree stays quiet (no false audit lines)\n'
 # ---------------------------------------------------------------------------
-rm -rf docs/tasks/broken docs/tasks/imported
+rm -rf docs/tasks/broken docs/tasks/imported docs/tasks/pastlog
 git add -A >/dev/null 2>&1
 OUT_CLEAN=$(bash "$CAVE" 2>&1)
 says_not "no off-canon footer on a clean tree" "$OUT_CLEAN" "Off-canon shape"
 says_not "no legacy footer on a clean tree"    "$OUT_CLEAN" "Legacy schema"
+says_not "no past-log footer on a clean tree"  "$OUT_CLEAN" "Past log entries"
 says     "still renders the surviving crystal" "$OUT_CLEAN" "good"
 
 # ---------------------------------------------------------------------------

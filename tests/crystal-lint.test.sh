@@ -358,6 +358,167 @@ expect_says "the lint names it" "$OUT" "[due:: soon]"
 expect_not_says "…and not the \`⏰\` date" "$OUT" "2026-09-01"
 
 # ---------------------------------------------------------------------------
+printf '\ngate (--pre-hook) — what an edit may not leave behind\n'
+# ---------------------------------------------------------------------------
+# The canon gate stops the edit on PreToolUse (canon-gate-scope). On
+# PostToolUse it could only report an edit that had already landed: 87 Decision
+# Log entries were written off canon after 2026-08-31 with the advisory lint
+# running on every one of those writes (DL #5). Blocking everything instead
+# would make every edit of an old workitem invent a Basis for entries months
+# old — so the gate compares the file before and after the edit: structure is
+# owed in full, an entry or a promise only where it is new (DL #2, #6, #7).
+# Every RED below has a GREEN twin on the same text, so a gate that went blind
+# cannot pass for a gate that scopes.
+GR="$TMP/gaterepo"
+mkdir -p "$GR/docs/tasks/w" "$GR/docs/tasks/sib"
+GR=$(cd "$GR" && pwd -P)
+( cd "$GR" && git init -q . ) >/dev/null 2>&1
+# A sibling crystal, so the root is known before the file under test exists.
+printf -- '---\nstatus: ready\n---\n' >"$GR/docs/tasks/sib/workitem.md"
+GWI="$GR/docs/tasks/w/workitem.md"
+
+gw_head() {
+  printf -- '---\ntitle: "W"\nslug: w\nstatus: %s\nsession-type: prd-work\n' "$1"
+  printf 'created: 2026-10-15\nlast-updated: 2026-10-15\n---\n\n# W\n'
+}
+GW_SECTIONS='
+## Назначение
+x
+
+## Текущая модель
+x
+
+## Sidetracks
+x
+
+## Next actions
+- [ ] x
+
+## References
+x
+'
+# An entry written before Basis entered the canon.
+GW_OLD='
+## Decision Log
+
+### #1 / 2026-08-01 / old entry
+
+**Source:** assistant
+**Context:** c
+**Why:** w
+**Implication:** i
+'
+gw_entry() {
+  # gw_entry <number> <title> <basis>
+  printf '\n### #%s / 2026-10-15 / %s\n\n**Source:** assistant\n**Basis:** %s\n' "$1" "$2" "$3"
+  printf '**Basis-detail:** d\n**Context:** c\n**Why:** w\n**Implication:** i\n'
+}
+gw_write() {
+  # gw_write <path> — a Write payload carrying stdin as the content
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Write","tool_input":{"file_path":sys.argv[1],"content":sys.stdin.read()}}))' "$1"
+}
+gw_edit() {
+  # gw_edit <old> <new> — an Edit payload against $GWI
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Edit","tool_input":{"file_path":sys.argv[1],"old_string":sys.argv[2],"new_string":sys.argv[3]}}))' "$GWI" "$1" "$2"
+}
+gate() {
+  # gate <payload> — runs the PreToolUse gate from the fixture
+  OUT=$(cd "$GR" && printf '%s' "$1" | CLAUDE_PROJECT_DIR="$GR" bash "$LINT" --pre-hook 2>&1 >/dev/null)
+  RC=$?
+}
+
+rm -f "$GWI"
+gate "$( { gw_head in-progress; printf '%s' "$GW_SECTIONS$GW_OLD"; } | gw_write "$GWI")"
+expect_exit "RED: a new file owes all of it — an entry without Basis ⇒ exit 2" 2 "$RC"
+expect_says "…names the entry"                 "$OUT" "#1 / 2026-08-01"
+expect_says "…and says the edit did not happen" "$OUT" "did not happen"
+
+{ gw_head in-progress; printf '%s' "$GW_SECTIONS$GW_OLD"; } >"$GWI"
+gate "$(gw_edit '- [ ] x' '- [x] x')"
+expect_exit "GREEN: the same entry already in the file — an unrelated edit passes" 0 "$RC"
+
+gate "$(gw_edit '**Implication:** i' "**Implication:** i
+$(gw_entry 2 'new entry' measured)")"
+expect_exit "RED: an entry the edit adds, Basis outside the taxonomy ⇒ exit 2" 2 "$RC"
+expect_says     "…names the new entry"       "$OUT" "#2 / 2026-10-15"
+expect_not_says "…and leaves the old one be" "$OUT" "#1 / 2026-08-01"
+
+gate "$(gw_edit '**Implication:** i' "**Implication:** i
+$(gw_entry 2 'new entry' observed)")"
+expect_exit "GREEN: the same new entry on canon passes" 0 "$RC"
+
+gate "$(gw_edit 'old entry' 'old entry, retitled')"
+expect_exit "GREEN: retitling a past entry — the number is the entry (DL #6)" 0 "$RC"
+
+gate "$(gw_edit '**Implication:** i' '**Implication:** i
+
+### #1 / 2026-10-15 / a reused number
+
+**Source:** assistant')"
+expect_exit "RED: a second entry under a number already taken ⇒ exit 2" 2 "$RC"
+expect_says     "…names the new one"   "$OUT" "a reused number"
+expect_not_says "…not the one before" "$OUT" "old entry"
+
+{ gw_head in-progress; printf '%s' "$GW_SECTIONS$GW_OLD" | sed '/^## Текущая модель$/,/^x$/d'; } >"$GWI"
+gate "$(gw_edit '- [ ] x' '- [x] x')"
+expect_exit "RED: a missing section is owed at any edit (DL #2) ⇒ exit 2" 2 "$RC"
+expect_says "…names it" "$OUT" "## Текущая модель"
+gate "$(gw_edit '## Sidetracks' '## Текущая модель
+
+## Sidetracks')"
+expect_exit "GREEN: the edit that adds it — empty — passes" 0 "$RC"
+
+rm -f "$GWI"
+gate "$( { gw_head done; printf '\n## Назначение\nx\n'; } | gw_write "$GWI")"
+expect_exit "RED: born done — a new file has no record to protect (DL #7) ⇒ exit 2" 2 "$RC"
+{ gw_head done; printf '\n## Назначение\nx\n'; } >"$GWI"
+gate "$(gw_edit '## Назначение' '## Назначение ')"
+expect_exit "GREEN: the same file already done is history" 0 "$RC"
+
+{ gw_head in-progress; printf '%s' "$GW_SECTIONS"; printf '\n## Decision Log\n\n### D-1 / 2026-08-01 / theirs\n\n**Source:** user\n'; } >"$GWI"
+gate "$(gw_edit '- [ ] x' '- [x] x')"
+expect_exit "GREEN: a past entry under the host's own numbering is left as it is" 0 "$RC"
+gate "$(gw_edit '**Source:** user' '**Source:** user
+
+### D-2 / 2026-10-15 / new
+
+**Source:** user')"
+expect_exit "RED: a new entry under it is written by the canon ⇒ exit 2" 2 "$RC"
+expect_says     "…names it"         "$OUT" "D-2"
+expect_not_says "…not the past one" "$OUT" "D-1"
+
+{ gw_head in-progress; printf '%s' "$GW_SECTIONS" | sed 's/^- \[ \] x$/- [ ] x (due: soon)/'; } >"$GWI"
+gate "$(gw_edit '## References' '## References
+')"
+expect_exit "GREEN: a malformed date already there is not rewritten by force" 0 "$RC"
+gate "$(gw_edit '(due: soon)' '(due: soon)
+- [ ] y (due: later)')"
+expect_exit "RED: a malformed date the edit adds ⇒ exit 2" 2 "$RC"
+expect_says     "…names it"         "$OUT" "(due: later)"
+expect_not_says "…not the old one" "$OUT" "(due: soon)"
+
+gate "$(printf '%s' 'x' | gw_write "$GR/docs/tasks/w/references/brief.md")"
+expect_exit "GREEN: a reference file in a crystal is not a workitem" 0 "$RC"
+gate "$(printf '%s' 'x' | gw_write "$GR/README.md")"
+expect_exit "GREEN: a markdown file outside the roots" 0 "$RC"
+
+# The first workitem of a repository is written while no root exists: roots
+# are found by their files. On PostToolUse the file was there by then.
+FR="$TMP/firstrepo"
+mkdir -p "$FR"
+FR=$(cd "$FR" && pwd -P)
+( cd "$FR" && git init -q . ) >/dev/null 2>&1
+OUT=$( { gw_head in-progress; printf '\n## Назначение\nx\n'; } | gw_write "$FR/docs/tasks/first/workitem.md" \
+       | (cd "$FR" && CLAUDE_PROJECT_DIR="$FR" bash "$LINT" --pre-hook 2>&1 >/dev/null) )
+RC=$?
+expect_exit "RED: the first workitem of a repository, before any tasks/ exists ⇒ exit 2" 2 "$RC"
+expect_says "…names a missing section" "$OUT" "## Текущая модель"
+OUT=$( { gw_head in-progress; printf '%s' "$GW_SECTIONS"; } | gw_write "$FR/docs/tasks/first/workitem.md" \
+       | (cd "$FR" && CLAUDE_PROJECT_DIR="$FR" bash "$LINT" --pre-hook 2>&1 >/dev/null) )
+RC=$?
+expect_exit "GREEN: …and on canon it passes" 0 "$RC"
+
+# ---------------------------------------------------------------------------
 printf '\nhook — an open sidetrack this change introduced must carry a checkbox\n'
 # ---------------------------------------------------------------------------
 # The rule is old (crystal-multi-root DL #14) and it is enforced at ONE moment,
@@ -439,6 +600,23 @@ hook_lint
 expect_exit "RED: a second open card added next to a committed orphan ⇒ exit 2" 2 "$RC"
 expect_says     "…names the new card"            "$OUT" "#2. Card 2"
 expect_not_says "…and leaves the committed one alone" "$OUT" "#1. Card 1"
+
+# --staged makes the gate's comparison with HEAD in place of the disk (canon-gate-scope
+# DL #7): a past entry at HEAD owes nothing, an entry this commit adds owes it all.
+SWI="$HR/docs/tasks/staged/workitem.md"
+mkdir -p "$HR/docs/tasks/staged"
+{ gw_head in-progress; printf '%s' "$GW_SECTIONS$GW_OLD"; } >"$SWI"
+commit_wi
+printf '\nan unrelated line\n' >>"$SWI"
+( cd "$HR" && git add -A ) >/dev/null 2>&1
+OUT=$(cd "$HR" && bash "$LINT" --staged 2>&1); RC=$?
+expect_exit "GREEN: --staged, a past entry off canon at HEAD, an unrelated change" 0 "$RC"
+gw_entry 2 'new entry' measured >>"$SWI"
+( cd "$HR" && git add -A ) >/dev/null 2>&1
+OUT=$(cd "$HR" && bash "$LINT" --staged 2>&1); RC=$?
+expect_exit "RED: --staged, an entry this commit adds off canon ⇒ exit 1" 1 "$RC"
+expect_says     "…names it"                "$OUT" "#2 / 2026-10-15"
+expect_not_says "…and not the one at HEAD" "$OUT" "#1 / 2026-08-01"
 
 # ---------------------------------------------------------------------------
 printf '\nSKILL.md ↔ template agreement\n'

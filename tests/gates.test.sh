@@ -578,9 +578,9 @@ restore
 # ---------------------------------------------------------------------------
 echo ""
 echo "== crystal-canon (crystal-lint.sh --staged) =="
-# The second enforcement surface for the workitem canon: the PostToolUse hook
+# The second enforcement surface for the workitem canon: the PreToolUse gate
 # sees only writes made THROUGH the assistant, so an IDE-direct edit reaches the
-# commit untouched, and a harness without PostToolUse never runs the hook at all.
+# commit untouched, and a harness without plugin hooks never runs it at all.
 #
 # Fixture name is minted at RUNTIME. A statically-named fixture is a path that
 # some file in the repo can mention — which is how the orphan red tests went
@@ -666,13 +666,36 @@ restore
 
 # FALSE-POSITIVE 1: a terminal-tier workitem is a historical record. Retro-fitting
 # it to a newer canon would falsify it — the gate must stay silent even though
-# this file is broken by current canon.
+# the file is broken by current canon. The gate compares the staged blob with
+# HEAD (canon-gate-scope DL #7), so the record has to be at HEAD: a real closed
+# crystal of this tree, which lacks `## Текущая модель` and whose entries
+# predate Basis. The second case proves it is still off canon — without it, a
+# fixed file would make the first case pass for nothing.
+old_wi="docs/tasks/crystal-design/workitem.md"
+printf '\nan unrelated line\n' >> "$old_wi"
+git add "$old_wi"
+out=$(bash plugins/vdm/scripts/crystal-lint.sh --staged 2>&1); rc=$?
+expect_exit "GREEN: a closed workitem at HEAD is history — an edit owes nothing" 0 "$rc"
+sed -i.bak 's/^status: done$/status: in-progress/' "$old_wi" && rm -f "$old_wi.bak"
+git add "$old_wi"
+out=$(bash plugins/vdm/scripts/crystal-lint.sh --staged 2>&1); rc=$?
+expect_exit "RED: reopened, it owes the structure in full ⇒ exit 1" 1 "$rc"
+expect_says "RED: …names the missing section" "$out" "## Текущая модель"
+expect_not_says "RED: …and no past entry's Basis" "$out" "Basis"
+printf '\n## Текущая модель\n' >> "$old_wi"
+git add "$old_wi"
+out=$(bash plugins/vdm/scripts/crystal-lint.sh --staged 2>&1); rc=$?
+expect_exit "GREEN: with the section added it goes through — past entries are not rewritten" 0 "$rc"
+restore
+
+# A workitem born `done` has no record to protect: a file HEAD does not have is
+# checked whatever its status (Sidetrack #4 of the same crystal).
 mkdir -p "docs/tasks/$canon_slug"
 canon_write done '## Назначение
 x'
 git add "docs/tasks/$canon_slug/workitem.md"
 out=$(bash plugins/vdm/scripts/crystal-lint.sh --staged 2>&1); rc=$?
-expect_exit "GREEN: terminal tier is out of scope" 0 "$rc"
+expect_exit "RED: a new file born done is checked ⇒ exit 1" 1 "$rc"
 restore
 
 # FALSE-POSITIVE 2: same file, non-terminal ⇒ red. Without this pair the test
