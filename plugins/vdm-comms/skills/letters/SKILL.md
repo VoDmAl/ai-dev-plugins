@@ -246,6 +246,14 @@ is shown to anyone, and open the sections below when a line does not settle.
   address, our sender for it — is the owner's word on the sender. Pass its
   `from` when the draft is made (echelon's `mail_draft` takes it as `from`). With
   no pair, From is left to the project's and echelon's own rules, not guessed.
+- **A reply goes to the address the letter came from.** A person with several
+  addresses chose where to write — the phone, the school box, the work one — and
+  a reply sent to the primary address in their profile may land in a box they do
+  not read. The incoming letter's own header settles it, not the profile; so the
+  address it came from is kept with the letter when it is filed
+  (`comms/*-in.md`). Field case (2026-10-15): a person wrote from their phone
+  address, and the reply went to the one on file, because the header check
+  compared addresses with the profile alone; it arrived by chance.
 - **Someone who was in the room gets it short**: the letter or ticket is a
   formality. Full context only for new readers.
 - **Two antagonists in one letter** — consider two parallel letters instead.

@@ -316,6 +316,10 @@ expect_says "…positions without owners" "$OUT" "no mine / theirs"
 # owner never signs.
 expect_says "RED: the checklist names who does the work on their side" "$OUT" "who on their side does the work"
 expect_says "RED: …and a signature only where the owner signs" "$OUT" "a signature only where the owner signs"
+# Program, 2026-10-16 (vdm-comms-reply-to-sender-address): a person with two
+# addresses wrote from one, and the reply went to the other — the one on file —
+# because the header check compared addresses with the profile alone.
+expect_says "RED: …and a reply goes to the address the letter came from" "$OUT" "a reply goes to the address the letter came from"
 rm -f "$FX/.claude/vdm-plugins.json"
 OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-x-out.md" "$SENT" | bash "$GUARD" 2>/dev/null); rc=$?
 expect_exit "GREEN: a blocked letter is still blocked" 2 "$rc"
