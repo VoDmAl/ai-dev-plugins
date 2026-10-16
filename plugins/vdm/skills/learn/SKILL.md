@@ -162,6 +162,10 @@ it into **every** session at start, whatever the project (hook
 - the user said it applies everywhere ("в общее место", "везде", "в каждой
   области") **or** the same failure has now been caught in a second project.
 
+One session cannot see a second project, and cannot see whether a rule already
+in the layer still fails. `/vdm:retro` reads the owner's turns across every
+session on the machine for both, and hands its proposals back here.
+
 **Not here**: anything naming this project's files, people, tools or
 conventions; a rule that only one project needs; safety rules for one
 codebase. Those go to the project's CLAUDE.md or `docs/llm/`, as below.

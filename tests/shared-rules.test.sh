@@ -104,6 +104,29 @@ bytes="$(wc -c < "$RAW" | tr -d ' ')"
 [ "$bytes" -le 9000 ] && ok "RED: the output stays under the harness threshold ($bytes ≤ 9000 bytes)" \
   || bad "RED: the output stays under the harness threshold" "$bytes bytes"
 
+echo "== a layer that fits whole uses the whole budget =="
+# The 1 200 bytes held back for the "did not fit" notice were held back even when
+# nothing was left out: `--measure` said 7 744 of 9 000 bytes on a layer with 70
+# to spare, and a rule written on that reading cut three others (crystal
+# rules-retro, 2026-10-15). Ten rules of ~830 bytes sit between the two limits.
+{
+  i=1; while [ $i -le 10 ]; do
+    printf '## Rule %02d of the full layer\n\n' "$i"
+    j=0; while [ $j -lt 13 ]; do printf 'Rule %02d first paragraph, line %02d, ASCII only to fix the size.\n' "$i" "$j"; j=$((j+1)); done
+    printf '\nThe body of rule %02d stays in the file.\n\n' "$i"
+    i=$((i+1))
+  done
+} > "$RULES"
+run "$TMP/project-a" > "$RAW"; out="$(cat "$RAW")"
+bytes="$(wc -c < "$RAW" | tr -d ' ')"
+[ "$bytes" -gt 7800 ] && [ "$bytes" -le 9000 ] && ok "fixture lands between the old limit and the budget ($bytes bytes)" \
+  || bad "fixture lands between the old limit and the budget" "$bytes bytes"
+n=0; i=1; while [ $i -le 10 ]; do case "$out" in *"Rule $(printf %02d $i) first paragraph, line 12"*) n=$((n+1)) ;; esac; i=$((i+1)); done
+eq "RED: all ten rules reach the session" "$n" "10"
+says_not "RED: …and nothing is reported as cut" "$out" "did not fit"
+out="$(bash "$HOOK" --measure 2>&1)"; rc=$?
+eq "RED: --measure agrees: it fits ⇒ exit 0" "$rc" "0"
+
 echo "== rules that do not fit are named, never cut in the middle =="
 {
   i=1; while [ $i -le 30 ]; do

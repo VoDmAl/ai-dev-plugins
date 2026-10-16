@@ -90,6 +90,17 @@ render() {
         if (cut) printf "\n[vdm] ⚠ Truncated: the rules file has no `## ` rules and is longer than the layer carries (%d bytes). Read the rest in %s.\n", room, path
         exit (cut ? 3 : 0)
       }
+      # The reserve is for the notice below, and the notice is printed only
+      # when a rule is left out. A layer that fits whole uses the whole room:
+      # held back every time, the reserve made `--measure` report 1 256 bytes
+      # free in a layer with 70 left, and a rule written on that reading cut
+      # three others (crystal rules-retro, 2026-10-15).
+      all = 0
+      for (i = 1; i <= n; i++) all += length("## " T[i] "\n" P[i] "\n\n")
+      if (all <= room) {
+        for (i = 1; i <= n; i++) printf "## %s\n%s\n\n", T[i], P[i]
+        exit 0
+      }
       for (i = 1; i <= n; i++) {
         block = "## " T[i] "\n" P[i] "\n\n"
         if (!cut && used + length(block) <= room - reserve) { printf "%s", block; used += length(block) }

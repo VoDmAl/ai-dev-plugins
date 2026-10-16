@@ -29,6 +29,7 @@ Until specialization is needed, everything lives here.
 | docs-sync | `/vdm:docs-sync` | Smart documentation discovery & sync (adapts to any project structure) |
 | docs-distill | `/vdm:docs-distill` | The **synthesis layer** — the summary view that must be *rebuilt*, not appended to |
 | learn | `/vdm:learn` | Intelligent knowledge integration with scenario detection |
+| retro | `/vdm:retro` | Do the shared rules work? Reads the owner's turns across every session on the machine: which rules still fail where they were delivered, which failures repeat in two or more projects with no rule |
 | changelog | `/vdm:changelog` | Project change tracking in `PROJECT_CHANGELOG.md` |
 | crystal-grow | `/vdm:crystal-grow` | Start (or promote) a workitem under `docs/tasks/<slug>/workitem.md` |
 | crystal-bud | `/vdm:crystal-bud` | Capture a sidetrack into the active (or routed dormant) workitem |
