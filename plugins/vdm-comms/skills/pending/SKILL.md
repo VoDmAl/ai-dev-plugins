@@ -43,8 +43,21 @@ can query them:
 - **Not in a table.** A cell is neither a checkbox nor a queryable field.
 
 A line that writes `[who::]` is under the full contract wherever it stands —
-who, state and date are required — and the bold that opens it is then the
-subject, not the owner.
+who, state and a date are required, or the event that stands in for the date —
+and the bold that opens it is then the subject, not the owner.
+
+**Waiting for an event**, the line carries `⏰ after: <event>` in place of
+`[due::]`, by the rule of the old form below: only when the signal will arrive
+on its own.
+
+```
+- [ ] **<what>** — <details> [who:: <slug>] [state:: sent] ⏰ after: <the event that will signal>
+```
+
+`[due::]` holds a date and nothing else: `[due:: after: …]` is a broken date,
+and a vault querying `due` would meet text among its dates. If the event might
+never come, write both — the event stays in the line as text, `[due::]` is the
+day we look again, and the date is what fires.
 
 ### The old form, read during the transition
 

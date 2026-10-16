@@ -41,8 +41,11 @@ meetings/
                                     files to attach listed as `## 📎 …` checkboxes
   <date>-<slug>-meeting.md          generated pointer back to a meeting
 <any file in pending-paths>
-  - [ ] **<owner>** — <what> ⏰ 2026-09-26        an obligation that can fire
-  - [ ] **<owner>** — <what> ⏰ after: <event>    …when the signal arrives on its own
+  - [ ] **<what>** — … [who:: <slug>] [state:: ask] [due:: 2026-09-26]
+                                    an obligation that can fire: who moves now, its state, its date
+  - [ ] **<what>** — … [who:: <slug>] [state:: sent] ⏰ after: <event>
+                                    …when the signal arrives on its own
+  - [ ] **<owner>** — <what> ⏰ 2026-09-26        the old form, read during the transition
   - [ ] <what> (due: 2026-09-26)                 the crystal suite's own form
 ```
 

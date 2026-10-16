@@ -1235,6 +1235,7 @@ def print_contract():
     print("form\t- [ ] **<what>** — … [who:: <slug>] [state:: ask|sent|ack] [due:: YYYY-MM-DD] [nudges:: N] [track:: <path>]")
     print("form\twho: who moves now — us until they confirm (ack); a profile slug, a name from comms.owners, or we")
     print("form\ta line with [who::] is under the full contract wherever it stands; the bold is then the subject")
+    print("form\twaiting for an event: ⏰ after: <event> in place of [due::]; [due::] holds a date and nothing else")
     print("form\tthe old form below is read during the transition and gives an item with no state")
     print("marker\t[due:: YYYY-MM-DD]\tthe full form's date")
     print("marker\t⏰ YYYY-MM-DD")

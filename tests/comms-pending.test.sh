@@ -697,6 +697,9 @@ cat > "$FF/ledger.md" <<'MD'
 - [ ] **Bad fields** — [who:: ivan-petrov] [state:: done] [due:: 2026-13-01] [nudges:: two]
 - [ ] **No state** — [who:: legal] [due:: 2026-09-26]
 - [ ] a plain checkbox outside any section, no marker — not an item
+- [ ] **Catalog** — waits for the release [who:: we] [state:: sent] ⏰ after: /plugin shows 0.34.0
+- [ ] **Event in the field** — [who:: we] [state:: sent] [due:: after: the reply]
+- [ ] **Backstop** — ⏰ after: the transcript [who:: we] [state:: sent] [due:: 2026-09-28]
 MD
 ff() { OUT=$(cd "$FF" && COMMS_TODAY="$TODAY" python3 "$PEND" --project-root "$FF" "$@" 2>&1); rc=$?; }
 
@@ -711,6 +714,11 @@ expect_says "…the fields are not printed as text" "$OUT" "Договор — s
 expect_not_says "…nor any of them" "$OUT" "[who::"
 expect_not_says "a plain checkbox outside a section is still not an item" "$OUT" "a plain checkbox"
 expect_before "the order stays: people, the listed owners, us" "$OUT" "## Петров" "## us"
+# An event stands in for the date, as in the old form: a full-form line asked
+# how to wait for one (2026-10-15), and the answer is `⏰ after:` next to the
+# fields. `[due::]` stays a date, so a vault querying it meets no text there.
+expect_says "RED: ⏰ after: in place of [due::] waits on the event" "$OUT" "on an event · us · sent"
+expect_says "RED: …and next to a [due::], the date is what fires" "$OUT" "2026-09-28 · us · sent"
 
 ff --lint
 expect_exit "RED: the full form is checked wherever it stands" 1 "$rc"
@@ -721,6 +729,9 @@ expect_says "RED: …reminders that are not a number" "$OUT" '`[nudges:: two]`'
 expect_says "RED: …no state at all" "$OUT" 'ledger.md:7 — no `[state:: ask|sent|ack]`'
 expect_not_says "GREEN: a complete line is clean" "$OUT" "ledger.md:3"
 expect_not_says "GREEN: …and so is the old form, read as before" "$OUT" "index.md:5"
+expect_not_says "GREEN: an event stands in for [due::] in the full form" "$OUT" "ledger.md:9"
+expect_says "RED: …but not inside it: [due:: after: …] is a broken date" "$OUT" "ledger.md:10 — broken date marker"
+expect_not_says "GREEN: …an event next to a date is a clean line" "$OUT" "ledger.md:11"
 
 ff --json
 expect_says "the JSON carries the state" "$OUT" '"state": "ack"'
