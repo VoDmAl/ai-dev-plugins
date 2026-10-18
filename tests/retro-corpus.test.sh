@@ -116,6 +116,20 @@ C = "cccccccc-3333-0000-0000-000000000000"
 w("-home-u-beta", C, [
     a("Done.", cwd="/home/u/beta"),
     h("Why did you ask me that?", "2026-10-05T12:00:00Z", cwd="/home/u/beta"),
+    # A compaction summary: the model wrote it, the harness marks it typed by a
+    # human, and it retells the session's corrections — read, each would count
+    # twice (58 such records on this machine, 2026-10-18).
+    h("This session is being continued from a previous conversation. SUMMARY RETELLS "
+      "\"Why did you ask me that?\"", "2026-10-05T12:30:00Z", cwd="/home/u/beta",
+      isCompactSummary=True, isVisibleInTranscriptOnly=True),
+    a("Here is the commit line again.", cwd="/home/u/beta"),
+    # A slash command is markup, but its arguments are the owner's words:
+    # `/vdm:learn <the correction>` (52 such turns in 10 projects, 2026-10-18).
+    h("<command-message>vdm:learn</command-message>\n<command-name>/vdm:learn</command-name>\n"
+      "<command-args>stop handing me the commit line</command-args>", "2026-10-05T13:00:00Z",
+      cwd="/home/u/beta"),
+    h("<command-name>/doctor</command-name>\n<command-message>doctor</command-message>\n"
+      "<command-args></command-args>", "2026-10-05T13:01:00Z", cwd="/home/u/beta"),
 ])
 PY
 
@@ -127,10 +141,13 @@ run --out "$TMP/o1"; expect_exit "the corpus is written" 0 "$rc"
 C1=$(all "$TMP/o1")
 expect_says "RED: the owner's turn is read" "$C1" "OWNER: You did not send it, you drafted it."
 expect_says "RED: a turn older than turnOrigin, with origin.kind: human, is the owner's" "$C1" "Older turn, origin.kind only."
-expect_says "…and the summary counts five turns" "$OUT" "5 turn(s) by a person, 3 session(s), 2 project(s)"
-for w in "SDK PROMPT" "PEER MESSAGE" "TOOL OUTPUT" "META LINE" "git push" "SIDECHAIN" "UNATTRIBUTED"; do
+expect_says "…and the summary counts six turns" "$OUT" "6 turn(s) by a person, 3 session(s), 2 project(s)"
+for w in "SDK PROMPT" "PEER MESSAGE" "TOOL OUTPUT" "META LINE" "git push" "SIDECHAIN" "UNATTRIBUTED" "SUMMARY RETELLS" "/doctor"; do
   expect_not_says "RED: not the owner's words: $w" "$C1" "$w"
 done
+expect_says "RED: a slash command's arguments are the owner's words" "$C1" "OWNER: /vdm:learn stop handing me the commit line"
+expect_says "…with the answer before them" "$C1" "ASSISTANT: Here is the commit line again."
+expect_says "…and a compaction summary takes no number" "$C1" $'### cccccccc.2 · beta · 2026-10-05 · L0\nASSISTANT: Here is the commit line again.'
 
 echo "== what it answered =="
 expect_says "RED: a turn carries the assistant's words before it" "$C1" "ASSISTANT: Checked one file of five; nothing there."
@@ -175,7 +192,7 @@ expect_says "RED: …and an id does not shift when a window drops turns before i
 echo "== chunks and refusals =="
 run --out "$TMP/o5" --chunk-bytes 1
 n=$(ls "$TMP/o5"/chunk-*.md | wc -l | tr -d ' ')
-expect_exit "RED: a chunk smaller than an entry still holds one whole entry" 5 "$n"
+expect_exit "RED: a chunk smaller than an entry still holds one whole entry" 6 "$n"
 expect_says "…and no entry is split" "$(cat "$TMP/o5/chunk-002.md")" "OWNER:"
 run --projects-dir "$TMP/none" --out "$TMP/o6"
 expect_exit "no transcripts ⇒ exit 2" 2 "$rc"

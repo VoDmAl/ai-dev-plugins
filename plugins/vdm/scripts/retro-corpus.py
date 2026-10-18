@@ -10,7 +10,10 @@ reads them out (crystal `rules-retro`):
   * who typed a turn — `turnOrigin: human`, or `origin.kind: human` on records
     older than that field, so a tool result, a hook, a peer session or an SDK
     caller never passes for the owner. A record with neither cannot be
-    attributed and is left out;
+    attributed and is left out. Two records the marks get wrong: a
+    compaction's summary carries `turnOrigin: human` and is the model's
+    retelling, so it is dropped; a slash command is markup, but its arguments
+    are the owner's (`/vdm:learn <the correction>`), so they are kept;
   * what the assistant said just before it — a correction makes no sense
     without what it corrects (a 500-char tail lost the cause in 3 of 83 cases);
   * where the session ran — the first `cwd` of the transcript, not of the turn:
@@ -61,8 +64,13 @@ LAYER_MARK = "Cross-project rules"
 HEADING_RE = re.compile(r"(?m)^## (.+?)\s*$")
 ID_RE = re.compile(r"\b[0-9A-Za-z-]{1,8}\.\d+\b")
 # A turn that is only harness markup — a `!` command, a slash command, its
-# output — was typed by the owner but says nothing about the assistant.
+# output — was typed by the owner but says nothing about the assistant. A slash
+# command's arguments are the exception: `/vdm:learn <the correction>` is the
+# owner's own channel for a correction, and dropping the markup with them left
+# 52 such turns in 10 projects out of the first full pass (2026-10-18).
 MARKUP_RE = re.compile(r"^\s*<(bash-|command-|local-command)")
+COMMAND_NAME_RE = re.compile(r"<command-name>\s*(.*?)\s*</command-name>", re.S)
+COMMAND_ARGS_RE = re.compile(r"<command-args>(.*?)</command-args>", re.S)
 
 
 def text_of(content):
@@ -121,6 +129,18 @@ def write_private(path, text):
     os.chmod(path, 0o600)
 
 
+def owner_words(said):
+    """What a turn says from the owner: the text itself, a slash command as
+    `/name <arguments>`, '' for markup with nothing of theirs in it."""
+    if not MARKUP_RE.match(said):
+        return said
+    args = COMMAND_ARGS_RE.search(said)
+    if not args or not args.group(1).strip():
+        return ""
+    name = COMMAND_NAME_RE.search(said)
+    return ("%s %s" % (name.group(1) if name else "", args.group(1).strip())).strip()
+
+
 def typed_by_person(record):
     origin = record.get("turnOrigin")
     if origin is not None:
@@ -160,8 +180,12 @@ def read_session(path, since, assistant_cap, turn_cap):
                 continue
             if kind != "user" or not typed_by_person(rec) or rec.get("isMeta"):
                 continue
-            said = text_of((rec.get("message") or {}).get("content")).strip()
-            if not said or MARKUP_RE.match(said):
+            # The summary a compaction leaves is marked as typed by a human,
+            # but the model wrote it, retelling the session's corrections.
+            if rec.get("isCompactSummary"):
+                continue
+            said = owner_words(text_of((rec.get("message") or {}).get("content")).strip())
+            if not said:
                 continue
             n += 1
             stamp = str(rec.get("timestamp") or "")
