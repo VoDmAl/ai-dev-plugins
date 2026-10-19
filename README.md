@@ -112,7 +112,7 @@ Systematically captures and preserves project knowledge. Auto-detects scenario t
 - **Problems** → `/sc:troubleshoot` → root cause analysis → knowledge integration
 - **Discoveries** → Technical documentation → `docs/llm/` patterns
 - **Standards** → Systematic documentation across CLAUDE.md, Serena Memory, and `docs/llm/`
-- **Lessons about the assistant itself** (true in any project) → `~/.claude/vdm/rules.md`, a machine-wide layer the plugin loads into every session at start — written once, not re-learned per project
+- **Lessons about the assistant itself** (true in any project) → `~/.claude/vdm/rules.md`, a machine-wide layer the plugin loads into every session at start — written once, not re-learned per project; a new lesson is folded into the whole layer by a subagent rather than appended, and installed by `rules-write.py`, which refuses over a newer file
 
 **Auto-activation**: Claude will proactively invoke this skill when:
 - Finding solutions after struggling with issues

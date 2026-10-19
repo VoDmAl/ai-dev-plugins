@@ -15,10 +15,14 @@ README section. With `shared` set the local record is a pointer.
 
 Why (owner, 2026-10-07, to an HQ that kept a procedural lesson in its own
 memory): «Твоя память по процедурным вещам которые полезны другим HQ не может
-быть твой только.» The access layer collects `hq` and `conduct` records from
-every project; this module only names what is missing, in the act of writing
-and at session start. The contract — names, values, both places — was agreed
-with the access layer (crystal hq-lessons-up, DL #3, DL #4).
+быть твой только.» The contract — names, values, both places — was agreed
+with the access layer (crystal hq-lessons-up, DL #3, DL #4), and so was the
+moment: a lesson leaves the project in the turn it is written, the access
+layer's collection catches what was missed. A `conduct` lesson is folded into
+the shared rules by /vdm:learn then and there (crystal rules-dream, DL #1): a
+record marked `conduct` with no `shared:` is reminded at the write, since a
+reminder only for a missing `scope` left it to wait for collection — twelve
+corrections in four projects, five after this module shipped.
 
 "Next to `type`" means wherever `type` is: at the top of the frontmatter, or
 under `metadata:` as the harness writes it. Measured 2026-10-07 on this
@@ -27,7 +31,8 @@ machine: 463 records with `type` on top, 782 under `metadata:`. Both are read.
 Modes:
     memory-scope.py hook             PostToolUse payload on stdin → one reminder
                                      (JSON additionalContext) for a record
-                                     written without a valid `scope`; else nothing
+                                     written without a valid `scope`, or a
+                                     `conduct` record not folded yet; else nothing
     memory-scope.py check <project>  one session-start line naming `hq` and
                                      `conduct` records not lifted yet; else nothing
 
@@ -92,9 +97,16 @@ def hook():
     if fm is None:
         return 0  # no frontmatter at all: not the shape this contract is about
     scope = field(fm, "scope")
+    name = os.path.basename(path)
+    if scope == "conduct" and not field(fm, "shared"):
+        emit("[memory-scope] %s: a conduct lesson, not folded into the shared rules yet. Fold it in this "
+             "turn: /vdm:learn → Cross-project rules, where a subagent folds it into ~/.claude/vdm/rules.md; "
+             "then set `shared: rules.md → <rule heading>` and keep this record as a pointer. A lesson whose "
+             "home is a skill goes to the agent that ships it (`/vdm:intercom send vdm <slug>`), then "
+             "`shared: <skill> §<section>`." % name)
+        return 0
     if scope in SCOPES:
         return 0
-    name = os.path.basename(path)
     if scope:
         what = "`scope: %s` is not one of project | hq | conduct" % scope
     else:
@@ -103,12 +115,17 @@ def hook():
         "[memory-scope] %s: %s. Say whose lesson this is, next to `type:` (at the top, or under "
         "`metadata:` where `type` is): project — about this project's subject; hq — how an HQ works "
         "(letters, meetings, the ball, questions to the owner); conduct — how the assistant works in any "
-        "project. An hq or conduct lesson is collected for every project by the access layer; once it has "
-        "a home, add `shared: <address>` (a rule in ~/.claude/vdm/rules.md, a skill section) and keep this "
-        "record as a pointer." % (name, what))
+        "project. A conduct lesson is folded into the shared rules in this turn (/vdm:learn → Cross-project "
+        "rules); an hq lesson is collected for every project by the access layer. Once it has a home, add "
+        "`shared: <address>` (a rule in ~/.claude/vdm/rules.md, a skill section) and keep this record as a "
+        "pointer." % (name, what))
+    emit(msg)
+    return 0
+
+
+def emit(msg):
     print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse",
                                              "additionalContext": msg}}, ensure_ascii=False))
-    return 0
 
 
 def memory_dirs(project):
@@ -141,8 +158,9 @@ def check(project):
     if not waiting:
         return 0
     shown = ", ".join(waiting[:3]) + (" and %d more" % (len(waiting) - 3) if len(waiting) > 3 else "")
-    print("[vdm] memory: %d lesson(s) marked hq or conduct are not lifted yet (no `shared:`): %s. The "
-          "access layer collects them for every project; once a lesson has its home, set "
+    print("[vdm] memory: %d lesson(s) marked hq or conduct are not lifted yet (no `shared:`): %s. A "
+          "conduct one is folded into the shared rules now — /vdm:learn → Cross-project rules; the access "
+          "layer collects the hq ones for every project. Once a lesson has its home, set "
           "`shared: <address>` and keep the record as a pointer." % (len(waiting), shown))
     return 0
 

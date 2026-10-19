@@ -108,22 +108,21 @@ projects. Every number carries its scope: "in N of the owner's turns from
 
 ## Step 5 — what to change in the layer
 
-Propose. Do not write yet. For each proposal give the evidence from the report.
+The findings go to the deep pass of `/vdm:learn` → "Cross-project rules", as
+lessons to fold: the fold may rewrite, widen or merge rules, and it shows the
+owner any change to what sessions receive before it is installed. For each
+finding give the fold its evidence from the report:
 
-| Finding | Proposal |
+| Finding | What the fold is asked |
 |---|---|
-| a rule's failure repeats in sessions it reached | rewrite its first paragraph — that paragraph is all a session sees; make the trigger concrete. Do not add a second rule beside it |
-| a cluster in two or more projects | a new rule: heading, first paragraph, and `Origin: retro <date> — <N> cases in <M> projects` |
-| two rules catch one failure | merge: one becomes a row of the other's table |
-| a rule with no corrections | keep it; say so in the report |
+| a rule's failure repeats in sessions it reached | the first paragraph is all a session sees: make it catch this case |
+| a cluster in two or more projects | a behaviour with no rule: widen one that is close, or add one |
+| two rules catch one failure | say it once |
+| a rule with no corrections | nothing; say so in the report |
 
-The owner decides which proposals go in. The edits are then written by
-`/vdm:learn` → "Cross-project rules" → *How to write it*, and the layer is
-measured before and after:
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/shared-rules.sh" --measure
-```
+The deep pass runs in the repository that ships vdm. From any other project,
+brief that agent with the report's numbers (no names):
+`/vdm:intercom send vdm rules-deep-pass-due`.
 
 ## Reflexive case
 

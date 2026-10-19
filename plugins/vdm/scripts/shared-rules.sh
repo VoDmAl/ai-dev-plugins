@@ -24,8 +24,10 @@
 # machine without it, which is the failure this layer exists to prevent.
 #
 # What rides: the heading and the FIRST PARAGRAPH of every `## ` rule — the
-# rule itself; the reasons, tables and field cases below it are read from the
-# file when the rule applies (owner's choice, crystal hq-lessons-up DL #1).
+# rule itself (owner's choice, crystal hq-lessons-up DL #1). Anything below it
+# is close to unread: of 5 132 transcripts on this machine, 7 sessions opened
+# the file to apply a rule (2026-10-19), so the paragraph has to work alone
+# (crystal rules-dream, DL #4).
 # Why: the harness puts a hook's text output longer than about 10 000
 # characters into a file and hands the session a 2 KB preview. Measured on this
 # machine's transcripts 2026-10-07: the longest output that reached a session
@@ -39,8 +41,13 @@
 # session knows it exists and where to read it. A file with no `## ` rules is
 # delivered by whole lines, as before.
 #
-# `--measure` prints what the layer would carry against the budget — for
+# `--measure [FILE]` prints what the layer would carry against the budget — for
 # /vdm:learn before it writes a rule — and exits 1 when something does not fit.
+# `--layer [FILE]` prints the rules as a session receives them, without the
+# header, so a rewrite can be compared with the layer before it. FILE stands in
+# for the live file — a candidate the rules writer has not installed yet — and
+# is measured under the live file's header, since that is what will ride
+# (crystal rules-dream, DL #3, #5).
 #
 # Never blocks. A file that exists but cannot be read is SAID, not skipped:
 # "the rules did not load" and "there are no rules" must not look the same.
@@ -51,9 +58,14 @@
 set -u
 
 MODE="${1:-}"
-[ "$MODE" = "--measure" ] || { cat >/dev/null 2>&1 || true; }   # drain the hook payload
+case "$MODE" in
+  --measure|--layer) ;;
+  *) cat >/dev/null 2>&1 || true ;;   # drain the hook payload
+esac
 
-RULES="$HOME/.claude/vdm/rules.md"
+LIVE="$HOME/.claude/vdm/rules.md"
+RULES="$LIVE"
+case "$MODE" in --measure|--layer) [ -n "${2:-}" ] && RULES="$2" ;; esac
 # Below the harness's ~10 000-character threshold with room for the header.
 MAX_BYTES=9000
 
@@ -64,7 +76,7 @@ if [ ! -f "$RULES" ] || [ ! -r "$RULES" ]; then
 fi
 grep -q '[^[:space:]]' "$RULES" 2>/dev/null || exit 0
 
-header="$(printf '[vdm] Cross-project rules — each rule as its first paragraph. The reasons, tables and cases behind each are in %s: read a rule'"'"'s section when it applies. They hold in every project on this machine; follow them here as written, and do not copy them into a project'"'"'s CLAUDE.md.' "$RULES")"
+header="$(printf '[vdm] Cross-project rules (%s). They hold in every project on this machine; follow them here as written, and do not copy them into a project'"'"'s CLAUDE.md.' "$LIVE")"
 hbytes="$(printf '%s\n\n' "$header" | LC_ALL=C wc -c | tr -d ' ')"
 
 # render <room> — the layer's body. Whole rules only; what does not fit is named.
@@ -118,6 +130,11 @@ render() {
       }
     }' "$RULES"
 }
+
+if [ "$MODE" = "--layer" ]; then
+  render $((MAX_BYTES - hbytes))
+  exit 0
+fi
 
 if [ "$MODE" = "--measure" ]; then
   body="$(render $((MAX_BYTES - hbytes)))"; rc=$?

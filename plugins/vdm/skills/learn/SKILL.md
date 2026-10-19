@@ -170,38 +170,64 @@ session on the machine for both, and hands its proposals back here.
 conventions; a rule that only one project needs; safety rules for one
 codebase. Those go to the project's CLAUDE.md or `docs/llm/`, as below.
 
-**How to write it**:
-1. Read the file first. Extend an existing rule rather than adding a
-   near-duplicate.
-2. State the rule so it holds across domains, then show it in each — people,
-   code, tickets, agents, vendors — the way a table of "claim → what confirms
-   it" does. A rule written only for the case that triggered it will not be
-   recognised in the next domain.
-3. End with one origin line: project, date, the case in a sentence.
-4. **The first paragraph is the rule.** The hook delivers only the heading and
-   the first paragraph of every `## ` rule — the reasons, the table and the
-   origin are read from the file when the rule applies. Keep that paragraph to
-   two or three sentences. The whole layer must stay under 9 000 bytes: a hook
-   output longer than about 10 000 characters is put into a file by the
-   harness, and the session sees a 2 KB preview (measured 2026-10-07 — the
-   layer went unseen at 1 034 session starts that way). Before writing, and
-   after, measure — it exits 1 and names any rule that no longer fits:
+**How to write it — fold the lesson into the layer, never append it.** A rule
+is one heading and one paragraph: the hook delivers nothing else, and almost
+nothing else is read (of 5 132 transcripts on this machine, 7 sessions opened
+the file to apply a rule — 2026-10-19). So a lesson does not become a new rule
+with a table and an origin line beside the others; a subagent folds it into
+the whole layer, and may rewrite one rule or several so that the layer says it
+once, generally (crystal `rules-dream`). The session's own context carries only
+what comes back.
 
-       "${CLAUDE_PLUGIN_ROOT}/scripts/shared-rules.sh" --measure
-5. Do not copy the rule into the project's CLAUDE.md. If the project already
-   carries a local copy, point it at the shared file — in **this** project only;
-   other projects are not yours to edit.
+1. Take the file's fingerprint:
+
+       "${CLAUDE_PLUGIN_ROOT}/scripts/rules-write.py" --hash
+
+2. Dispatch a subagent with the prompt in
+   `${CLAUDE_PLUGIN_ROOT}/skills/learn/fold-lesson.md`, and give it: the lesson
+   (the user's words where there are any, and the case in a sentence), the
+   fingerprint, the mode (`light` here), and a path for the candidate in the
+   session's scratch directory — outside every repository. It writes the whole
+   candidate file and returns what it changed and why.
+3. Ask what changes for a session:
+
+       "${CLAUDE_PLUGIN_ROOT}/scripts/rules-write.py" --diff <candidate>
+
+   Exit 0 — headings and first paragraphs are as they were: install at once.
+   Exit 1 — the layer changes: show the owner the diff with the subagent's
+   reason, and ask one question, "install?". A merged, rewritten or removed
+   rule is a layer change.
+4. Install — never by editing the file:
+
+       "${CLAUDE_PLUGIN_ROOT}/scripts/rules-write.py" --base <fingerprint> <candidate> --session <session id>
+
+   It refuses rather than lose someone else's lesson: exit 3 — the file
+   changed since the fingerprint (another session or machine wrote it): start
+   again from step 1; exit 4 — Syncthing has changes on the way, or a conflict
+   copy lies beside the file: wait, or merge the copy, then start again; exit 5
+   — the candidate does not fit the layer: the subagent folds tighter. The
+   version it replaces goes to `~/.claude/vdm/history/`.
+5. The memory record the lesson came from, if any, becomes a pointer:
+   `shared: rules.md → <rule heading>`.
+6. **Near the budget, the deep pass.** When the installed layer carries 8 100
+   bytes or more of the 9 000 (`--measure` prints it), brief the agent that
+   ships vdm: `/vdm:intercom send vdm rules-deep-pass-due`. There the same
+   prompt runs in `deep` mode over the whole layer and the `conduct` records
+   still waiting in every project; `/vdm:retro` hands its proposals there too.
+
+**The form of a rule**: the heading states the behaviour to follow; the
+paragraph — two to four sentences — says it generally enough to be recognised
+in any domain (people, code, tickets, letters, agents, machines), in terms of
+the target behaviour rather than the forbidden one. No table, no list of cases,
+no origin line: the history keeps the versions. The rule lives only in the
+shared file; a project that already carries a local copy points at it — in
+**this** project; other projects are not yours to edit.
 
 **Format**:
 ```markdown
-## <Rule, stated as a fact about how to work>
+## <The behaviour to follow, stated as a fact about how to work>
 
-<The rule in two or three sentences.>
-
-| Domain | The trap | What settles it |
-|---|---|---|
-
-Origin: <project>, <YYYY-MM-DD> — <the case in one sentence>.
+<Two to four sentences, general enough for any domain.>
 ```
 
 Harness note: the layer arrives through a plugin hook. A harness that runs no
@@ -218,7 +244,7 @@ next to its `type`, whose lesson it is:
 |---|---|---|
 | `project` | this project's subject, people, tools | here |
 | `hq` | how an HQ works: letters, meetings, the ball, questions to the owner | collected for every HQ by the access layer; the owner picks the home |
-| `conduct` | how the assistant works, in any project | collected the same way; a rule that holds everywhere goes to `~/.claude/vdm/rules.md` |
+| `conduct` | how the assistant works, in any project | folded into `~/.claude/vdm/rules.md` in the same turn — "→ Cross-project rules" above; a skill's lesson goes to the agent that ships it |
 
 "Next to `type`" means wherever `type` is — at the top of the frontmatter, or
 under `metadata:` as the harness writes it. Once an `hq` or `conduct` lesson has
@@ -231,8 +257,11 @@ Why: an HQ kept its procedural lessons in its own memory, and the owner
 может быть твой только.» Writing to memory directly, past this skill, is the
 usual path — so the question is asked by hooks, in every project: a record
 written without a valid `scope` gets one reminder, and session start names the
-`hq` and `conduct` records not lifted yet. Old records are not touched until
-they are edited. The contract was agreed with the access layer, which collects.
+`hq` and `conduct` records not lifted yet, and a `conduct` record written
+with no `shared:` is reminded to be folded then and there. Old records are not
+touched until they are edited. The contract was agreed with the access layer:
+a lesson leaves the project in its turn, and the collection catches what was
+missed.
 
 ### → CLAUDE.md Rules
 

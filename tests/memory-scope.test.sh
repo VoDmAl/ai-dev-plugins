@@ -73,6 +73,19 @@ silent "RED: scope under metadata: ⇒ silent" "$(hook "$PROJ/.claude/memory/nes
 rec "$PROJ/.claude/memory/odd.md" $'name: odd\ntype: feedback\nscope: everyone'
 says "a value outside the three is named" "$(hook "$PROJ/.claude/memory/odd.md")" "\`scope: everyone\` is not one of"
 
+echo "== a conduct lesson is folded in the turn it is written (rules-dream) =="
+rec "$PROJ/.claude/memory/conduct-new.md" $'name: conduct-new\ntype: feedback\nscope: conduct'
+out="$(hook "$PROJ/.claude/memory/conduct-new.md")"
+says "RED: conduct with no shared: ⇒ a reminder to fold it now" "$out" "Fold it in this turn"
+says "…through /vdm:learn" "$out" "/vdm:learn → Cross-project rules"
+says "…naming the record" "$out" "conduct-new.md"
+rec "$HMEM/conduct-nested.md" $'name: conduct-nested\nmetadata:\n  type: feedback\n  scope: conduct'
+says "RED: …read under metadata: too" "$(hook "$HMEM/conduct-nested.md")" "Fold it in this turn"
+rec "$PROJ/.claude/memory/conduct-up.md" $'name: conduct-up\ntype: feedback\nscope: conduct\nshared: rules.md → Disagree with the user out loud'
+silent "RED: a folded conduct lesson (shared: set) ⇒ silent" "$(hook "$PROJ/.claude/memory/conduct-up.md")"
+rec "$PROJ/.claude/memory/hq-new.md" $'name: hq-new\ntype: feedback\nscope: hq'
+silent "an hq lesson is left to the access layer's collection ⇒ silent" "$(hook "$PROJ/.claude/memory/hq-new.md")"
+
 echo "== what is not a record is left alone =="
 printf '# index\n- [x](x.md)\n' > "$PROJ/.claude/memory/MEMORY.md"
 silent "the MEMORY.md index ⇒ silent" "$(hook "$PROJ/.claude/memory/MEMORY.md")"
@@ -101,6 +114,7 @@ says "…one from the harness's, found by the project's path" "$out" "conduct-wa
 says "…an empty shared: is not a home" "$out" "empty-shared"
 says_not "…a lifted lesson is not named" "$out" "already-up"
 says_not "…nor a project lesson" "$out" "local"
+says "RED: …and a conduct one is folded now, through /vdm:learn" "$out" "/vdm:learn → Cross-project rules"
 out="$(CLAUDE_PROJECT_DIR="$PROJ" VDX_FOCUSED=1 bash "$CHECK" </dev/null)"
 silent "RED: a focused session is not asked to lift lessons (focused-session-quiet)" "$out"
 
