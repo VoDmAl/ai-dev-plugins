@@ -249,7 +249,10 @@ is shown to anyone, and open the sections below when a line does not settle.
   signs — the thread you answer — never shortened from the name in the profile's
   title: a short form the person did not use themselves reads as familiarity they
   did not offer. A form agreed in the project's notes goes into the profile: in
-  notes, the draft never sees it.
+  notes, the draft never sees it. A reply also opens the way the person opened
+  the letter it answers: a bare name is answered with a bare name, not with
+  "Hi …" — field case (2026-10-18): the owner rewrote "Hi" out of a reply
+  before sending it from the mail client.
 - **From is the profile's when it has a pair.** A `mail_from` pair — this person's
   address, our sender for it — is the owner's word on the sender. Pass its
   `from` when the draft is made (echelon's `mail_draft` takes it as `from`). With
@@ -460,6 +463,16 @@ And around them:
 - **Check against a list, not by taste**: the owner's strikes are the list. A
   project keeps its log of struck clauses (`docs/llm/`); read it before sending,
   add a line after each new strike.
+- **A letter the owner sent by hand is reconciled with what left.** The owner
+  edits in the mail client too, and nobody sees those strikes: once the letter
+  is marked `sent-proof: owner`, find it in Sent (through the access layer where
+  it is), make the copy in `comms/` the text that left, and add each difference
+  to the log of struck clauses. A promise of the owner's that appears only in the
+  sent text goes to their list at HQ. The guard says so at the moment the letter
+  turns sent. Field case (2026-10-18): a reply went out with its greeting and one
+  request rewritten — a question to one person became a promise to ask another —
+  and the copy in `comms/` said the draft's words until the agent compared it
+  with Sent.
 
 ## 10. Subject and thread
 

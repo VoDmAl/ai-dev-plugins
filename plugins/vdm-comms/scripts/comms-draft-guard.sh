@@ -112,13 +112,19 @@ SENT_PROOF="$SELF_DIR/comms_sent_proof.py"
 command -v python3 >/dev/null 2>&1 \
   || guard_unverified "python3 is needed to see whether this write marks the letter sent"
 [ -f "$SENT_PROOF" ] || guard_unverified "comms_sent_proof.py is missing next to the guard"
-printf '%s' "$payload" | python3 "$SENT_PROOF"
+note=$(printf '%s' "$payload" | python3 "$SENT_PROOF")
 rc=$?
 case "$rc" in
   0) ;;
   2) exit 2 ;;
   *) guard_unverified "could not work out the letter as this write would leave it" ;;
 esac
+# A letter the owner sent by hand: the reconciliation note is the context, and
+# the draft checklist is not — the letter is no longer a draft.
+if [ -n "$note" ]; then
+  printf '%s\n' "$note"
+  exit 0
+fi
 
 # A new draft passed: hand over the checklist of /vdm-comms:letters, at the one
 # moment it is worth reading — as additionalContext, never a block. A reminder,

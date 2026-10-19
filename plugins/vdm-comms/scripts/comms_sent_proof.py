@@ -98,6 +98,26 @@ AFTER_BASH = (
     "  A letter this session did not mark sent: tell the owner, and leave the file to them.\n"
 )
 
+# The owner sent it by hand: what left is the owner's text, and it can differ
+# from this copy. Field case (program, 2026-10-18): a reply sent from the mail
+# client went out with the greeting and a request rewritten — the «Hi» went from
+# the greeting, and a question to one person became a promise to ask another; both
+# surfaced only because the agent compared Sent with the draft when asked. The
+# moment to say it is the one this module already sees: a letter turning sent
+# with `sent-proof: owner`.
+RECONCILE = (
+    "📮 comms: the owner sent %s by hand (`sent-proof: owner`), so what left may differ from this copy. "
+    "Find the letter in Sent — through the access layer where it is on this machine — and make this "
+    "copy the text that left. Each difference is a line in the project's journal of cuts (skill "
+    "`letters` § 9), and a promise of the owner's that appears in it goes to their list at HQ."
+)
+
+
+def _context(event, text):
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}},
+                     ensure_ascii=False))
+
+
 # Outgoing letters, wherever their track is — the guard's path shape.
 LETTERS = ":(glob)**/comms/*-out.md"
 READ_LIMIT = 65536
@@ -244,6 +264,8 @@ def verdict(payload):
     if line is not None:
         sys.stderr.write(NOT_IN_JOURNAL % line)
         return 2
+    if keys[PROOF_KEY].strip().lower() == OWNER:
+        _context("PreToolUse", RECONCILE % "this letter")
     return 0
 
 
@@ -262,10 +284,11 @@ def _paths(raw):
     return [p for p in (raw or b"").decode("utf-8", "surrogateescape").split("\0") if p]
 
 
-def unproven_since_head(cwd):
+def unproven_since_head(cwd, hand=None):
     """Outgoing letters sent now without a proof that holds, and not sent in HEAD.
     → [(path relative to the work tree, why)], or None outside a git work tree —
-    nothing to compare with, nothing is said.
+    nothing to compare with, nothing is said. A list given as `hand` collects the
+    letters that turned sent with `sent-proof: owner` in the last FRESH_SECONDS.
 
     Candidates are the letters that differ from HEAD (added or modified) and the
     untracked ones; a letter as committed is not read at all. A letter sent in
@@ -297,12 +320,16 @@ def unproven_since_head(cwd):
         path = os.path.join(top, rel)
         if has_proof(keys):
             proof = keys[PROOF_KEY].strip()
-            if proof.lower() == OWNER:
-                continue
             try:
                 if time.time() - os.path.getmtime(path) > FRESH_SECONDS:
                     continue
             except OSError:
+                continue
+            if proof.lower() == OWNER:
+                if hand is not None:
+                    committed = _git(top, "show", "HEAD:" + rel) if has_head else None
+                    if committed is None or not is_sent(_keys(committed.decode("utf-8", "replace")[:READ_LIMIT])):
+                        hand.append(rel)
                 continue
         committed = _git(top, "show", "HEAD:" + rel) if has_head else None
         if committed is None:
@@ -330,13 +357,22 @@ def bash_verdict(payload):
     if not any(word in command for word in ("comms", "-out.md", "sent:")):
         return 0
     cwd = payload.get("cwd")
-    found = unproven_since_head(cwd if isinstance(cwd, str) and cwd else os.getcwd())
+    hand = []
+    found = unproven_since_head(cwd if isinstance(cwd, str) and cwd else os.getcwd(), hand)
+    # Said after the command that marks a letter sent, not after every later
+    # command that names `comms` within the window.
+    hand = hand if "sent" in command else []
+    note = RECONCILE % ", ".join("`%s`" % rel for rel in hand[:SHOWN]) if hand else ""
     if not found:
+        if note:
+            _context("PostToolUse", note)
         return 0
     lines = ["    %s — %s" % item for item in found[:SHOWN]]
     if len(found) > SHOWN:
         lines.append("    … and %d more" % (len(found) - SHOWN))
     sys.stderr.write(AFTER_BASH % "\n".join(lines))
+    if note:
+        sys.stderr.write("\n" + note + "\n")
     return 2
 
 

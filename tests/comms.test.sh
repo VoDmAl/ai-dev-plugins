@@ -320,6 +320,8 @@ expect_says "RED: …and a signature only where the owner signs" "$OUT" "a signa
 # addresses wrote from one, and the reply went to the other — the one on file —
 # because the header check compared addresses with the profile alone.
 expect_says "RED: …and a reply goes to the address the letter came from" "$OUT" "a reply goes to the address the letter came from"
+# Program, 2026-10-18: the owner rewrote "Hi" out of a reply that answered a bare name.
+expect_says "RED: …and opens the way the person opened theirs" "$OUT" "opens the way the person opened theirs"
 rm -f "$FX/.claude/vdm-plugins.json"
 OUT=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-x-out.md" "$SENT" | bash "$GUARD" 2>/dev/null); rc=$?
 expect_exit "GREEN: a blocked letter is still blocked" 2 "$rc"
@@ -360,9 +362,14 @@ OUT=$(payload Write "$L" "$SENT" | bash "$GUARD" 2>&1); rc=$?
 expect_exit "RED: …and by a Write over the existing draft ⇒ exit 2" 2 "$rc"
 OUT=$(edit_payload Edit "$L" "draft: true" $'sent: 2026-10-13\nsent-proof: owner' | bash "$GUARD" 2>&1); rc=$?
 expect_exit "GREEN: with sent-proof: owner it passes" 0 "$rc"
-expect_silent "…and says nothing — the checklist is for a new draft" "$OUT"
+# Program, 2026-10-18 (comms-owner-edits-in-client): the owner sent a reply from
+# the mail client and rewrote two places in it; the copy in comms/ said otherwise.
+expect_says "RED: …and asks to make the copy what left, from Sent" "$OUT" "make this copy the text that left"
+expect_says "…the differences into the journal of cuts" "$OUT" "journal of cuts"
+expect_not_says "…not the draft checklist: the letter is no longer a draft" "$OUT" "Before showing this draft"
 OUT=$(edit_payload Edit "$L" "draft: true" $'sent: 2026-10-13\nsent-proof: <CAF1x@mail.example.com>' | bash "$GUARD" 2>&1); rc=$?
 expect_exit "GREEN: …and with an id from the tool's answer" 0 "$rc"
+expect_silent "…sent by the tool: the copy is what left, nothing to reconcile" "$OUT"
 OUT=$(edit_payload Edit "$L" "draft: true" $'sent: 2026-10-13\nsent-proof: true' | bash "$GUARD" 2>&1); rc=$?
 expect_exit "RED: sent-proof: true is not a proof ⇒ exit 2" 2 "$rc"
 OUT=$(edit_payload Edit "$L" "no such text" "sent: 2026-10-13" | bash "$GUARD" 2>&1); rc=$?
@@ -433,7 +440,10 @@ expect_exit "RED: staged is not committed: still named" 2 "$rc"
 printf -- '---\nsent: 2026-10-13\nsent-proof: owner\n---\n\nтекст\n' > "$SX/$SL"
 OUT=$(bash_payload "$FLIP" "$SX" | bash "$SENTCHECK" 2>&1); rc=$?
 expect_exit "GREEN: with sent-proof: it is not named" 0 "$rc"
-expect_silent "…and nothing is said" "$OUT"
+expect_says "RED: …sent by the owner's hand, the copy is reconciled with Sent" "$OUT" "make this copy the text that left"
+expect_says "…naming the letter" "$OUT" "$SL"
+OUT=$(bash_payload "ls t/comms" "$SX" | bash "$SENTCHECK" 2>&1); rc=$?
+expect_silent "…once: a later command that writes no sent says nothing" "$OUT"
 printf -- '---\nsent: 2026-10-12\n---\n\nтекст\n' > "$SX/t/comms/2026-10-12-them-in.md"
 OUT=$(bash_payload "ls t/comms" "$SX" | bash "$SENTCHECK" 2>&1); rc=$?
 expect_exit "GREEN: an inbound letter carries sent: of its own — not ours" 0 "$rc"
