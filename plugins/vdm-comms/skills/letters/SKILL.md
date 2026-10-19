@@ -55,7 +55,10 @@ is shown to anyone, and open the sections below when a line does not settle.
   first sentence. Every sentence carries it or goes.
 - **Ask for the whole reach of the change.** A manual workaround is asked for
   every environment the same change will reach, not only the one where it broke.
-  Test: where else will this be needed once the change lands?
+  Test: where else will this be needed once the change lands? A request to
+  change a list of values names the whole set it should end up with — every
+  variant seen — not a pair "X in use, Y in the list": a pair reads as a swap,
+  and what already matched is lost.
 - **What is already in flight on this subject**, before the first word: letters
   sent where one part was asked and another done, open items in the track, other
   people's requests to the same person. A finding such as "it does not work on
@@ -137,6 +140,11 @@ is shown to anyone, and open the sections below when a line does not settle.
   owner's word, and a word about one letter does not carry to the next. Without
   both, the text stays on the step it has. The owner (2026-10-09): «нельзя чтобы
   агент сходу случайно перешел на шаг выше. Только если ему это разрешили».
+  The word to send counts when it comes after the final text: an edit and
+  "send" in one message is an edit — show the result, and send on the next
+  word. Once the word is said, the step is taken through the tool, not handed
+  back as "press send yourself". A first send by a new path goes as one letter,
+  and the rest wait until it is seen delivered and not bounced.
 
 ## 3. What does not go into the letter
 
