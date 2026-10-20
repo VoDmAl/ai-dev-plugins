@@ -32,6 +32,17 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
 # in tests/gates.test.sh.
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 
+# Nor the caller's SIGPIPE: Claude Code's `!` starts commands with it ignored, a
+# pre-commit run from there passes that on, and every command here would inherit
+# it — the cut-short cases below would then test the other disposition than the
+# one they name, and each call of the script would restart itself. So the suite
+# starts from the default and asks for the ignored one explicitly (cut_short ign).
+trap ':' PIPE
+if [ -z "$(trap -p PIPE)" ] && [ -z "${_IC_TEST_SIGPIPE:-}" ] && command -v perl >/dev/null 2>&1; then
+  _IC_TEST_SIGPIPE=1 exec perl -e '$SIG{PIPE} = "DEFAULT"; exec @ARGV or die "$!\n"' "$BASH" "$0" "$@"
+fi
+trap - PIPE
+
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Overridable so the suite can be pointed at a PRE-CHANGE copy of the plugin and
@@ -54,6 +65,17 @@ says_not() {
   case "$2" in *"$3"*) bad "$1" "output should not mention: $3" ;; *) ok "$1" ;; esac
 }
 eq() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "expected [$3], got [$2]"; fi; }
+# cut_short dfl|ign <command…> — the reader is gone before the first line of
+# output (`| true`), so a cut cannot fall after the work. dfl: SIGPIPE at its
+# default; ign: ignored from the start, as Claude Code's `!` runs commands.
+cut_short() {
+  local mode="$1"; shift
+  if [ "$mode" = ign ]; then
+    bash -c "trap '' PIPE; exec \"\$@\"" _ "$@" 2>&1 | true
+  else
+    "$@" 2>&1 | true
+  fi
+}
 
 if ! command -v jq >/dev/null 2>&1; then
   printf 'intercom tests need jq — skipping (0 assertions).\n'
@@ -365,6 +387,13 @@ eq "--to must itself resolve" "$rc" "1"
 [ ! -f "$VDM_INTERCOM_ROOT/nobody/bar.md" ] && ok "nothing sent when --to is unknown" || bad "stray message for unknown --to"
 out="$(bash "$IC" send "widget app" hey3 --to widget 2>&1)"
 says_not "hint that already routes there is not re-recorded" "$out" "recorded"
+# A reader that stops early (`| head -2`) used to kill the script at its next
+# line of output — the letter written, the name not yet recorded.
+for m in dfl ign; do
+  cut_short "$m" bash "$IC" send "widget folk $m" "hey5-$m" --to widget
+  eq "RED: --to records the hint even when the output is cut short ($m)" \
+    "$(bash "$IC" resolve "widget folk $m" 2>/dev/null)" "widget"
+done
 
 printf '\n[claim — an unclaimed inbox addressed to one of my names]\n'
 cd "$TMP/widget-clone"
@@ -1280,6 +1309,18 @@ says "…and whose ball it is now, as an open item" "$(cat "$L" 2>/dev/null)" "-
   && ok "a brief still in the inbox is archived by the same command" || bad "the brief was not archived"
 says "…and the reply says so" "$out" "archived"
 says_not "the output does not name the temporary body, gone by the time it is read" "$out" "intercom-reply."
+# Field case (2026-10-19): `reply … 2>&1 | head -2` delivered the outcome, and
+# the next line of output killed the script with SIGPIPE before it archived the
+# brief — answered, yet pending for every later session. With SIGPIPE ignored
+# (a commit run from `!`, 2026-10-20) the script lived on, and the unwritten
+# output came back inside the next `$(…)`: the archive path began with it.
+for m in dfl ign; do
+  ( cd "$TMP/hop-a" && bash "$IC" send hop-b "ask-cut-$m" --title "Cut short" --body "$B/ask.md" >/dev/null 2>&1 )
+  ( cd "$TMP/hop-b" && cut_short "$m" bash "$IC" reply "ask-cut-$m" --done "x" --ball "nobody — closed" )
+  [ -f "$R/hop-a/ask-cut-$m-outcome.md" ] && [ -f "$R/hop-b/_done/ask-cut-$m.md" ] && [ ! -f "$R/hop-b/ask-cut-$m.md" ] \
+    && ok "RED: a reply whose output is cut short still archives the brief ($m)" \
+    || bad "RED: a reply whose output is cut short still archives the brief ($m)" "$(ls "$R/hop-b" "$R/hop-a" 2>&1 | tr '\n' ' ')"
+done
 
 # The crystal path: picked up first, the outcome comes later.
 ( cd "$TMP/hop-a" && bash "$IC" send hop-b ask-two --title "Build Y" --body "$B/ask.md" >/dev/null 2>&1 )
@@ -1429,6 +1470,17 @@ says "…a name that leads to the new letter, not its namesake" \
   "$(cd "$TMP/hop-a" && bash "$IC" chain "${rt:-none}" 2>&1)" "New ask"
 [ ! -f "$R/hop-b/dup-two.md" ] && ok "…and the answered letter is archived" || bad "…and the answered letter is archived"
 says "…the older namesake is left as it was" "$(cat "$R/hop-b/_done/dup-two.md" 2>/dev/null)" "# Old ask"
+# Here the brief is archived and announced BEFORE the outcome goes out, so a
+# reader that stops early would leave it archived with no answer at all.
+for m in dfl ign; do
+  ( cd "$TMP/hop-a" && bash "$IC" send hop-b "dup-cut-$m" --title "Old cut" --body "$B/ask.md" >/dev/null 2>&1 )
+  ( cd "$TMP/hop-b" && bash "$IC" pickup "dup-cut-$m" >/dev/null 2>&1 )
+  sed -e 's/^status: done$/status: pending/' "$R/hop-b/_done/dup-cut-$m.md" > "$R/hop-b/dup-cut-$m.md"
+  ( cd "$TMP/hop-b" && cut_short "$m" bash "$IC" reply "dup-cut-$m" --done "x" --ball "nobody — closed" )
+  [ -n "$(ls "$R/hop-a"/dup-cut-$m-outcome*.md 2>/dev/null)" ] \
+    && ok "RED: …and with the output cut short, the outcome still goes out ($m)" \
+    || bad "RED: …and with the output cut short, the outcome still goes out ($m)" "$(ls "$R/hop-a" | tr '\n' ' ')"
+done
 # A relay that names such a clash cannot be qualified out of it — the advice
 # must say what does tell the two apart.
 sed -e 's/^status: done$/status: pending/' "$R/hop-b/_done/dup-two.md" > "$R/hop-b/dup-three.md"

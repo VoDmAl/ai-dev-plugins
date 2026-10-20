@@ -41,6 +41,26 @@ _ic_die() { printf 'intercom: %s\n' "$1" >&2; exit "${2:-1}"; }
 # `trap … EXIT` would replace the first.
 _ic_cleanup() { rm -f "${_IC_REPLY_BODY:-}" "${_IC_BODY_COPY:-}"; }
 
+# A reader that stops early does not stop the work. `reply … | head -2` closes
+# the pipe after two lines, and the next printf killed the script with SIGPIPE —
+# the outcome written, the brief not yet archived (field case, 2026-10-19); in
+# `send --to` the hint went unrecorded the same way. Caught, not ignored:
+# subshells and the commands run from here get the default back, so a pipeline
+# inside this script (`… | head -1`) ends as it always did. What is left of the
+# output goes nowhere — nobody is reading it.
+trap 'exec >/dev/null 2>&1' PIPE
+# A shell that starts with SIGPIPE ignored can neither catch it nor reset it,
+# and Claude Code's `!` starts commands that way (so does a pre-commit run from
+# one). There a failed write does not stop the script: its text stays in the
+# stdout buffer, and the next `$(…)` returns it — `reply` then archived to a
+# path that began "✉️  intercom: staged message →" and failed. Such a shell
+# starts over once, with the default disposition, and the trap above holds.
+if [ -z "$(trap -p PIPE)" ] && [ -z "${_IC_SIGPIPE_RESET:-}" ] && command -v perl >/dev/null 2>&1; then
+  _IC_SIGPIPE_RESET=1 exec perl -e '$SIG{PIPE} = "DEFAULT"; exec @ARGV or die "intercom: cannot restart: $!\n"' \
+    "$BASH" "${BASH_SOURCE[0]}" "$@"
+fi
+unset _IC_SIGPIPE_RESET
+
 # Sanitize a user-supplied slug into a safe filename: lowercase, spaces→dash,
 # keep [a-z0-9._-], collapse repeats, trim leading/trailing dashes.
 _ic_sanitize_slug() {
