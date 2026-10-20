@@ -287,9 +287,13 @@ none of the items from 2 on (§ Focused sessions). What it does:
    Implicitly, like `check` and `send`: an identity resting on nothing but the
    directory's name is not registered, and such a directory with no entry gets
    no word from the hook at all (§ Two guards on registration).
-2. **Complete registration** → one line: *"You are `<identity>` — aka: <names>"*
-   plus the pending-message count. That line is the answer to "what's your
-   name?" — an agent that knows its own names can also tell a sender which to use.
+2. **Complete registration** → one line: *"You are `<identity>` on `<machine>` —
+   aka: <names>"* plus the pending-message count. That line is the answer to
+   "what's your name?" — an agent that knows its own names can also tell a sender
+   which to use. The machine is there for the sender on the user's other machine:
+   the harness keeps this line in the session's transcript, the transcript travels
+   between the machines, and `sent` / `send` read from it where the session runs
+   (§ Delivery is not receipt).
 3. **Incomplete registration** (no `names` and/or no `description`) → the
    assistant is told to complete it **before other work**:
    - infer the names from the README title, product / plugin / skill names, the
@@ -665,10 +669,21 @@ So three things happen on top of the inbox, and none of them replaces it:
   `📤 N of your letters lie unpicked for 3+ days` when there are any. A
   recipient with no live session can only be reached by their next `check` —
   or by the user, who can be told.
+- **No live session here is not none anywhere.** When the recipient has no
+  live session on this machine, `sent` — and `send`, when there is something to
+  say — names where one was last active: *"on `<machine>` one was active 3 min
+  ago; it cannot be woken from here"*, from the transcripts, which travel between
+  the user's machines and carry the session-start line with the machine in it. A
+  focused one is named as focused; a session started before that line named its
+  machine is *"not recorded"*; nothing in the last 12 hours is said as such. It
+  says *active*, never *live*: a transcript does not record that its session
+  closed. Field case (2026-10-20): `sent` said "no live session" for a recipient
+  whose session had been open on the user's other machine for two days, its
+  transcript written that minute.
 
 A harness without cross-session messages, or a machine where the recipient has
-no live session, behaves exactly as before: nothing is printed and nothing is
-required. Live sessions are read from the harness's own session files
+no live session and none is seen elsewhere, behaves as before: nothing is
+printed by `send`, and nothing is required. Live sessions are read from the harness's own session files
 (`${CLAUDE_CONFIG_DIR:-~/.claude}/sessions/`); a copy synced from another
 machine, a dead process or a missing socket never counts as live, and your own
 session is never listed.

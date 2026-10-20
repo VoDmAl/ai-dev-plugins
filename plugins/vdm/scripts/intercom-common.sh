@@ -1398,6 +1398,114 @@ intercom_owner_turns() {
       done | sort -r
 }
 
+# ---------------------------------------------------------------------------
+# Where a session runs when it is not here (docs/tasks/intercom-session-wake,
+# DL #1, #2). `sent` said "no live session" whenever none was live on THIS
+# machine, and the sender read it as true of every machine. Field case
+# 2026-10-20: the recipient's session had been open on the owner's other machine
+# for two days, its transcript written that very minute.
+#
+# Transcripts under projects/ travel between the machines, and the line
+# intercom-identity-check.sh prints at session start goes into the transcript as
+# a hook record, the machine named in it. So a transcript says where its session
+# was started. It cannot say whether that session is still open — nothing marks
+# the end — hence "active N min ago on M", never "live on M".
+# ---------------------------------------------------------------------------
+
+# _intercom_transcript_machine <transcript> — "<machine><US><mode>" from the last
+# session-start line of this plugin in that transcript (mode: `focused` or
+# empty); nothing when it holds none. Only a raw hook record counts: a quote of
+# the same line in a conversation sits inside an escaped string, where the key
+# reads \"hookEvent\".
+_intercom_transcript_machine() {
+  local line m mode=""
+  line="$(grep -F '"hookEvent":"SessionStart"' "$1" 2>/dev/null | grep -F '"type":"hook_success"' \
+          | LC_ALL=C grep -E '(🪪 You are|INCOMPLETE for) `[^`]*` on `' | tail -1)"
+  [ -n "$line" ] || return 0
+  m="$(printf '%s' "$line" | LC_ALL=C sed -nE 's/.*(🪪 You are|INCOMPLETE for) `[^`]*` on `([^`]*)`.*/\2/p')"
+  [ -n "$m" ] || return 0
+  case "$line" in *'🔇 Focused session'*) mode=focused ;; esac
+  printf '%s\037%s\n' "$m" "$mode"
+}
+
+# _intercom_ago <minutes> — "N min" under two hours, "N h" from there.
+_intercom_ago() {
+  if [ "$1" -lt 120 ]; then printf '%s min' "$1"; else printf '%s h' "$(( $1 / 60 ))"; fi
+}
+
+# intercom_seen_elsewhere <identity> — "<minutes ago><US><machine><US><mode>" for
+# that agent's transcript last written inside the window by a session started on
+# another machine, or on one it does not record (a session started before the
+# start line named it: machine empty). Nothing when there is none. A transcript
+# from this machine is a session closed here, and is skipped: ask only when
+# `intercom_live_sessions` came back empty. Activity is the transcript's last
+# timestamp, not its mtime: the record of the session, not of the copy.
+intercom_seen_elsewhere() {
+  local id="$1" projects owners here cutoff f cwd ts best="" best_ts="" mm m mode
+  projects="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"
+  [ -d "$projects" ] || return 0
+  owners="$(_intercom_owners)"
+  [ -n "$owners" ] || return 0
+  here="$(_intercom_machine_name)"
+  cutoff="$(_intercom_iso_utc "$(( $(_intercom_now) - INTERCOM_PRESENCE_WINDOW_H * 3600 ))")"
+  # The harness names a project's directory after its path, every character
+  # other than a letter or a digit turned into `-`. Lossy (`a-b` and `a/b` look
+  # the same), so it only narrows the scan to the agent's own directories — a
+  # sub-directory session's included, by prefix — and the transcript's `cwd`
+  # still decides. Measured 2026-10-20: 0.7 s for 23 transcripts of all
+  # projects, where the agent owned one. No directory matches → every one.
+  local dirs=() p d
+  while IFS=$'\t' read -r p d; do
+    [ "$d" = "$id" ] || continue
+    p="$(printf '%s' "$p" | LC_ALL=C sed 's/[^A-Za-z0-9]/-/g')"
+    for d in "$projects/$p" "$projects/$p"-*; do [ -d "$d" ] && dirs+=("$d"); done
+  done <<<"$owners"
+  local depth=1
+  [ "${#dirs[@]}" -gt 0 ] || { dirs=("$projects"); depth=2; }
+  while IFS= read -r f; do
+    case "${f##*/}" in *.sync-conflict-*) continue ;; esac
+    cwd="$(grep -m1 -o '"cwd":"[^"]*"' "$f" 2>/dev/null | head -1 | sed 's/^"cwd":"//; s/"$//')"
+    [ -n "$cwd" ] || continue
+    [ "$(_intercom_owner_of "$(_intercom_realpath "$cwd")" "$owners")" = "$id" ] || continue
+    ts="$(tail -n 30 "$f" 2>/dev/null | grep -o '"timestamp":"[^"]*"' | tail -1 | sed 's/^"timestamp":"//; s/"$//')"
+    [ -n "$ts" ] || continue
+    ts="${ts%%.*}"; ts="${ts%Z}Z"
+    [ "$ts" \< "$cutoff" ] && continue
+    [ -z "$best_ts" ] || [ "$best_ts" \< "$ts" ] || continue
+    mm="$(_intercom_transcript_machine "$f")"
+    IFS=$'\037' read -r m mode <<<"$mm"
+    [ -n "$m" ] && [ "$m" = "$here" ] && continue
+    best_ts="$ts"; best="${m}"$'\037'"${mode}"
+  done < <(find "${dirs[@]}" -mindepth "$depth" -maxdepth "$depth" -name '*.jsonl' -mmin "-$((INTERCOM_PRESENCE_WINDOW_H * 60 + 60))" 2>/dev/null)
+  [ -n "$best_ts" ] || return 0
+  local e mins
+  e="$(_intercom_epoch_utc "$best_ts")"
+  [ -n "$e" ] || return 0
+  mins=$(( ($(_intercom_now) - e) / 60 )); [ "$mins" -ge 0 ] || mins=0
+  printf '%s\037%s\n' "$mins" "$best"
+}
+
+# intercom_elsewhere_line <identity> [<seen>] — what the sender may truthfully
+# say when no session of that agent is live here: where one was last active, if
+# anywhere in the window, and how the letter reaches it. <seen> is the caller's
+# own `intercom_seen_elsewhere` output when it already has it.
+intercom_elsewhere_line() {
+  local seen="${2-}" mins m mode
+  [ $# -ge 2 ] || seen="$(intercom_seen_elsewhere "$1")"
+  if [ -z "$seen" ]; then
+    printf 'no live session on this machine, and none active on another in the last %s h — it waits for their next `check`' "$INTERCOM_PRESENCE_WINDOW_H"
+    return 0
+  fi
+  IFS=$'\037' read -r mins m mode <<<"$seen"
+  if [ -z "$m" ]; then
+    printf 'no live session on this machine — a session not live here wrote its transcript %s ago (its machine is not recorded); it cannot be woken from here' "$(_intercom_ago "$mins")"
+  elif [ "$mode" = focused ]; then
+    printf 'no live session on this machine — on `%s` a focused one was active %s ago; it cannot be woken from here and reads mail only when asked' "$m" "$(_intercom_ago "$mins")"
+  else
+    printf 'no live session on this machine — on `%s` one was active %s ago; it cannot be woken from here: the letter reaches it as one line with your next message there, or at its next `check`' "$m" "$(_intercom_ago "$mins")"
+  fi
+}
+
 # intercom_wake_choice <identity> [<live>] — one line, or nothing when no
 # session of that agent is live here. <live> is the caller's own
 # `intercom_live_sessions` output when it already has it: every caller prints
@@ -1454,8 +1562,16 @@ intercom_wake_choice() {
         return 0
       fi
     done <<<"$live"
-    printf 'wait\037\037\037your last turn in `%s` (%s) was in a session that is not on this machine — the letter waits for it\n' \
-      "$id" "$top_ts"
+    local where="a session that is not on this machine" tf mm m mode
+    for tf in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"/*/"$top_sid".jsonl; do
+      [ -f "$tf" ] || continue
+      mm="$(_intercom_transcript_machine "$tf")"
+      IFS=$'\037' read -r m mode <<<"$mm"
+      [ -n "$m" ] && [ "$m" != "$(_intercom_machine_name)" ] && where="a session on \`$m\`"
+      break
+    done
+    printf 'wait\037\037\037your last turn in `%s` (%s) was in %s — the letter waits for it\n' \
+      "$id" "$top_ts" "$where"
     return 0
   done <<<"$turns"
   # No presence: the most recently active live session (its file's status

@@ -10,6 +10,26 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ## 2026-10-20
 
+### ✨ FEATURE — intercom: «здесь нет живой сессии» больше не звучит как «её нет нигде» (vdm 2.53.0)
+
+**Что было.** `sent` писал «no live session — it waits for their next `check`», если у адресата нет живой сессии
+на этой машине. 20.10 echelon прочёл это про 21 письмо агенту `program`, а его сессия два дня стояла открытой на
+второй машине владельца, и транскрипт писался в ту же минуту. `send` в таком случае молчал.
+
+**Что сделано.** Строка intercom на старте сессии называет машину: `🪪 You are \`<id>\` on \`<machine>\``.
+Харнесс хранит её в транскрипте, а транскрипты синхронизируются между машинами. Когда живой сессии здесь нет, `sent`
+и `send` называют, где сессия адресата была активна в последние 12 часов: «on `<machine>` one was active 3 min ago;
+it cannot be woken from here». Focused-сессия названа как focused. Про сессию, начатую до этой версии, сказано
+«machine is not recorded». Про ход владельца в сессии на другой машине строка «do not wake here» теперь тоже называет
+машину. Слово выбрано «active», а не «live»: по транскрипту не видно, закрыта ли сессия. Маркером считается только
+запись хука, а не цитата той же строки в беседе. Вместе с этим тесты `intercom` и `memory-scope` вычищают
+`VDX_FOCUSED`/`VDX_INTERCOM`: в сессии `--focused` 23 проверки хука были красными.
+
+Первая часть брифа echelon `intercom-session-wake`. Почтовая сессия (`vdx ai --intercom`) — следующим шагом,
+кристалл [intercom-session-wake](docs/tasks/intercom-session-wake/workitem.md). `tests/intercom.test.sh` — 505
+проверок; 12 новых красные на 2.52.1, а тест на цитату краснеет, если убрать фильтр по записи хука. `sent` у echelon
+стал медленнее на ~0,4 с на каждого адресата без живой сессии здесь.
+
 ### 🐛 BUG — intercom: обрезанный вывод больше не обрывает работу `reply` и `send --to` (vdm 2.52.1)
 
 **Что было.** 19.10 `intercom.sh reply comms-owner-edits-in-client --body … 2>&1 | head -2` положил ответ во

@@ -880,6 +880,12 @@ cmd_send() {
     else
       printf '       → do not wake here: %s.\n' "$why"
     fi
+  else
+    # None live here is not none anywhere: a session on the owner's other
+    # machine is named, with how long ago it was active (intercom-session-wake).
+    local seen
+    seen="$(intercom_seen_elsewhere "$canon")"
+    [ -z "$seen" ] || printf '    📣 %s.\n' "$(intercom_elsewhere_line "$canon" "$seen")"
   fi
 }
 
@@ -916,12 +922,17 @@ cmd_sent() {
       *"|$inbox|"*) live="$(printf '%s\n' "$cache" | awk -F '=' -v k="$inbox" '$1 == k { sub(/^[^=]*=/, ""); print; exit }')" ;;
       *) lines="$(intercom_live_sessions "$inbox")"
          live="$(printf '%s' "$lines" | cut -f1 | paste -sd ',' - | sed 's/,/, /g')"
-         [ -n "$live" ] && live="${live}"$'\036'"$(intercom_wake_choice "$inbox" "$lines")"
+         if [ -n "$live" ]; then
+           live="${live}"$'\036'"$(intercom_wake_choice "$inbox" "$lines")"
+         else
+           # Kept as "=<line>": an empty live list, and what can be said instead.
+           live=$'\036'"$(intercom_elsewhere_line "$inbox")"
+         fi
          seen="${seen}|$inbox|"; cache="${cache}${inbox}=${live}
 " ;;
     esac
+    choice="${live#*$'\036'}"; live="${live%%$'\036'*}"
     if [ -n "$live" ]; then
-      choice="${live#*$'\036'}"; live="${live%%$'\036'*}"
       IFS=$'\037' read -r verdict wname wstatus why <<<"$choice"
       if [ "$verdict" = "wake" ]; then
         printf '      live now: %s → wake one: %s (%s) with SendMessage: 📬 intercom: `%s` from `%s` — %s. Read: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first\n' \
@@ -930,7 +941,7 @@ cmd_sent() {
         printf '      live now: %s — do not wake here: %s\n' "$live" "$why"
       fi
     else
-      printf '      no live session — it waits for their next `check`\n'
+      printf '      %s\n' "$choice"
     fi
   done <<<"$list"
 }

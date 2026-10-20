@@ -66,13 +66,19 @@ fi
 
 names="$(intercom_registry_get "$id" '(.names // []) | join(", ")')"
 
+# The machine is named in the first line: the harness writes this output into
+# the session's transcript, transcripts travel between the machines, and that
+# is how a sender on the other one learns where this session runs
+# (intercom_seen_elsewhere; docs/tasks/intercom-session-wake, DL #1).
+machine="$(_intercom_machine_name)"
+
 # A focused session (VDX_FOCUSED=1, `vdx ai --focused`) is deaf to mail: one
 # line saying who it is, and nothing that calls it to the inbox — no count, no
 # letters of its own waiting, no notice asking for work before other work. The
 # registration above still runs: it is silent, and routing depends on it.
 # @see intercom-common.sh → "Focused sessions"
 if intercom_focused; then
-  msg="[intercom] 🪪 You are \`${id}\`"
+  msg="[intercom] 🪪 You are \`${id}\` on \`${machine}\`"
   [ -n "$names" ] && msg="${msg} — aka: ${names}"
   msg="${msg}. 🔇 Focused session: mail is not shown here and no other session wakes this one; read the inbox only when the user asks."
   jq -c -n --arg c "$msg" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
@@ -113,7 +119,7 @@ fi
 
 msg=""
 if [ -z "$missing" ]; then
-  msg="[intercom] 🪪 You are \`${id}\`"
+  msg="[intercom] 🪪 You are \`${id}\` on \`${machine}\`"
   [ -n "$names" ] && msg="${msg} — aka: ${names}"
   [ -n "$aliases" ] && msg="${msg} (auto-aliases: ${aliases})"
   msg="${msg}. Other agents address you by any of these."
@@ -124,7 +130,7 @@ if [ -z "$missing" ]; then
 else
   reach="\`${id}\`"
   [ -n "$aliases" ] && reach="${reach}, ${aliases}"
-  msg="[intercom] ⚠ Agent registration INCOMPLETE for \`${id}\` — missing: ${missing}."
+  msg="[intercom] ⚠ Agent registration INCOMPLETE for \`${id}\` on \`${machine}\` — missing: ${missing}."
   msg="${msg}
 Right now other agents can reach this repo only as ${reach} — those are machine-derived names. A brief the user addresses to \"vdm\", \"the intercom agent\" or whatever they actually call this project will NOT land here."
   # A READY-TO-RUN line, not an instruction to derive one.

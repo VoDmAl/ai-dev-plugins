@@ -27,6 +27,12 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
       GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR 2>/dev/null || true
 
+# Nor the mode of the session that runs the suite: `vdx ai --focused` starts it
+# with VDX_FOCUSED=1, and every hook here would answer as in a focused session —
+# measured 2026-10-20, 23 cases red in a focused session and green outside one.
+# A case that wants the mode sets it on its own command.
+unset VDX_FOCUSED VDX_INTERCOM 2>/dev/null || true
+
 # Nor the machine's git config: git 2.54 runs a hook declared there
 # (`hook.<name>.command`) on every commit, a fixture's included — the case is
 # in tests/gates.test.sh.
@@ -89,6 +95,10 @@ trap cleanup EXIT
 export VDM_INTERCOM_ROOT="$TMP/store"
 export HOME="$TMP/home"          # so ~/.claude/vdm-plugins.json cannot leak in
 mkdir -p "$HOME"
+# This machine as intercom names it: the identity of $HOME, the `on` of the
+# session-start line, the `taken:` mark.
+machine="$( { scutil --get LocalHostName 2>/dev/null || hostname -s 2>/dev/null || echo localhost; } \
+  | LC_ALL=C tr '[:upper:]' '[:lower:]' | sed -e 's|[^a-z0-9._-]|-|g' -e 's|-\{2,\}|-|g' -e 's|^-||' -e 's|-$||')"
 
 mkrepo() {  # mkrepo <dir> <remote-url>
   mkdir -p "$1"
@@ -161,6 +171,7 @@ bash "$IC" register --describe "The widget service (billing)" >/dev/null 2>&1
 printf '\n[session-start hook — complete]\n'
 out="$(printf '{"session_id":"t","source":"startup"}' | bash "$HOOK")"
 says "hook states who you are" "$out" "You are \`widget\`"
+says "RED: …and the machine it runs on — the transcript carries it to the other one" "$out" "You are \`widget\` on \`$machine\`"
 says "hook lists the human names" "$out" "aka: widget app, wgt"
 says_not "hook no longer nags" "$out" "INCOMPLETE"
 cd "$HOME"
@@ -456,8 +467,6 @@ printf '\n[$HOME is not a project — and its basename is somebody'"'"'s name]\n
 # the plugin repo ambiguous. Fixture mirrors that exactly: a home directory
 # whose basename is `wgt`, already a name of `widget`.
 FAKEHOME="$TMP/wgt"; mkdir -p "$FAKEHOME"
-machine="$( { scutil --get LocalHostName 2>/dev/null || hostname -s 2>/dev/null || echo localhost; } \
-  | LC_ALL=C tr '[:upper:]' '[:lower:]' | sed -e 's|[^a-z0-9._-]|-|g' -e 's|-\{2,\}|-|g' -e 's|^-||' -e 's|-$||')"
 # Whoever owns `wgt` by now — earlier assertions move it between agents on
 # purpose. The claim under test is that it does not MOVE here, not who holds it.
 WGT_OWNER="$(bash "$IC" resolve wgt)"
@@ -1139,6 +1148,65 @@ says_not "RED: a recipient whose only live session is focused — no live list" 
 says_not "…and nothing to wake" "$out" "SendMessage"
 rm -f "$SESS/foc-b.json" "$SESS/foc-c.json" "$PROJ/hb/sid-hop-b-focus.jsonl" "$VDM_INTERCOM_ROOT"/hop-c/foc-only.md
 kill "$FOC_PID" 2>/dev/null
+
+echo "-- none live here is not none anywhere (intercom-session-wake DL #1, #2)"
+# Field case 2026-10-20: `sent` said "no live session — it waits for their next
+# check" for a recipient whose session had been open on the owner's other
+# machine for two days, its transcript written that minute. The session-start
+# line names the machine, the harness keeps that line in the transcript as a
+# hook record, and the transcript travels. The record is made from the real
+# hook's output, with this machine swapped for the other one.
+hookrec() {  # hookrec <dir> <sessionId> <cwd> <timestamp> <machine> [focused] — the session-start record
+  local o
+  o="$( cd "$3" && printf '{}' | env ${6:+VDX_FOCUSED=1} bash "$HOOK" )"
+  o="${o//on \`$machine\`/on \`$5\`}"
+  mkdir -p "$PROJ/$1"
+  jq -cn --arg ts "$4" --arg sid "$2" --arg cwd "$3" --arg out "$o" \
+    '{type:"attachment", timestamp:$ts, sessionId:$sid, cwd:$cwd,
+      attachment:{type:"hook_success", hookName:"SessionStart:startup", hookEvent:"SessionStart", stdout:$out}}' \
+    >> "$PROJ/$1/$2.jsonl"
+}
+sent_c() { ( cd "$TMP/hop-a" && VDM_INTERCOM_NOW="$NOW_EPOCH" VDM_INTERCOM_TODAY=2026-10-04 bash "$IC" sent 2>&1 ) | grep -A1 'hop-c/old-one' | tail -1; }
+out="$(sent_c)"
+says "with no transcript anywhere, nobody is said to be live — on this machine or another" "$out" "none active on another in the last 12 h"
+hookrec hc "sid-c-far" "$TMP/hop-c" "2026-10-04T08:00:00Z" m-other
+turn hc "sid-c-far" "$TMP/hop-c" "2026-10-04T10:57:00Z"
+out="$(sent_c)"
+says "RED: a session on the other machine is named with how long ago it was active" "$out" "on \`m-other\` one was active 3 min ago"
+says "…as one that cannot be woken from here" "$out" "cannot be woken from here"
+says_not "…not as 'no live session — it waits for their next check'" "$out" "no live session — it waits"
+out="$( cd "$TMP/hop-a" && VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" send hop-c far-one --body "$B/live.md" 2>&1 )"
+says "RED: send says the same, where it used to say nothing" "$out" "📣 no live session on this machine — on \`m-other\`"
+rm -f "$VDM_INTERCOM_ROOT/hop-c/far-one.md"
+hookrec hc "sid-c-far" "$TMP/hop-c" "2026-10-04T10:58:00Z" m-other focused
+turn hc "sid-c-far" "$TMP/hop-c" "2026-10-04T10:58:30Z"
+out="$(sent_c)"
+says "RED: the last start of that session decides — a focused one is named as focused" "$out" "a focused one was active 1 min ago"
+rm -f "$PROJ/hc/sid-c-far.jsonl"
+hookrec hc "sid-c-here" "$TMP/hop-c" "2026-10-04T10:00:00Z" "$machine"
+turn hc "sid-c-here" "$TMP/hop-c" "2026-10-04T10:59:00Z"
+out="$(sent_c)"
+says "a transcript from this machine whose session is not live is a closed one — not named" "$out" "none active on another"
+rm -f "$PROJ/hc/sid-c-here.jsonl"
+# A quote of the start line in a conversation is not a start of the session:
+# the record sits inside an escaped string there.
+rec="$(hookrec hc q "$TMP/hop-c" "2026-10-04T10:00:00Z" m-other && cat "$PROJ/hc/q.jsonl")"; rm -f "$PROJ/hc/q.jsonl"
+jq -cn --arg c "$rec" --arg cwd "$TMP/hop-c" '{type:"user", timestamp:"2026-10-04T10:56:00Z", sessionId:"sid-c-quote", cwd:$cwd, message:{role:"user", content:$c}}' \
+  > "$PROJ/hc/sid-c-quote.jsonl"
+out="$(sent_c)"
+says "RED: a session whose transcript only quotes the start line — its machine is not recorded" "$out" "its machine is not recorded"
+says "…but it is still named as active 4 min ago" "$out" "transcript 4 min ago"
+rm -f "$PROJ/hc/sid-c-quote.jsonl"
+hookrec hc "sid-c-old" "$TMP/hop-c" "2026-10-03T20:00:00Z" m-other
+out="$(sent_c)"
+says "activity older than the window is not named" "$out" "none active on another"
+rm -rf "$PROJ/hc"
+# The owner's last turn in a session not on this machine: the wait line names it.
+hookrec hb "sid-elsewhere" "$TMP/hop-b" "2026-10-04T09:00:00Z" m-other
+turn hb "sid-elsewhere" "$TMP/hop-b" "2026-10-04T10:58:00Z"
+out="$(wake_out far-wait)"
+says "RED: the session the letter waits for is named by its machine" "$out" "was in a session on \`m-other\` — the letter waits for it"
+rm -f "$PROJ/hb/sid-elsewhere.jsonl" "$VDM_INTERCOM_ROOT/hop-b/far-wait.md"
 
 echo "-- the owner may be at it: the wake waits (intercom-wake-timing DL #3)"
 # Field case (echelon, 2026-10-01): the owner was answering a round of
