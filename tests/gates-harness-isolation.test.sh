@@ -60,7 +60,8 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE \
       GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION \
       GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
-      GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR 2>/dev/null || true
+      GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR \
+      VDX_FOCUSED VDX_INTERCOM 2>/dev/null || true
 
 # Nor the machine's git config: git 2.54 runs a hook declared there
 # (`hook.<name>.command`) on every commit, a fixture's included — the case is
@@ -209,10 +210,18 @@ printf '\nevery test harness carries the scrub, not just the ones a gate runs to
 # suite to read the signature (tests/pii-scan.test.sh) went red in the hook and
 # green by hand. Eight blocks also lacked four of the location names. Each file
 # is now asked for each name, and a gap is reported by file and by name.
+#
+# And over the session that runs the commit, not only git's. `vdx ai --focused`
+# starts the agent with VDX_FOCUSED=1 (`--intercom`: VDX_INTERCOM=1); the
+# owner's `!` commit from that session hands it to every suite, and the hooks
+# under test answer as in a focused session. Measured 2026-10-20: 23 cases of
+# tests/intercom.test.sh red in a focused session, green outside it. A case that
+# wants the mode sets it on its own command.
 SESSION_VARS="GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY
   GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE GIT_PREFIX
   GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL
-  GIT_AUTHOR_DATE GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR"
+  GIT_AUTHOR_DATE GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR
+  VDX_FOCUSED VDX_INTERCOM"
 
 # scrub_missing <file> — the session names the file's scrub does not unset, or
 # "the whole block" when it has none. The block is the statement that opens with

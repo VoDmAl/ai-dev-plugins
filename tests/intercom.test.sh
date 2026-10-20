@@ -25,13 +25,8 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE \
       GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION \
       GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
-      GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR 2>/dev/null || true
-
-# Nor the mode of the session that runs the suite: `vdx ai --focused` starts it
-# with VDX_FOCUSED=1, and every hook here would answer as in a focused session —
-# measured 2026-10-20, 23 cases red in a focused session and green outside one.
-# A case that wants the mode sets it on its own command.
-unset VDX_FOCUSED VDX_INTERCOM 2>/dev/null || true
+      GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR \
+      VDX_FOCUSED VDX_INTERCOM 2>/dev/null || true
 
 # Nor the machine's git config: git 2.54 runs a hook declared there
 # (`hook.<name>.command`) on every commit, a fixture's included — the case is

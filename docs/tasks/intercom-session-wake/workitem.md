@@ -182,12 +182,14 @@ it waits for their next \`check\`», при том что его транскр�
       сессии отказывают сверх предела и называют строку владельцу
 - [ ] Пункт 5: работа с правкой кода из почтовой сессии оставляется кристаллом для основной (правило в
       строке старта и в SKILL.md)
-- [ ] `VDX_FOCUSED`/`VDX_INTERCOM` — в canonical-блок вычистки всех наборов и в `SESSION_VARS`
+- [x] `VDX_FOCUSED`/`VDX_INTERCOM` — в canonical-блок вычистки всех наборов и в `SESSION_VARS`
       `tests/gates-harness-isolation.test.sh`; отдельные `unset` в `intercom` и `memory-scope` (vdm 2.53.0)
       свернуть в него. Отдельный коммит: в 2.53.0 вычистка стоит только там, где сегодня нужна
 - [x] Письмо vdx: какую метку мы читаем, Sidetrack #1, маркер «ждёт владельца» — отправлено 20.10,
       `vdx/intercom-session-mode-intercom-side` (продолжает `vdx/intercom-session-mode`)
 - [ ] Ответ vdx на три вопроса письма — от него зависят пункты 1–3 и Sidetrack #1
+- [x] Промежуточный итог echelon — 20.10, `echelon/intercom-session-wake-outcome-sent`: сделан второй
+      пункт Ball (2.53.0, `92d09e3`), почтовая сессия в работе, мяч — у владельца (push) и у нас (пункты 1–5)
 - [ ] Outcome to `echelon`: intercom reply intercom-session-wake --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
 
 ## References
