@@ -714,6 +714,42 @@ the environment a process was started with cannot outlive the session, nor
 follow a resume that started without the flag. Guards such as git-guard are not
 nudges and keep working.
 
+### Mail sessions — the inbox is their work
+
+A session started with `vdx ai --intercom` carries `VDX_INTERCOM=1` (the name is
+vdx's to settle) and is the project's session for mail. The user's words
+(2026-10-20): the agent is not interrupted by messages, and everybody gets
+messages faster and answers each other. The user's own session runs
+`--focused` beside it and stays quiet. Read from the process, like focused; a
+session started with both is focused.
+
+- **Woken at once.** When the recipient has a live mail session on this
+  machine, `send`, `sent` and the receipt after `pickup` wake that one, ahead
+  of the session where the user typed last and without the 15-minute window:
+  nobody sits at it. Its pointer says what to do — *"You are the mail session:
+  take it and handle it — /vdm:intercom check"* — with no "not urgent". The
+  live list marks it `(idle, mail)`. On the user's other machine it is named
+  from its transcript, like any session: *"its mail session was active 2 min
+  ago"*.
+- **The inbox is the work.** Its session-start line says so instead of the
+  pending count: check now and at every wake, then each letter in turn — take,
+  read, act, close with `reply` or `pickup`.
+- **What stays out of it.** Work that changes the code is left for the user's
+  main session as a crystal (`/vdm:crystal-grow`, or `/vdm:crystal-bud` on an
+  active one): the two sessions share one working tree, and an edit here rides
+  into the other's commit. A question for the user is not asked in its pane,
+  which nobody reads: one line goes to the user's list at HQ (the access
+  layer's `hq <project root> --obligations` names it), and the session takes
+  the next letter without waiting for the answer.
+- **A chain between mail sessions stops.** A letter written in a mail session
+  carries `session: mail` in its envelope. When a mail session continues a
+  chain (`send --reply-to`, `reply`) whose last 3 links all carry it, the
+  link is refused with exit 4 and nothing is written; the question goes to
+  the user at HQ instead, and `reply` leaves the brief in the inbox. A link
+  from any other session — one the user works in — ends the run. The user
+  accepted the rule as a condition of the mode, since agents answering each
+  other fast may agree on what is the user's to decide; the count of 3 is ours.
+
 ## Configuration Sub-commands
 
 `/vdm:intercom [subcommand]` recognizes these as the first word of arguments.

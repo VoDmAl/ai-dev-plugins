@@ -123,7 +123,7 @@ if [ -z "$missing" ]; then
   [ -n "$names" ] && msg="${msg} — aka: ${names}"
   [ -n "$aliases" ] && msg="${msg} (auto-aliases: ${aliases})"
   msg="${msg}. Other agents address you by any of these."
-  if [ "$pending" -gt 0 ]; then
+  if [ "$pending" -gt 0 ] && ! intercom_mail_session; then
     msg="${msg} 📬 ${pending} pending message(s) in your inbox → /vdm:intercom check."
   fi
   msg="${msg} Directory of agents: /vdm:intercom directory · send a brief: /vdm:intercom send <name> <slug>."
@@ -151,6 +151,25 @@ Right now other agents can reach this repo only as ${reach} — those are machin
 Before other work, register the names this project really goes by. A default derived from this repo — run it as-is if it is right, or edit the name / add --name for whatever else the user calls this project (do not invent names; ask ONCE if the default is clearly wrong):
   /vdm:intercom register --name \"${default_name}\" --describe \"${default_desc}\"
 Verify with /vdm:intercom whoami. This notice repeats every session until the registration is complete (opt out: /vdm:intercom identity-check off)."
+fi
+
+# A mail session (`vdx ai --intercom`) is told what it is for. For it the
+# inbox is the work, not a reminder: nobody sits at it, and the wakes that would
+# have gone to the owner's session come here. The owner accepted three
+# conditions with the mode, and they are said where the session starts, which
+# is the only moment this plugin has with it before the mail: a question for the
+# owner goes to their list at HQ, not into a pane nobody looks at; work that
+# changes the code is left for the owner's main session, which shares the
+# working tree; a chain between mail sessions stops (send enforces that one).
+# The 📮 line is also the mark a sender on the other machine reads in this
+# session's transcript. @see intercom-common.sh → "Mail sessions"
+if intercom_mail_session; then
+  if [ "$pending" -gt 0 ]; then inbox_now="${pending} letter(s) are waiting now."; else inbox_now="The inbox is empty now."; fi
+  msg="${msg}
+📮 Mail session of \`${id}\`: the inbox is your work, not a reminder — nobody sits at this session, and the wakes for this project come here. ${inbox_now} Now and at every wake: /vdm:intercom check, then each letter in turn — take it, read it, act, and close it: reply for a brief, pickup for a note.
+  • Here you answer, check and do small things. Work that changes the code is left for the owner's main session as a crystal (/vdm:crystal-grow, or /vdm:crystal-bud on an active one): the working tree is shared with it, and an edit here rides into its commit.
+  • A question for the owner is not asked in this pane — nobody reads it. Put one line on their list at HQ (the access layer's \`hq <project root> --obligations\` names it; the access layer: /vdm:intercom role access-layer) and take the next letter; do not wait for the answer.
+  • A chain of letters between mail sessions stops after ${INTERCOM_CHAIN_LIMIT} links in a row; send refuses the next one, and it goes to the owner the same way."
 fi
 
 # Delivery is not receipt, from the sender's side. A letter this agent wrote

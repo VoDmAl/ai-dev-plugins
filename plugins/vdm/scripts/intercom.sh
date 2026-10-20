@@ -648,6 +648,29 @@ cmd_send() {
     reply_title="$(grep -m1 "^# " "$reply_path" 2>/dev/null | sed "s/^# //")"
   fi
 
+  # A mail session continuing a chain whose last links were all written by mail
+  # sessions: agents answering each other with nobody's move in between. Past
+  # the limit the link is not written, and the question goes to the owner
+  # (intercom-session-wake, item 4). Refused before a byte is written, like an
+  # unresolvable link; `reply` archives only after its `send`, so the brief
+  # stays in the inbox.
+  if [ -n "$reply_ref" ] && intercom_mail_session; then
+    local run
+    run="$(intercom_mail_run "$reply_ref")"
+    if [ "$run" -ge "$INTERCOM_CHAIN_LIMIT" ]; then
+      {
+        printf 'intercom: ✗ the last %s links of this chain were written by mail sessions — agents answering each other\n' "$run"
+        printf '   with no move of the owner'"'"'s (/vdm:intercom chain %s). Not sending: past %s links in a row they may be\n' "$reply_ref" "$INTERCOM_CHAIN_LIMIT"
+        printf '   agreeing on what is the owner'"'"'s to decide.\n'
+        printf '   Put it to the owner instead: one line on their list at HQ — the access layer'"'"'s `hq <project root>\n'
+        printf '   --obligations` names the HQ (the access layer: intercom role access-layer) — a new letter there, naming\n'
+        printf '   `%s`, with the question the owner has to answer. Then take your next letter. The chain goes on from a\n' "$reply_ref"
+        printf '   session the owner works in.\n'
+      } >&2
+      exit 4
+    fi
+  fi
+
   # --body: the letter's body IS this file, byte for byte. Field request
   # (executor, 2026-09-24): a sender keeps a copy of every letter
   # in its repo and audits against it, and splicing the copy in by hand meant
@@ -763,6 +786,10 @@ cmd_send() {
   # Both tokens expand to nothing for an ordinary letter, and the line they sit
   # on is then dropped entirely: an envelope field claiming an empty chain is a
   # claim, and the envelope is the machine-readable truth.
+  # A letter written in a mail session says so: the chain limit counts these.
+  local session_line=""
+  intercom_mail_session && session_line="session: mail"
+
   local reply_line="" reply_banner=""
   if [ -n "$reply_ref" ]; then
     reply_line="reply-to: $reply_ref"
@@ -788,9 +815,10 @@ cmd_send() {
     fi
     line="${line//'{{REPLY_TO_LINE}}'/$reply_line}"
     line="${line//'{{REPLY_TO_BANNER}}'/$reply_banner}"
+    line="${line//'{{SESSION_LINE}}'/$session_line}"
     # A token line that expanded to nothing leaves no blank line behind.
     case "$raw" in
-      *'{{REPLY_TO_'*) [ -z "$line" ] && continue ;;
+      *'{{REPLY_TO_'*|*'{{SESSION_LINE}}'*) [ -z "$line" ] && continue ;;
     esac
     line="${line//'{{FROM}}'/$from}"
     line="${line//'{{FROM_AGENT}}'/$from_agent}"
@@ -861,12 +889,12 @@ cmd_send() {
   # body, or the recipient reads a placeholder.
   # One session is woken, the one where the owner typed last (wake-one-machine
   # DL #3); `intercom_wake_choice` says which, or that it lives elsewhere.
-  local live choice verdict wname wstatus why
+  local live choice verdict wname wstatus why wmode
   live="$(intercom_live_sessions "$canon")"
   if [ -n "$live" ]; then
     printf '    📣 live session(s) of `%s` on this machine: %s\n' "$canon" "$(_ic_live_list "$live")"
     choice="$(intercom_wake_choice "$canon" "$live")"
-    IFS=$'\037' read -r verdict wname wstatus why <<<"$choice"
+    IFS=$'\037' read -r verdict wname wstatus why wmode <<<"$choice"
     if [ "$verdict" = "wake" ]; then
       printf '       → wake one: %s — %s.\n' "$wname" "$why"
       if [ "$body_set" -eq 1 ]; then
@@ -876,7 +904,7 @@ cmd_send() {
         printf '         with your cross-session message tool (Claude Code: SendMessage).\n'
       fi
       printf '         It is a pointer; the inbox stays the truth. Text, first line self-contained:\n'
-      printf '         📬 intercom: `%s` from `%s` — %s. Read: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first\n' "$slug" "$from" "$title"
+      printf '         %s\n' "$(_ic_pointer "$slug" "$from" "$title" "$wmode")"
     else
       printf '       → do not wake here: %s.\n' "$why"
     fi
@@ -889,9 +917,20 @@ cmd_send() {
   fi
 }
 
-# "name (status), name (status)" from intercom_live_sessions lines.
+# "name (status), name (status, mail)" from intercom_live_sessions lines.
 _ic_live_list() {
-  printf '%s\n' "$1" | awk -F '\t' '{ printf "%s%s (%s)", (NR > 1 ? ", " : ""), $1, $2 }'
+  printf '%s\n' "$1" | awk -F '\t' '{ printf "%s%s (%s%s)", (NR > 1 ? ", " : ""), $1, $2, ($4 == "mail" ? ", mail" : "") }'
+}
+
+# _ic_pointer <slug> <from> <title> <mode> — the wake text. Into a mail
+# session it says what to do: the inbox is that session's work, and there are
+# no steps of the user's in it to come first (intercom-session-wake, DL #4).
+_ic_pointer() {
+  if [ "$4" = mail ]; then
+    printf '📬 intercom: `%s` from `%s` — %s. You are the mail session: take it and handle it — /vdm:intercom check' "$1" "$2" "$3"
+  else
+    printf '📬 intercom: `%s` from `%s` — %s. Read: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first' "$1" "$2" "$3"
+  fi
 }
 
 # `sent` — the sender's half of "delivery is not receipt": every letter this
@@ -907,7 +946,7 @@ cmd_sent() {
   fi
   n="$(printf '%s\n' "$list" | wc -l | tr -d ' ')"
   printf '📤 intercom: %s letter(s) from `%s` not picked up yet (oldest first):\n\n' "$n" "$id"
-  local age inbox slug title file live lines choice verdict wname wstatus why taken seen="" cache=""
+  local age inbox slug title file live lines choice verdict wname wstatus why wmode taken seen="" cache=""
   while IFS=$'\t' read -r age inbox slug title file; do
     [ -n "$inbox" ] || continue
     printf '  • %sd  %s/%s — %s\n' "$age" "$inbox" "$slug" "$title"
@@ -933,10 +972,10 @@ cmd_sent() {
     esac
     choice="${live#*$'\036'}"; live="${live%%$'\036'*}"
     if [ -n "$live" ]; then
-      IFS=$'\037' read -r verdict wname wstatus why <<<"$choice"
+      IFS=$'\037' read -r verdict wname wstatus why wmode <<<"$choice"
       if [ "$verdict" = "wake" ]; then
-        printf '      live now: %s → wake one: %s (%s) with SendMessage: 📬 intercom: `%s` from `%s` — %s. Read: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first\n' \
-          "$live" "$wname" "$why" "$slug" "$id" "$title"
+        printf '      live now: %s → wake one: %s (%s) with SendMessage: %s\n' \
+          "$live" "$wname" "$why" "$(_ic_pointer "$slug" "$id" "$title" "$wmode")"
       else
         printf '      live now: %s — do not wake here: %s\n' "$live" "$why"
       fi
@@ -1139,13 +1178,13 @@ cmd_pickup() {
 
   # The receipt: the sender otherwise learns "received" only by auditing the
   # store by hand. Offered only while the sender has a live session to tell.
-  local live choice verdict wname wstatus why
+  local live choice verdict wname wstatus why wmode
   if [ -n "$sender" ] && [ "$sender" != "$id" ]; then
     live="$(intercom_live_sessions "$sender")"
     if [ -n "$live" ]; then
       printf '    📣 the sender `%s` has live session(s) on this machine: %s\n' "$sender" "$(_ic_live_list "$live")"
       choice="$(intercom_wake_choice "$sender" "$live")"
-      IFS=$'\037' read -r verdict wname wstatus why <<<"$choice"
+      IFS=$'\037' read -r verdict wname wstatus why wmode <<<"$choice"
       if [ "$verdict" = "wake" ]; then
         printf '       → send a receipt to one: %s — %s — with your cross-session message tool (Claude Code: SendMessage):\n' "$wname" "$why"
         printf '         ✅ intercom: `%s` picked up by `%s`.\n' "$slug" "$id"

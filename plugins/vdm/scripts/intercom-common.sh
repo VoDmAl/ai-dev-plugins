@@ -1203,14 +1203,68 @@ _intercom_owner_of() {
 # intercom_focused — this session was started focused.
 intercom_focused() { [ "${VDX_FOCUSED:-}" = 1 ]; }
 
-# _intercom_pid_focused <pid> — that live process was started with VDX_FOCUSED=1.
-_intercom_pid_focused() {
+# ---------------------------------------------------------------------------
+# Mail sessions (docs/tasks/intercom-session-wake, DL #3, #4). The owner,
+# 2026-10-20: a project gets a session of its own for mail — `vdx ai
+# --intercom` — so that letters and wakes go there and the owner's own session,
+# started `--focused`, stays quiet: «мне будет понятнее и не будет прерываться
+# сообщениями и отвлечениями агент. И все будут получать сообщения быстрее».
+# Nobody sits at a mail session by construction, so it is woken at once, ahead
+# of the session the owner typed into last and without the quiet window; its
+# inbox is its work, not a reminder; and a letter it writes is marked
+# `session: mail` in the envelope, which is how a chain counts the links that
+# went between agents with no move of the owner's.
+#
+# The mode is read like focused: from the environment of the session's own
+# process. The variable is vdx's to name; until it does, this is the one line
+# that knows it.
+# ---------------------------------------------------------------------------
+INTERCOM_MAIL_ENV=VDX_INTERCOM
+
+# intercom_mail_session — this session is its project's mail session (and not
+# also focused: deaf wins).
+intercom_mail_session() { [ "${!INTERCOM_MAIL_ENV:-}" = 1 ] && ! intercom_focused; }
+
+# _intercom_pid_mode <pid> — the mode that live process was started in:
+# `focused`, `mail`, or `plain`. One read of its environment: Linux exposes it in
+# /proc, macOS shows it to `ps -E` for the owner's own processes.
+_intercom_pid_mode() {
+  local awk_mode='
+    { for (i = 1; i <= NF; i++) { if ($i == "VDX_FOCUSED=1") f = 1; if ($i == mail "=1") m = 1 } }
+    END { print (f ? "focused" : (m ? "mail" : "plain")) }'
   if [ -r "/proc/$1/environ" ]; then
-    grep -qxzF 'VDX_FOCUSED=1' "/proc/$1/environ" 2>/dev/null
+    LC_ALL=C tr '\0' ' ' < "/proc/$1/environ" 2>/dev/null | awk -v mail="$INTERCOM_MAIL_ENV" "$awk_mode"
     return
   fi
-  ps -wwE -p "$1" -o command= 2>/dev/null | grep -qE '(^|[[:space:]])VDX_FOCUSED=1([[:space:]]|$)'
+  ps -wwE -p "$1" -o command= 2>/dev/null | awk -v mail="$INTERCOM_MAIL_ENV" "$awk_mode"
 }
+
+# A chain of letters between mail sessions stops after this many links in a
+# row (intercom-session-wake, item 4). The owner accepted the condition: agents
+# answering each other fast may agree on what is the owner's to decide. A link
+# written in a mail session is a link with no move of the owner's — nobody sits
+# at it — so the run of `session: mail` links at the end of a chain is what is
+# counted; a letter from any other session ends the run. Three: a brief, and
+# three answers back and forth between the two mail sessions, before the fourth
+# is refused and goes to the owner instead. The number is ours, not the owner's;
+# they named the rule, not the count.
+INTERCOM_CHAIN_LIMIT=3
+
+# intercom_mail_run <ref> — how many links, from <ref> back along `reply-to:`,
+# were written in a mail session, until the first that was not (or a missing
+# link, or a cycle).
+intercom_mail_run() {
+  local n=0 ref path title
+  while IFS=$'\t' read -r ref path title; do
+    [ -n "$path" ] || break
+    [ "$(intercom_fm_field "$path" session)" = mail ] || break
+    n=$((n + 1))
+  done < <(intercom_chain "$1")
+  printf '%s' "$n"
+}
+
+# _intercom_pid_focused <pid> — that live process was started with VDX_FOCUSED=1.
+_intercom_pid_focused() { [ "$(_intercom_pid_mode "$1")" = focused ]; }
 
 # _intercom_sid_focused_here <sessionId> — a session live on this machine under
 # that id was started focused. Read only for the owner's last turn, when it is
@@ -1228,11 +1282,13 @@ _intercom_sid_focused_here() {
   return 1
 }
 
-# intercom_live_sessions <identity> — "name<TAB>status<TAB>sessionId<TAB>updated"
+# intercom_live_sessions <identity> — "name<TAB>status<TAB>sessionId<TAB>mode<TAB>updated"
 # for every LIVE session of that agent on this machine, other than the caller's
 # own and other than a focused one: a session started focused is not offered to
-# anybody to wake. `updated` is the session file's statusUpdatedAt (ms), empty
-# when absent.
+# anybody to wake. `mode` is `mail` for the project's mail session, `plain`
+# otherwise — never empty, because TAB is whitespace to `read` and an empty
+# field in the middle would collapse. `updated` is the session file's
+# statusUpdatedAt (ms), empty when absent, and so last.
 #
 # Live means all of: the file is not a sync conflict (settings synced from
 # another machine carry sessions whose pids mean nothing here), its socket
@@ -1254,7 +1310,7 @@ intercom_live_sessions() {
   owners="$(_intercom_owners)"
   [ -n "$owners" ] || return 0
 
-  local f pid cwd name status sock sid upd
+  local f pid cwd name status sock sid upd mode
   for f in "$dir"/*.json; do
     [ -f "$f" ] || continue
     case "${f##*/}" in *.sync-conflict-*) continue ;; esac
@@ -1273,8 +1329,9 @@ intercom_live_sessions() {
       continue
     fi
     [ "$(_intercom_owner_of "$(_intercom_realpath "$cwd")" "$owners")" = "$id" ] || continue
-    _intercom_pid_focused "$pid" && continue
-    printf '%s\t%s\t%s\t%s\n' "$name" "${status:-?}" "$sid" "$upd"
+    mode="$(_intercom_pid_mode "$pid")"
+    [ "$mode" = focused ] && continue
+    printf '%s\t%s\t%s\t%s\t%s\n' "$name" "${status:-?}" "$sid" "${mode:-plain}" "$upd"
   done
   return 0
 }
@@ -1413,8 +1470,8 @@ intercom_owner_turns() {
 # ---------------------------------------------------------------------------
 
 # _intercom_transcript_machine <transcript> — "<machine><US><mode>" from the last
-# session-start line of this plugin in that transcript (mode: `focused` or
-# empty); nothing when it holds none. Only a raw hook record counts: a quote of
+# session-start line of this plugin in that transcript (mode: `focused`, `mail`
+# or empty); nothing when it holds none. Only a raw hook record counts: a quote of
 # the same line in a conversation sits inside an escaped string, where the key
 # reads \"hookEvent\".
 _intercom_transcript_machine() {
@@ -1424,7 +1481,10 @@ _intercom_transcript_machine() {
   [ -n "$line" ] || return 0
   m="$(printf '%s' "$line" | LC_ALL=C sed -nE 's/.*(🪪 You are|INCOMPLETE for) `[^`]*` on `([^`]*)`.*/\2/p')"
   [ -n "$m" ] || return 0
-  case "$line" in *'🔇 Focused session'*) mode=focused ;; esac
+  case "$line" in
+    *'🔇 Focused session'*) mode=focused ;;
+    *'📮 Mail session'*)    mode=mail ;;
+  esac
   printf '%s\037%s\n' "$m" "$mode"
 }
 
@@ -1501,6 +1561,8 @@ intercom_elsewhere_line() {
     printf 'no live session on this machine — a session not live here wrote its transcript %s ago (its machine is not recorded); it cannot be woken from here' "$(_intercom_ago "$mins")"
   elif [ "$mode" = focused ]; then
     printf 'no live session on this machine — on `%s` a focused one was active %s ago; it cannot be woken from here and reads mail only when asked' "$m" "$(_intercom_ago "$mins")"
+  elif [ "$mode" = mail ]; then
+    printf 'no live session on this machine — on `%s` its mail session was active %s ago; it cannot be woken from here and takes the letter at its next check' "$m" "$(_intercom_ago "$mins")"
   else
     printf 'no live session on this machine — on `%s` one was active %s ago; it cannot be woken from here: the letter reaches it as one line with your next message there, or at its next `check`' "$m" "$(_intercom_ago "$mins")"
   fi
@@ -1512,12 +1574,29 @@ intercom_elsewhere_line() {
 # the live list first, and reading the session files twice doubled the cost of
 # a send (counted 2026-10-04: +786 jq launches in the intercom suite). Fields are joined by the unit separator (\037), not
 # TAB: TAB is whitespace to `read`, and the empty fields of "wait" would collapse.
-#   "wake<US><name><US><status><US><why>"   wake this one session
-#   "wait<US><US><US><why>"                 wake nobody here
+#   "wake<US><name><US><status><US><why><US><mode>"   wake this one session
+#   "wait<US><US><US><why>"                           wake nobody here
+# <mode> is `mail` when the session is the project's mail session: the pointer
+# into it says "handle it", not "not urgent".
+#
+# A live mail session here comes first, before the owner's last turn and the
+# quiet window: nobody sits at it (intercom-session-wake, DL #4). Two of them
+# on one machine should not happen; the most recently active one is taken.
 intercom_wake_choice() {
-  local id="$1" live="${2-}" turns top_ts top_sid name status sid upd
+  local id="$1" live="${2-}" turns top_ts top_sid name status sid upd mode
   [ $# -ge 2 ] || live="$(intercom_live_sessions "$id")"
   [ -n "$live" ] || return 0
+  local mail="" mail_status="" mail_upd=-1 u
+  while IFS=$'\t' read -r name status sid mode upd; do
+    [ "$mode" = mail ] || continue
+    case "$upd" in ''|*[!0-9]*) u=0 ;; *) u="$upd" ;; esac
+    if [ "$u" -gt "$mail_upd" ]; then mail="$name"; mail_status="$status"; mail_upd="$u"; fi
+  done <<<"$live"
+  if [ -n "$mail" ]; then
+    printf 'wake\037%s\037%s\037the mail session of `%s` — nobody sits at it, so it is woken at once\037mail\n' \
+      "$mail" "$mail_status" "$id"
+    return 0
+  fi
   turns="$(intercom_owner_turns "$id")"
   # A turn the owner typed into a focused session here says where the owner
   # is, not where mail may go: that turn is passed over, and the next one
@@ -1540,7 +1619,7 @@ intercom_wake_choice() {
     # in the file — no verdict from it.
     local top_epoch
     top_epoch="$(_intercom_epoch_utc "$top_ts")"
-    while IFS=$'\t' read -r name status sid upd; do
+    while IFS=$'\t' read -r name status sid mode upd; do
       if [ -n "$sid" ] && [ "$sid" = "$top_sid" ]; then
         case "$upd" in
           ''|*[!0-9]*) ;;
@@ -1558,7 +1637,7 @@ intercom_wake_choice() {
             "$id" "$top_ts" "$name" "$engaged"
           return 0
         fi
-        printf 'wake\037%s\037%s\037your last turn in `%s` was there (%s)\n' "$name" "$status" "$id" "$top_ts"
+        printf 'wake\037%s\037%s\037your last turn in `%s` was there (%s)\037plain\n' "$name" "$status" "$id" "$top_ts"
         return 0
       fi
     done <<<"$live"
@@ -1578,7 +1657,7 @@ intercom_wake_choice() {
   # stamp), the first listed on a tie or when the harness writes none — among
   # those nobody may be at. When every one is engaged, the letter waits.
   local best="" best_upd=-1 best_status="" why engaged skipped="" u
-  while IFS=$'\t' read -r name status sid upd; do
+  while IFS=$'\t' read -r name status sid mode upd; do
     if engaged="$(_intercom_engaged "$status" "$upd")"; then
       skipped="${skipped:+$skipped; }$name is $engaged"
       continue
@@ -1596,7 +1675,7 @@ intercom_wake_choice() {
     why="no turn of yours in \`$id\` in the last $INTERCOM_PRESENCE_WINDOW_H h — one session here, the most recently active"
   fi
   [ -z "$skipped" ] || why="$why; passed over: $skipped"
-  printf 'wake\037%s\037%s\037%s\n' "$best" "$best_status" "$why"
+  printf 'wake\037%s\037%s\037%s\037plain\n' "$best" "$best_status" "$why"
 }
 
 # ---------------------------------------------------------------------------

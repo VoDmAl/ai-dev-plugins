@@ -7,6 +7,7 @@ to_input: "{{TO_INPUT}}"
 created: {{CREATED}}
 slug: {{SLUG}}
 {{REPLY_TO_LINE}}
+{{SESSION_LINE}}
 status: pending
 ---
 
