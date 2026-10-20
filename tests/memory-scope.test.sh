@@ -118,6 +118,24 @@ says "RED: …and a conduct one is folded now, through /vdm:learn" "$out" "/vdm:
 out="$(CLAUDE_PROJECT_DIR="$PROJ" VDX_FOCUSED=1 bash "$CHECK" </dev/null)"
 silent "RED: a focused session is not asked to lift lessons (focused-session-quiet)" "$out"
 
+echo "== a pointer to a rule the layer no longer has is named (rules-dream) =="
+rm -f "$PROJ/.claude/memory/"*.md "$HMEM/"*.md
+mkdir -p "$HOME/.claude/vdm"
+printf '# Cross-project rules\n\n## A fact needs a source you can name\nOne.\n\n## Disagree with the user out loud\nTwo.\n' > "$HOME/.claude/vdm/rules.md"
+rec "$PROJ/.claude/memory/live.md" $'name: live\ntype: feedback\nscope: conduct\nshared: rules.md → A fact needs a source you can name'
+rec "$PROJ/.claude/memory/live-note.md" $'name: live-note\ntype: feedback\nscope: conduct\nshared: "~/.claude/vdm/rules.md → «Disagree with the user out loud»: a case of 08.10"'
+rec "$HMEM/gone.md" $'name: gone\nmetadata:\n  type: feedback\n  scope: conduct\n  shared: "~/.claude/vdm/rules.md → A self-description is a claim, not a fact"'
+rec "$PROJ/.claude/memory/skill.md" $'name: skill\ntype: feedback\nscope: hq\nshared: vdm-comms:letters §2 The step'
+out="$(CLAUDE_PROJECT_DIR="$PROJ" bash "$CHECK" </dev/null)"
+says "RED: a pointer to a heading the layer lost is named" "$out" "1 pointer(s) name a rule the shared layer no longer has"
+says "…with the heading it names" "$out" "gone (A self-description is a claim"
+says_not "…a live heading is not named" "$out" "live (" 
+says_not "…nor a live heading with a note after it" "$out" "live-note"
+says_not "…nor a pointer into a skill" "$out" "skill ("
+rm -f "$HOME/.claude/vdm/rules.md"
+out="$(CLAUDE_PROJECT_DIR="$PROJ" bash "$CHECK" </dev/null)"
+silent "without a rules file there is nothing to compare with ⇒ silent" "$out"
+
 echo "== wiring =="
 hj="$REPO_ROOT/plugins/vdm/hooks/hooks.json"
 says "the reminder is a PostToolUse hook" "$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(" ".join(h["command"] for g in d["hooks"]["PostToolUse"] for h in g["hooks"]))' "$hj")" "memory-scope-hook.sh"

@@ -65,6 +65,9 @@ At most ten lines:
   rewritten, added, removed — or "the layer is unchanged" when only the text
   below first paragraphs moved;
 - why, in one line per change;
+- for every rule renamed or merged away: `old heading → new heading`. Memory
+  records across projects point at rules by heading; the session-start check
+  names the ones left on a heading that is gone;
 - the measure line.
 
 Write the candidate to the given path only. Do not edit `rules.md`, and do not

@@ -34,7 +34,9 @@ Modes:
                                      written without a valid `scope`, or a
                                      `conduct` record not folded yet; else nothing
     memory-scope.py check <project>  one session-start line naming `hq` and
-                                     `conduct` records not lifted yet; else nothing
+                                     `conduct` records not lifted yet, and one for
+                                     pointers to a rule the layer no longer has;
+                                     else nothing
 
 A reminder fails open: any error is silence, never a blocked write.
 
@@ -137,8 +139,40 @@ def memory_dirs(project):
     yield os.path.join(os.path.expanduser("~"), ".claude", "projects", encoded, "memory")
 
 
+RULES_POINTER = re.compile(r"rules\.md\s*(?:→|->|§)\s*(.+)")
+
+
+def _plain(text):
+    return re.sub(r"\s+", " ", re.sub(r"[«»\"'`*]", "", text)).strip().lower()
+
+
+def live_headings():
+    """The headings of the shared rules layer as it is now, or None without it."""
+    try:
+        with open(os.path.join(os.path.expanduser("~"), ".claude", "vdm", "rules.md"),
+                  encoding="utf-8", errors="replace") as fh:
+            return [_plain(h) for h in re.findall(r"(?m)^## (.+?)\s*$", fh.read())]
+    except OSError:
+        return None
+
+
+def stale_rule(shared, headings):
+    """The heading a `shared: rules.md → <heading>` pointer names when the layer
+    no longer has it, else None. A note after the heading (": a case of 08.10")
+    is allowed: the pointer is current when it starts with a live heading."""
+    m = RULES_POINTER.search(shared or "")
+    if not m or headings is None:
+        return None
+    target = _plain(m.group(1))
+    if not target or any(target.startswith(h) for h in headings if h):
+        return None
+    return m.group(1).strip().strip("\"'")
+
+
 def check(project):
     waiting = []
+    stale = []
+    headings = live_headings()
     for d in memory_dirs(project):
         if not os.path.isdir(d):
             continue
@@ -152,9 +186,22 @@ def check(project):
                 continue
             if fm is None or field(fm, "scope") not in ("hq", "conduct"):
                 continue
-            if field(fm, "shared"):
+            shared = field(fm, "shared")
+            if shared:
+                gone = stale_rule(shared, headings)
+                if gone:
+                    stale.append("%s (%s)" % (name[:-3], gone[:60]))
                 continue
             waiting.append(name[:-3])
+    if stale:
+        # The layer is rewritten, not appended to (crystal rules-dream): a fold
+        # merges and renames rules, and a pointer by heading is a copy of the
+        # old name. The first deep pass left 10 of them in five projects.
+        shown = ", ".join(stale[:3]) + (" and %d more" % (len(stale) - 3) if len(stale) > 3 else "")
+        print("[vdm] memory: %d pointer(s) name a rule the shared layer no longer has: %s. The layer was "
+              "folded and the rule renamed or merged — point each at the rule that carries the lesson now "
+              "(`grep '^## ' ~/.claude/vdm/rules.md`; earlier versions in ~/.claude/vdm/history/)."
+              % (len(stale), shown))
     if not waiting:
         return 0
     shown = ", ".join(waiting[:3]) + (" and %d more" % (len(waiting) - 3) if len(waiting) > 3 else "")
