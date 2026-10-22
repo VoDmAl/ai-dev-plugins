@@ -57,6 +57,12 @@ mixed in one sentence, and the clean pitch was assembled minutes before it began
 | `pitch.md` | the counterpart | only what is said aloud or shown on the screen; headings are the topics as the counterpart knows them — from the letter, if there was one | every line can be read to them as it stands |
 | `index.md` | the participants, later | the record | it may be forwarded to anyone who was there |
 
+**An ask in an agenda topic is measured before it is asked.** A question to
+someone about the state of their system — a version, a config, a count, a
+status — is first measured with your own tools (`/vdm-comms:letters` § 7): the
+agenda carries the fact, and the ask is for what only they have. The same holds
+for "most" and "only": from a source that counts everyone.
+
 **The pitch is outgoing text, spoken.** It goes by `/vdm-comms:letters` line by
 line: the cutting pass, no denial of motives, no reference to an unanswered
 question, no internal corrections. Tactics, "what I do not say" and the record

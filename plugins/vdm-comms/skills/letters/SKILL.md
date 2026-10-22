@@ -24,7 +24,13 @@ afterwards, the form a channel requires, the 📎 checklist, raw `.eml` — is t
 contract of `/vdm-comms:meetings` and its linter. This skill does not repeat it.
 
 Start a draft from the scaffold (`/vdm-comms:meetings` → *Start a draft from the
-scaffold*), not from a neighbouring letter.
+scaffold*), not from a neighbouring letter — and not in the chat. A draft
+written straight into the conversation brings no checklist and meets no hook:
+the steps that come before the text (§ 5, who may write to this person; the
+`trust` in the HQ's profile) are skipped exactly there. Field case (a hand,
+2026-10-19): a letter to someone outside its tickets was drafted in the chat, the
+hand set that person's `trust` in the HQ's card itself and offered to send it —
+everything past the HQ, with the rule loaded.
 
 **The short form arrives by itself.** Creating a draft — with the scaffold, or
 with a write of a new `*/comms/*-out.md` — brings a checklist into the
@@ -378,6 +384,17 @@ will hold is outgoing too.
 - **Circumstances** (when, where, why) only as the owner named them or as they are
   recorded. Filled-in circumstances are struck; a named reason is written as named.
 - **No filler in lists** ("and others", "etc.") — only confirmed cases.
+- **A question about the state of their system is measured first.** A version
+  in use, a config, a count, a status, "does it work": if your own tools reach
+  it — metrics, logs, the tracker — measure it, write the fact, and ask for what
+  only they have (their plans, complaints, decisions). Field case (2026-10-21):
+  an agenda asked the head of a neighbouring product "have you moved to 8.20? if
+  not, when?", while the metrics showed the move by day — 139 066 loads of the
+  new version against 264 of the old in a day.
+- **"Most", "almost all", "only" come from a source that counts everyone.** A
+  stream picked by a trait — errors, warnings, complaints — over-represents what
+  carries it. The same agenda said "mostly the old version" from 28 events of one
+  warning, where old builds are over-represented.
 - **No evaluative asides** in a description of behaviour. A parenthesis that
   narrows the scope is a requirement — it stays.
 - **Dates from the moment of reading**: "tonight", "on Monday" — not from the
@@ -456,6 +473,14 @@ And around them:
     second lever and an invitation to redo it;
   - our own status ("wrote separately", "ticket created") in a "what from whom"
     list;
+  - **the last sentence, checked on its own**: what breaks if it goes? A closing
+    line that reports the sender's status — «вопрос снимаю», «тему закрываю»,
+    «вопрос закрыт», «на этом всё», «больше не беспокою» — goes. In a reply to a
+    reply it is cut by default: the question was answered, there is nothing to
+    release, and the line says the sender was holding it. The letter ends on its
+    last substantive sentence. Field case (2026-10-21): an apology for two wrong
+    claims went through three drafts, each ending «Вопрос снимаю.»; the owner
+    sent it without that line;
   - what the recipients already know from a private exchange or a meeting — in a
     group letter it reads as a nudge in front of witnesses;
   - a question whose answer is inside the answer to another one — it hands a

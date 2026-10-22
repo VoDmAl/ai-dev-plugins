@@ -317,6 +317,15 @@ expect_says "…positions without owners" "$OUT" "no mine / theirs"
 # owner never signs.
 expect_says "RED: the checklist names who does the work on their side" "$OUT" "who on their side does the work"
 expect_says "RED: …and a signature only where the owner signs" "$OUT" "a signature only where the owner signs"
+# Another project's HQ, 2026-10-21 (letters-ask-measurable-check): an agenda
+# asked a neighbouring head "have you moved to 8.20?" while the metrics showed
+# the move by day, and said "mostly the old version" from a stream of warnings.
+# The layer's rule is read at session start; the ask is written here.
+expect_says "RED: a question about their system's state is measured first" "$OUT" "first measured with your own tools"
+expect_says "RED: …\"most\" and \"only\" come from a source that counts everyone" "$OUT" "a source that counts everyone"
+# Same HQ, 2026-10-21 (letters-closing-status-line): three drafts of a reply each
+# ended «Вопрос снимаю.»; the owner sent it without that line.
+expect_says "RED: the last sentence is checked for the sender's status" "$OUT" "a last sentence that reports the sender's status"
 # Program, 2026-10-16 (vdm-comms-reply-to-sender-address): a person with two
 # addresses wrote from one, and the reply went to the other — the one on file —
 # because the header check compared addresses with the profile alone.
