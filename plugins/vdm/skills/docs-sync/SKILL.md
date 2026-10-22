@@ -151,6 +151,8 @@ Independent of which files changed: audit the long-lived docs for **discovery-ho
 1. every `docs/llm/*.md`;
 2. every **synthesis document** — any `.md` declaring `covers:` in frontmatter (the `/vdm:docs-distill` tier), wherever the project put it.
 
+Of either family, only what the repository carries: a file git ignores — a local-only draft a project allows in `docs/llm/` — is out. No clone has it, and a hook from a tracked file would point at nothing. A tracked file stays in even when an ignore pattern matches it.
+
 Skip if neither exists.
 
 **Why this matters.** Only `CLAUDE.md` is auto-loaded into every session. Every other doc has to be grep'd into context from some entry point. A doc with **no back-reference anywhere** is functionally invisible at runtime — it lives on disk and cannot be reached, i.e. it is *current and unreachable*, which is worse than being stale. Treat the discovery hook as a mandatory artifact of every such file, not an optional nicety.

@@ -635,7 +635,7 @@ The harness materializes the **working tree** (not `git clone` of HEAD — pre-c
 | Stop | `crystal-stop-reminder.sh` | End-of-turn visibility for active workitems with open items |
 | Stop | `crystal-grow-nudge.sh` | A plan-shaped answer (≥5 numbered steps or ≥2 questions) from a session that wrote into no workitem: one question per session to the assistant — new crystal or active one (v2.55.0) |
 
-Orphan-guard detail: without a discovery hook (CLAUDE.md ref / source-code @see / `docs/features/` ref / sibling `docs/llm/` ref) it exits 2 with a remediation message — surfacing as actionable feedback the assistant must address before the turn ends.
+Orphan-guard detail: without a discovery hook (CLAUDE.md ref / source-code @see / `docs/features/` ref / sibling `docs/llm/` ref) it exits 2 with a remediation message — a file git ignores is not audited (no clone has it) — surfacing as actionable feedback the assistant must address before the turn ends.
 
 The audit script can also be invoked manually against any project that has `docs/llm/`:
 

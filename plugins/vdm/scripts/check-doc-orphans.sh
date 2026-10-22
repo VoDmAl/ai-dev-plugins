@@ -17,6 +17,15 @@
 # drifts never surfaces through the drift signal either, so an unreferenced one
 # rots unseen. See docs/tasks/docs-distill/workitem.md → Sidetrack #8.
 #
+# Of either family, only what the repository carries: a file git ignores is out.
+# It lives on one machine, no clone has it, and every hook counted below would
+# point from a tracked file at nothing. Field case (a project, 2026-10-22): its
+# CLAUDE.md allows a gitignored local-only reply draft in docs/llm/, and writing
+# one was blocked as an orphan. The verdict is git's (`check-ignore`,
+# `ls-files --exclude-standard`), the way distill-scan already lists synthesis
+# documents; a tracked file is audited even when a pattern matches it, and
+# outside git nothing is ignored.
+#
 # Formerly check-llm-orphans.sh. Renamed rather than forked: the hook-finding
 # logic is identical for both families, and a second copy would drift from this
 # one. Callers shell out here instead of reimplementing the contract.
@@ -120,6 +129,18 @@ synthesis_docs() {
   "$HERE/distill-scan.sh" --list 2>/dev/null | grep -v '^[[:space:]]' || true
 }
 
+llm_docs() {
+  # docs/llm/*.md the repository carries — git answers, leaving out what it
+  # ignores and keeping an untracked file a session has just written. Outside
+  # git, every file on disk. A tracked file deleted from disk is dropped by the
+  # caller's -f test.
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git ls-files -z --cached --others --exclude-standard -- 'docs/llm/*.md' 2>/dev/null | LC_ALL=C tr '\0' '\n'
+  else
+    find docs/llm -type f -name '*.md' 2>/dev/null
+  fi | LC_ALL=C sort -u
+}
+
 is_synthesis_doc() {
   # is_synthesis_doc <repo-relative-path>
   local target="$1" d
@@ -182,12 +203,15 @@ if $mode_single; then
     # exit 0 quietly if not (e.g. test harness, dry-run).
     exit 0
   fi
+  # Not one the repository carries (see the header). A synthesis document
+  # never reaches here ignored: distill-scan does not list it.
+  git check-ignore -q -- "$single_file" 2>/dev/null && exit 0
   files+=("$single_file")
 else
   if [ -d "docs/llm" ]; then
     while IFS= read -r f; do
-      [ -n "$f" ] && files+=("$f")
-    done < <(find docs/llm -type f -name '*.md' 2>/dev/null | sort)
+      [ -n "$f" ] && [ -f "$f" ] && files+=("$f")
+    done < <(llm_docs)
   fi
   while IFS= read -r f; do
     [ -n "$f" ] && files+=("$f")
@@ -195,7 +219,7 @@ else
 fi
 
 if [ ${#files[@]} -eq 0 ]; then
-  $quiet || echo "check-doc-orphans: no docs/llm/ files and no synthesis documents — nothing to audit"
+  $quiet || echo "check-doc-orphans: no docs/llm/ files and no synthesis documents the repository carries — nothing to audit"
   exit 0
 fi
 
