@@ -1470,6 +1470,31 @@ for m in dfl ign; do
     && ok "RED: a reply whose output is cut short still archives the brief ($m)" \
     || bad "RED: a reply whose output is cut short still archives the brief ($m)" "$(ls "$R/hop-b" "$R/hop-a" 2>&1 | tr '\n' ' ')"
 done
+# Nothing leaves the script before its work is done (field case, 2026-10-22,
+# vdm 2.54.0): `reply … 2>&1 | head -8`. The trap 2.52.1 used kept the script
+# alive, but the line that failed stayed in bash's stdout buffer, and the
+# archive's `$(…)` gave it back inside the path — the brief was "archived" into
+# a directory named after a wake line. Which line fails depends on timing, so
+# the test holds the property that makes any cut harmless: when the first line
+# reaches the reader, the brief is already in its archive.
+first_line_then_where() {  # first_line_then_where <archived path>
+  IFS= read -r _line
+  if [ -f "$1" ]; then echo archived; else echo pending; fi
+  cat >/dev/null
+}
+for m in dfl ign; do
+  ( cd "$TMP/hop-a" && bash "$IC" send hop-b "ask-order-$m" --title "Order" --body "$B/ask.md" >/dev/null 2>&1 )
+  if [ "$m" = ign ]; then
+    where=$( (cd "$TMP/hop-b" && bash -c "trap '' PIPE; exec \"\$@\"" _ bash "$IC" reply "ask-order-$m" --done "x" --ball "nobody — closed") 2>/dev/null \
+             | first_line_then_where "$R/hop-b/_done/ask-order-$m.md" )
+  else
+    where=$( (cd "$TMP/hop-b" && bash "$IC" reply "ask-order-$m" --done "x" --ball "nobody — closed") 2>/dev/null \
+             | first_line_then_where "$R/hop-b/_done/ask-order-$m.md" )
+  fi
+  eq "RED: when the first line arrives, the brief is already archived ($m)" "archived" "$where"
+done
+junk=$(find "$R" -maxdepth 3 -name "*"$'\n'"*" -print0 2>/dev/null | tr -cd '\0' | wc -c | tr -d ' ')
+eq "no path in the store is made of output" "0" "$junk"
 
 # The crystal path: picked up first, the outcome comes later.
 ( cd "$TMP/hop-a" && bash "$IC" send hop-b ask-two --title "Build Y" --body "$B/ask.md" >/dev/null 2>&1 )

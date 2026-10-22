@@ -36,30 +36,51 @@ _INTERCOM_TEMPLATE="$_INTERCOM_SCRIPT_DIR/../templates/intercom-brief-template.m
 
 _ic_die() { printf 'intercom: %s\n' "$1" >&2; exit "${2:-1}"; }
 
-# Temporary files of one run — reply's rendered body, send's copy of --body.
-# One EXIT trap removes both: reply calls send in the same process, and a second
-# `trap … EXIT` would replace the first.
-_ic_cleanup() { rm -f "${_IC_REPLY_BODY:-}" "${_IC_BODY_COPY:-}"; }
-
-# A reader that stops early does not stop the work. `reply … | head -2` closes
-# the pipe after two lines, and the next printf killed the script with SIGPIPE —
-# the outcome written, the brief not yet archived (field case, 2026-10-19); in
-# `send --to` the hint went unrecorded the same way. Caught, not ignored:
-# subshells and the commands run from here get the default back, so a pipeline
-# inside this script (`… | head -1`) ends as it always did. What is left of the
-# output goes nowhere — nobody is reading it.
-trap 'exec >/dev/null 2>&1' PIPE
-# A shell that starts with SIGPIPE ignored can neither catch it nor reset it,
-# and Claude Code's `!` starts commands that way (so does a pre-commit run from
-# one). There a failed write does not stop the script: its text stays in the
-# stdout buffer, and the next `$(…)` returns it — `reply` then archived to a
-# path that began "✉️  intercom: staged message →" and failed. Such a shell
-# starts over once, with the default disposition, and the trap above holds.
-if [ -z "$(trap -p PIPE)" ] && [ -z "${_IC_SIGPIPE_RESET:-}" ] && command -v perl >/dev/null 2>&1; then
-  _IC_SIGPIPE_RESET=1 exec perl -e '$SIG{PIPE} = "DEFAULT"; exec @ARGV or die "intercom: cannot restart: $!\n"' \
-    "$BASH" "${BASH_SOURCE[0]}" "$@"
+# Output leaves the script only when the script ends — after the last change to
+# the store. A reader that stops early (`reply … | head -2`) used to kill the
+# script with SIGPIPE between two writes to the store: the outcome written, the
+# brief not archived (field case, 2026-10-19). The trap that 2.52.1 put there
+# kept the script alive, and that was worse: the line that failed stayed in
+# bash's stdout buffer, and the next `$(…)` gave it back inside its value. On
+# 2026-10-22 a brief was "archived" into a directory named after a wake line,
+# two more such directories followed, and `check` offered the agent `claim` of
+# its own inbox. A trap cannot win that race: it runs after the `$(…)` that
+# picks the stale text up. So nothing is written to the caller while the work
+# runs. stdout and stderr go to two files of this run, and the EXIT trap writes
+# them out — stdout first — whatever the reader does by then. Without a
+# writable TMPDIR the output goes straight out, as before.
+_IC_OUT="${TMPDIR:-/tmp}"; _IC_OUT="${_IC_OUT%/}/intercom-out.$$.$RANDOM"
+set -C
+if { : > "$_IC_OUT" && : > "$_IC_OUT.err"; } 2>/dev/null; then
+  set +C
+  exec 8>&1 9>&2 >"$_IC_OUT" 2>"$_IC_OUT.err"
+else
+  set +C
+  rm -f "$_IC_OUT" 2>/dev/null
+  _IC_OUT=""
 fi
-unset _IC_SIGPIPE_RESET
+
+# Write one buffered file out, by the shell itself: no process per run.
+_ic_emit_file() {
+  local l
+  while IFS= read -r l || [ -n "$l" ]; do printf '%s\n' "$l"; done < "$1"
+}
+
+# Temporary files of one run — reply's rendered body, send's copy of --body —
+# and the buffered output. One EXIT trap handles all of them: reply calls send
+# in the same process, and a second `trap … EXIT` would replace the first.
+_ic_cleanup() {
+  if [ -n "${_IC_OUT:-}" ]; then
+    exec 1>&8 2>&9
+    trap '' PIPE   # the reader may be gone; the work is done
+    _ic_emit_file "$_IC_OUT" 2>/dev/null
+    _ic_emit_file "$_IC_OUT.err" >&2 2>/dev/null
+    rm -f "${_IC_REPLY_BODY:-}" "${_IC_BODY_COPY:-}" "$_IC_OUT" "$_IC_OUT.err"
+  else
+    rm -f "${_IC_REPLY_BODY:-}" "${_IC_BODY_COPY:-}"
+  fi
+}
+trap _ic_cleanup EXIT
 
 # Sanitize a user-supplied slug into a safe filename: lowercase, spaces→dash,
 # keep [a-z0-9._-], collapse repeats, trim leading/trailing dashes.
