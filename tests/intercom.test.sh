@@ -1393,12 +1393,19 @@ echo "-- taken: a session that takes a letter marks it (wake-one-machine DL #3)"
 # Two sessions that each find the same letter by themselves both start on it.
 # `take` writes who took it into the envelope; the store carries it to the
 # other machine, and pickup, reply and the wake respect it.
+# The mark arrives about a minute after it is set, so a list read earlier can
+# be stale; `take` is the check that holds, and check offers it beside every
+# letter nobody has taken (field case, echelon, 2026-10-21: two works, six
+# Syncthing conflicts, the second session told only at `reply`).
+out="$( cd "$TMP/hop-b" && bash "$IC" check 2>&1 )"
+says "RED: check offers take beside a letter nobody has taken" "$out" "take before work: /vdm:intercom take one-peer"
 out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-11 bash "$IC" take one-peer 2>&1 )"; rc=$?
 eq "RED: take succeeds" "$rc" "0"
 tk="$(grep '^taken:' "$VDM_INTERCOM_ROOT/hop-b/one-peer.md")"
 says "RED: …and writes who took it, machine/session" "$tk" "/hop-b-11 "
 out="$( cd "$TMP/hop-b" && bash "$IC" check 2>&1 )"
 says "RED: check shows who took a letter" "$out" "taken by"
+says_not "…and no longer offers take for it" "$out" "take before work: /vdm:intercom take one-peer"
 out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-22 bash "$IC" take one-peer 2>&1 )"; rc=$?
 eq "RED: another session cannot take it" "$rc" "1"
 says "…and is told whose it is" "$out" "/hop-b-11"

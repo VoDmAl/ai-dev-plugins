@@ -488,11 +488,16 @@ pending messages:
 1. `intercom.sh check` → list what's waiting.
 2. Read the message file(s). A letter `check` shows as **taken by** another
    session is that session's — leave it.
-3. Before you start on a letter, take it: `intercom.sh take <slug>`. The mark
+3. Before you start on a letter, take it: `intercom.sh take <slug>` — the first
+   step, before you read it in depth or touch anything; `check` prints the
+   command beside every letter nobody has taken. The mark
    (`taken: <machine>/<session> <time>`) reaches the user's other machine within
-   about a minute, and `pickup`, `reply` and the wake leave a letter taken
-   elsewhere alone (`--force` takes over from a session that is gone). A note
-   you only archive needs no mark.
+   about a minute, so the list you read may already be stale: `take` refuses a
+   letter taken elsewhere, and that refusal is the check that holds — leave the
+   letter and tell the user. `pickup`, `reply` and the wake leave a letter taken
+   elsewhere alone too, but by then the work is done twice (field case, echelon,
+   2026-10-21: two works, six Syncthing conflicts). `--force` takes over from a
+   session that is gone. A note you only archive needs no mark.
    A note to yourself is read against the clock: `pickup` prints the local time
    beside it. A move the note binds to a later time or event («с утра», «после
    сбора») is named deferred, not proposed — the note may have been written for

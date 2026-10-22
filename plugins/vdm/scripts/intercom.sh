@@ -426,7 +426,17 @@ cmd_check() {
     printf '  • %s\n    from: %s   created: %s\n    file: %s\n' \
       "$title" "${from:-?}" "${created:-?}" "$f"
     taken="$(intercom_fm_field "$f" taken)"
-    [ -n "$taken" ] && printf '    taken by %s at %s — leave it to that session\n' "${taken%% *}" "${taken#* }"
+    if [ -n "$taken" ]; then
+      printf '    taken by %s at %s — leave it to that session\n' "${taken%% *}" "${taken#* }"
+    else
+      # The mark from the other machine arrives about a minute after it is set,
+      # so this list can be older than the letter's state. Field case (echelon,
+      # 2026-10-21): a session read the list, worked a letter later without
+      # `take`, and learned at `reply` that a session on the other machine had
+      # taken it — two works, six Syncthing conflicts. `take` refuses a letter
+      # taken elsewhere; it is the check that holds, so it is offered here.
+      printf '    take before work: /vdm:intercom take %s\n' "$(basename "$f" .md)"
+    fi
     # A relay letter is only half a message without what it continues, and the
     # chain is derived here rather than written into the letter so that picking
     # a link up (inbox → _done/) cannot make a stored path lie.
