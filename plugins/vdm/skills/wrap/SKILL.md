@@ -48,12 +48,15 @@ Read it for four things:
 - **Pending letters.** Give the count only; the next session reads them.
 - **Active crystals.**
 
-### 2. Sweep the chat — six classes
+### 2. Sweep the chat — seven classes
 
 Go through the session from its start, or from the last compaction summary. For
-each item, ask one question: is it in a file the next session will read? Check
-with grep for a distinctive marker (a number, a name, a quoted phrase), not from
-the memory of having written it.
+each item, ask one question: is it in a file the next session will read — **with
+its date and its addressee**? Check with grep for a distinctive marker (a number,
+a name, a quoted phrase), not from the memory of having written it. The subject
+being in a file is not the item being there: a crystal can hold «the user — three
+words on the text» while the user's own «I'll read it carefully» and the letter
+it feeds are nowhere.
 
 | Class | Example | Home |
 |---|---|---|
@@ -61,6 +64,7 @@ the memory of having written it.
 | Your recommendations the next step depends on | "generalize both gates to every plugin" | the crystal: a Sidetrack card or `## Текущая модель` |
 | Open questions, in both directions | one you asked that got no answer; one the user put off | Next actions `- [ ]`, naming who owes the answer |
 | Promises and dates | «ждём ответа X до пятницы» | Next actions with `(due: YYYY-MM-DD)` |
+| The user's own step, announced in the chat | «дай ссылку — я прочитаю внимательно», «посмотрю завтра», «отвечу им сам» | Next actions in the subject's home: `- [ ] <the user> — <what>, their words verbatim (due: …)`; a step with a date also goes to the user's list at the HQ (shared rule «The user's obligations go to HQ») |
 | Lessons and corrections | «не склеивать правку и отправку» | memory, or `/vdm:learn` when it is a rule |
 | Facts obtained with effort | links, numbers, quotes found outside the repo | the crystal's `## Текущая модель` or References; `references/` under the provenance rule |
 
@@ -92,6 +96,13 @@ last step.
 | Small, or a mix of loose ends | a note to self: `/vdm:intercom send <this-repo> <slug> --title "…"` | `/vdm:intercom pickup <slug>` |
 
 A note points to the crystal and does not retell it. Two retellings drift apart.
+Every item the note does name carries the date and the addressee its home holds:
+a note that drops a date its home has is a defect, not brevity.
+
+**Order the note by the cost of missing, not by the session's routine.** First
+comes an item due within two days, and anything going out to a person above the
+user or to a customer. The routine — the daily sheet, commits, the inbox — comes
+after. «Первым» is for such an item only: the next session reads it literally.
 
 Always name the slug. With several active crystals, «продолжаем кристалл» makes
 the next session guess.
@@ -128,6 +139,7 @@ Answer in the user's language, short, in this shape:
 ```
 <Можно | Можно после коммита | Пока нельзя: причина>.
 
+Ближайшее у тебя: <1–3 твоих хода по сроку, каждый со сроком и адресатом | —>
 Было только в чате → записал:
 - <что> → <файл>
 Оборвётся с сессией: <что | ничего>.
@@ -140,6 +152,10 @@ Answer in the user's language, short, in this shape:
 
 If nothing was chat-only, say so in one line and give the start phrase. Don't
 list everything that was already in files.
+
+«Ближайшее у тебя» is the user's own moves, taken from the homes, nearest
+deadline first — not the assistant's. The user sees before leaving what the next
+session will start from, and can correct the order while it is still cheap.
 
 After the user runs the commit, verify it with `git log -1 --stat` and answer in
 one line.
@@ -166,6 +182,9 @@ less visibly.
 | Handling the inbox or doing found work during the check | a long answer, a second commit, and the check stops being short |
 | Saying "everything is in files" from memory | an item you believed written wasn't there; grep for it instead |
 | Committing what another session staged | their work lands in your commit |
+| Taking «the subject is in a file» for «the user's step is recorded» | the user said «give me the link, I'll read it carefully» about a letter to the head of their company, due in 36 hours; the crystal held the subject, nothing held the step (field case, 2026-10-21) |
+| Ordering the note by the session's routine | the same letter went last, as «three words on the text», under the daily sheet and the commits; the next session read «first» literally and the user had to ask why the most important item was not on their list |
+| Retelling a crystal item without its date | «three words» instead of «a letter to the head of the company — by Friday»: the date and the addressee were in the crystal, the note lost both |
 
 ## Integration
 
