@@ -1496,6 +1496,17 @@ done
 junk=$(find "$R" -maxdepth 3 -name "*"$'\n'"*" -print0 2>/dev/null | tr -cd '\0' | wc -c | tr -d ' ')
 eq "no path in the store is made of output" "0" "$junk"
 
+# A note to yourself is read against the clock (field case, 2026-10-21): "first
+# — the sheet for 22.10" was written at 22:11 for the morning, picked up four
+# minutes later, and the next day's sheet was proposed on the evening before.
+( cd "$TMP/hop-a" && bash "$IC" send hop-a clock-note --title "Morning" --body "$B/ask.md" >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-a" && bash "$IC" pickup clock-note 2>&1 )"
+says "RED: pickup of a note to yourself prints the local time" "$out" "🕐 local time: $(date '+%Y-%m-%d')"
+says "…and names a move bound to a later time deferred" "$out" "deferred, not proposed"
+( cd "$TMP/hop-b" && bash "$IC" send hop-a clock-letter --title "From b" --body "$B/ask.md" >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-a" && bash "$IC" pickup clock-letter 2>&1 )"
+says_not "…a letter from another agent carries no clock line" "$out" "local time:"
+
 # The crystal path: picked up first, the outcome comes later.
 ( cd "$TMP/hop-a" && bash "$IC" send hop-b ask-two --title "Build Y" --body "$B/ask.md" >/dev/null 2>&1 )
 ( cd "$TMP/hop-b" && bash "$IC" pickup ask-two >/dev/null 2>&1 )

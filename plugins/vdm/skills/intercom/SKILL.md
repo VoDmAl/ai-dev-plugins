@@ -493,6 +493,10 @@ pending messages:
    about a minute, and `pickup`, `reply` and the wake leave a letter taken
    elsewhere alone (`--force` takes over from a session that is gone). A note
    you only archive needs no mark.
+   A note to yourself is read against the clock: `pickup` prints the local time
+   beside it. A move the note binds to a later time or event («с утра», «после
+   сбора») is named deferred, not proposed — the note may have been written for
+   the morning and picked up the same evening (field case, 2026-10-21).
 4. Then either:
    - **Act now** → do the work, then `intercom.sh reply <slug> --done … --ball …`:
      the outcome goes to the sender and the letter is archived in the same step.

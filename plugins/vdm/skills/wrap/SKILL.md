@@ -104,6 +104,14 @@ comes an item due within two days, and anything going out to a person above the
 user or to a customer. The routine — the daily sheet, commits, the inbox — comes
 after. «Первым» is for such an item only: the next session reads it literally.
 
+**A move bound to a time or an event carries its condition, not «first».** Write
+«с утра 22.10», «после сбора 22.10», «к встрече 23.10 17:00 МСК» — the next
+session may open four minutes later, on the same evening, and read «first» as
+«now». When the user may come back before that time, add one line for now:
+what to do now, or «сейчас — только то, что скажешь». `pickup` of a note to
+yourself prints the local time beside it, so the receiving session can tell a
+move that is due from one that is not yet.
+
 Always name the slug. With several active crystals, «продолжаем кристалл» makes
 the next session guess.
 

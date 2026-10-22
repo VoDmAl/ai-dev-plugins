@@ -1197,6 +1197,17 @@ cmd_pickup() {
   dest="$(_ic_archive "$msg")" || exit 1
   printf '✅ intercom: archived → %s\n' "$dest"
 
+  # A note to yourself is read against the clock. It is written for "the next
+  # session", and the next session may open four minutes later: on 2026-10-21 a
+  # note "first — the sheet for 22.10" was written at 22:11 for the morning,
+  # picked up at 22:15, and the sheet for tomorrow was proposed on the evening
+  # before. The local time is printed here, at the moment the note is taken, so
+  # a move bound to a later time or event is named deferred instead.
+  if [ -n "$sender" ] && [ "$sender" = "$id" ]; then
+    printf '    🕐 local time: %s — a move this note binds to a later time or event is deferred, not proposed.\n' \
+      "$(date '+%Y-%m-%d %H:%M %Z')"
+  fi
+
   # The receipt: the sender otherwise learns "received" only by auditing the
   # store by hand. Offered only while the sender has a live session to tell.
   local live choice verdict wname wstatus why wmode
