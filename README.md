@@ -141,6 +141,7 @@ Adds workitem discipline to long-running sessions. A *crystal* is an in-repo wor
 **Three-layer gate** (defense in depth):
 - **Primary** — `PreToolUse` hook `crystal-completion-guard` intercepts Write/Edit/MultiEdit on workitems and blocks done-transitions with the five resolution paths (resolve / migrate / cancel / defer / promote-to-stem). Also enforces `superseded-by:` frontmatter for `status: superseded` transitions.
 - **Visibility** — `Stop` hook `crystal-stop-reminder` surfaces active workitems with open items at end-of-turn.
+- **Before the first decision (v2.55.0)** — `Stop` hook `crystal-grow-nudge`: an answer with ≥5 numbered steps or ≥2 questions to the user, from a session that has written into no workitem, gets one question per session — a new crystal or an active one? It goes to the assistant (`additionalContext`), not to the user, so the assistant proposes the grow itself. Off with `crystal.grow-nudge: false`.
 - **Backup (git only)** — pre-commit check in the `vdm-git` plugin (and an in-repo equivalent for this dev clone) catches IDE-direct edits that bypass the assistant.
 
 **Canon lint (v2.16.0).** A `PostToolUse` hook validates the *shape* of any workitem written under a crystal root — the gap the completion gate never covered, since that one only fires at the done-transition. The required sections, frontmatter keys, Decision-Log entry format and `Basis:` enum are **derived from `templates/workitem-template.md` at every run**, not hardcoded, so the template cannot disagree with the linter and a translated template keeps working. Scope: non-terminal workitems only — a `done` workitem is a historical record, and retro-fitting it to a newer canon would falsify it. Canon is a **floor**: only *missing* items are reported, so a host repo may add its own frontmatter keys and sections freely. Files imported by `crystal-migrate` carry `crystal-schema: legacy` and get a single "not canon, don't copy this" line instead of a violation list — the mitigation for an assistant inferring a workitem's shape from whichever file happens to sit next to it.
@@ -580,6 +581,7 @@ bash tests/intercom.test.sh                # agent directory + name resolution, 
 bash tests/docs-pairs.test.sh              # the docs-sync pairs: a name every document uses links nothing; old side of code only; no commit
 bash tests/crystal-capture-reminder.test.sh # capture reminder: throttle before scan (proven via a find shim), capture-exclude
 bash tests/crystal-stop-reminder.test.sh   # Stop reminder: one walk for any number of crystals, same answer per crystal, the shared prune rule
+bash tests/crystal-grow-nudge.test.sh      # grow nudge: plan shape, "this session wrote no workitem", once per session, additionalContext
 bash tests/gates-harness-isolation.test.sh # the gate harness must not write into the commit that runs it
 bash tests/hook-fail-closed.test.sh        # blocking hooks with python3 stripped from PATH: block in scope, silent out of it
 bash tests/reminder-throttle.test.sh       # the two-axis reminder window, and the hooks that print a measurement instead of a verdict
@@ -631,6 +633,7 @@ The harness materializes the **working tree** (not `git clone` of HEAD — pre-c
 | PostToolUse (Write/Edit/MultiEdit) | `crystal-lint.sh --hook` | Catches an open sidetrack the change left without a `- [ ] … Sidetrack #N` line — only one the change introduced, measured against HEAD; older ones stay with the done gate (v2.36.0). The canon check moved to PreToolUse in v2.49.0 |
 | PostToolUse (Write/Edit/MultiEdit) | `shell-syntax-check.sh --hook` | Catches a shell file that does not parse under the interpreter it will meet — the shebang's, and for bash also the PATH one — e.g. a bare `case` pattern inside `$( )`, which the stock macOS bash 3.2 rejects and bash 4+ accepts. Opt out per project with `"shell-syntax": {"enabled": false}` (v2.36.0) |
 | Stop | `crystal-stop-reminder.sh` | End-of-turn visibility for active workitems with open items |
+| Stop | `crystal-grow-nudge.sh` | A plan-shaped answer (≥5 numbered steps or ≥2 questions) from a session that wrote into no workitem: one question per session to the assistant — new crystal or active one (v2.55.0) |
 
 Orphan-guard detail: without a discovery hook (CLAUDE.md ref / source-code @see / `docs/features/` ref / sibling `docs/llm/` ref) it exits 2 with a remediation message — surfacing as actionable feedback the assistant must address before the turn ends.
 

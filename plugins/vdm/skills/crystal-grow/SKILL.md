@@ -1,6 +1,6 @@
 ---
 name: crystal-grow
-description: "Start (or promote) a crystal — an in-repo workitem under <root>/<slug>/workitem.md that anchors long-running sessions and prevents loss of sidetracks, decisions, and deferred promises. Roots auto-discovered (any `tasks/` dir, hidden segments excluded) or explicitly listed in config. Invoke when a session is widening into research, brainstorm, PRD work, or any flow likely to spawn 3+ branches."
+description: "Start (or promote) a crystal — an in-repo workitem under <root>/<slug>/workitem.md that anchors long-running sessions and prevents loss of sidetracks, decisions, and deferred promises. Invoke BEFORE the first decision of work that will outlive the session, not at its implementation step: a plan of 5+ steps, 2+ questions to the user, the user answering a numbered list, an incident that will take more than today, or the thought «a crystal is needed — later» all mean now. Facts of the current work go into the crystal, not into memory. Name it by the task, not by the current step."
 license: MIT
 ---
 
@@ -177,10 +177,58 @@ while being refused costs a second attempt.
 `/vdm:crystal-migrate` puts on an import. The same comparison runs at commit time
 against `HEAD` (`crystal-lint.sh --staged`) where a project wires it.
 
+### (6) Decisions arriving as answers
+
+The phrase list in (1) catches a user who *asks* for a plan. Decisions more
+often arrive as *answers*: you asked numbered questions, and the user replies
+«1. Да 2. Делаем 3. Да 4. Окей». Every one of those answers is a
+Decision Log entry. If there is no crystal to write it into, the grow is
+already late — propose it in the same turn.
+
+### Three ways the grow gets deferred
+
+Each looks like a reason; none is.
+
+- **«Кристалл нужен, заведу на шаге реализации».** If your own reasoning says
+  a crystal is needed but later, the grow is now. A crystal holds the
+  decisions being taken, not only the work to come, and the first decisions
+  are the ones taken before any implementation.
+- **Memory instead of the crystal.** Writing the facts of the current work — the
+  inventory, the plan, decisions awaiting an answer — into the project's memory
+  is a grow signal. Memory is about the project; the crystal is about the work.
+  The changelog entry of a closed block and a document are no substitute
+  either: none of them holds open obligations between blocks.
+- **An incident.** Urgency is not a reason to defer. An incident produces
+  decisions and failed attempts fastest of all. The minimum is the skeleton —
+  title, purpose, the first entry — in the first minutes.
+
+Field report (an infrastructure agent, 2026-10-21): a question about a critical
+vulnerability grew into several days of work. The second answer was a
+five-step plan with four questions; the reasoning said «a crystal is needed — at
+the implementation step»; the facts went into memory; three commits were
+prepared before the user asked «we are working in a crystal, right?». Eleven
+Decision Log entries and ten sidetracks were then rebuilt from the chat. Every
+signal above had fired — but this body is in context only once the skill is
+invoked, which is why the description line now carries them, and why (7) exists.
+
+### (7) The backstop — a Stop hook outside any crystal
+
+Text, here or in the description, does nothing until it is read.
+`crystal-grow-nudge.sh` runs at **Stop**: when an answer has ≥5 numbered steps
+or ≥2 questions to the user, and **this session** has written into no workitem
+and not run this skill, it asks once per session — through `additionalContext`,
+so you receive it and the turn continues — whether the work belongs in a new
+crystal or an active one. Answer it: propose the grow, or say in one line that
+the work does not outlive the turn.
+
+The condition is the session's, not the repository's: of 116 crystal births
+measured since 2026-09-15, 8 began with the user asking, and every one of those
+repositories already had active crystals. Off with `crystal.grow-nudge: false`.
+
 ### Why "forced" matters
 
 DL #19 is *organic-creep detection*: fires when a session that started
-small grew past a counter. The four signals above are *first-sight
+small grew past a counter. The signals above are *first-sight
 detection*: fire when the session was *born* as planning. Both modes are
 real and need separate hooks. Field report (the session that shipped
 multi-root): all four signals were overdetermined from message #1 —
@@ -888,6 +936,13 @@ created: <YYYY-MM-DD>
 last-updated: <YYYY-MM-DD>
 ---
 ```
+
+**The slug names the task, not the current step.** Ask: what closes this
+crystal? If the answer is wider than the slug, choose the wider name before the
+file exists — a rename later moves a folder that other files already link to.
+Field report (2026-10-21): a crystal named after moving one service to a new
+deployment, while the work was the vulnerability that move was one step of; the
+user corrected it.
 
 #### The canonical skeleton — reproduced here so one read is enough
 
