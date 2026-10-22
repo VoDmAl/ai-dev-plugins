@@ -430,7 +430,7 @@ anyone's configuration.
 | `changelog` | `conditional` | Nothing to changelog when tree is clean |
 | `docs-sync` | `conditional` | No diff → no docs to flag |
 | `distill` | `smart` | Fires only on real drift (a synthesis older than an input it covers), throttled to 30 min. Silent in a project with no synthesis tier — see [docs-distill](#docs-distill) |
-| `git-guard` | `smart` | Was `proactive` with no throttle at all until `vdm-git` 2.14.0 — the only reminder in the suite built that way, and it spent 1601 bytes on **every** prompt in any dirty repository. The blocking `PreToolUse` guard is untouched; that is the part that actually stops a bad commit |
+| `git-guard` | `smart` | Was `proactive` with no throttle at all until `vdm-git` 2.14.0 — the only reminder in the suite built that way, and it spent 1601 bytes on **every** prompt in any dirty repository. The blocking `PreToolUse` guard is untouched; that is the part that actually stops a bad commit. Since 2.21.0 it is silent on a tree where only the assistant's notes changed — a crystal's files, `.claude/memory/` — since those ride with the next work commit |
 
 ### Important note about `git-guard`
 

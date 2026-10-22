@@ -108,6 +108,10 @@ whose decision it was.
 
 When the assistant has finished work that warrants a commit — implementation done, type-check / tests passing where applicable — **prepare the commit and hand off a single command**, without waiting for verbal "go ahead." Do not stop at "should I commit?" — the user can decline by simply not running the command.
 
+**Notes alone are no commit.** The assistant's own working record — a crystal's files (the workitem, its `references/`) and its memory in `.claude/memory/` — is on disk the moment it is written, and the next session reads it from there. It rides with the next commit that carries work, or with the session's last one (`/vdm:wrap` → one commit, at the end). A line of notes alone is prepared only when the user asks for it. The `UserPromptSubmit` reminder knows the difference: on a tree where only notes changed it says nothing. A long-lived doc — `docs/llm/`, a synthesis document — is not a note: it is part of the work it documents.
+
+**A push is the user's, and never for notes alone.** The hand-off is a commit line; offering `git push` beside it is a second proposal. Every push to the branch of an open merge request reruns its pipeline and shows the reviewer one more commit, so notes alone are never pushed there except at the user's word. Field case (a project, 2026-10-22): a crystal in the branch of a merge request under review took three of its four commits, each pushed on its own; the owner asked why so many commits and pushes.
+
 ### Steps
 
 1. **Stage explicit files.** `git add <file1> <file2> ...`. Never `git add -A`. Never `git add .`. Untracked files belonging to other tasks must stay unstaged; report them separately under "not staged (other tickets)" so the user knows they exist. Then read `git diff --cached -- <those files>` in full (see [A file someone else staged](#a-file-someone-else-staged-is-not-yours-to-edit)).
