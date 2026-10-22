@@ -62,7 +62,20 @@ def field(fm, name):
     value = m.group(1)
     if value.startswith("#"):
         return ""
-    return value.strip("\"'").strip()
+    return unquote(value).strip()
+
+
+def unquote(value):
+    """A double-quoted YAML scalar with its escapes undone: the harness writes
+    `\\"` inside one, and a heading with quotes in it then kept a backslash per
+    quote and no longer matched itself (an HQ, 2026-10-22). Anything else
+    loses its outer quotes only, as before."""
+    if len(value) >= 2 and value[0] == value[-1] == '"':
+        try:
+            return json.loads(value)
+        except ValueError:
+            return re.sub(r"\\(.)", r"\1", value[1:-1])
+    return value.strip("\"'")
 
 
 def frontmatter(path):
@@ -190,7 +203,9 @@ def check(project):
             if shared:
                 gone = stale_rule(shared, headings)
                 if gone:
-                    stale.append("%s (%s)" % (name[:-3], gone[:60]))
+                    # Cut for the line, and saying so: a cut without a mark
+                    # was read as the checker's own reading of the value.
+                    stale.append("%s (%s)" % (name[:-3], gone if len(gone) <= 60 else gone[:59].rstrip() + "…"))
                 continue
             waiting.append(name[:-3])
     if stale:
