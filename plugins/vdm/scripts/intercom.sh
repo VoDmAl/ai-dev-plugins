@@ -920,11 +920,36 @@ cmd_send() {
   # body, or the recipient reads a placeholder.
   # One session is woken, the one where the owner typed last (wake-one-machine
   # DL #3); `intercom_wake_choice` says which, or that it lives elsewhere.
-  local live choice verdict wname wstatus why wmode
+  local live wlive start choice verdict wname wstatus why wmode
   live="$(intercom_live_sessions "$canon")"
-  if [ -n "$live" ]; then
-    printf '    📣 live session(s) of `%s` on this machine: %s\n' "$canon" "$(_ic_live_list "$live")"
-    choice="$(intercom_wake_choice "$canon" "$live")"
+  start="$(intercom_mail_start "$canon" "$live" "$from")"
+  [ -z "$live" ] || printf '    📣 live session(s) of `%s` on this machine: %s\n' "$canon" "$(_ic_live_list "$live")"
+  if [ "${start%%$'\037'*}" = start ]; then
+    # Its mail session is switched on and none is live here: the sender starts
+    # it, and it takes the letter on its first turn — so nobody else is woken
+    # (intercom-session-wake, DL #11). After a scaffold the start waits for the
+    # body, as a wake does.
+    printf '    📮 `%s` has its mail session switched on, and none is live here — start it with your shell tool' "$canon"
+    if [ "$body_set" -eq 1 ]; then
+      printf ' now:\n'
+    else
+      printf ',\n       once the body is written — not before, or it reads a placeholder:\n'
+    fi
+    printf '         %s\n' "$(intercom_mail_start_cmd "${start#start$'\037'}")"
+    printf '       One mail session per project and machine, so a second start does nothing; its first turn is\n'
+    printf '       /vdm:intercom check, so no wake follows the start'
+    if [ -n "$live" ]; then printf ', and no other session is woken.\n'; else printf '.\n'; fi
+  elif [ -n "$live" ]; then
+    [ -z "$start" ] || printf '    %s.\n' "$(_ic_novdx_line "$canon" "$start")"
+    # A letter to this project's own inbox is a note for its next session, not
+    # mail: its mail session is not woken for it (intercom-session-wake, DL #12).
+    wlive="$live"
+    [ "$canon" != "$from" ] || wlive="$(printf '%s\n' "$live" | awk -F '\t' 'NF && $4 != "mail"')"
+    if [ -n "$wlive" ]; then
+      choice="$(intercom_wake_choice "$canon" "$wlive")"
+    else
+      choice=$'wait\037\037\037a letter to your own project is a note for its next session, not mail for its mail session'
+    fi
     IFS=$'\037' read -r verdict wname wstatus why wmode <<<"$choice"
     if [ "$verdict" = "wake" ]; then
       printf '       → wake one: %s — %s.\n' "$wname" "$why"
@@ -940,11 +965,26 @@ cmd_send() {
       printf '       → do not wake here: %s.\n' "$why"
     fi
   else
+    [ -z "$start" ] || printf '    %s.\n' "$(_ic_novdx_line "$canon" "$start")"
     # None live here is not none anywhere: a session on the owner's other
     # machine is named, with how long ago it was active (intercom-session-wake).
     local seen
     seen="$(intercom_seen_elsewhere "$canon")"
     [ -z "$seen" ] || printf '    📣 %s.\n' "$(intercom_elsewhere_line "$canon" "$seen")"
+  fi
+}
+
+# _ic_novdx_line <identity> <novdx line of intercom_mail_start> — why a mail
+# session that is switched on is not started from here.
+_ic_novdx_line() {
+  local kind clone ver
+  IFS=$'\037' read -r kind clone ver <<<"$2"
+  if [ -n "$ver" ]; then
+    printf '📮 `%s` has its mail session switched on (%s), but vdx here is %s — %s or later starts one; the letter goes as without it' \
+      "$1" "$clone" "$ver" "$INTERCOM_VDX_MIN"
+  else
+    printf '📮 `%s` has its mail session switched on (%s), but there is no vdx here to start one; the letter goes as without it' \
+      "$1" "$clone"
   fi
 }
 
@@ -977,7 +1017,7 @@ cmd_sent() {
   fi
   n="$(printf '%s\n' "$list" | wc -l | tr -d ' ')"
   printf '📤 intercom: %s letter(s) from `%s` not picked up yet (oldest first):\n\n' "$n" "$id"
-  local age inbox slug title file live lines choice verdict wname wstatus why wmode taken seen="" cache=""
+  local age inbox slug title file live lines choice start verdict wname wstatus why wmode taken seen="" cache=""
   while IFS=$'\t' read -r age inbox slug title file; do
     [ -n "$inbox" ] || continue
     printf '  • %sd  %s/%s — %s\n' "$age" "$inbox" "$slug" "$title"
@@ -987,21 +1027,32 @@ cmd_sent() {
       continue
     fi
     # One lookup per recipient, not per letter — bash 3.2 has no maps, so a
-    # plain "<inbox>=<live>\x1e<choice>" list stands in for one.
+    # plain "<inbox>=<live>\x1e<choice>\x1e<start>" list stands in for one.
     case "$seen" in
       *"|$inbox|"*) live="$(printf '%s\n' "$cache" | awk -F '=' -v k="$inbox" '$1 == k { sub(/^[^=]*=/, ""); print; exit }')" ;;
       *) lines="$(intercom_live_sessions "$inbox")"
          live="$(printf '%s' "$lines" | cut -f1 | paste -sd ',' - | sed 's/,/, /g')"
-         if [ -n "$live" ]; then
+         start="$(intercom_mail_start "$inbox" "$lines" "$id")"
+         if [ "${start%%$'\037'*}" = start ]; then
+           live="${live}"$'\036'     # the start replaces the wake (DL #11): no choice to make
+         elif [ -n "$live" ]; then
            live="${live}"$'\036'"$(intercom_wake_choice "$inbox" "$lines")"
          else
            # Kept as "=<line>": an empty live list, and what can be said instead.
            live=$'\036'"$(intercom_elsewhere_line "$inbox")"
          fi
+         live="${live}"$'\036'"${start}"
          seen="${seen}|$inbox|"; cache="${cache}${inbox}=${live}
 " ;;
     esac
+    start="${live##*$'\036'}"; live="${live%$'\036'*}"
     choice="${live#*$'\036'}"; live="${live%%$'\036'*}"
+    if [ "${start%%$'\037'*}" = start ]; then
+      printf '      its mail session is switched on and none is live here → start it with your shell tool: %s\n' \
+        "$(intercom_mail_start_cmd "${start#start$'\037'}")"
+      continue
+    fi
+    [ -z "$start" ] || printf '      %s\n' "$(_ic_novdx_line "$inbox" "$start")"
     if [ -n "$live" ]; then
       IFS=$'\037' read -r verdict wname wstatus why wmode <<<"$choice"
       if [ "$verdict" = "wake" ]; then
@@ -1014,6 +1065,43 @@ cmd_sent() {
       printf '      %s\n' "$choice"
     fi
   done <<<"$list"
+}
+
+# `close` — the mail session ends itself once its inbox is handled
+# (intercom-session-wake, DL #13): `vdx ai --close --waiting <n>`, n being the
+# letters it took and leaves in the inbox for the owner — read from `taken:`,
+# kept nowhere. A letter nobody took is a letter nobody handled, possibly one
+# that came in after the last check: close refuses and names it. A letter from
+# the project itself is a note for its next session and is left alone (DL #12).
+# vdx finds the session to close among this process's ancestors, so it is run
+# from here rather than handed back — as a child, not by `exec`: the output of
+# this run is written out by the EXIT trap, which `exec` would skip.
+cmd_close() {
+  [ $# -eq 0 ] || _ic_die "close: takes no arguments. Usage: intercom close"
+  intercom_mail_session || _ic_die "close: this is not a mail session (vdx ai --intercom) — nothing to close here."
+  local id me f taken from n=0 open=""
+  id="$(intercom_identity)"
+  me="$(_intercom_taker)"
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    taken="$(intercom_fm_field "$f" taken)"
+    if [ -n "$taken" ]; then
+      [ "${taken%% *}" != "$me" ] || n=$((n + 1))
+      continue
+    fi
+    from="$(intercom_fm_field "$f" from)"
+    [ "$from" != "$id" ] || continue
+    open="${open}     • $(basename "$f" .md) — from ${from:-?}"$'\n'
+  done < <(intercom_inbox_list "$id")
+  if [ -n "$open" ]; then
+    printf 'intercom: ✗ not closing — letters nobody has taken are in the inbox:\n%s' "$open" >&2
+    printf '   Handle each (take it, then reply or pickup), or take it and leave it for the owner; then close again.\n' >&2
+    exit 1
+  fi
+  command -v vdx >/dev/null 2>&1 || _ic_die "close: no vdx on PATH — the mail session is vdx's to close."
+  printf '📮 intercom: inbox handled — %s letter(s) left for the owner: vdx ai --close --waiting %s\n' "$n" "$n"
+  vdx ai --close --waiting "$n"
+  exit $?
 }
 
 cmd_claim() {
@@ -1419,6 +1507,7 @@ case "$sub" in
   reply)                      cmd_reply "$@" ;;
   sent|outbox)                cmd_sent "$@" ;;
   chain)                      cmd_chain "$@" ;;
+  close)                      cmd_close "$@" ;;
   ""|-h|--help|help)
     cat <<'HELP'
 intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
@@ -1464,7 +1553,10 @@ intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
                                         still in the inbox is archived in the same step
   intercom sent                         your letters still unpicked in other inboxes, with age
                                         and the recipient's live sessions (aka: outbox)
+  intercom close                        in a mail session, once the inbox is handled: end it
+                                        (vdx ai --close --waiting <letters left for the owner>);
+                                        refuses while a letter nobody took is in the inbox
 HELP
     ;;
-  *) _ic_die "unknown subcommand '$sub' (try: identity|whoami|store|register|names|describe|unregister|directory|resolve|check|send|claim|pickup|reply|sent|chain)" ;;
+  *) _ic_die "unknown subcommand '$sub' (try: identity|whoami|store|register|names|describe|unregister|directory|resolve|check|send|claim|take|pickup|reply|sent|chain|close)" ;;
 esac

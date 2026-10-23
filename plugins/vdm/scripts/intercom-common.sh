@@ -1263,6 +1263,77 @@ intercom_mail_run() {
   printf '%s' "$n"
 }
 
+# ---------------------------------------------------------------------------
+# Starting a mail session (intercom-session-wake, DL #9–#12). A letter that
+# arrives by sync starts nothing by itself, so the sender starts the
+# recipient's mail session on its own machine: `vdx ai --intercom --detach
+# '<the recipient's checkout here>'`. One mail session per project and machine,
+# so a second start is a no-op, and its first turn is `/vdm:intercom check`.
+# Only where the owner switched it on (DL #10): `intercom.mail-session: true`
+# in that checkout's settings — every mail session is a whole agent session.
+# vdx before 0.36 refuses `--intercom` with exit 2, so its version is asked
+# first. Started, the mail session replaces the wake of any other session
+# (DL #11); a letter to the sender's own project starts nothing (DL #12).
+# ---------------------------------------------------------------------------
+INTERCOM_VDX_MIN=0.36
+
+# _intercom_mail_clone <identity> — that agent's checkout on this machine with
+# its mail session switched on, or nothing. Every registered checkout that
+# exists here is looked at: the registry also lists clones nobody configures (a
+# marketplace clone came first in this repo's own entry). The settings file is
+# found as resolve_config_path finds it: .claude/ when present, else .qwen/.
+_intercom_mail_clone() {
+  command -v jq >/dev/null 2>&1 || return 0
+  local p cfg
+  while IFS= read -r p; do
+    [ -n "$p" ] && [ -d "$p" ] || continue
+    if [ -d "$p/.claude" ]; then cfg="$p/.claude/vdm-plugins.json"; else cfg="$p/.qwen/vdm-plugins.json"; fi
+    [ -f "$cfg" ] || continue
+    jq -e '.intercom["mail-session"] == true' "$cfg" >/dev/null 2>&1 && { printf '%s' "$p"; return 0; }
+  done <<<"$(intercom_registry_get "$1" '(.paths // [])[]')"
+  return 0
+}
+
+# _intercom_vdx_version — the version of the vdx on PATH, or nothing.
+_intercom_vdx_version() {
+  command -v vdx >/dev/null 2>&1 || return 0
+  vdx --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1
+}
+
+# _intercom_version_ge <have> <need> — dotted numbers, compared field by field.
+_intercom_version_ge() {
+  awk -v a="$1" -v b="$2" 'BEGIN {
+    n = split(a, x, "."); m = split(b, y, "."); if (m > n) n = m
+    for (i = 1; i <= n; i++) { if (x[i] + 0 > y[i] + 0) exit 0; if (x[i] + 0 < y[i] + 0) exit 1 }
+    exit 0 }'
+}
+
+# intercom_mail_start <identity> <live> <sender> — whether the sender starts that
+# agent's mail session here. <live> is the caller's `intercom_live_sessions`
+# output. One line, or nothing:
+#   "start<US><checkout>"                 start it there
+#   "novdx<US><checkout><US><version>"    switched on, but this vdx cannot (no version: no vdx)
+# Nothing when a mail session of it is live here (the wake takes the letter),
+# when none is switched on here, and for a letter to the sender's own project.
+intercom_mail_start() {
+  local id="$1" live="$2" sender="$3" clone ver
+  [ "$id" != "$sender" ] || return 0
+  printf '%s\n' "$live" | awk -F '\t' '$4 == "mail" { f = 1 } END { exit !f }' && return 0
+  clone="$(_intercom_mail_clone "$id")"
+  [ -n "$clone" ] || return 0
+  ver="$(_intercom_vdx_version)"
+  if [ -n "$ver" ] && _intercom_version_ge "$ver" "$INTERCOM_VDX_MIN"; then
+    printf 'start\037%s\n' "$clone"
+  else
+    printf 'novdx\037%s\037%s\n' "$clone" "$ver"
+  fi
+}
+
+# intercom_mail_start_cmd <checkout> — the line that starts it, the path single-quoted.
+intercom_mail_start_cmd() {
+  printf "vdx ai --intercom --detach '%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
 # _intercom_pid_focused <pid> — that live process was started with VDX_FOCUSED=1.
 _intercom_pid_focused() { [ "$(_intercom_pid_mode "$1")" = focused ]; }
 

@@ -1243,6 +1243,8 @@ says "…to check now and at every wake" "$out" "Now and at every wake: /vdm:int
 says "RED: …to leave work that changes the code to the main session" "$out" "Work that changes the code is left for the owner's main session as a crystal"
 says "RED: …to send a question for the owner to their list at HQ" "$out" "Put one line on their list at HQ"
 says "RED: …and that a chain stops" "$out" "stops after 3 links in a row"
+says "RED: …to leave a note the project left for itself" "$out" "is a note for the owner's next session, not mail: leave it untaken"
+says "RED: …and to end itself with close once the inbox is handled" "$out" "end this session with /vdm:intercom close"
 says_not "…with no 'pending → check' reminder line of its own" "$out" "pending message(s) in your inbox"
 out="$( cd "$TMP/hop-b" && printf '{}' | VDX_INTERCOM=1 VDX_FOCUSED=1 bash "$HOOK" )"
 says_not "a focused session started for mail too is focused" "$out" "📮"
@@ -1287,6 +1289,94 @@ eq "a session the owner works in continues the chain" "$rc" "0"
 out="$(msend hop-b hop-a ch-5 --reply-to hop-b/ch-4)"; rc=$?
 eq "…and after that move the mail sessions may answer again" "$rc" "0"
 rm -f "$VDM_INTERCOM_ROOT"/hop-a/ch-*.md "$VDM_INTERCOM_ROOT"/hop-b/ch-*.md
+
+echo "-- the sender starts the recipient's mail session (intercom-session-wake, DL #9–#12)"
+# A letter that arrives by sync starts nothing, so the sender starts the mail
+# session on its own machine — only where the owner switched it on
+# (`intercom.mail-session: true` in the recipient's checkout), and only with a
+# vdx that knows `--intercom` (0.36). Started, it takes the letter on its first
+# turn, so no other session is woken. A note to one's own project is not mail.
+# The machine's own vdx must not decide a case: every send below names its shim.
+VX="$TMP/vdx-shim"; mkdir -p "$VX"
+printf '#!/bin/sh\n[ "$1" = --version ] && { [ -n "${VDX_SHIM_VERSION-0.36.0}" ] && echo "${VDX_SHIM_VERSION-0.36.0}"; exit 0; }\necho "$*" >> "%s/vdx.log"\n' "$TMP" > "$VX/vdx"
+chmod +x "$VX/vdx"
+vsend() { ( cd "$TMP/hop-a" && PATH="$VX:$PATH" CLAUDE_CODE_SESSION_ID=self-sid bash "$IC" send hop-b "$@" 2>&1 ); }
+mkdir -p "$TMP/hop-b/.claude"
+printf '{"intercom":{"mail-session":true}}\n' > "$TMP/hop-b/.claude/vdm-plugins.json"
+HB_PATH="$(jq -r '.paths[0]' "$VDM_INTERCOM_ROOT/_registry/hop-b.json")"
+out="$(vsend ms-start --body "$B/live.md")"
+says "RED: switched on and none live here — the start is named" "$out" "has its mail session switched on, and none is live here — start it with your shell tool now"
+says "…as the command vdx takes, with the recipient's checkout here" "$out" "vdx ai --intercom --detach '$HB_PATH'"
+says "…and the start replaces the wake" "$out" "no other session is woken"
+says_not "…so no session is woken beside it" "$out" "→ wake one:"
+out="$( cd "$TMP/hop-a" && PATH="$VX:$PATH" VDM_INTERCOM_TODAY=2026-10-04 bash "$IC" sent 2>&1 )"
+says "RED: sent names the same start for a letter still lying there" "$(printf '%s\n' "$out" | grep -m1 'hop-b/ms-start' -A1)" "start it with your shell tool: vdx ai --intercom --detach '$HB_PATH'"
+out="$(vsend ms-scaffold)"
+says "after a scaffold the start waits for the body" "$out" "once the body is written — not before"
+out="$(VDX_SHIM_VERSION=0.35.2 vsend ms-old --body "$B/live.md")"
+says "RED: an older vdx does not start one, and says why" "$out" "but vdx here is 0.35.2 — 0.36 or later starts one"
+says_not "…and no start is named" "$out" "vdx ai --intercom"
+says "…the letter goes as before: the wake is chosen" "$out" "wake"
+out="$(VDX_SHIM_VERSION=0.100.0 vsend ms-newer --body "$B/live.md")"
+says "versions compare as numbers: 0.100 is past 0.36" "$out" "vdx ai --intercom --detach"
+out="$(VDX_SHIM_VERSION= vsend ms-novdx --body "$B/live.md")"
+says "a vdx that gives no version starts nothing, and that is said" "$out" "there is no vdx here to start one"
+printf '{"intercom":{"mail-session":false}}\n' > "$TMP/hop-b/.claude/vdm-plugins.json"
+out="$(vsend ms-off --body "$B/live.md")"
+says_not "switched off — nothing about a mail session" "$out" "📮"
+printf '{"intercom":{"mail-session":true}}\n' > "$TMP/hop-b/.claude/vdm-plugins.json"
+mksession mail-b.json "$MAIL_PID" "$TMP/hop-b" hop-b-mail idle "$SOCKS/b.sock"
+out="$(vsend ms-live --body "$B/live.md")"
+says "a mail session live here is woken, as before" "$out" "→ wake one: hop-b-mail"
+says_not "…and none is started" "$out" "vdx ai --intercom"
+out="$( cd "$TMP/hop-b" && PATH="$VX:$PATH" bash "$IC" send hop-b ms-self --body "$B/live.md" 2>&1 )"
+says_not "RED: a note to one's own project does not wake its mail session" "$out" "wake one: hop-b-mail"
+rm -f "$SESS/mail-b.json"
+out="$( cd "$TMP/hop-b" && PATH="$VX:$PATH" bash "$IC" send hop-b ms-self2 --body "$B/live.md" 2>&1 )"
+says_not "RED: …nor starts one" "$out" "vdx ai --intercom"
+[ ! -s "$TMP/vdx.log" ] && ok "send never runs vdx itself: it names the start" || bad "send ran vdx" "$(cat "$TMP/vdx.log")"
+# The registry lists every checkout seen, a marketplace clone among them: the
+# one started is the one where the owner switched it on.
+rm -f "$TMP/hop-b/.claude/vdm-plugins.json"
+cp "$VDM_INTERCOM_ROOT/_registry/hop-b.json" "$TMP/hop-b.reg.keep"
+mkrepo "$TMP/hop-b-work" "git@example.com:acme/hop-b.git"
+( cd "$TMP/hop-b-work" && bash "$IC" register --same-project >/dev/null 2>&1 )
+mkdir -p "$TMP/hop-b-work/.claude"
+printf '{"intercom":{"mail-session":true}}\n' > "$TMP/hop-b-work/.claude/vdm-plugins.json"
+out="$(vsend ms-clone --body "$B/live.md")"
+says "the checkout started is the one with the key, not the first listed" "$out" "--detach '$(cd "$TMP/hop-b-work" && pwd -P)'"
+mv -f "$TMP/hop-b.reg.keep" "$VDM_INTERCOM_ROOT/_registry/hop-b.json"
+rm -rf "$TMP/hop-b-work" "$TMP/hop-b/.claude" "$VDM_INTERCOM_ROOT"/hop-b/ms-*.md
+
+echo "-- a mail session ends itself with close (intercom-session-wake, DL #13)"
+# `vdx ai --close --waiting <n>`, n being the letters it took and leaves for the
+# owner, read from `taken:`. A letter nobody took is a letter nobody handled.
+mkrepo "$TMP/mail-x" "git@example.com:acme/mail-x.git"
+( cd "$TMP/mail-x" && bash "$IC" register --name "mail-x" --describe "a project with a mail session" >/dev/null 2>&1 )
+for s in mx-1 mx-2 mx-3; do ( cd "$TMP/hop-a" && bash "$IC" send mail-x "$s" --body "$B/live.md" >/dev/null 2>&1 ); done
+( cd "$TMP/mail-x" && bash "$IC" send mail-x mx-note --body "$B/live.md" >/dev/null 2>&1 )
+mclose() { ( cd "$TMP/mail-x" && PATH="$VX:$PATH" bash "$IC" close 2>&1 ); }
+: > "$TMP/vdx.log"
+out="$(mclose)"; rc=$?
+eq "close outside a mail session is refused" "$rc" "1"
+says "…and says why" "$out" "this is not a mail session"
+out="$(VDX_INTERCOM=1 VDX_FOCUSED=1 mclose)"; rc=$?
+eq "…a focused one is not a mail session either" "$rc" "1"
+( cd "$TMP/mail-x" && VDX_INTERCOM=1 bash "$IC" take mx-1 >/dev/null 2>&1 )
+awk 'NR == 1 { print; print "taken: m-other/mail-x-mail 2026-10-04T10:00:00Z"; next } { print }' \
+  "$VDM_INTERCOM_ROOT/mail-x/mx-2.md" > "$TMP/mx-2" && mv "$TMP/mx-2" "$VDM_INTERCOM_ROOT/mail-x/mx-2.md"
+out="$(VDX_INTERCOM=1 mclose)"; rc=$?
+eq "a letter nobody took keeps the session open" "$rc" "1"
+says "RED: …and is named" "$out" "mx-3 — from hop-a"
+says_not "…a note the project left for itself is not one of them" "$out" "mx-note"
+says_not "…nor a letter taken by a session elsewhere" "$out" "mx-2"
+[ ! -s "$TMP/vdx.log" ] && ok "…and vdx is not called" || bad "a refused close called vdx" "$(cat "$TMP/vdx.log")"
+( cd "$TMP/mail-x" && VDX_INTERCOM=1 bash "$IC" pickup mx-3 >/dev/null 2>&1 )
+out="$(VDX_INTERCOM=1 mclose)"; rc=$?
+eq "inbox handled — close goes through" "$rc" "0"
+eq "RED: …running vdx with the letters this session took and left for the owner" "$(cat "$TMP/vdx.log")" "ai --close --waiting 1"
+says "…and saying so first" "$out" "1 letter(s) left for the owner"
+rm -rf "$VDM_INTERCOM_ROOT/mail-x" "$TMP/vdx.log"
 kill "$MAIL_PID" 2>/dev/null
 
 echo "-- the owner may be at it: the wake waits (intercom-wake-timing DL #3)"

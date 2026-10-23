@@ -360,7 +360,8 @@ re-derive its logic:
 | `take <slug> [--force]` | Mark a letter in your inbox as taken by this session before working on it (§ Receiving). Refuses a letter taken by another session unless `--force`. |
 | `pickup <slug> [--grow] [--force]` | Archive a message to `_done/` (or, with `--grow`, hand it to `/vdm:crystal-grow` — the letter stays in the inbox, marked taken). Refuses a letter taken by another session unless `--force`. When the sender has a live session on this machine, prints the receipt to send it (§ Delivery is not receipt). For a brief whose outcome has not gone back yet it prints the `reply` that closes it; with `--grow` it prints that as a Next action for the crystal (§ Closing a brief with its outcome). |
 | `reply <letter> (--done "<what>" [--link <url>]… --ball "<who — what ⏰ date>" \| --body FILE) [--title T] [--slug S] [--force]` | Close a letter **you received** with its outcome. It goes to the letter's sender as a `reply-to` link; recipient and link come from the envelope. Works on a letter in the inbox (archived in the same step; refused while another session has it taken, unless `--force`) or in `_done/`. `--done` and `--ball` repeat; `--ball` is required — "nobody — closed" is an answer (§ Closing a brief with its outcome). |
-| `sent` (aka `outbox`) | Every letter **you** wrote that still lies unpicked in someone's inbox, oldest first, with its age and whether the recipient has a live session to wake now. |
+| `sent` (aka `outbox`) | Every letter **you** wrote that still lies unpicked in someone's inbox, oldest first, with its age and whether the recipient has a live session to wake now — or a mail session to start (§ Mail sessions). |
+| `close` | In a mail session, once its inbox is handled: run `vdx ai --close --waiting <n>`, n being the letters it took and left for the user. Refused outside a mail session and while a letter nobody took is in the inbox (§ Mail sessions). |
 
 ### Sending a message
 
@@ -638,7 +639,8 @@ So three things happen on top of the inbox, and none of them replaces it:
   the brief into it — the inbox stays the truth. After a scaffolding `send`,
   wake only once the body is written; with `--body` the letter is complete and
   you wake at once. When it prints `→ do not wake here`, wake nobody: the
-  letter waits, and the line says for what.
+  letter waits, and the line says for what. When it prints `📮 … start it`,
+  run the command it names instead, and wake nobody (§ Mail sessions).
 - **Not a session the user may be at.** A message into an idle session starts a
   turn at once, and into a busy one it lands in the middle of the work — either
   way on the screen the user is reading or typing into. So the session is woken
@@ -758,6 +760,34 @@ session started with both is focused.
   from any other session — one the user works in — ends the run. The user
   accepted the rule as a condition of the mode, since agents answering each
   other fast may agree on what is the user's to decide; the count of 3 is ours.
+- **Started by the sender, where it is switched on.** A letter that arrives by
+  sync starts nothing by itself, so the sender starts the recipient's mail
+  session on its own machine. That happens when three things hold: the
+  recipient's checkout here has `intercom.mail-session: true` in its
+  `vdm-plugins.json`, no mail session of it is live here, and the vdx here is
+  0.36 or later. Then `send` (and `reply`) prints `📮 … start it with your shell
+  tool` and the command, `vdx ai --intercom --detach '<checkout>'`. Run it in
+  the same turn — after the body is written, as with a wake. vdx keeps one mail
+  session per project and machine, so a second start does nothing. Its first
+  turn is `/vdm:intercom check`, so no wake follows the start and no other
+  session is woken: two sessions would only do the letter twice. `sent` names
+  the same start for a letter still lying there. With vdx missing or older, a
+  line says so and the letter goes as without it. The key is off by default
+  and is set by hand, because every mail session is a whole agent session. The
+  user's word (2026-10-22): only where it was switched on.
+- **A note to its own project is not its mail.** A letter from the project to
+  itself, a note for its next session (`/vdm:wrap`), neither starts nor wakes
+  the mail session. Its start line tells it to leave such a letter untaken: if
+  the mail session archived the note, it would never reach the session it was
+  written for.
+- **It ends itself with `close`.** Once the inbox is handled, the mail session
+  says what was done and runs `/vdm:intercom close`. That is refused outside a
+  mail session, and while a letter nobody took is in the inbox (one may have
+  come in after the last check). Otherwise it runs `vdx ai --close --waiting
+  <n>`, n being the letters in the inbox it took and left for the user, read
+  from `taken:` and kept nowhere. vdx marks the project's other tmux sessions on
+  this machine with that n and closes the mail session's pane; the turn ends on
+  its result.
 
 ## Configuration Sub-commands
 
@@ -779,7 +809,7 @@ above, behave as the regular skill described here.
 | `reset` | Remove the `intercom` key (revert to defaults) |
 
 **Defaults when the section is missing:** `enabled: false` (opt-in), `mode: "smart"`,
-`identity-check: true`, `arrival-line: true` (no subcommand: set it in the file). The two defaults differ on purpose: the *reminder*
+`identity-check: true`, `arrival-line: true`, `mail-session: false` (no subcommand for the last two: set them in the file). The two defaults differ on purpose: the *reminder*
 interrupts ongoing work, so it is opt-in (see § Automatic activation); the
 *identity check* fires once at session start and never mid-session, so it is on.
 Once the reminder is on: throttle window `intercom.throttle` seconds (default
