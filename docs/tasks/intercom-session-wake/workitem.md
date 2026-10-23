@@ -267,6 +267,8 @@ it waits for their next \`check\`», при том что его транскр�
       взяла и оставила ждать владельца (выводится из `taken:`, не хранится)
 - [x] Ответ vdx на встречный вопрос — 22.10, `vdx/intercom-session-mode-policy`: только где включили, ключ
       `intercom.mail-session` наш
+- [ ] Владелец — выпуск vdx 0.36 (`vdx publish minor`), срока нет; до него два пункта выше не начинаются:
+      старый vdx на `--intercom` отвечает отказом
 - [x] Промежуточный итог echelon — 20.10, `echelon/intercom-session-wake-outcome-sent`: сделан второй
       пункт Ball (2.53.0, `92d09e3`), почтовая сессия в работе, мяч — у владельца (push) и у нас (пункты 1–5)
 - [ ] Outcome to `echelon`: intercom reply intercom-session-wake --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
