@@ -16,6 +16,8 @@ common gap
 common штаб
 common программа
 common контент
+# A placeholder for a file extension (`<name>[.<ext>]`) that is also a login in an address book.
+common ext
 
 # --- agent: an agent the owner allowed to be named, by its registry identity
 # (public-repo-cleanup DL #15). All its names pass, in any form.

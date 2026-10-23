@@ -310,8 +310,9 @@ note». `intercom_wake_choice` будит живую почтовую сесси
       и vdx ≥ 0.36 (vdm 2.58.0: `send`/`reply` и `sent`; запуск заменяет побудку — DL #11; письмо себе — DL #12)
 - [x] Правила почтовой сессии: разобрав ящик — `vdx ai --close --waiting <n>`; n — письма ящика, которые она
       взяла и оставила ждать владельца (выводится из `taken:`, не хранится) (vdm 2.58.0: `intercom close`, DL #13)
-- [ ] Итог vdx — после коммита 2.58.0: запуск из `send` и `close` сделаны, ключ ни у кого ещё не включён;
-      `intercom send vdx … --reply-to vdx/intercom-session-mode-policy`
+- [x] Итог vdx — после коммита 2.58.0: запуск из `send` и `close` сделаны, ключ ни у кого ещё не включён;
+      `intercom send vdx … --reply-to vdx/intercom-session-mode-policy` — отправлено 22.10,
+      `vdx/intercom-mail-start-shipped` (коммит `a448c72`, мяч — у владельца: push и ключ)
 - [x] Ответ vdx на встречный вопрос — 22.10, `vdx/intercom-session-mode-policy`: только где включили, ключ
       `intercom.mail-session` наш
 - [x] Владелец — выпуск vdx 0.36 (`vdx publish minor`), срока нет; до него два пункта выше не начинаются:
