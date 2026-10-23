@@ -5,7 +5,8 @@ A pair is a document outside the change and what links it to the change:
 identifiers that the change's code REMOVES OR REWRITES and the document names,
 or an `@see <doc>` the changed code declares. A document can only describe what
 already existed, so the identifiers come from the old side of the diff — a
-line that went or was rewritten — never from lines that are only new.
+line that went or was rewritten — never from lines that are only new, nor from
+a line that was only extended.
 
 Why pairs and not a list of "relevant" docs. The keyword list this replaces
 matched the path components of every dirty file against every document: in a
@@ -100,12 +101,33 @@ def unquote(path):
     return path
 
 
+# A word as a line keeps it: `--open-mode` and `cfg.retry_limit` stay whole, so
+# a name whose parts were only reordered is not mistaken for one that stayed.
+WORD = re.compile(r"[\w.-]+")
+
+
 def parse_diff(text):
-    """{path: [old-side lines]} and the set of every path the diff touches."""
+    """{path: [old-side lines that were rewritten]} and the set of every path
+    the diff touches.
+
+    An old line is taken only when it lost something. One whose every word is
+    still on the new side of its hunk was extended or re-wrapped: a key added to
+    a tuple of allowed keys paired a document on a key that stayed (echelon,
+    2026-10-23). A value changed under the same name (`timeout = 30` → `60`)
+    lost a word, and that pair is the one worth having."""
     removed, touched = {}, set()
     cur, header, old = None, False, None
+    gone, added = [], []
+
+    def flush():
+        if cur is not None and gone:
+            kept = set(WORD.findall("\n".join(added)))
+            cur.extend(l for l in gone if not set(WORD.findall(l)) <= kept)
+        del gone[:], added[:]
+
     for line in text.split("\n"):
         if line.startswith("diff --git "):
+            flush()
             cur, header, old = None, True, None
             continue
         if header:
@@ -123,8 +145,13 @@ def parse_diff(text):
                     cur = removed.setdefault(side, [])
                 header = False
             continue
-        if cur is not None and line.startswith("-"):
-            cur.append(line[1:])
+        if line.startswith("@@"):
+            flush()
+        elif cur is not None and line.startswith("-"):
+            gone.append(line[1:])
+        elif cur is not None and line.startswith("+"):
+            added.append(line[1:])
+    flush()
     return removed, touched
 
 

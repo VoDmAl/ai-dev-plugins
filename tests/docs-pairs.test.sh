@@ -124,6 +124,19 @@ says_not "a hyphenated word in a message is English, not a name" "$OUT" "re-run"
 says_not "…nor in a comment" "$OUT" "self-contained"
 says_not "a name only on the new side pairs with nothing — no document can describe it yet" "$OUT" "new_thing"
 
+# A line only extended or re-wrapped rewrote nothing. Field case (echelon,
+# 2026-10-23): one key added to a tuple of allowed keys paired the document on
+# a key that stayed, word for word, on the new side of the line.
+R=$(repo extended)
+printf 'What open_mode allows.\n' > "$R/spec.md"
+printf 'diff --git a/src/server.py b/src/server.py\n--- a/src/server.py\n+++ b/src/server.py\n@@ -5 +5,2 @@\n-    "work", "orange", "open_mode"),\n+    "work", "orange", "open_mode",\n+    "protocol"),\n' > "$TMP/ext.diff"
+eq "RED: a line whose every word stays on the new side of its hunk pairs with nothing" "" "$(pairs "$R" --diff "$TMP/ext.diff")"
+printf 'diff --git a/src/server.py b/src/server.py\n--- a/src/server.py\n+++ b/src/server.py\n@@ -5 +5 @@\n-open_mode = True\n+open_mode = False\n' > "$TMP/val.diff"
+says "…a value changed under the same name still pairs: the document's value is what goes stale" "$(pairs "$R" --diff "$TMP/val.diff")" "spec.md — \`open_mode\`"
+printf 'diff --git a/src/server.py b/src/server.py\n--- a/src/server.py\n+++ b/src/server.py\n@@ -5 +5 @@\n-run --open-mode\n+run --mode-open\n' > "$TMP/flag.diff"
+printf 'Pass --open-mode.\n' > "$R/flags.md"
+says "…a flag renamed by reordering its parts is a rewrite, not a re-wrap" "$(pairs "$R" --diff "$TMP/flag.diff")" "flags.md — \`--open-mode\`"
+
 R=$(repo docs-only)
 printf 'names old_option\n' > "$R/a.md"
 diff_of b.md 'old_option was here' > "$TMP/docsonly.diff"
