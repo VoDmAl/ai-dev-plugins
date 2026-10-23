@@ -939,6 +939,11 @@ cmd_send() {
     printf '       One mail session per project and machine, so a second start does nothing; its first turn is\n'
     printf '       /vdm:intercom check, so no wake follows the start'
     if [ -n "$live" ]; then printf ', and no other session is woken.\n'; else printf '.\n'; fi
+    # vdx, 2026-10-23: in a folder Claude Code has not trusted on this machine
+    # the session stops at the trust prompt — `✓ running`, and no first turn.
+    # Whether it is trusted is the harness's own record, not read here.
+    printf '       In a checkout never opened in Claude Code on this machine it stops at the trust prompt instead:\n'
+    printf '       the user opens it once (vdx ai <checkout>) and answers it.\n'
   elif [ -n "$live" ]; then
     [ -z "$start" ] || printf '    %s.\n' "$(_ic_novdx_line "$canon" "$start")"
     # A letter to this project's own inbox is a note for its next session, not
