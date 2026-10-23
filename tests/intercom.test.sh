@@ -1050,6 +1050,22 @@ says "oldest first" "$first" "old-one"
 out="$( cd "$TMP/hop-b" && bash "$IC" outbox 2>&1 )"
 says "outbox is the same command" "$out" "📤 intercom"
 
+# A letter archived between the listing and the read (vorobyev.name,
+# 2026-10-23): macOS awk stops at a file it cannot open, and every letter after
+# it dropped out of the list, which reads as picked up. An unreadable file takes
+# the same path with no race to win.
+GONE="$VDM_INTERCOM_ROOT/hop-b/aaa-gone.md"
+printf -- '---\nfrom: hop-a\ncreated: 2026-09-20T08:00:00Z\n---\n\n# Gone mid-pass\n' > "$GONE"
+chmod 000 "$GONE"
+if [ -r "$GONE" ]; then
+  bad "control: an unreadable letter cannot be read here" "readable after chmod 000 — the test below proves nothing"
+else
+  out="$( cd "$TMP/hop-a" && VDM_INTERCOM_TODAY=2026-09-24 bash "$IC" sent 2>&1 )"
+  says "RED: a letter that cannot be opened does not cut the list short" "$out" "hop-c/old-one"
+  says_not "…and is not listed itself" "$out" "aaa-gone"
+fi
+chmod 600 "$GONE"; rm -f "$GONE"
+
 echo "-- one session wakes: where the owner typed last (wake-one-machine DL #3)"
 # A project lives in sessions on two machines, and cross-session messages reach
 # only this one. Waking every live session here sent the work wherever the

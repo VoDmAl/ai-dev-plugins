@@ -1822,7 +1822,11 @@ _intercom_today() {
 # by `check`. Age is in whole calendar days, from the envelope's `created:`.
 #
 # One awk pass over every inbox: this runs at session start, and a field-per-
-# process version took 0.9 s on a store of ~110 letters.
+# process version took 0.9 s on a store of ~110 letters. The files are read with
+# getline rather than as awk's input: a letter archived between the listing and
+# the read is a file awk cannot open, and macOS awk stops the whole pass there —
+# every letter after it dropped out of the list, which reads as picked up
+# (vorobyev.name, 2026-10-23). getline only returns -1, and the letter is skipped.
 intercom_sent_list() {
   local me="$1" root d f
   root="$(intercom_store_root)"
@@ -1846,8 +1850,8 @@ intercom_sent_list() {
       return era * 146097 + yoe * 365 + int(yoe / 4) - int(yoe / 100) + doy
     }
     function strip(v) { gsub(/^[ \t]+|[ \t]+$/, "", v); gsub(/^"|"$/, "", v); return v }
-    function flush(   n, parts, inbox, slug, c, t, age) {
-      if (file == "" || from != me) return
+    function emit(file, from, created, title,   n, parts, inbox, slug, c, t, age) {
+      if (from != me) return
       n = split(file, parts, "/"); inbox = parts[n - 1]; slug = parts[n]; sub(/\.md$/, "", slug)
       c = days(created); t = days(today)
       age = (c < 0 || t < 0) ? 0 : t - c
@@ -1855,11 +1859,20 @@ intercom_sent_list() {
       if (title == "") title = slug     # never empty: an empty field collapses under read
       printf "%d\t%s\t%s\t%s\t%s\n", age, inbox, slug, title, file
     }
-    FNR == 1 { flush(); file = FILENAME; from = ""; created = ""; title = ""; infm = ($0 == "---"); next }
-    infm && $0 == "---" { infm = 0; next }
-    infm && /^from:/    { from = strip(substr($0, 6)); next }
-    infm && /^created:/ { created = strip(substr($0, 9)); next }
-    !infm && title == "" && /^# / { title = substr($0, 3) }
-    END { flush() }
+    BEGIN {
+      for (i = 1; i < ARGC; i++) {
+        f = ARGV[i]; from = ""; created = ""; title = ""; infm = 0; first = 1
+        while ((getline line < f) > 0) {
+          if (first) { first = 0; infm = (line == "---"); continue }
+          if (infm && line == "---") { infm = 0; continue }
+          if (infm && line ~ /^from:/)    { from = strip(substr(line, 6)); continue }
+          if (infm && line ~ /^created:/) { created = strip(substr(line, 9)); continue }
+          if (!infm && line ~ /^# /) { title = substr(line, 3); break }
+        }
+        close(f)
+        if (!first) emit(f, from, created, title)
+      }
+      exit
+    }
   ' "${files[@]}" | sort -t "$(printf '\t')" -k1,1nr
 }
