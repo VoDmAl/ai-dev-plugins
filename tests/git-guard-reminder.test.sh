@@ -109,5 +109,32 @@ echo "== a clean tree =="
 E="$TMP/clean"; repo "$E" conditional
 silent "nothing changed ⇒ silent" "$(remind "$E")"
 
+echo "== a line still waiting: every turn ends with its short call =="
+# Field case (echelon, 2026-10-23): a ~900-character commit line handed off,
+# then a new task, and the line was hundreds of lines up when it was due. The
+# owner: past a hundred lines or so, a short call, repeated. The prep keeps the
+# line as a script; while it waits, every prompt says to end the turn with it.
+PREP="$REPO_ROOT/plugins/vdm-git/bin/git-guard-prepare"
+export GIT_GUARD_SHORT_DIR="$TMP/short" GIT_GUARD_SYNC_CHECK=off
+remind_as() { ( cd "$1" && printf '{"session_id":"%s"}' "$2" | bash "$REMINDER" 2>/dev/null ); }
+L="$TMP/waiting"; repo "$L" smart
+put "$L" src/app.js
+( cd "$L" && CLAUDE_CODE_SESSION_ID=sess-w "$PREP" "[*] the block" >/dev/null 2>&1 )
+out="$(remind_as "$L" sess-w)"
+says "RED: the session whose line waits is told so" "$out" "is still waiting to be run: [*] the block"
+says "RED: …and given the short call to end the turn with" "$out" "\`sh $TMP/short/"
+says "…on every turn, not once a window" "$(remind_as "$L" sess-w)" "still waiting to be run"
+if printf '%s' "$out" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; then
+  ok "…as valid hook JSON"
+else
+  bad "…as valid hook JSON" "${out:0:160}"
+fi
+says_not_w() { case "$2" in *"$3"*) bad "$1" "output should not mention: $3" ;; *) ok "$1" ;; esac; }
+other="$(remind_as "$L" sess-other)"
+says "another session's line is not this one's: the usual reminder" "$other" "[git-guard]"
+says_not_w "…with nothing about a waiting line" "$other" "still waiting"
+printf '{"git-guard":{"mode":"silent"}}\n' > "$L/.claude/vdm-plugins.json"
+silent "silent stays silent, a waiting line or not" "$(remind_as "$L" sess-w)"
+
 printf '\ngit-guard-reminder: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

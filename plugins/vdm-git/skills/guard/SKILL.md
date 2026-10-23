@@ -140,6 +140,8 @@ When the assistant has finished work that warrants a commit — implementation d
 
    Write the full path verbatim — never abbreviate it with `…` or `/var/folders/<hash>/T/...` in your narration. On macOS the temp path is long (`/var/folders/<id>/T/vdm-git-<uid>/<session>/<repo>-<branch>-commit-<token>.txt`) and that is fine; the user copies the command line, they don't retype it.
 
+5. **While it waits, end every turn with its short call.** Besides the line, the helper keeps the same commit as a short call, `sh /tmp/vdm-git-<uid>/<token>.sh` (see [The short call](#the-short-call)). Hand off the full line first. On every later turn until the user runs it, end the turn with the short call, as inline code on its own line. The reminder names it at the start of each such turn, and `git-guard-prepare --pending` prints it.
+
    Example:
 
    > Implementation done. Type-check passes.
@@ -387,6 +389,34 @@ plugin). Every line now opens with a check that its message file exists — the
 file exists exactly while the line is live — and a dead one stops there with
 `git-guard: this line is void`. Not a HEAD check: a waiting line has to survive a
 neighbour's commit.
+
+### The short call
+
+A line waits while the conversation moves on, and a long one gets buried. Field
+case (`echelon`, 2026-10-23): a line of about 900 characters (the check, the
+message path under `/var/folders/…`, fourteen paths) was handed off, the owner
+then gave a new task, and when the line was due it lay hundreds of lines up. The
+owner: past a hundred lines or so, pack it into a short call, and repeat that.
+
+So every prep also writes the line into a script named by the prep's own token,
+`/tmp/vdm-git-<uid>/<token>.sh`, whose call is `sh <that script>`. The prep does
+not print the call: its stderr stays silent after a clean prep, because that
+silence is how the detector says the previous commit matched. The script holds
+the same line, with the message-file check and the path list inside. It changes into the directory the paths are named from, so the call
+works from anywhere. It dies with the prep: superseded, swept after the commit.
+Left behind, it would still stop at its first line.
+
+- **Hand off the full line first**, as before: it shows what is committed.
+- **Then, on every turn while it waits, end with the short call.** The
+  `UserPromptSubmit` reminder looks for a waiting line of this session on every
+  prompt, with no throttle. When it finds one, it names the call and says to end
+  the turn with it. `git-guard-prepare --pending` prints the call (exit 0), or
+  the subject alone when the line has no script (exit 3), or nothing when no
+  line waits (exit 1).
+- The script lives in `/tmp`, not `$TMPDIR`: on macOS the latter is a long
+  `/var/folders/…` path, and a short call is the point. The directory is the
+  user's own (`700`, not a symlink, owned by them), or no script is written and
+  only the full line exists. `GIT_GUARD_SHORT_DIR` moves it (tests).
 
 ### Amending
 

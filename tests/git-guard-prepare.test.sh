@@ -90,6 +90,8 @@ expect_eq() {
 TMP=$(mktemp -d 2>/dev/null || mktemp -d -t ggprep)
 cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT
+# The short call's scripts go to /tmp by default; a suite keeps them in its own.
+export GIT_GUARD_SHORT_DIR="$TMP/short"
 
 # Fresh repo with one base commit. Each test gets its own so state cannot leak.
 new_repo() {
@@ -505,6 +507,47 @@ printf 'a\n' > a.txt; git add a.txt
 out=$("$PREP" "[*] two" --supersede 2>&1); rc=$?
 expect_exit "--supersede is accepted after the message too" 0 "$rc"
 expect_says "…and supersedes" "$out" "never run"
+
+printf '\n=== the short call: the same line, a short name ===\n'
+# Field case (echelon, 2026-10-23): a ~900-character line handed off, then a
+# new task, and when it was due the owner would have had to scroll back
+# hundreds of lines. The owner: past a hundred lines or so, a short call,
+# repeated. The prep keeps the line in a script named by its own token; the
+# script changes into the directory the paths are named from, so the call works
+# from anywhere, and it dies with the prep.
+
+d=$(new_repo short_call); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+mkdir -p sub; printf 'a\n' > sub/a.txt; git add sub/a.txt
+out=$(cd sub && "$PREP" "[*] short" -- a.txt 2>&1 >/dev/null)
+# Not announced at the prep: a clean prep's silent stderr is the detector's
+# "the previous commit matched", and the call is due only on later turns.
+expect_silent "the prep itself stays silent on stderr" "$out"
+pend=$("$PREP" --pending 2>/dev/null); rc=$?
+expect_exit "RED: --pending while it waits → 0" 0 "$rc"
+call=${pend%%$'\n'*}
+expect_says "RED: …and its first line is a short call" "$call" "sh $GIT_GUARD_SHORT_DIR/"
+expect_says "…its second, the subject" "$pend" "[*] short — prepared"
+script="${call#sh }"
+if [ -f "$script" ]; then ok "RED: …whose script exists"; else bad "RED: …whose script exists" "call: [$call]"; fi
+expect_says "…holding the full line" "$(cat "$script" 2>/dev/null)" "git commit -F"
+expect_says "…run from the directory the paths are named from" "$(cat "$script" 2>/dev/null)" "cd '$d/sub'"
+printf 'b\n' > b.txt; git add b.txt
+out=$("$PREP" "[*] next" 2>&1); rc=$?
+expect_exit "a second prep while it waits is refused, as before" 1 "$rc"
+expect_says "RED: …and the refusal gives the short call to hand off again" "$out" "$call"
+(cd / && sh "$script") >/dev/null 2>&1; rc=$?
+expect_exit "the short call commits, run from another directory" 0 "$rc"
+expect_eq "…with the prepared message" "[*] short" "$(git log -1 --format=%s)"
+expect_eq "…and only its path" "sub/a.txt" "$(git show --format= --name-only HEAD)"
+"$PREP" --pending >/dev/null 2>&1; rc=$?
+expect_exit "--pending once it has run → 1" 1 "$rc"
+"$PREP" "[*] b" -- b.txt >/dev/null 2>&1
+if [ -e "$script" ]; then
+  bad "RED: the next prep sweeps the run line's script" "$script is still there"
+else
+  ok "RED: the next prep sweeps the run line's script"
+fi
 
 printf '\n=== detector: did the commit match what was prepared? ===\n'
 # The reason this exists: a commit lost six files and gained one that was never

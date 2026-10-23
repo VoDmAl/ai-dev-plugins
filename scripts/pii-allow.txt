@@ -7,6 +7,11 @@
 # --- public: the owner's own public identity (marketplace.json, plugin.json, README)
 public Vorobyev
 public Vorobiev
+# The domain of the signature every commit carries; since 2026-10-23 also an agent's
+# identity in the book, which then blocked the signature. The host of this repository's
+# remote is the owner's other public domain, and an agent's identity too.
+public vorobyev.org
+public vorobyev.name
 
 # --- common: an ordinary word that is also an agent's name. Roles are named by role
 # (public-repo-cleanup DL #2), so the role words themselves stay.

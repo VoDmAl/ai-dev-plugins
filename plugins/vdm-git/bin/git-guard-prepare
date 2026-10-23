@@ -13,9 +13,11 @@
 #   git-guard-prepare --verify-last          # audit the previous prep only
 #   git-guard-prepare --supersede "<commit message>" [-- <path>...]
 #                                            # replace a line still waiting
+#   git-guard-prepare --pending              # the waiting line's short call
 #
 # Output (stdout):
 #   <single-line shell command>           # the user copy-pastes this
+# The same commit is also kept as a short call, `sh <script>`; --pending prints it.
 #
 # Why the pathspec is there
 #   The index is shared per-repository, but the command is emitted by the
@@ -134,6 +136,25 @@
 #   a waiting line has to survive a neighbour's commit (above), and HEAD moves
 #   with every one of them.
 #
+# The short call
+#   A line waits while the conversation moves on, and a long one gets buried.
+#   Field case (echelon, 2026-10-23): ~900 characters handed off, then a new
+#   task, and when it was due the line lay hundreds of lines up. The owner:
+#   «если она дальше чем … сотня-полторы строк то ее надо упаковывать в
+#   короткий bash вызов и дублировать».
+#
+#   So every prep also writes the line into `$SHORT_DIR/<token>.sh`, whose call
+#   is `sh <that script>`. It is not printed at the prep: a clean prep keeps
+#   stderr silent, which is the detector's "matched". The script changes into the
+#   directory the paths are named from, then runs the same line — the message
+#   check and the path list stay inside, and the call works from anywhere. It
+#   is named by the prep's token, so it is as unique as the message file, and
+#   rm_trio retires it with the rest. `--pending` prints the call of the line
+#   still waiting; the reminder asks it on every prompt and tells the assistant
+#   to end the turn with it. /tmp rather than TMPDIR (a long path on macOS); a
+#   directory that is not this user's own gets no script, and the line works
+#   without one.
+#
 # Exit codes:
 #   0 success
 #   1 missing message / not a git repo / write failed / nothing staged /
@@ -150,14 +171,36 @@ set -eu
 # and awkward to paste, so switch to --pathspec-from-file.
 PATHSPEC_INLINE_MAX=${GIT_GUARD_PATHSPEC_INLINE_MAX:-20}
 
+# Where the short call's script lives — see "The short call" in the header.
+# /tmp, not TMPDIR: on macOS TMPDIR is a long /var/folders/… path, and a short
+# call is the whole point. One directory per user, closed to the others.
+SHORT_DIR=${GIT_GUARD_SHORT_DIR:-/tmp/vdm-git-$UID}
+
+# Single-quote for the shell; a literal single quote inside a path closes the
+# quote, escapes itself, and reopens — the POSIX way.
+#
+# The substitution must happen in an unquoted assignment. Inlining it into a
+# quoted printf argument changes how bash parses the backslashes in the
+# replacement and silently produces a mangled escape.
+shell_quote() {
+  local escaped=${1//\'/\'\\\'\'}
+  printf "'%s'" "$escaped"
+}
+
 # ------------------------------------------------------------ sidecar files
 #
+# short_script <stem> — the short call's script of that prep: named by the
+# prep's own token, so it is as unique as the message file and dies with it.
+short_script() { printf '%s/%s.sh' "$SHORT_DIR" "${1##*-commit-}"; }
+
 # rm_trio <stem> — retire one prep completely.
 #
 # All three go together or none do. Removing only `.meta` (which is all the
 # audit needs) leaves `.txt` on disk, and a message file on disk is a command
-# line that still runs — the whole defect this file now guards against.
-rm_trio() { rm -f "$1.txt" "$1.paths" "$1.meta" "$1.dels" "$1.blobs"; }
+# line that still runs — the whole defect this file now guards against. The
+# short call's script goes too; left behind it would only fail at its first
+# line, but nothing should be left that looks runnable.
+rm_trio() { rm -f "$1.txt" "$1.paths" "$1.meta" "$1.dels" "$1.blobs" "$(short_script "$1")"; }
 
 # session_scope <tmpdir> — the directory this caller's trios live in.
 #
@@ -252,7 +295,7 @@ sweep_superseded() {
 }
 
 # waiting_line <dir> <base> <head> — the prep in this scope whose line has not
-# been run, as "<epoch>\t<subject>"; nothing when there is none.
+# been run, as "<epoch>\t<stem>\t<subject>"; nothing when there is none.
 #
 # Asked BEFORE anything is deleted. sweep_superseded reports an unrun line only
 # after it has killed it, so its notice can tell the caller that a line died
@@ -265,10 +308,30 @@ waiting_line() {
     [ "$(prep_state "$stem" "$head")" = pending ] || continue
     tok="${stem##*/}"; tok="${tok#"$base"-}"; epoch="${tok%%-*}"
     case "$epoch" in ''|*[!0-9]*) epoch="" ;; esac
-    printf '%s\t%s\n' "$epoch" "$(head -n 1 "$f")"
+    printf '%s\t%s\t%s\n' "$epoch" "$stem" "$(head -n 1 "$f")"
     return 0
   done
   return 0
+}
+
+# short_call <stem> — the short call of that prep, `sh <script>`, or nothing
+# when it has no script (prepared before short calls, or /tmp was not ours).
+short_call() {
+  local s
+  s=$(short_script "$1")
+  [ -f "$s" ] || return 0
+  case "$s" in
+    *[!A-Za-z0-9_./-]*) printf 'sh %s' "$(shell_quote "$s")" ;;
+    *)                  printf 'sh %s' "$s" ;;
+  esac
+}
+
+# when_said <epoch> — " — prepared HH:MM, N min ago", or nothing without a time.
+when_said() {
+  local clock
+  [ -n "$1" ] || return 0
+  clock=$(date -r "$1" '+%H:%M' 2>/dev/null || date -d "@$1" '+%H:%M' 2>/dev/null || true)
+  printf ' — prepared %s, %s min ago' "${clock:-earlier}" "$(( ($(date +%s) - $1) / 60 ))"
 }
 
 # mint_stem <tmpdir> <base>
@@ -283,7 +346,8 @@ mint_stem() {
   local tmpdir="$1" base="$2"
   local root="${tmpdir}/${base}-$(date +%s)-$$"
   local stem="$root" n=2
-  while [ -e "$stem.txt" ] || [ -e "$stem.paths" ] || [ -e "$stem.meta" ]; do
+  while [ -e "$stem.txt" ] || [ -e "$stem.paths" ] || [ -e "$stem.meta" ] \
+        || [ -e "$(short_script "$stem")" ]; do
     stem="${root}-${n}"
     n=$((n + 1))
   done
@@ -469,9 +533,13 @@ Usage: git-guard-prepare "<commit message>" [-- <path>...]
        echo "<message>" | git-guard-prepare - [-- <path>...]
        git-guard-prepare --supersede "<commit message>" [-- <path>...]
        git-guard-prepare --verify-last
+       git-guard-prepare --pending
 
 Writes the message to a per-prep file under ${TMPDIR:-/tmp} and prints a
 single-line `git commit -F <path> -- <paths>` command for the user to run.
+The same commit is kept as a short call, `sh /tmp/vdm-git-<uid>/<token>.sh`;
+--pending prints the call of the line still waiting
+(exit 0), its subject alone when it has no script (exit 3), or nothing (exit 1).
 
 While a prepared line has not been run, preparing again refuses and deletes
 nothing: the user may not be done. With --supersede the earlier line's message
@@ -501,6 +569,32 @@ fi
 if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
   usage
   exit 0
+fi
+
+# --pending: the line of this scope still waiting to be run, for handing it off
+# again without remembering it. Exit 0 and two lines on stdout — its short call,
+# then its subject and when it was prepared; exit 3 and the second line alone
+# when it has no short call; exit 1, silent, when no line waits. The reminder
+# asks it on every prompt — see "The short call" in the header.
+if [ "$1" = "--pending" ]; then
+  pd_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+  [ -n "$pd_root" ] || exit 1
+  pd_branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null \
+    || git rev-parse --short HEAD 2>/dev/null || echo detached)
+  pd_branch=$(printf '%s' "$pd_branch" \
+    | sed -e 's|[^A-Za-z0-9_-]|-|g' -e 's|-\{2,\}|-|g' -e 's|^-||' -e 's|-$||')
+  [ -n "$pd_branch" ] || pd_branch=detached
+  pd_tmp="${TMPDIR:-/tmp}"; pd_tmp="${pd_tmp%/}"
+  waiting=$(waiting_line "$(session_scope "$pd_tmp")" "$(basename "$pd_root")-${pd_branch}-commit" \
+              "$(git rev-parse --verify -q HEAD 2>/dev/null || true)")
+  [ -n "$waiting" ] || exit 1
+  pd_epoch="${waiting%%$'\t'*}"; pd_rest="${waiting#*$'\t'}"
+  pd_stem="${pd_rest%%$'\t'*}"; pd_subject="${pd_rest#*$'\t'}"
+  pd_short=$(short_call "$pd_stem")
+  [ -z "$pd_short" ] || printf '%s\n' "$pd_short"
+  printf '%s%s\n' "$pd_subject" "$(when_said "$pd_epoch")"
+  [ -n "$pd_short" ] && exit 0
+  exit 3
 fi
 
 # --verify-last audits the previous prep and exits; it prepares nothing. Useful
@@ -743,17 +837,18 @@ if [ "$supersede" -eq 0 ]; then
   waiting=$(waiting_line "$(session_scope "$wl_tmp")" "${repo_name}-${branch_safe}-commit" \
               "$(git rev-parse --verify -q HEAD 2>/dev/null || true)")
   if [ -n "$waiting" ]; then
-    wl_epoch="${waiting%%$'\t'*}"; wl_subject="${waiting#*$'\t'}"
-    wl_when=""
-    if [ -n "$wl_epoch" ]; then
-      wl_clock=$(date -r "$wl_epoch" '+%H:%M' 2>/dev/null || date -d "@$wl_epoch" '+%H:%M' 2>/dev/null || true)
-      wl_min=$(( ($(date +%s) - wl_epoch) / 60 ))
-      wl_when=" — prepared ${wl_clock:-earlier}, $wl_min min ago"
-    fi
+    # Not `read`: TAB is whitespace to it, and an empty epoch would collapse.
+    wl_epoch="${waiting%%$'\t'*}"; wl_rest="${waiting#*$'\t'}"
+    wl_stem="${wl_rest%%$'\t'*}"; wl_subject="${wl_rest#*$'\t'}"
+    wl_short=$(short_call "$wl_stem")
     {
-      echo "git-guard-prepare: a line for this branch is still waiting to be run$wl_when:"
+      echo "git-guard-prepare: a line for this branch is still waiting to be run$(when_said "$wl_epoch"):"
       echo "                     $wl_subject"
       echo "                   Nothing was deleted: that line still runs as handed off."
+      if [ -n "$wl_short" ]; then
+        echo "                   Its short call — end this turn with it, the full line is further up:"
+        echo "                     $wl_short"
+      fi
       echo
       echo "  A line is handed off once per finished block. While it waits, the user may still be"
       echo "  discussing the work, or busy with a step of their own — a letter to send, a reply to"
@@ -1108,17 +1203,6 @@ mv -f "$tmpfile" "$path"
 
 # ------------------------------------------------------------------- emit
 
-# Single-quote for the shell; a literal single quote inside a path closes the
-# quote, escapes itself, and reopens — the POSIX way.
-#
-# The substitution must happen in an unquoted assignment. Inlining it into a
-# quoted printf argument changes how bash parses the backslashes in the
-# replacement and silently produces a mangled escape.
-shell_quote() {
-  local escaped=${1//\'/\'\\\'\'}
-  printf "'%s'" "$escaped"
-}
-
 msg_q=$(shell_quote "$path")
 
 # Every form opens with a check that its own message file is still there. A
@@ -1177,16 +1261,37 @@ if [ "$whole_index" -eq 1 ]; then
     echo "                   The index holds only this commit's paths now; if anything else is staged"
     echo "                   before the line runs, the next prep reports it as SWEPT IN."
   } >&2
-  printf '%s git commit -F %s\n' "$void_check" "$msg_q"
+  line="$void_check git commit -F $msg_q"
 elif [ ${#paths[@]} -gt "$PATHSPEC_INLINE_MAX" ]; then
   # Long list: hand git a NUL-separated file instead of an unreadable line.
   # --pathspec-from-file requires git >= 2.25.
-  printf "%s git commit -F %s --pathspec-from-file=%s --pathspec-file-nul\n" \
-    "$void_check" "$msg_q" "$(shell_quote "$paths_file")"
+  line="$void_check git commit -F $msg_q --pathspec-from-file=$(shell_quote "$paths_file") --pathspec-file-nul"
 else
-  out="$void_check git commit -F $msg_q --"
+  line="$void_check git commit -F $msg_q --"
   for p in "${paths[@]}"; do
-    out="$out $(shell_quote "$p")"
+    line="$line $(shell_quote "$p")"
   done
-  printf '%s\n' "$out"
 fi
+
+# The short call: the same line in a script with a short name, `sh <script>`.
+# Written in a directory of this user's own — not a symlink, closed to others —
+# or not at all: the line on stdout works without it. The script changes into
+# the directory the paths are named from, so the call works from anywhere.
+short=$(short_script "$stem")
+short_dir=${short%/*}
+if mkdir -p -m 700 "$short_dir" 2>/dev/null \
+   && [ -d "$short_dir" ] && [ ! -L "$short_dir" ] && [ -O "$short_dir" ] \
+   && {
+        printf '#!/bin/sh\n# git-guard-prepare, %s: %s\n' "$(date '+%Y-%m-%d %H:%M')" "$subj"
+        printf 'cd %s || exit 1\n%s\n' "$(shell_quote "$path_base")" "$line"
+      } > "$short.tmp.$$" 2>/dev/null \
+   && mv -f "$short.tmp.$$" "$short"; then
+  :
+else
+  rm -f "$short.tmp.$$" 2>/dev/null
+fi
+
+# Not announced here: stderr after a clean prep stays silent, since that silence
+# is how the detector says the previous commit matched. The call is due only
+# on later turns, and the reminder names it there.
+printf '%s\n' "$line"

@@ -314,6 +314,21 @@ out=$(GIT_EDITOR=: GIT_AUTHOR_NAME=Build GIT_AUTHOR_EMAIL="$ADDRESS" gate messag
 expect_exit "an author outside the public identity: blocked" 1 "$rc"
 expect_says "names the remedy for a signature" "$out" "the commit's signature"
 
+# Field case (2026-10-23): an agent registered for the owner's site took the
+# site's domain as its identity, and that domain is the one in the public
+# signature — every commit was blocked. `public` is the owner's public identity
+# in every layer, and the book compares a name whole: a domain must pass whole.
+registry example.net "$TMP/site"
+git config user.email test@example.net
+fresh 'email example.net'
+out=$(GIT_EDITOR=: gate message "$TMP/msg"); rc=$?
+expect_exit "an agent named like the signature's domain blocks the signature" 1 "$rc"
+fresh 'email example.net' 'public example.net'
+out=$(GIT_EDITOR=: gate message "$TMP/msg"); rc=$?
+expect_exit "RED: …and \`public <domain>\` lets it through, compared whole as the book compares names" 0 "$rc"
+git config user.email test@example.com
+rm -f "$STORE/_registry/example.net.json"
+
 # ---------------------------------------------------------------------------
 echo ""
 echo "== both hooks call it =="

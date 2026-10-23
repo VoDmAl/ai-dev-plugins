@@ -168,6 +168,8 @@ Prevents Claude from running `git commit` and `git push` without explicit user p
 
 **Commit message format**: `[+]` new feature, `[-]` bugfix, `[*]` other change, brief imperative. **The subject has a ceiling (v2.18.0)**: `git-guard-prepare` refuses a first line longer than `git-guard.subject-max` in `.claude/vdm-plugins.json`, else 72 characters (counted as characters, not bytes), and names where the detail goes — `PROJECT_CHANGELOG.md` when the project keeps one. A ceiling in words did not hold: with no rule of its own, a project's `git log` is the sample, and every long subject licensed the next.
 
+**The short call (v2.22.0)**: besides the full commit line, `git-guard-prepare` keeps the same commit as a script with a short name, called as `sh /tmp/vdm-git-<uid>/<token>.sh`. The message-file check and the path list are inside, and the script runs from the right directory. The full line is handed off first. While it waits, the reminder tells the assistant on every turn to end with the short call, so a line buried far up the conversation does not have to be found. `git-guard-prepare --pending` prints it again.
+
 ### `vdx` — Lifecycle Interface (optional, from another repository)
 
 Listed in this marketplace, developed in [VoDmAl/vdx](https://github.com/VoDmAl/vdx) (its `plugin/`

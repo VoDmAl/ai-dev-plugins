@@ -253,6 +253,11 @@ class Allow:
                     self.values[kind].add(fold(w))
                     if is_cyr(w):
                         self.norms[kind] |= morph.info(w).norms
+                # The book compares a name whole (common()), and `public` holds in
+                # every layer: a public value of several words — the owner's domain,
+                # which an agent took for its identity (2026-10-23) — passes whole.
+                if kind == "public":
+                    self.values[kind].add(squash(value))
 
     def word(self, w: str, *kinds: str) -> bool:
         """Is this single word let through by any of the kinds?"""

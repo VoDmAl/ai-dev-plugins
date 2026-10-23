@@ -47,6 +47,41 @@ vdm_is_enabled "git-guard" || exit 0
 git rev-parse --is-inside-work-tree &>/dev/null || exit 0
 
 mode=$(vdm_get_mode "git-guard" "smart")
+[ "$mode" = silent ] && exit 0
+
+payload=$(cat 2>/dev/null || true)
+sid=$(printf '%s' "$payload" | _vdm_reminder_session_id 2>/dev/null || printf 'default')
+
+# A commit line still waiting to be run. Its full line was handed off once, and
+# a conversation that moves on buries it: field case (echelon, 2026-10-23) —
+# ~900 characters, then a new task, and the owner would have had to scroll back
+# hundreds of lines to run it. «если она дальше чем … сотня-полторы строк то
+# ее надо упаковывать в короткий bash вызов и дублировать». The helper keeps
+# the line as a script with a short name; while it waits, every turn is told to
+# end with that call. Every prompt, no throttle: the call is due at every turn.
+# Cheap when nothing waits — one glob over the helper's own files decides
+# whether to ask it at all.
+pending_notice() {
+  local tmp f any="" sid_env="" out rc call what
+  tmp="${TMPDIR:-/tmp}"; tmp="${tmp%/}"
+  for f in "$tmp"/vdm-git-"$UID"/*/*-commit-*.txt "$tmp"/*-commit-*.txt; do
+    [ -f "$f" ] && { any=1; break; }
+  done
+  [ -n "$any" ] || return 1
+  [ "$sid" = default ] || sid_env="$sid"
+  out=$(CLAUDE_CODE_SESSION_ID="$sid_env" GIT_GUARD_SYNC_CHECK=off \
+        "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../bin/git-guard-prepare" --pending 2>/dev/null)
+  rc=$?
+  case "$rc" in
+    0) call=${out%%$'\n'*}; what=${out#*$'\n'}
+       text="[git-guard] A commit line you handed off is still waiting to be run: ${what}. End this turn with its short call, as inline code on a line of its own — \`${call}\` — the same commit, with the message-file check and the path list inside; the full line is further up. Repeat it at the end of every turn until the user runs it (\`git-guard-prepare --pending\` prints it again), and prepare nothing new meanwhile." ;;
+    3) text="[git-guard] A commit line you handed off is still waiting to be run: ${out}. It has no short call: repeat the full line at the end of this turn if it has scrolled far up, and prepare nothing new meanwhile." ;;
+    *) return 1 ;;
+  esac
+  text=${text//\\/\\\\}; text=${text//\"/\\\"}; text=${text//$'\t'/ }; text=${text//$'\n'/ }
+  printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "UserPromptSubmit",\n    "additionalContext": "%s"\n  }\n}\n' "$text"
+}
+pending_notice && exit 0
 
 # notes_only — true when every change in the work tree is one of the
 # assistant's notes: a file under a crystal root (the lib's answer, configured
@@ -96,8 +131,6 @@ case "$mode" in
     if [ -z "$changes" ]; then
       exit 0
     fi
-    payload=$(cat 2>/dev/null || true)
-    sid=$(printf '%s' "$payload" | _vdm_reminder_session_id 2>/dev/null || printf 'default')
     throttle=$(vdm_config_read "git-guard" "throttle" "600")
     turns=$(vdm_config_read "git-guard" "throttle-turns" "5")
     if command -v _vdm_reminder_throttle_check >/dev/null 2>&1; then
@@ -118,7 +151,7 @@ cat <<'EOF'
 {
   "hookSpecificOutput": {
     "hookEventName": "UserPromptSubmit",
-    "additionalContext": "[git-guard] When work warrants a commit, you (the assistant) run `git add <files>` and `git-guard-prepare \"<subject>\"` yourself via Bash. Both live on your PATH only (plugin `bin/` mounted by the harness), never the user's shell.\n\n  • ONE COMMIT PER TURN. Stage → run the helper → hand off the printed line → wait for the user. Never bundle several commits into one shell recipe, and never list `git add` or `git-guard-prepare` as steps for the user: their shell answers `command not found`.\n  • HAND OFF THE PRINTED LINE VERBATIM, as inline code — `git commit -F <path> -- <paths>`. The explicit pathspec is what keeps a parallel session's staged files out of the commit, and the `[ -f … ] ||` check in front stops a dead line before any hook runs — never trim either.\n  • AMEND NEEDS ITS OWN PATHSPEC. `git commit --amend` without `-- <paths>` takes the WHOLE index and sweeps in whatever a neighbouring session staged. Name the paths explicitly, every time.\n  • NOTES ALONE ARE NO COMMIT. A crystal's files and the assistant's memory ride with the next work commit or the session's last (/vdm:wrap); a line of notes alone only when the user asks, and never with a push to a branch whose merge request is under review.\n  • ONE LINE PER FINISHED BLOCK. Don't prepare while the user is still discussing the work or busy with a step of their own (a letter to send, a reply to wait for). A line handed off stands: edits to its paths ride with it, new files with the next commit. If the helper refuses because a line is STILL WAITING, hand off nothing new; `--supersede` only when the user reported that line failed or the block changed in substance — then say the earlier line is void.\n  • If the helper prints SWEPT IN / NOT COMMITTED, the PREVIOUS commit is not what was prepared. Stop and inspect it with `git show --stat` before handing off anything new.\n  • The helper exits 1 if nothing is staged, or if the working tree differs from the index on those paths — reconcile with `git add` / `git checkout --` and re-run rather than working around it. To commit a subset of what is staged: `git-guard-prepare \"<subject>\" -- <path>...`.\n\nDo not run `git commit` / `git push` yourself, and do not announce that git-guard is blocking — the user knows."
+    "additionalContext": "[git-guard] When work warrants a commit, you (the assistant) run `git add <files>` and `git-guard-prepare \"<subject>\"` yourself via Bash. Both live on your PATH only (plugin `bin/` mounted by the harness), never the user's shell.\n\n  • ONE COMMIT PER TURN. Stage → run the helper → hand off the printed line → wait for the user. Never bundle several commits into one shell recipe, and never list `git add` or `git-guard-prepare` as steps for the user: their shell answers `command not found`.\n  • HAND OFF THE PRINTED LINE VERBATIM, as inline code — `git commit -F <path> -- <paths>`. The explicit pathspec is what keeps a parallel session's staged files out of the commit, and the `[ -f … ] ||` check in front stops a dead line before any hook runs — never trim either. The helper also keeps the same commit as a short call (`sh /tmp/vdm-git-…/….sh`): while the line waits, this reminder names it on every turn — end the turn with it.\n  • AMEND NEEDS ITS OWN PATHSPEC. `git commit --amend` without `-- <paths>` takes the WHOLE index and sweeps in whatever a neighbouring session staged. Name the paths explicitly, every time.\n  • NOTES ALONE ARE NO COMMIT. A crystal's files and the assistant's memory ride with the next work commit or the session's last (/vdm:wrap); a line of notes alone only when the user asks, and never with a push to a branch whose merge request is under review.\n  • ONE LINE PER FINISHED BLOCK. Don't prepare while the user is still discussing the work or busy with a step of their own (a letter to send, a reply to wait for). A line handed off stands: edits to its paths ride with it, new files with the next commit. If the helper refuses because a line is STILL WAITING, hand off nothing new; `--supersede` only when the user reported that line failed or the block changed in substance — then say the earlier line is void.\n  • If the helper prints SWEPT IN / NOT COMMITTED, the PREVIOUS commit is not what was prepared. Stop and inspect it with `git show --stat` before handing off anything new.\n  • The helper exits 1 if nothing is staged, or if the working tree differs from the index on those paths — reconcile with `git add` / `git checkout --` and re-run rather than working around it. To commit a subset of what is staged: `git-guard-prepare \"<subject>\" -- <path>...`.\n\nDo not run `git commit` / `git push` yourself, and do not announce that git-guard is blocking — the user knows."
   }
 }
 EOF
