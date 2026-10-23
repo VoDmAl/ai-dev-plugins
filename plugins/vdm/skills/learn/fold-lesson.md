@@ -35,6 +35,11 @@ candidate with:
    split a rule only when it holds two unrelated ones. Rewrite as much as the
    fold needs — one sentence, a paragraph, several rules. Ten cases of one
    behaviour become the one sentence that covers them.
+   A merge costs what a widening does not. The heading it removes is an
+   address: memory records across projects point at rules by heading, and
+   each of them goes stale. And the merged paragraph still has to be two to
+   four sentences. Merge only when the two rules are one behaviour **and** the
+   result fits that form; otherwise tighten both and keep both headings.
 3. Write each rule as the behaviour to follow:
    - **the target, not the ban.** "Never X" puts X in front of the reader;
      state what to do instead. Keep a prohibition only as a hard guardrail,
