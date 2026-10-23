@@ -414,9 +414,16 @@ Left behind, it would still stop at its first line.
   the subject alone when the line has no script (exit 3), or nothing when no
   line waits (exit 1).
 - The script lives in `/tmp`, not `$TMPDIR`: on macOS the latter is a long
-  `/var/folders/…` path, and a short call is the point. The directory is the
-  user's own (`700`, not a symlink, owned by them), or no script is written and
-  only the full line exists. `GIT_GUARD_SHORT_DIR` moves it (tests).
+  `/var/folders/…` path, and a short call is the point. `/tmp` is shared, so the
+  directory must be the user's own — a real directory, not a symlink, owned by
+  them, writable by nobody else — and the script the user's own regular file.
+  The writer checks that before writing and the reader before naming a call: a
+  directory found there later may have been made by someone else, with a script
+  under a guessed token. Failing it, no short call exists and the full line
+  stands. `GIT_GUARD_SHORT_DIR` moves it (tests).
+- **The script removes itself when it ends, whatever the outcome** (the owner,
+  23.10). Run once, it cannot run again; a commit that failed needs a new line
+  with `--supersede`, as the full line does.
 
 ### Amending
 

@@ -540,14 +540,33 @@ expect_says "RED: …and the refusal gives the short call to hand off again" "$o
 expect_exit "the short call commits, run from another directory" 0 "$rc"
 expect_eq "…with the prepared message" "[*] short" "$(git log -1 --format=%s)"
 expect_eq "…and only its path" "sub/a.txt" "$(git show --format= --name-only HEAD)"
+# The owner, 23.10: a script unique by name that removes itself once run.
+if [ -e "$script" ]; then
+  bad "RED: …and the script removed itself" "$script is still there"
+else
+  ok "RED: …and the script removed itself"
+fi
 "$PREP" --pending >/dev/null 2>&1; rc=$?
 expect_exit "--pending once it has run → 1" 1 "$rc"
 "$PREP" "[*] b" -- b.txt >/dev/null 2>&1
-if [ -e "$script" ]; then
-  bad "RED: the next prep sweeps the run line's script" "$script is still there"
+old=$("$PREP" --pending 2>/dev/null | head -1); old="${old#sh }"
+"$PREP" --supersede "[*] b, reworded" -- b.txt >/dev/null 2>&1
+if [ -n "$old" ] && [ ! -e "$old" ]; then
+  ok "RED: a superseded line's script is swept with it"
 else
-  ok "RED: the next prep sweeps the run line's script"
+  bad "RED: a superseded line's script is swept with it" "[$old]"
 fi
+# /tmp is shared: a short call is printed only for a directory and a script
+# that are the user's own — the reader checks, not only the writer.
+chmod 770 "$GIT_GUARD_SHORT_DIR"
+"$PREP" --pending >/dev/null 2>&1; rc=$?
+expect_exit "RED: a directory others can write to gives no short call (exit 3)" 3 "$rc"
+chmod 700 "$GIT_GUARD_SHORT_DIR"
+cur=$("$PREP" --pending 2>/dev/null | head -1); cur="${cur#sh }"
+mv "$cur" "$cur.real" && ln -s "$cur.real" "$cur"
+"$PREP" --pending >/dev/null 2>&1; rc=$?
+expect_exit "RED: a script that is a symlink gives no short call (exit 3)" 3 "$rc"
+rm -f "$cur"; mv "$cur.real" "$cur"
 
 printf '\n=== detector: did the commit match what was prepared? ===\n'
 # The reason this exists: a commit lost six files and gained one that was never

@@ -151,9 +151,11 @@
 #   is named by the prep's token, so it is as unique as the message file, and
 #   rm_trio retires it with the rest. `--pending` prints the call of the line
 #   still waiting; the reminder asks it on every prompt and tells the assistant
-#   to end the turn with it. /tmp rather than TMPDIR (a long path on macOS); a
-#   directory that is not this user's own gets no script, and the line works
-#   without one.
+#   to end the turn with it. /tmp rather than TMPDIR (a long path on macOS).
+#   /tmp is shared, so writer and reader both ask short_dir_ok, and the reader
+#   also wants the script to be the user's own regular file; failing that there
+#   is no short call, and the line works without one. The script removes itself
+#   when it ends, whatever the outcome (the owner, 23.10).
 #
 # Exit codes:
 #   0 success
@@ -192,6 +194,19 @@ shell_quote() {
 # short_script <stem> — the short call's script of that prep: named by the
 # prep's own token, so it is as unique as the message file and dies with it.
 short_script() { printf '%s/%s.sh' "$SHORT_DIR" "${1##*-commit-}"; }
+
+# short_dir_ok <dir> — the directory is this user's own: a real directory, not
+# a symlink, owned by the user, writable by nobody else. Asked by the writer
+# AND the reader: /tmp is shared, and a directory found there later — after a
+# clean-up, say — may have been made by someone else, with a script planted
+# under a guessed token. A short call is only ever printed for a script that
+# passes this and is itself the user's own regular file.
+short_dir_ok() {
+  local perm
+  [ -d "$1" ] && [ ! -L "$1" ] && [ -O "$1" ] || return 1
+  perm=$(ls -ld "$1" 2>/dev/null) || return 1
+  [ "${perm:5:1}" = - ] && [ "${perm:8:1}" = - ]
+}
 
 # rm_trio <stem> — retire one prep completely.
 #
@@ -319,7 +334,7 @@ waiting_line() {
 short_call() {
   local s
   s=$(short_script "$1")
-  [ -f "$s" ] || return 0
+  short_dir_ok "${s%/*}" && [ -f "$s" ] && [ ! -L "$s" ] && [ -O "$s" ] || return 0
   case "$s" in
     *[!A-Za-z0-9_./-]*) printf 'sh %s' "$(shell_quote "$s")" ;;
     *)                  printf 'sh %s' "$s" ;;
@@ -1279,10 +1294,15 @@ fi
 # the directory the paths are named from, so the call works from anywhere.
 short=$(short_script "$stem")
 short_dir=${short%/*}
-if mkdir -p -m 700 "$short_dir" 2>/dev/null \
-   && [ -d "$short_dir" ] && [ ! -L "$short_dir" ] && [ -O "$short_dir" ] \
+#
+# The script removes itself when it ends, whatever the outcome — the owner,
+# 23.10: «уникальный скрипт в названии, который после выполнения самоудалит
+# себя». Run once, it cannot be run again; a commit that failed needs a new
+# line anyway (--supersede), as the full line does.
+if mkdir -p -m 700 "$short_dir" 2>/dev/null && short_dir_ok "$short_dir" \
    && {
         printf '#!/bin/sh\n# git-guard-prepare, %s: %s\n' "$(date '+%Y-%m-%d %H:%M')" "$subj"
+        printf "trap 'rm -f \"\$0\"' EXIT\n"
         printf 'cd %s || exit 1\n%s\n' "$(shell_quote "$path_base")" "$line"
       } > "$short.tmp.$$" 2>/dev/null \
    && mv -f "$short.tmp.$$" "$short"; then
