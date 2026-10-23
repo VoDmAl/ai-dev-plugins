@@ -1,6 +1,6 @@
 ---
 name: wrap
-description: "Before leaving a session for a clean one — /clear, closing the terminal, or choosing between a clean session and /compact: find what exists only in the chat, write each item where the next session will see it, prepare one commit, and name the phrase that starts the next session. Takes an optional next goal. Use when the user asks whether it is safe to move on, with or without saying what comes next. Triggers include: «можно в чистую сессию?», «можно переходить в чистую сессию», «тут что-то не переживёт?», «ничего не потеряется?», «в чате ничего не осталось?», «завершаю сессию», «новую сессию запускаю», «дай handoff», «через handoff», «идём в чистую сессию с …», «чистая сессия или compact?», clean session, wrap up, end the session, hand off, is anything lost?"
+description: "Before leaving a session for a clean one — /clear, closing the terminal, or choosing between a clean session and /compact: find what exists only in the chat, write each item where the next session will see it, prepare one commit, and name the phrase that starts the next session. Takes an optional next goal. Use when the user asks whether it is safe to move on, with or without saying what comes next — and on your own, before YOU propose leaving into a new conversation: a restart after a plugin update (`vdx ai --restart`), `/clear` after a commit, a switch to another session. Triggers include: «можно в чистую сессию?», «можно переходить в чистую сессию», «тут что-то не переживёт?», «ничего не потеряется?», «в чате ничего не осталось?», «завершаю сессию», «новую сессию запускаю», «дай handoff», «через handoff», «идём в чистую сессию с …», «чистая сессия или compact?», clean session, wrap up, end the session, hand off, is anything lost?"
 license: MIT
 ---
 
@@ -32,6 +32,14 @@ It also runs on the user's own phrasing (see the triggers in the description).
 When the user names what comes next («идём в чистую сессию с X»), X is the
 argument.
 
+**Run it yourself before you propose leaving.** A restart after a plugin update
+(vdx says «Hand the user the fix — `vdx ai --restart …`»), a `/clear` after a
+commit, a move to another session: when the next conversation is a new one, the
+chat dies just as it does when the user asks to leave. No phrase of the user's
+triggers anything there, so the check is yours, and it comes before the
+proposal, not after the user agrees. A restart that resumes the same
+conversation (`--resume`) keeps the chat and needs no check.
+
 ## Protocol
 
 ### 1. Snapshot — one call
@@ -48,7 +56,7 @@ Read it for four things:
 - **Pending letters.** Give the count only; the next session reads them.
 - **Active crystals.**
 
-### 2. Sweep the chat — seven classes
+### 2. Sweep the chat — eight classes
 
 Go through the session from its start, or from the last compaction summary. For
 each item, ask one question: is it in a file the next session will read — **with
@@ -65,6 +73,7 @@ it feeds are nowhere.
 | Open questions, in both directions | one you asked that got no answer; one the user put off | Next actions `- [ ]`, naming who owes the answer |
 | Promises and dates | «ждём ответа X до пятницы» | Next actions with `(due: YYYY-MM-DD)` |
 | The user's own step, announced in the chat | «дай ссылку — я прочитаю внимательно», «посмотрю завтра», «отвечу им сам» | Next actions in the subject's home: `- [ ] <the user> — <what>, their words verbatim (due: …)`; a step with a date also goes to the user's list at the HQ (shared rule «The user's obligations go to HQ») |
+| Your promise bound to an event | «удалять начну, когда сойдутся все 30», «отвечу, когда придёт ответ», «смержу, когда CI позеленеет» | Next actions, on one item: `- [ ] <the step> — when: <the event>; check: <the command that tells>`. Nothing watches the event after the session; the start line of the next one prints every open `when:` item of an active crystal. A step that is hard to undo stays behind its check |
 | Lessons and corrections | «не склеивать правку и отправку» | memory, or `/vdm:learn` when it is a rule |
 | Facts obtained with effort | links, numbers, quotes found outside the repo | the crystal's `## Текущая модель` or References; `references/` under the provenance rule |
 
@@ -113,7 +122,8 @@ yourself prints the local time beside it, so the receiving session can tell a
 move that is due from one that is not yet.
 
 Always name the slug. With several active crystals, «продолжаем кристалл» makes
-the next session guess.
+the next session guess. When an open `when:` item holds the next step, the phrase
+names the check: «продолжаем кристалл `<slug>`: сначала проверить <событие>».
 
 ### 5. One commit, at the end
 
@@ -140,6 +150,10 @@ These can't be saved; name them:
 For each one whose result matters, name who checks it instead, usually a Next
 action. If nothing is running, say so in one line.
 
+A wait nothing runs dies too: an event you promised to act on, with no monitor
+at all. It is not saved by naming it here — its home is a `when:` item (step 2),
+and this line says it is unwatched.
+
 ### 7. The answer
 
 Answer in the user's language, short, in this shape:
@@ -151,6 +165,7 @@ Answer in the user's language, short, in this shape:
 Было только в чате → записал:
 - <что> → <файл>
 Оборвётся с сессией: <что | ничего>.
+Ждёт события, никто не следит: <событие → шаг, файл | —>
 Не моё, не трогал: <файлы | —>.
 
 <строка коммита, если есть>
@@ -192,6 +207,8 @@ less visibly.
 | Committing what another session staged | their work lands in your commit |
 | Taking «the subject is in a file» for «the user's step is recorded» | the user said «give me the link, I'll read it carefully» about a letter to the head of their company, due in 36 hours; the crystal held the subject, nothing held the step (field case, 2026-10-21) |
 | Ordering the note by the session's routine | the same letter went last, as «three words on the text», under the daily sheet and the commits; the next session read «first» literally and the user had to ask why the most important item was not on their list |
+| Proposing a restart into a new conversation without running the check | a plugin was updated, the assistant handed over `vdx ai --restart` and its own handoff «всё в workitem»; the promise «удалять начну, когда сойдутся все 30» had no condition anywhere, and the next session started with the owner asking where it was being watched (field case, 2026-10-23) |
+| A promise bound to an event, written as a plain item | «22 open» at session start, the item that held an irreversible step indistinguishable from the rest; `when:` on the item is what the start line can show |
 | Retelling a crystal item without its date | «three words» instead of «a letter to the head of the company — by Friday»: the date and the addressee were in the crystal, the note lost both |
 
 ## Integration

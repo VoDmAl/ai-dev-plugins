@@ -137,6 +137,29 @@ if [ -n "$active" ]; then
   fi
 fi
 
+# Promises bound to an event — `when:` on an open item. Nothing watches the
+# event: the session that promised «I'll delete them once all 30 have arrived»
+# is gone, and «22 open» buries the one item holding an irreversible step
+# (a project's agent, 2026-10-23; wrap-skill DL #15). Each such item is printed whole, so
+# the session checks the event before anything behind it. Active crystals
+# only, like the list above.
+waits=""
+if [ -n "$active" ] && command -v _unchecked_lines >/dev/null 2>&1; then
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    slug=$(extract_slug "$f")
+    while IFS= read -r w; do
+      [ -n "$w" ] || continue
+      w=${w#*"- [ ] "}; w=${w//\\/\\\\}; w=${w//\"/\\\"}; w=${w//$'\t'/ }
+      waits="${waits}  ⏳ ${slug}: ${w}\\n"
+    done < <(_unchecked_lines "$f" | grep -E '(^|[[:space:]([])when:')
+  done <<<"$active"
+fi
+if [ -n "$waits" ]; then
+  waits="\\nWaiting for an event — nothing watches it. Check the event first, before the step behind it:\\n${waits}"
+fi
+body="${body}${waits}"
+
 # Audit line — always last if non-canonical present.
 audit_line=""
 if [ "$non_canon_count" -gt 0 ]; then
