@@ -1645,6 +1645,29 @@ else
   bad "…byte for byte"
 fi
 
+# Your own ball (the machine agent, 2026-10-23): a reply named its sender as the
+# holder, the promise was written nowhere else, and it was found undone two
+# weeks later when the fault came back. The letter leaves this repository; the
+# reply is the moment to say so, and an open item of a crystal is the pair.
+( cd "$TMP/hop-a" && bash "$IC" send hop-b ask-own --body "$B/ask.md" >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-b" && bash "$IC" reply ask-own --done "Half of it" \
+          --ball "hop-b — finish the rest ⏰ 2026-11-01" --ball "hop-a — review ⏰ 2026-11-02" 2>&1 )"
+says "RED: a ball the replying agent holds is named as its own" "$out" "your own ball"
+says "…as the open item to write down" "$out" "- [ ] finish the rest ⏰ 2026-11-01"
+says_not "…and the sender's ball is not" "$out" "- [ ] review"
+( cd "$TMP/hop-b" && bash "$IC" names add bee-two >/dev/null 2>&1 )
+( cd "$TMP/hop-a" && bash "$IC" send hop-b ask-own2 --body "$B/ask.md" >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-b" && bash "$IC" reply ask-own2 --done "x" --ball "Bee Two — tidy up" 2>&1 )"
+says "RED: …by any name the directory knows it by" "$out" "- [ ] tidy up"
+( cd "$TMP/hop-b" && bash "$IC" names rm bee-two >/dev/null 2>&1 )
+mkdir -p "$TMP/hop-b/docs/tasks/own-ball"
+printf -- '---\nstatus: in-progress\n---\n\n## Next actions\n\n- [ ] finish the rest ⏰ 2026-11-01\n' \
+  > "$TMP/hop-b/docs/tasks/own-ball/workitem.md"
+( cd "$TMP/hop-a" && bash "$IC" send hop-b ask-own3 --body "$B/ask.md" >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-b" && bash "$IC" reply ask-own3 --done "x" --ball "hop-b — finish the rest ⏰ 2026-11-01" 2>&1 )"
+says_not "RED: a ball already an open item of a crystal here is not named" "$out" "your own ball"
+rm -rf "$TMP/hop-b/docs/tasks/own-ball"
+
 # The body stated in flags is rendered into a temporary file; it must not
 # outlive the call, whether the letter went out or `send` refused it.
 mkdir -p "$TMP/tmpdir"

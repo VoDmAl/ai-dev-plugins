@@ -1340,6 +1340,38 @@ cmd_pickup() {
   fi
 }
 
+# _ic_own_balls <body-file> <identity> — the open items of an outcome whose ball
+# this agent holds and that no open item of a crystal here holds yet, as lines
+# to write down. Field case (the machine agent, 2026-10-23): a reply named its
+# sender as the holder, the promise was written nowhere else, and it was found
+# undone two weeks later when the fault came back. The letter goes to the
+# sender's store; nothing in this repository reminds. An item reads
+# "<who> — <what>", and <who> is resolved through the directory, so any of this
+# agent's names counts. The open items of the crystals are the pair: a promise
+# already written down is not named, so the line appears only when it is owed.
+_ic_own_balls() {
+  local body="$1" id="$2" item who what core r open="" lib
+  lib="$_INTERCOM_SCRIPT_DIR/../lib/crystal-path.sh"
+  if [ -f "$lib" ]; then
+    open="$( . "$lib" 2>/dev/null || exit 0
+             find_workitems 2>/dev/null | while IFS= read -r w; do _unchecked_lines "$w"; done )"
+  fi
+  while IFS= read -r item; do
+    item="${item#- \[ \] }"
+    case "$item" in
+      *" — "*) who="${item%%" — "*}"; what="${item#*" — "}" ;;
+      *" – "*) who="${item%%" – "*}"; what="${item#*" – "}" ;;
+      *" - "*) who="${item%%" - "*}"; what="${item#*" - "}" ;;
+      *) continue ;;
+    esac
+    r="$(intercom_resolve_target "$who" 2>/dev/null)" && [ "$r" = "$id" ] || continue
+    core="${what%%⏰*}"; core="${core%"${core##*[![:space:]]}"}"
+    [ -n "$core" ] || core="$what"
+    printf '%s\n' "$open" | grep -qF -- "$core" && continue
+    printf '%s\n' "$what"
+  done < <(grep '^- \[ \] ' "$body" 2>/dev/null)
+}
+
 # `reply` — close a letter you received with its outcome: what was done, where,
 # and whose ball it is now. The recipient and the chain link come from the
 # letter's own envelope, so there is nothing to remember and nothing to mistype;
@@ -1488,6 +1520,14 @@ cmd_reply() {
     local dest
     dest="$(_ic_archive "$msg")" || exit 1
     printf '✅ intercom: the brief is archived → %s\n' "$dest"
+  fi
+
+  local own
+  own="$(_ic_own_balls "$body_file" "$id")"
+  if [ -n "$own" ]; then
+    printf '↪ intercom: your own ball — the letter leaves this repository, and nothing here will remind you of it:\n'
+    printf '%s\n' "$own" | sed 's/^/    - [ ] /'
+    printf '   Write it into your crystal'"'"'s Next actions now (/vdm:crystal-bud); a step bound to an event: — when: <the event>.\n'
   fi
 }
 

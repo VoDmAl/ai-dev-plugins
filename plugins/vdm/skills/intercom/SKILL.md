@@ -611,6 +611,12 @@ Where intercom sees a brief taken without its outcome, it says so:
 - **`pickup --grow`** prints the outcome as a Next action for the new crystal:
   the work starts after the letter is archived, and a named checkbox is held by
   the crystal's completion gate, not by memory.
+- **`reply`** whose ball you hold yourself — an item `<you> — <what>`, under any
+  name the directory knows you by — prints that item to write into your
+  crystal's Next actions, unless an open item of a crystal here already holds
+  it. The letter goes to the sender's store and nothing in your repository
+  reminds you. Field case (2026-10-23): a promise made in a reply was found
+  undone two weeks later, when the fault it was about came back.
 
 `reply` answers **your own inbox** only. Continuing someone else's letter is a
 relay: `send <to> <slug> --reply-to <ref>` (§ The relay form). A letter whose
