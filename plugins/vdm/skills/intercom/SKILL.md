@@ -781,10 +781,13 @@ session started with both is focused.
   line says so and the letter goes as without it. The key is off by default
   and is set by hand, because every mail session is a whole agent session. The
   user's word (2026-10-22): only where it was switched on. One case where the
-  first turn does not come: a checkout Claude Code has never been trusted in on
-  this machine (a new folder, or one that moved). vdx answers `✓ running`, and
-  the session waits at the trust prompt. The user opens that checkout once
-  (`vdx ai <checkout>`) and answers the prompt; `send` says so beside the start.
+  start does not happen: a checkout Claude Code does not trust yet on this
+  machine (a new folder, or one that moved). From vdx 0.39 nothing starts
+  there: the command exits 4 and prints the one to run at a terminal. Hand that
+  command to the user, who runs it once and answers the trust prompt; the
+  letter waits in the inbox meanwhile. An older vdx answers `✓ running`, and
+  the session waits at that prompt with nobody at it. `send` says so beside
+  the start.
 - **A note to its own project is not its mail.** A letter from the project to
   itself, a note for its next session (`/vdm:wrap`), neither starts nor wakes
   the mail session. Its start line tells it to leave such a letter untaken: if
