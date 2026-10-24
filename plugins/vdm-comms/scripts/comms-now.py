@@ -120,8 +120,15 @@ def check(root, cfg, now_cfg, today, file_path=None):
         print("comms-now: %s is not built yet — build it: %s" % (out_rel, REBUILD))
         return 1
     front = frontmatter_of(out_path)
-    items = PENDING.collect(root, cfg, today)
-    drafts = PENDING.unsent_drafts(root, cfg, today, min_age=0)
+    try:
+        items = PENDING.collect(root, cfg, today)
+        drafts = PENDING.unsent_drafts(root, cfg, today, min_age=0)
+    except PENDING.OverDeadline as over:
+        # The session-start hook's deadline (comms-pending.py → OverDeadline):
+        # whether now.md is current stays unknown, and is said as unknown.
+        print("comms-now: NOT CHECKED — stopped at the session-start hook's deadline after %d file(s); "
+              "whether %s is current is unknown — narrow comms.pending-paths" % (over.files, out_rel))
+        return 1
     if front.get("homes") == homes_digest(items, drafts):
         return 0
     print("comms-now: %s is behind the homes (built %s) — rebuild it: %s"

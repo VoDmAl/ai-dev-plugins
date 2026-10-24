@@ -52,7 +52,7 @@ payload=$(cat)
 pending_in_scope() {
   printf '%s' "$payload" | grep -qE '"tool_name"[[:space:]]*:[[:space:]]*"(Write|Edit|MultiEdit)"' 2>/dev/null || return 1
   printf '%s' "$payload" | grep -q '\.md' 2>/dev/null || return 1
-  printf '%s' "$payload" | grep -qE '⏰|\(due:|- \[ \]' 2>/dev/null || return 1
+  printf '%s' "$payload" | grep -qE '⏰|\(due:|\[due::|- \[[^]xX-]\]' 2>/dev/null || return 1
   return 0
 }
 

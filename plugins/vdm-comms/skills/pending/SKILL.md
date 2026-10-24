@@ -24,7 +24,7 @@ One line per obligation, in the full form — Dataview inline fields, so a vault
 can query them:
 
 ```
-- [ ] **<what>** — <details> [who:: <slug>] [state:: ask] [due:: 2026-09-26] [nudges:: 0] [track:: tracks/x]
+- [ ] **<what>** — <details> [who:: <slug>] [state:: ask] [nudges:: 0] [track:: tracks/x] [due:: 2026-09-26]
 ```
 
 - **`who::` — who moves now.** Until the other side confirms, that is us: a
@@ -33,14 +33,21 @@ can query them:
   or `we`. The person we wait on is named in the text.
 - **`state::`** — `ask`: not sent yet; `sent`: gone out, we wait; `ack`: they
   confirmed, and `who::` is now them. Done is `[x]`, when the matter is done,
-  not when it was handed over. Whether a letter left is read from the letter's
+  not when it was handed over. `[-]`, Obsidian Tasks' "cancelled", closes the
+  line too; `[/]` (in progress) and any other state keep it open. Whether a letter left is read from the letter's
   own file (`sent:`), not from this line.
 - **`due::`** — the review date: the day we come back to it if nothing
-  happened. It stays ours after the hand-off.
+  happened. It stays ours after the hand-off. **Last of the fields:** Obsidian
+  Tasks reads Dataview fields only at the end of the line (Tasks 8.2.0, a vault
+  checked it, 2026-10-24), so after `due::` come only Tasks' own —
+  `completion::`, `cancelled::`. This tool reads the fields in any order.
+  Dataview's round brackets, `(due:: 2026-09-26)`, are the same field.
 - **`nudges::`** — how many times we reminded; the report shows it from 1 up.
 - **`track::`** — where the matter lives, when the line is not in that track's
   own file (a central ledger).
-- **Not in a table.** A cell is neither a checkbox nor a queryable field.
+- **Not in a table, not nested, not in a callout.** A cell is neither a
+  checkbox nor a queryable field, and the summary reads only lines that start
+  the line: an indented line or one inside `> ` is never an item.
 
 A line that writes `[who::]` is under the full contract wherever it stands —
 who, state and a date are required, or the event that stands in for the date —
@@ -166,7 +173,7 @@ sensible default: three repositories keep them in three different shapes.
 
 | Key | What it does |
 |---|---|
-| `pending-paths` | globs, relative to the repository root. Empty = the whole pending half stays silent |
+| `pending-paths` | globs, relative to the repository root. Empty = the whole pending half stays silent. Narrow: the session-start hook must read them within its deadline (§ The two hooks) |
 | `pending-sections` | headings, matched by **prefix**, so `Ожидаем` covers `## Ожидаем ответы` |
 | `owners` | the names that count as owners; also the order groups appear in (your own name last) |
 | `people-dir` | where profiles live, for the wikilink form (default `people`) |
@@ -229,6 +236,26 @@ window is on) — and nothing at all otherwise. A dated item
 becomes overdue by the calendar turning, not by anyone writing a file, so there
 is no tool call to hang it on; session start is the only moment available and
 also the right one.
+
+**The counts say whose they are**, owners named as in `--owner`, the most
+first, three of them and the rest summed:
+`[comms] pending: 5 overdue (агент 2 · Olga 1 · legal 1 · others 1) · 1 due within 7 days (us 1).`
+An agent that keeps its own checks under `[who:: <its name>]` sees them at the
+start of a session, apart from the owner's. Field case (a vault, 2026-10-24):
+three checks of a page, dated 8, 14 and 20 October, done by nobody — one number
+did not say whose they were.
+
+**It has a deadline, and says when it hits it.** The harness stops a
+session-start hook at its timeout (30 s here) without a word, and a check that
+was stopped reads like one that found nothing. So the hook runs its two reads —
+this summary and the `now.md` check — side by side and gives them 25 s. Past
+it, the line is `[comms] pending: NOT CHECKED — stopped at the session-start
+hook's deadline after N file(s)…`, and `comms-now: NOT CHECKED` for `now.md`. A
+check that finished but took over 10 s says so too. Both mean that
+`pending-paths` reads more than the hook can: a `**` over an archive is the
+usual cause. The same vault: `wiki/** + archive/** + projects/**` over 22
+thousand notes took 18 s, `wiki/**` with `projects/*/tasks/**` about 3. Point
+the globs at the files that hold obligations, not at the tree.
 
 A second line names **sent letters edited since their commit**: a file in a
 `comms/` directory whose frontmatter carries `sent:` (outgoing or inbound) and

@@ -46,19 +46,37 @@ fi
 LINTER="$SELF_DIR/comms-pending.py"
 [ -f "$LINTER" ] || exit 0
 
-out=$(python3 "$LINTER" --brief --project-root "$root" 2>/dev/null)
-rc=$?
+# Both scripts below read the same comms.pending-paths. Side by side the hook
+# takes the longer of the two rather than their sum, and both stop at a deadline
+# under the harness's timeout (hooks.json: 30 s) and say so, instead of being
+# killed by it in silence — which reads exactly like a check that found nothing
+# (vault agent, 2026-10-24: 29.7 s of the 30 over a 22k-note tree).
+COMMS_DEADLINE_AT=$(( $(date +%s) + ${COMMS_HOOK_BUDGET:-25} ))
+export COMMS_DEADLINE_AT
+work=$(mktemp -d "${TMPDIR:-/tmp}/comms-pending-check.XXXXXX") || exit 0
+trap 'rm -rf "$work"' EXIT
+
+python3 "$LINTER" --brief --project-root "$root" > "$work/pending" 2>/dev/null &
+pending_pid=$!
 
 # The live now.md falls behind outside any session too — a box ticked in
 # Obsidian, a pass that could not build. Session start is where that is said.
-nowline=""
+now_pid=""
 if [ -f "$SELF_DIR/comms-now.py" ]; then
-  nowline=$(python3 "$SELF_DIR/comms-now.py" --check --project-root "$root" 2>/dev/null)
+  python3 "$SELF_DIR/comms-now.py" --check --project-root "$root" > "$work/now" 2>/dev/null &
+  now_pid=$!
 fi
+
+wait "$pending_pid"
+rc=$?
+[ -z "$now_pid" ] || wait "$now_pid"
+out=$(cat "$work/pending" 2>/dev/null)
+nowline=$(cat "$work/now" 2>/dev/null)
 
 if [ "$rc" -eq 1 ] && [ -n "$out" ]; then
   printf '%s\n' "$out"
   case "$out" in
+    *"NOT CHECKED"*) ;;
     *"[comms] pending:"*)
       printf '        Who owes what: /vdm-comms:pending — or by owner:\n'
       printf '        "${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh" --owner\n' ;;

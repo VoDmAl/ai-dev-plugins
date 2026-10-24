@@ -88,6 +88,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -99,9 +100,16 @@ HEAD_CHARS = 160
 
 FENCE_RE = re.compile(r"^(```|~~~)")
 HEADING_RE = re.compile(r"^(#{1,2})\s+(.*?)\s*$")
-ITEM_OPEN_RE = re.compile(r"^- \[ \]\s*(.*)$")
-ITEM_DONE_RE = re.compile(r"^- \[[xX]\]")
-ITEM_BULLET_RE = re.compile(r"^- (?!\[[ xX]\])\s*(.*)$")
+# A checkbox's state is the one character between its brackets. Obsidian Tasks
+# writes `x` for done, `-` for cancelled and `/` for in progress, and a vault
+# may add its own; only `x`, `X` and `-` close an item, and every other state
+# is open — an extra line in the summary costs less than a lost one. A line
+# `- [-] … [due:: …]` used to be read as open and would have turned into a false
+# overdue (vault agent, 2026-10-24). Past the space, the next character must be
+# whitespace or the end, as Tasks requires: `- [a](url)` is a link, not a state.
+ITEM_OPEN_RE = re.compile(r"^- \[(?: \]|[^\]xX-]\](?=\s|$))\s*(.*)$")
+ITEM_DONE_RE = re.compile(r"^- \[[xX-]\]")
+ITEM_BULLET_RE = re.compile(r"^- (?!\[(?: \]|[^\]]\](?=\s|$)))\s*(.*)$")
 
 BOLD_RE = re.compile(r"\*\*([^*]+?)\*\*")
 CODE_RE = re.compile(r"`([^`]+?)`")
@@ -123,7 +131,11 @@ EMOJI_RE = re.compile(r"[\U0001F100-\U0001F2FF\U0001F300-\U0001FAFF☀-➿️⬀
 # on 380 of its 381 open lines before the plugin read it; the old form below is
 # read during the transition and gives an item with no state.
 FIELD_RE = re.compile(r"\[(who|state|due|nudges|track)::\s*([^\]]*?)\s*\]")
-DUE_FIELD_RE = re.compile(r"\[due::\s*([^\]]*?)\s*\]")
+# Dataview also takes a field in round brackets, `(due:: 2026-10-31)`, and
+# Obsidian Tasks may leave one when the line is edited there. It is the same
+# field, not the crystal's `(due: …)` with a stray colon, which read it as a
+# broken date (vault agent, 2026-10-24).
+DUE_FIELD_RE = re.compile(r"\[due::\s*([^\]]*?)\s*\]|\(due::\s*([^)]*?)\s*\)")
 STATES = ("ask", "sent", "ack")
 DUE_ISO_RE = re.compile(r"\(due:\s*(\d{4})-(\d{2})-(\d{2})\s*\)")
 DUE_ANY_RE = re.compile(r"\(due:\s*([^)]*)\)")
@@ -204,6 +216,52 @@ def _boundary_find(hay, needle):
 # dates
 # --------------------------------------------------------------------------- #
 
+# --------------------------------------------------------------------------- #
+# the session-start hook's deadline
+# --------------------------------------------------------------------------- #
+# The harness kills a hook at its timeout without a word, and a check that was
+# killed reads exactly like one that found nothing (vault agent, 2026-10-24:
+# 29.7 s of a 30 s budget over a 22k-note tree). So the hook passes the moment
+# it must be done by — absolute, in epoch seconds, so the two scripts it runs
+# side by side share one budget — and every walk stops there and says so.
+
+class OverDeadline(Exception):
+    def __init__(self, files):
+        super().__init__(files)
+        self.files = files
+
+
+def _env_seconds(name):
+    try:
+        return float(os.environ.get(name) or "")
+    except ValueError:
+        return None
+
+
+DEADLINE_AT = _env_seconds("COMMS_DEADLINE_AT")
+STARTED_AT = time.time()
+# Past this many seconds a finished check still says it was slow: the next few
+# hundred notes take it over the edge, and then it says nothing at all.
+SLOW_AFTER = _env_seconds("COMMS_SLOW_AFTER")
+if SLOW_AFTER is None:
+    SLOW_AFTER = 10.0
+
+
+def check_deadline(files):
+    if DEADLINE_AT is not None and time.time() > DEADLINE_AT:
+        raise OverDeadline(files)
+
+
+def deadline_line(files):
+    return ("[comms] pending: NOT CHECKED — stopped at the session-start hook's deadline after %d file(s); "
+            "the globs in comms.pending-paths cover more than the hook can read in time — narrow them" % files)
+
+
+def slow_line():
+    return ("[comms] pending: the check took %.0f s — near the hook's 30 s, past which it is stopped; "
+            "narrow comms.pending-paths" % (time.time() - STARTED_AT))
+
+
 def _mkdate(y, m, d):
     try:
         return datetime.date(int(y), int(m), int(d))
@@ -215,7 +273,8 @@ def parse_date(line, today):
     """→ (date | None, kind) with kind ∈ iso | dmy | loose | event | broken | none."""
     m = DUE_FIELD_RE.search(line)
     if m:
-        dm = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", m.group(1))
+        value = m.group(1) if m.group(1) is not None else m.group(2)
+        dm = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", value)
         d = _mkdate(*dm.groups()) if dm else None
         return (d, "iso") if d else (None, "broken")
     m = DUE_ISO_RE.search(line)
@@ -500,7 +559,13 @@ def pending_files(root, cfg):
             out.append(real)
 
     for pattern in patterns:
-        for path in sorted(glob.glob(os.path.join(root, pattern), recursive=True)):
+        found = []
+        # iglob, not glob: a `**` over a large tree is the slow part, and only
+        # an iterator lets the deadline stop it midway.
+        for path in glob.iglob(os.path.join(root, pattern), recursive=True):
+            check_deadline(len(out) + len(found))
+            found.append(path)
+        for path in sorted(found):
             add(path)
     meetings_dir = str(cfg.get("meetings-dir") or "meetings")
     for series in cfg.get("series") or []:
@@ -672,7 +737,8 @@ def collect(root, cfg, today, files=None):
     sides = section_sides(cfg)
     prx = people_re(cfg)
     out = []
-    for path in (files if files is not None else pending_files(root, cfg)):
+    for n, path in enumerate(files if files is not None else pending_files(root, cfg)):
+        check_deadline(n)
         out.extend(scan_file(path, root, cfg, sides, today, prx))
     return out
 
@@ -724,6 +790,7 @@ def unsent_drafts(root, cfg, today, min_age=None):
             return []
     out = []
     for dirpath, dirnames, filenames in os.walk(root):
+        check_deadline(len(out))
         dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in PRUNE_DIRS]
         if os.path.basename(dirpath) != "comms":
             continue
@@ -1103,6 +1170,27 @@ def report(root, cfg, items, today, by_owner=False, show_all=False):
     return 0
 
 
+# How many owners the session-start line names per count before it sums the rest.
+BRIEF_OWNERS_SHOWN = 3
+
+
+def whose(lst):
+    """` (<owner> N · <owner> M)` — whose a count is. Field report (vault agent,
+    2026-10-24): the agent's own checks (`[who:: агент]`) sat overdue next to
+    the owner's — three of them, dated 8, 14 and 20 October — and nobody did
+    them, because one number did not say whose they were. The most first."""
+    counts, shown = {}, {}
+    for it in lst:
+        counts[it["owner_key"]] = counts.get(it["owner_key"], 0) + 1
+        shown.setdefault(it["owner_key"], it["owner"])
+    keys = sorted(counts, key=lambda k: (-counts[k], shown[k]))
+    parts = ["%s %d" % (shown[k], counts[k]) for k in keys[:BRIEF_OWNERS_SHOWN]]
+    rest = sum(counts[k] for k in keys[BRIEF_OWNERS_SHOWN:])
+    if rest:
+        parts.append("others %d" % rest)
+    return " (%s)" % " · ".join(parts)
+
+
 def brief(root, cfg, items, today, edited=()):
     """One line for a session start, and one more for sent letters edited since
     their commit. Silent when there is nothing to act on."""
@@ -1114,9 +1202,9 @@ def brief(root, cfg, items, today, edited=()):
     passed = [u for u in upcoming if u["passed"]]
     parts = []
     if b["overdue"]:
-        parts.append("%d overdue" % len(b["overdue"]))
+        parts.append("%d overdue%s" % (len(b["overdue"]), whose(b["overdue"])))
     if b["soon"]:
-        parts.append("%d due within %d days" % (len(b["soon"]), SOON_DAYS))
+        parts.append("%d due within %d days%s" % (len(b["soon"]), SOON_DAYS, whose(b["soon"])))
     if drafts:
         parts.append("%d unsent draft(s)" % len(drafts))
     if untranscribed:
@@ -1232,12 +1320,14 @@ def print_contract():
     print("config\tpeople-dir\tdirectory of people profiles (default: people)")
     print("config\tpending-draft-days\tunsent-draft age threshold, 0 = off (default: 3)")
     print("config\tpending-transcript-days\twindow for 'held, no transcript', 0 = off (default: 0)")
-    print("form\t- [ ] **<what>** — … [who:: <slug>] [state:: ask|sent|ack] [due:: YYYY-MM-DD] [nudges:: N] [track:: <path>]")
+    print("form\t- [ ] **<what>** — … [who:: <slug>] [state:: ask|sent|ack] [nudges:: N] [track:: <path>] [due:: YYYY-MM-DD]")
+    print("form\tdue last: Obsidian Tasks reads fields only at the end of the line; only its own (completion::, cancelled::) may follow")
+    print("form\tcheckbox state: [x] [X] [-] close the item; [ ], [/] and any other state are open")
     print("form\twho: who moves now — us until they confirm (ack); a profile slug, a name from comms.owners, or we")
     print("form\ta line with [who::] is under the full contract wherever it stands; the bold is then the subject")
     print("form\twaiting for an event: ⏰ after: <event> in place of [due::]; [due::] holds a date and nothing else")
     print("form\tthe old form below is read during the transition and gives an item with no state")
-    print("marker\t[due:: YYYY-MM-DD]\tthe full form's date")
+    print("marker\t[due:: YYYY-MM-DD]\tthe full form's date; (due:: YYYY-MM-DD), Dataview's round brackets, is the same field")
     print("marker\t⏰ YYYY-MM-DD")
     print("marker\t⏰ after: <event>\tany of после|при|когда|after|when|once|upon|on")
     print("marker\t(due: YYYY-MM-DD)\tthe crystal suite's own form")
@@ -1289,6 +1379,16 @@ def main(argv):
         return 0
 
     today = cfgmod.today()
+    try:
+        return run(args, root, cfg, today)
+    except OverDeadline as over:
+        if not args.brief:
+            raise
+        print(deadline_line(over.files))
+        return 1
+
+
+def run(args, root, cfg, today):
     # Before the pending-paths gate: letters live in `comms/` whether or not the
     # project keeps pending items.
     edited = edited_records(root) if args.brief else []
@@ -1320,7 +1420,11 @@ def main(argv):
                          ensure_ascii=False, indent=1))
         return 0
     if args.brief:
-        return brief(root, cfg, items, today, edited)
+        rc = brief(root, cfg, items, today, edited)
+        if time.time() - STARTED_AT > SLOW_AFTER:
+            print(slow_line())
+            rc = 1
+        return rc
     return report(root, cfg, items, today, by_owner=args.owner, show_all=args.all)
 
 

@@ -738,5 +738,103 @@ ff --json
 expect_says "the JSON carries the state" "$OUT" '"state": "ack"'
 expect_says "…and the track" "$OUT" '"track": "tracks/a"'
 
+printf '\n=== Obsidian Tasks writes the lines: its states, Dataview round brackets ===\n'
+
+# Field report (vault agent, 2026-10-24): a vault moving all its dates to the
+# full form, run on 0.35.0. `- [-]` is Tasks' own "cancelled" and was read as an
+# open item — a false overdue once its date passed; `(due:: …)` is a Dataview
+# field in round brackets and was called a broken date. `[/]` (in progress) and
+# a state the vault invented stay open. Its own fixture, so the counts above
+# stay what they were.
+OT="$TMP/tasks"; mkdir -p "$OT/.claude"
+( cd "$OT" && git init -q . ) >/dev/null 2>&1
+cat > "$OT/.claude/vdm-plugins.json" <<'JSON'
+{ "comms": { "pending-paths": ["ledger.md"],
+             "pending-sections": { "waiting": ["Ожидаем"] } } }
+JSON
+cat > "$OT/ledger.md" <<'MD'
+# Ledger
+
+## Ожидаем
+
+- [-] **Cancelled** — Tasks closed it [who:: we] [state:: sent] [due:: 2026-09-01] [cancelled:: 2026-09-02]
+- [/] **In progress** — half done [who:: we] [state:: sent] [due:: 2026-09-03]
+- [>] **Forwarded** — a state the vault invented [who:: we] [state:: sent] [due:: 2026-09-04]
+- [ ] **Round brackets** — edited in Tasks [who:: we] [state:: sent] (due:: 2026-09-05)
+- [ ] **Round, broken** — [who:: we] [state:: sent] (due:: soon)
+- [a](https://example.com) a bullet that opens with a link is not a checkbox
+MD
+ot() { OUT=$(cd "$OT" && COMMS_TODAY="$TODAY" python3 "$PEND" --project-root "$OT" "$@" 2>&1); rc=$?; }
+
+ot --owner --all
+expect_not_says "RED: \`- [-]\` is closed — cancelled is not open" "$OUT" "Cancelled"
+expect_says "RED: \`- [/]\` is an open checkbox — its fields are read" "$OUT" "2026-09-03 · us · sent"
+expect_says "…and so does a state the vault invented" "$OUT" "2026-09-04 · us · sent"
+expect_says "RED: \`(due:: …)\` is read as the date" "$OUT" "2026-09-05 · us · sent"
+expect_not_says "…the state is not printed as part of the text" "$OUT" "[/]"
+expect_not_says "a bullet opening with a one-letter link is not a checkbox" "$OUT" "opens with a link"
+
+ot --lint
+expect_not_says "RED: \`(due:: YYYY-MM-DD)\` is no broken date" "$OUT" "ledger.md:8"
+expect_says "…but \`(due:: soon)\` is (control)" "$OUT" "ledger.md:9 — broken date marker"
+expect_not_says "…and a cancelled line is not linted at all" "$OUT" "ledger.md:5"
+
+printf '\n=== the session-start hook stops at its own deadline and says so ===\n'
+
+# Same report (2026-10-24): the hook took 29.7 s of its 30 over a 22k-note
+# tree; a little more and the harness kills it without a word, which reads like
+# a check that found nothing. The deadline is a moment in the past here, so the
+# walk stops at once; the run without it is the control.
+OUT=$(cd "$OT" && COMMS_TODAY="$TODAY" COMMS_DEADLINE_AT=1 python3 "$PEND" --brief --project-root "$OT" 2>&1); rc=$?
+expect_exit "RED: past the deadline, --brief exits 1" 1 "$rc"
+expect_says "…and says the check did not happen" "$OUT" "[comms] pending: NOT CHECKED — stopped at the session-start hook's deadline"
+OUT=$(cd "$OT" && COMMS_TODAY="$TODAY" python3 "$PEND" --brief --project-root "$OT" 2>&1)
+expect_not_says "without a deadline the same tree is checked (control)" "$OUT" "NOT CHECKED"
+OUT=$(cd "$OT" && COMMS_TODAY="$TODAY" COMMS_SLOW_AFTER=0 python3 "$PEND" --brief --project-root "$OT" 2>&1); rc=$?
+expect_says "RED: a finished but slow check says it was slow" "$OUT" "near the hook's 30 s"
+expect_exit "…and is reported (exit 1)" 1 "$rc"
+
+mkdir -p "$OT/signals"; printf -- '---\nhomes: stale\n---\n' > "$OT/signals/now.md"
+cat > "$OT/.claude/vdm-plugins.json" <<'JSON'
+{ "comms": { "pending-paths": ["ledger.md"],
+             "pending-sections": { "waiting": ["Ожидаем"] },
+             "now": { "owner": ["we"] } } }
+JSON
+NOWPY="$P/scripts/comms-now.py"
+OUT=$(cd "$OT" && COMMS_TODAY="$TODAY" COMMS_DEADLINE_AT=1 python3 "$NOWPY" --check --project-root "$OT" 2>&1); rc=$?
+expect_says "RED: now --check past the deadline says now.md is unknown, not current" "$OUT" "comms-now: NOT CHECKED"
+OUT=$(cd "$OT" && COMMS_TODAY="$TODAY" python3 "$NOWPY" --check --project-root "$OT" 2>&1)
+expect_says "…and without one it compares, as before (control)" "$OUT" "is behind the homes"
+
+OUT=$(CLAUDE_PROJECT_DIR="$OT" COMMS_TODAY="$TODAY" COMMS_HOOK_BUDGET=-5 bash "$CHECKSH" </dev/null 2>&1); rc=$?
+expect_exit "the hook itself never blocks" 0 "$rc"
+expect_says "RED: the hook passes the pending half's NOT CHECKED on" "$OUT" "[comms] pending: NOT CHECKED"
+expect_says "…and the now.md half's" "$OUT" "comms-now: NOT CHECKED"
+expect_not_says "…without pointing at a summary that was not made" "$OUT" "Who owes what"
+OUT=$(CLAUDE_PROJECT_DIR="$OT" COMMS_TODAY="$TODAY" bash "$CHECKSH" </dev/null 2>&1)
+expect_says "with its own budget the hook checks both halves (control)" "$OUT" "is behind the homes"
+expect_not_says "…and stops at no deadline" "$OUT" "NOT CHECKED"
+
+printf '\n=== the session-start line says whose the counts are ===\n'
+
+# Same report: the agent's own checks (`[who:: агент]`) sat overdue next to the
+# owner's, and one number did not say whose — three of them were done by nobody.
+WH="$TMP/whose"; mkdir -p "$WH/.claude"
+( cd "$WH" && git init -q . ) >/dev/null 2>&1
+printf '%s\n' '{ "comms": { "pending-paths": ["ledger.md"], "owners": ["Dmitry"] } }' > "$WH/.claude/vdm-plugins.json"
+cat > "$WH/ledger.md" <<'MD'
+# Ledger
+
+- [ ] **a** — [who:: агент] [state:: sent] [due:: 2026-09-01]
+- [ ] **b** — [who:: агент] [state:: sent] [due:: 2026-09-02]
+- [ ] **c** — [who:: Dmitry] [state:: ask] [due:: 2026-09-03]
+- [ ] **d** — [who:: legal] [state:: ack] [due:: 2026-09-04]
+- [ ] **e** — [who:: hr] [state:: ack] [due:: 2026-09-05]
+- [ ] **f** — [who:: we] [state:: ask] [due:: 2026-09-24]
+MD
+OUT=$(cd "$WH" && COMMS_TODAY="$TODAY" python3 "$PEND" --brief --project-root "$WH" 2>&1)
+expect_says "RED: overdue is split by owner, the most first" "$OUT" "5 overdue (агент 2 · Dmitry 1 · hr 1 · others 1)"
+expect_says "RED: …and so is due within 7 days" "$OUT" "1 due within 7 days (us 1)"
+
 printf '\ncomms-pending: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
