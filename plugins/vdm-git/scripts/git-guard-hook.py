@@ -516,7 +516,12 @@ def build_block_message(op_name, reason, command):
         lines.append(
             "     out of your commit; the check stops a dead line before any"
         )
-        lines.append("     hook runs. Hand it off whole.")
+        lines.append(
+            "     hook runs, and the `git diff` check after it stops an edit"
+        )
+        lines.append(
+            "     to those paths that nobody staged. Hand it off whole."
+        )
         lines.append("")
         lines.append(
             "     One line per finished block. While a line you handed off is"

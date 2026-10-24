@@ -170,6 +170,8 @@ Prevents Claude from running `git commit` and `git push` without explicit user p
 
 **The short call (v2.22.0)**: besides the full commit line, `git-guard-prepare` keeps the same commit as a script with a short name, called as `sh /tmp/vdm-git-<uid>/<token>.sh`. The message-file check and the path list are inside, the script runs from the right directory, and it removes itself once run. The directory in `/tmp` must be the user's own, checked both when the script is written and when the call is named (v2.22.1). The full line is handed off first. While it waits, the reminder tells the assistant on every turn to end with the short call, so a line buried far up the conversation does not have to be found. `git-guard-prepare --pending` prints it again.
 
+**The line checks its paths when it runs (v2.23.0)**: a pathspec commit takes its paths from the working tree, so an edit made after the prep and staged by nobody — a parallel session's, say — used to go in under the line's message. The prep already refused that divergence; the line now repeats the check right before `git commit`, prints a `--stat` of the paths that changed, and commits nothing. An edit meant for the commit rides with it once `git add`ed, and the same line then runs. An edit someone else staged still rides in; the detector reports it on the next prep.
+
 ### `vdx` — Lifecycle Interface (optional, from another repository)
 
 Listed in this marketplace, developed in [VoDmAl/vdx](https://github.com/VoDmAl/vdx) (its `plugin/`

@@ -489,8 +489,10 @@ else
 fi
 expect_eq "…and leaves one message file" "1" "$(ls -1 "$TMPDIR"/*.txt 2>/dev/null | grep -c .)"
 
-# The refusal promises that edits to the waiting line's paths ride with it.
+# The refusal promises that edits to the waiting line's paths ride with it
+# once staged — an unstaged one stops the line (next section).
 printf 'a, edited after the prep\n' > a.txt
+git add a.txt
 run_emitted "$first" >/dev/null 2>&1; rc=$?
 expect_exit "the waiting line runs after the refusal" 0 "$rc"
 expect_eq "…with its own message" "[*] the block" "$(git log -1 --format=%s)"
@@ -499,6 +501,54 @@ expect_eq "…and an edit made after the prep rides with it" "a, edited after th
 out=$("$PREP" "[*] next block" 2>&1 >/dev/null); rc=$?
 expect_exit "once the line has run, the next prep is not refused" 0 "$rc"
 expect_not_says "…and says nothing about a waiting line" "${out:-(silent)}" "still waiting"
+
+printf '\n=== a path changed after it was staged stops the line ===\n'
+# Field case (the machines agent, 2026-10-24): a parallel session appended to two files a
+# waiting line named; the line took them from the worktree and the commit was
+# pushed, push being the deploy there. The prep refuses that divergence; the
+# line now refuses it too, where it happens. The clean run and the staged edit
+# are the controls: the same line commits, so "refused" is not a line that never
+# could commit.
+
+d=$(new_repo drift_run); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf '#!/bin/sh\necho ran >> "$(git rev-parse --git-dir)/hook-ran"\n' > .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+git config core.hooksPath .git/hooks
+printf 'a\n' > a.txt; printf 'b\n' > 'b c.txt'; git add a.txt 'b c.txt'
+line=$("$PREP" "[*] drift" -- a.txt 'b c.txt')
+base=$(git rev-parse HEAD)
+printf "a neighbour's line\n" >> 'b c.txt'
+out=$(run_emitted "$line" 2>&1); rc=$?
+expect_exit "RED: an unstaged edit to a listed path → the line exits 1" 1 "$rc"
+expect_says "…naming the path" "$out" "b c.txt"
+expect_says "…and saying nothing was committed" "$out" "changed after they were staged; nothing committed"
+expect_eq "…and HEAD has not moved" "$base" "$(git rev-parse HEAD)"
+if [ -e .git/hook-ran ]; then
+  bad "RED: …before the pre-commit hook runs" "the hook ran for a drifted line"
+else
+  ok "RED: …before the pre-commit hook runs"
+fi
+git add 'b c.txt'
+run_emitted "$line" >/dev/null 2>&1; rc=$?
+expect_exit "staged, the same line commits (control)" 0 "$rc"
+expect_eq "…with the staged edit in it" "b
+a neighbour's line" "$(git show HEAD:'b c.txt')"
+
+d=$(new_repo drift_long); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+printf 'a\n' > a.txt; printf 'b\n' > b.txt; git add a.txt b.txt
+line=$(GIT_GUARD_PATHSPEC_INLINE_MAX=1 "$PREP" "[*] drift, long")
+expect_says "the long form is in use" "$line" "--pathspec-from-file="
+base=$(git rev-parse HEAD)
+printf 'edited\n' >> a.txt
+out=$(run_emitted "$line" 2>&1); rc=$?
+expect_exit "RED: the long form refuses an unstaged edit too" 1 "$rc"
+expect_says "…naming the path" "$out" "a.txt"
+expect_eq "…and HEAD has not moved" "$base" "$(git rev-parse HEAD)"
+git add a.txt
+run_emitted "$line" >/dev/null 2>&1; rc=$?
+expect_exit "staged, the long line commits (control)" 0 "$rc"
 
 d=$(new_repo waiting_flag_after); cd "$d" || exit 1
 export TMPDIR="$d/tmp"

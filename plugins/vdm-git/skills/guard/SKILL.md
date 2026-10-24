@@ -122,13 +122,13 @@ When the assistant has finished work that warrants a commit — implementation d
 
        git-guard-prepare "[+] Add foo helper"
 
-   It writes the message to a per-prep file under `${TMPDIR:-/tmp}` and prints a single-line `git commit -F <path> -- <paths>` command on stdout, opening with a check that its message file still exists (`[ -f <path> ] || { echo …; false; } &&`). Capture it and hand it off **verbatim** — the explicit pathspec is the point (see [Why the pathspec](#why-the-pathspec-is-not-optional)), and the check in front is what stops a dead line before any hook runs (see [A line that is still waiting](#a-line-that-is-still-waiting)).
+   It writes the message to a per-prep file under `${TMPDIR:-/tmp}` and prints a single-line `git commit -F <path> -- <paths>` command on stdout, opening with a check that its message file still exists (`[ -f <path> ] || { echo …; false; } &&`) and then, in the pathspec forms, a check that the listed paths still match the index (`{ git --no-pager … diff --stat --exit-code -- <paths> >&2 || …; } &&`). Capture it and hand it off **verbatim** — the explicit pathspec is the point (see [Why the pathspec](#why-the-pathspec-is-not-optional)), the first check is what stops a dead line before any hook runs (see [A line that is still waiting](#a-line-that-is-still-waiting)), and the second stops an edit nobody staged (see [A file someone else staged](#a-file-someone-else-staged-is-not-yours-to-edit)).
 
    For a multi-line message (subject + body), pipe via `-`:
 
        printf '%s\n\n%s\n' "[+] Add foo helper" "Why: needed for X." | git-guard-prepare -
 
-   **One line per finished block.** Don't prepare while the user is still discussing the work or busy with a step of their own — a letter to send, a reply to wait for. A line handed off stands: edits to the paths it names ride with it, new files go with the next commit. While it waits, the helper refuses to prepare again and deletes nothing (see [A line that is still waiting](#a-line-that-is-still-waiting)); then hand off nothing new.
+   **One line per finished block.** Don't prepare while the user is still discussing the work or busy with a step of their own — a letter to send, a reply to wait for. A line handed off stands: edits to the paths it names ride with it once you `git add` them, new files go with the next commit. While it waits, the helper refuses to prepare again and deletes nothing (see [A line that is still waiting](#a-line-that-is-still-waiting)); then hand off nothing new.
 
    **Superseding kills the earlier line — yours, not a neighbour's.** `git-guard-prepare --supersede "<subject>"` is for a line the user reported failed, or a block that changed in substance. It deletes the earlier line's message file, so that command fails instead of committing a message that has since been revised (see [Superseding a prepared line](#superseding-a-prepared-line)). The helper then reports `a prepared command for this branch was never run`; say so on hand-off: the user still has the dead line in their scrollback.
 
@@ -268,6 +268,23 @@ tool, the neighbour may be a session on the other machine.
   `git add`, right before `git-guard-prepare`** — not a review made earlier. What
   a neighbour slipped in between shows there and nowhere else.
 
+The gap after the prep is held by the line itself. The helper refuses to prepare
+while index and worktree differ on the paths, and the pathspec forms repeat that
+refusal when they run: a listed path whose worktree no longer matches the index
+is named, and nothing is committed —
+`git-guard: the paths above changed after they were staged; nothing committed`.
+Field case (the machines agent, 2026-10-24, its third): a parallel session appended to
+`CLAUDE.md` and the changelog a waiting line named; the commit took both and was
+pushed, and in that repository a push is the deploy.
+
+- **When the user reports that refusal, read `git diff -- <the named paths>`.**
+  Your own edit made after the prep → `git add` it; the same line then runs, with
+  the edit. Someone else's → it is not yours to stage: leave the line waiting
+  until the neighbour's commit lands, or supersede it without that path.
+- **It does not see a staged edit.** A neighbour's `git add` of a shared file
+  looks exactly like yours — the index holds content, not its author — and rides
+  in; the detector below reports it on the next prep.
+
 ### The detector: did the commit match what was prepared?
 
 Every prep records the paths it intended to commit. The **next** prep — and
@@ -371,8 +388,9 @@ again, deletes nothing, and says when and what was prepared. What that asks of
 you:
 
 - **Hand off nothing new.** Edits to the paths the waiting line names ride with
-  it — a pathspec commit takes them from the working tree. New files go with the
-  next commit.
+  it once staged — `git add` them; an unstaged one stops the line when it runs
+  (see [A file someone else staged](#a-file-someone-else-staged-is-not-yours-to-edit)).
+  New files go with the next commit.
 - **Supersede when the line cannot stand:** the user reported it failed
   (pre-commit refused it — nothing on disk tells the helper that, the
   conversation does), or the block changed in substance (the message is no
@@ -453,6 +471,7 @@ Commits handed off as anything other than `git commit -F <path> -- <paths>` invi
 
 - Trimming the `-- <paths>` tail off the emitted line, or re-typing it as a bare `git commit -F <path>`. That silently re-opens the defect the pathspec exists to close: a parallel session's staged files get swept into your commit.
 - Trimming the `[ -f <path> ] || { …; } &&` check off its front. Git runs pre-commit before it reads `-F`, so without the check a dead line runs the project's hooks on whatever its paths hold by then.
+- Trimming the `{ git --no-pager diff … --exit-code -- <paths> … } &&` check after it. A pathspec commit takes its paths from the working tree, so without the check an edit made after the prep, and staged by nobody, goes in under this line's message.
 
 Always emit `git commit -F <path> -- <paths>` exactly as `git-guard-prepare` printed it, presented as inline code (single backticks).
 

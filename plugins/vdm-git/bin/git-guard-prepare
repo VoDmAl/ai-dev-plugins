@@ -114,8 +114,8 @@
 #
 #   So a prep that finds a line of this scope still waiting refuses, deletes
 #   nothing, and says when and what was prepared. Edits to the paths that line
-#   names ride with it anyway — a pathspec commit takes them from the working
-#   tree. `--supersede` is the deliberate exception: the line failed when the
+#   names ride with it once staged — the line refuses an unstaged one when it
+#   runs (below). `--supersede` is the deliberate exception: the line failed when the
 #   user ran it (after a pre-commit refusal nothing on disk tells — the hook
 #   runs before git writes anything), or the block changed in substance. Which
 #   of those happened is in the conversation, not in the repository, so the
@@ -135,6 +135,26 @@
 #   is exact: the file exists exactly while the line is live. Not a HEAD check:
 #   a waiting line has to survive a neighbour's commit (above), and HEAD moves
 #   with every one of them.
+#
+# A path changed after it was staged
+#   The prep refuses when index and worktree differ on the listed paths, and
+#   then the line waits. A pathspec commit takes its paths from the worktree
+#   when it runs, so an edit made in that gap and never staged went in under
+#   this line's message. Field case (the machines agent, 2026-10-24, its third): a
+#   parallel session appended to CLAUDE.md and the changelog the line named; the
+#   commit came out 77+/18- instead of 56+/14- and was pushed, push being the
+#   deploy in that repo. The `.blobs` detector would have said so on the next
+#   prep, after the push.
+#
+#   So the pathspec forms repeat the same refusal where the drift happens: after
+#   the message-file check, `git diff --stat --exit-code -- <paths>` names
+#   any listed path whose worktree differs from the index, and nothing is
+#   committed. An edit meant for this commit rides with it once staged — the
+#   same line then runs. What it does not catch is an edit that was staged as
+#   well: a neighbour's `git add` of a shared file looks like one's own, since
+#   the index holds content, not its author; the detector reports that one on
+#   the next prep. The whole-index form commits the index, not the worktree,
+#   and has nothing to repeat.
 #
 # The short call
 #   A line waits while the conversation moves on, and a long one gets buried.
@@ -867,8 +887,9 @@ if [ "$supersede" -eq 0 ]; then
       echo
       echo "  A line is handed off once per finished block. While it waits, the user may still be"
       echo "  discussing the work, or busy with a step of their own — a letter to send, a reply to"
-      echo "  wait for. Edits to the paths it names ride with it (a pathspec commit takes them from"
-      echo "  the working tree); new files go with the next commit. So hand off nothing new."
+      echo "  wait for. Edits to the paths it names ride with it once staged (git add them: the line"
+      echo "  refuses an unstaged one when it runs); new files go with the next commit. So hand off"
+      echo "  nothing new."
       echo
       echo "  Prepare again only if the user reported that line failed, or the block changed in"
       echo "  substance — its message is no longer true, or a file joins it:"
@@ -1226,6 +1247,16 @@ msg_q=$(shell_quote "$path")
 # fails before the hooks" in the header.
 void_check="[ -f $msg_q ] || { echo 'git-guard: this line is void; ask for a new one' >&2; false; } &&"
 
+# The pathspec forms then repeat, at run time, the refusal this prep made on the
+# same paths: index and worktree must agree, or the commit takes an edit nobody
+# staged — see "A path changed after it was staged" in the header. The diff is
+# given its paths the way the commit is; `git diff` has no --pathspec-from-file,
+# so the long form feeds the same NUL-separated file through xargs. `--stat`,
+# not a list of names: the output is for the person who ran the line, and a
+# name list is what tests/git-path-lists.test.sh holds to -z, quoted otherwise.
+drift_msg="echo 'git-guard: the paths above changed after they were staged; nothing committed - ask for a check before running it again' >&2; false;"
+drift_diff="git --no-pager -c core.quotePath=false diff --stat --exit-code --"
+
 # The paths file is written on EVERY prep, not only for long lists: it is both
 # the pathspec source for the long form and the record the detector compares
 # the resulting commit against. A short prep that kept no record would be a
@@ -1280,12 +1311,14 @@ if [ "$whole_index" -eq 1 ]; then
 elif [ ${#paths[@]} -gt "$PATHSPEC_INLINE_MAX" ]; then
   # Long list: hand git a NUL-separated file instead of an unreadable line.
   # --pathspec-from-file requires git >= 2.25.
-  line="$void_check git commit -F $msg_q --pathspec-from-file=$(shell_quote "$paths_file") --pathspec-file-nul"
+  pf_q=$(shell_quote "$paths_file")
+  line="$void_check { xargs -0 $drift_diff < $pf_q >&2 || { $drift_msg }; } && git commit -F $msg_q --pathspec-from-file=$pf_q --pathspec-file-nul"
 else
-  line="$void_check git commit -F $msg_q --"
+  pathspec=""
   for p in "${paths[@]}"; do
-    line="$line $(shell_quote "$p")"
+    pathspec="$pathspec $(shell_quote "$p")"
   done
+  line="$void_check { $drift_diff$pathspec >&2 || { $drift_msg }; } && git commit -F $msg_q --$pathspec"
 fi
 
 # The short call: the same line in a script with a short name, `sh <script>`.
