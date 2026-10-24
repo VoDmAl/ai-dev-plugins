@@ -2,10 +2,10 @@
 title: "intercom: почтовая сессия проекта и правда о другой машине"
 slug: intercom-session-wake
 description: "Будить почтовую сессию сразу; sent/send говорят, где сессия, когда здесь её нет"
-status: in-progress
+status: done
 session-type: prd-work
 created: 2026-10-20
-last-updated: 2026-10-23
+last-updated: 2026-10-24
 ---
 
 # intercom: почтовая сессия проекта и правда о другой машине
@@ -335,7 +335,9 @@ note». `intercom_wake_choice` будит живую почтовую сесси
       на этой машине стоит, `vdx ai --help` знает `--intercom`, `--detach`, `--close --waiting <n>`
 - [x] Промежуточный итог echelon — 20.10, `echelon/intercom-session-wake-outcome-sent`: сделан второй
       пункт Ball (2.53.0, `92d09e3`), почтовая сессия в работе, мяч — у владельца (push) и у нас (пункты 1–5)
-- [ ] Outcome to `echelon`: intercom reply intercom-session-wake --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
+- [x] Outcome to `echelon`: intercom reply intercom-session-wake --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>" —
+      24.10, `echelon/intercom-session-wake-outcome`: побудка запуском отправителя и `close` (2.58.0), окно доверия
+      (2.59.1); мяч — у echelon (события канала по `VDX_INTERCOM=1`) и у владельца (ключ `intercom.mail-session`)
 
 ### Pending sidetracks
 
