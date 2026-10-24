@@ -10,6 +10,19 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ## 2026-10-24
 
+### 🐛 BUG — кристалл: due в круглых скобках Dataview — дата, а не битый маркер (vdm 2.60.2, vdm-git 2.23.1)
+
+**Что было.** Сосед по классу пункта 3 из `pending-vault-gaps`, найденный при первой записи того же кристалла:
+`crystal-lint --pre-hook` отклонил строку Next actions с формой `(due:: …)` как «malformed `due:` marker».
+`_VDM_DUE_RE` в `lib/crystal-path.sh` знал `(due: …)`, `[due:: …]` и `⏰ …`, а `_VDM_DUE_ANY_RE` ловил и форму
+Dataview в круглых скобках. С vdm-comms 0.36.0 реестр читает её как поле due, и одна и та же строка получила бы
+в двух списках два разных ответа: дата и битая дата.
+
+**Что сделано.** Четвёртая альтернатива в `_VDM_DUE_RE`, `(due:: YYYY-MM-DD)`. Её читают `list_overdue`,
+`audit_malformed_due` и `due_counts_batch`, а `(due:: later)` по-прежнему битый. Обе копии `crystal-path.sh`
+(vdm, vdm-git) идентичны. SKILL crystal-bud и crystal-grow: «читает все четыре записи». `suite.md`.
+`tests/crystal-path.test.sh`: 70 проверок; на библиотеке из HEAD краснеют 4 проверки due.
+
 ### ✨ FEATURE — vdm-comms pending: строки Obsidian Tasks, счёт по who, срок хука при старте (vdm-comms 0.36.0)
 
 **Что было.** Агент хранилища заметок 24.10 переводит все сроки на полную форму `pending` и прогнал 0.35.0 на

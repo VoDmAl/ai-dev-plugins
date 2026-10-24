@@ -763,9 +763,13 @@ _vdm_today() {
 # crystals carried `⏰ <date>`, some of them already past — written down, and
 # seen by nobody, because only `(due:)` was read. Reading what is written beats
 # flagging it: the promise needs a date someone sees, not a lesson in syntax.
-# `⏰ after: <event>` names no date and stays prose here.
+# `⏰ after: <event>` names no date and stays prose here. Dataview takes the
+# ledger's field in round brackets too, `(due:: YYYY-MM-DD)`, and Obsidian Tasks
+# may leave one there: the same field, not the crystal's form with a stray colon,
+# which this read as a broken date while the ledger read it as a date
+# (pending-vault-gaps, Sidetrack #1, 2026-10-24).
 _VDM_DUE_D='[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
-_VDM_DUE_RE='(\(due:[[:space:]]*'"$_VDM_DUE_D"'[[:space:]]*\)|\[due::[[:space:]]*'"$_VDM_DUE_D"'[[:space:]]*]|⏰[[:space:]]*'"$_VDM_DUE_D"')'
+_VDM_DUE_RE='(\(due:[[:space:]]*'"$_VDM_DUE_D"'[[:space:]]*\)|\(due::[[:space:]]*'"$_VDM_DUE_D"'[[:space:]]*\)|\[due::[[:space:]]*'"$_VDM_DUE_D"'[[:space:]]*]|⏰[[:space:]]*'"$_VDM_DUE_D"')'
 # A marker that claims a date: what the malformed check looks for. `⏰` is not
 # in it — in the ledger's form it also opens an event (`⏰ after:`), which is
 # not a broken date.

@@ -459,10 +459,12 @@ cat > "$LS" <<'FIXTURE'
 - [ ] an event names no date ⏰ after: the transcript arrives
 - [ ] not yet late ⏰ 2026-12-31
 - [ ] a broken full-form date [due:: soon]
+- [ ] Dataview's round brackets are the same field (due:: 2026-09-05)
+- [ ] a broken one in round brackets (due:: later)
 - [x] done, its date owes nothing ⏰ 2026-01-01
 FIXTURE
-expect_eq "RED: \`⏰ <date>\` and \`[due:: <date>]\` are read — four overdue" \
-  "4" "$(lib "count_overdue '$LS' 2026-09-30")"
+expect_eq "RED: \`⏰ <date>\`, \`[due:: <date>]\` and \`(due:: <date>)\` are read — five overdue" \
+  "5" "$(lib "count_overdue '$LS' 2026-09-30")"
 expect_eq "RED: …the \`⏰\` date is the one returned" \
   "2026-09-01" "$(lib "list_overdue '$LS' 2026-09-30" | cut -f1 | grep -x 2026-09-01)"
 expect_eq "RED: …and the marker leaves the text, wherever it stood" \
@@ -471,10 +473,18 @@ expect_eq "RED: …the full-form date is read among the other fields" \
   "2026-09-02" "$(lib "list_overdue '$LS' 2026-09-30" | cut -f1 | grep -x 2026-09-02)"
 expect_eq "RED: \`[due:: soon]\` is a broken date, as \`(due: soon)\` is" \
   "1" "$(lib "audit_malformed_due '$LS'" | grep -c 'due:: soon')"
+# pending-vault-gaps Sidetrack #1 (2026-10-24): the ledger reads Dataview's round
+# brackets as its due field, and the crystal called the same line broken.
+expect_eq "RED: \`(due:: <date>)\` is a date, not a broken marker" \
+  "0" "$(lib "audit_malformed_due '$LS'" | grep -c 'round brackets are the same field')"
+expect_eq "RED: …and is read as overdue" \
+  "2026-09-05" "$(lib "list_overdue '$LS' 2026-09-30" | cut -f1 | grep -x 2026-09-05)"
+expect_eq "…while \`(due:: later)\` stays broken (control)" \
+  "1" "$(lib "audit_malformed_due '$LS'" | grep -c 'due:: later')"
 expect_eq "GREEN: \`⏰ after:\` is an event, not a broken date" \
   "0" "$(lib "audit_malformed_due '$LS'" | grep -c 'after:')"
-expect_eq "GREEN: the batch reader counts the same — 4 overdue, 1 broken" \
-  "$LS	4	1" "$(printf '%s\n' "$LS" | lib "due_counts_batch 2026-09-30")"
+expect_eq "GREEN: the batch reader counts the same — 5 overdue, 2 broken" \
+  "$LS	5	2" "$(printf '%s\n' "$LS" | lib "due_counts_batch 2026-09-30")"
 
 printf '\n=== root resolution: found once, and found at all ===\n'
 # Two defects found during the 2.24.0 acceptance run, both of the same shape as
