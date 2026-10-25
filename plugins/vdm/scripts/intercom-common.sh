@@ -1171,14 +1171,30 @@ _intercom_owners() {
 # because a session in a sub-directory belongs to the repo around it (measured:
 # a live session sat in hq/tracks/<track>), while a separate repo nested inside
 # another is its own agent.
+#
+# Two agents can hold the same path: a project folder moved away leaves its old
+# path in its entry, and another project placed there later registers it too
+# (vdx, 2026-10-24, before the owner moves the projects' folders). Nothing is
+# deleted from either entry — the registry is shared between machines, and a
+# path stale here may be live on the other. The folder is asked instead, in the
+# tie only: whose identity it resolves to now.
 _intercom_owner_of() {
-  local rcwd="$1" best="" best_len=0 p who
+  local rcwd="$1" best="" best_len=0 best_p="" tied="" p who here
   while IFS=$'\t' read -r p who; do
     [ -n "$p" ] || continue
     case "$rcwd/" in
-      "$p/"*) [ "${#p}" -gt "$best_len" ] && { best="$who"; best_len="${#p}"; } ;;
+      "$p/"*)
+        if [ "${#p}" -gt "$best_len" ]; then
+          best="$who"; best_len="${#p}"; best_p="$p"; tied=""
+        elif [ "${#p}" -eq "$best_len" ] && [ "$who" != "$best" ]; then
+          tied="$tied $who"
+        fi ;;
     esac
   done <<<"$2"
+  if [ -n "$tied" ] && [ -d "$best_p" ]; then
+    here="$(cd "$best_p" 2>/dev/null && intercom_identity 2>/dev/null)"
+    case " $tied " in *" $here "*) best="$here" ;; esac
+  fi
   printf '%s' "$best"
 }
 

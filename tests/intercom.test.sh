@@ -1500,6 +1500,22 @@ out="$(arrive arr-sid-4)"
 eq "intercom.arrival-line: false turns it off" "$out" ""
 rm -rf "$TMP/hop-r/.claude" "$SESS"/arr*.json "$RI"
 
+echo "-- a path two agents hold: the folder says whose it is now"
+# vdx, 2026-10-24, before the owner moves the projects' folders: a moved
+# project's old path stays in its entry, and a project placed there later
+# registers the same path. The longest match tied, and the first entry won.
+mkrepo "$TMP/reused" "git@example.com:acme/new-proj.git"
+RU="$(cd "$TMP/reused" && pwd -P)"
+own() { ( . "$(dirname "$IC")/intercom-common.sh" 2>/dev/null; _intercom_owner_of "$RU/sub" "$1" ) ; }
+eq "RED: the tie goes to the agent the folder resolves to" "$(own "$RU	old-proj
+$RU	new-proj")" "new-proj"
+eq "…in either order" "$(own "$RU	new-proj
+$RU	old-proj")" "new-proj"
+eq "an old path nobody else claims still names its agent (control)" "$(own "$RU	old-proj")" "old-proj"
+eq "a tie the folder resolves to neither stays with the first, as before" "$(own "$RU	old-proj
+$RU	other-proj")" "old-proj"
+rm -rf "$TMP/reused"
+
 echo "-- taken: a session that takes a letter marks it (wake-one-machine DL #3)"
 # Two sessions that each find the same letter by themselves both start on it.
 # `take` writes who took it into the envelope; the store carries it to the

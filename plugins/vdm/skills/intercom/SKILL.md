@@ -174,7 +174,7 @@ scripts, readable by every sender:
 | `names` | **agent, from the user's words** | how the user refers to this project: `"vdm"`, `"intercom"`, `"the plugins repo"` … |
 | `description` | agent | one line: what the repo is / which agent lives here — also searched when a name does not match |
 | `remote`, `remotes` | script | primary remote + every remote confirmed as the same project |
-| `paths` | script | every local checkout seen |
+| `paths` | script | every local checkout seen. A folder moved away leaves its old path here; nothing removes it, because the registry is shared between machines. Where two agents hold one path, the folder itself says whose it is now (its identity, resolved as above) |
 | `roles` | **agent, about itself** (or `roles add --for`) | the role it holds; the directory keeps one — see § Roles |
 | `registered`, `updated` | script | timestamps; `updated` moves only when the entry changes |
 
