@@ -168,7 +168,7 @@ fi
 if intercom_mail_session; then
   if [ "$pending" -gt 0 ]; then inbox_now="${pending} letter(s) are waiting now."; else inbox_now="The inbox is empty now."; fi
   msg="${msg}
-📮 Mail session of \`${id}\`: the inbox is your work, not a reminder — nobody sits at this session, and the wakes for this project come here. ${inbox_now} Now and at every wake: /vdm:intercom check, then each letter in turn — take it, read it, act, and close it: reply for a brief, pickup for a note.
+📮 Mail session of \`${id}\`: the inbox is your work, not a reminder — nobody sits at this session, and the wakes for this project come here. ${inbox_now} Now and at every wake: /vdm:intercom check, then each letter in turn — take it, read it, act, and close it: reply for a brief, pickup for a note; one that waits for something outside the inbox goes back with release --note \"<what it waits for>\".
   • Here you answer, check and do small things. Work that changes the code is left for the owner's main session as a crystal (/vdm:crystal-grow, or /vdm:crystal-bud on an active one): the working tree is shared with it, and an edit here rides into its commit.
   • A question for the owner is not asked in this pane — nobody reads it. Put one line on their list at HQ (the access layer's \`hq <project root> --obligations\` names it; the access layer: /vdm:intercom role access-layer) and take the next letter; do not wait for the answer.
   • A chain of letters between mail sessions stops after ${INTERCOM_CHAIN_LIMIT} links in a row; send refuses the next one, and it goes to the owner the same way.

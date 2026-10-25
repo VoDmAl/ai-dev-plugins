@@ -2,7 +2,7 @@
 title: "vdm-comms pending: что мешает хранилищу заметок опереться на него целиком"
 slug: pending-vault-gaps
 description: "Шесть пунктов агента хранилища заметок к pending 0.35.0: статусы Tasks, due::, счёт по who, таймаут"
-status: in-progress
+status: done
 session-type: prd-work
 created: 2026-10-24
 last-updated: 2026-10-24
@@ -164,7 +164,8 @@ marker». На рабочем дереве все 24 проверки зелён
 - [x] П.5: хук говорит, когда медленный или прерван; SKILL предупреждает про широкий glob
 - [x] П.6: SKILL — «не вложенной, не в callout» рядом с «Not in a table»
 - [x] Версия vdm-comms, marketplace, changelog, README, `suite.md` по drift — vdm-comms 0.36.0
-- [ ] Outcome to the vault agent: intercom reply vault-pending-gaps-dataview --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
+- [x] Outcome to the vault agent: intercom reply vault-pending-gaps-dataview — ушёл 24.10 как
+      `vault-pending-gaps-dataview-outcome`; мяч у агента хранилища: снять обходы после обновления (после push)
 
 ## References
 

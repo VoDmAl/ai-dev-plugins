@@ -1786,22 +1786,48 @@ intercom_taken_elsewhere() {
   printf '%s' "$mark"
 }
 
-# intercom_take <letter> — write this session's mark into the envelope, in
-# place of any earlier one. The caller has already decided it may.
-intercom_take() {
-  local f="$1" tmp mark
+# _intercom_mark <letter> <taken value> <deferred value> — rewrite the two
+# marks of the envelope: each key dropped, then written again when its value is
+# not empty. One writer for take and release, so neither can leave the other's
+# key behind half-written.
+_intercom_mark() {
+  local f="$1" taken="$2" deferred="$3" tmp
   [ -f "$f" ] || return 1
-  mark="$(_intercom_taker) $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   tmp="$(mktemp 2>/dev/null)" || return 1
-  awk -v mark="$mark" '
+  awk -v taken="$taken" -v deferred="$deferred" '
     NR == 1 && $0 == "---" { infm = 1; print; next }
-    infm && $0 == "---"    { print "taken: " mark; infm = 0; print; next }
-    infm && /^taken:/      { next }
+    infm && $0 == "---"    {
+      if (taken != "")    print "taken: " taken
+      if (deferred != "") print "deferred: " deferred
+      infm = 0; print; next
+    }
+    infm && /^(taken|deferred):/ { next }
     { print }
-  ' "$f" > "$tmp" 2>/dev/null && grep -q '^taken: ' "$tmp" \
+  ' "$f" > "$tmp" 2>/dev/null && head -1 "$tmp" | grep -q '^---$' \
     && cat "$tmp" > "$f" && rm -f "$tmp" && return 0
   rm -f "$tmp"
   return 1
+}
+
+# intercom_take <letter> — write this session's mark into the envelope, in
+# place of any earlier one. The caller has already decided it may. A letter
+# taken again is in work again, so a `deferred:` note left by a release goes.
+intercom_take() {
+  [ -f "$1" ] || return 1
+  _intercom_mark "$1" "$(_intercom_taker) $(date -u +%Y-%m-%dT%H:%M:%SZ)" "" \
+    && grep -q '^taken: ' "$1"
+}
+
+# intercom_release <letter> [note] — drop the taken mark; with a note, write
+# `deferred: <time> <note>` in its place: the letter was taken, looked at, and
+# waits for something outside the inbox (a demo project's agent, 2026-10-24: a letter asking
+# for a change only after another agent's move, which had not happened yet; the
+# mark was removed by hand with `sed`, past the scripts). The note is one line.
+intercom_release() {
+  local note
+  note="$(printf '%s' "${2:-}" | tr '\n\r\t' '   ' | sed 's/  */ /g; s/^ //; s/ $//')"
+  [ -z "$note" ] || note="$(date -u +%Y-%m-%dT%H:%M:%SZ) $note"
+  _intercom_mark "$1" "" "$note"
 }
 
 # _intercom_today — today's date, YYYY-MM-DD (UTC). VDM_INTERCOM_TODAY pins it

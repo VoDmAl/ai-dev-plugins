@@ -1261,6 +1261,7 @@ says "RED: …to send a question for the owner to their list at HQ" "$out" "Put 
 says "RED: …and that a chain stops" "$out" "stops after 3 links in a row"
 says "RED: …to leave a note the project left for itself" "$out" "is a note for the owner's next session, not mail: leave it untaken"
 says "RED: …and to end itself with close once the inbox is handled" "$out" "end this session with /vdm:intercom close"
+says "RED: …and to release with a note a letter that waits" "$out" "waits for something outside the inbox goes back with release --note"
 says_not "…with no 'pending → check' reminder line of its own" "$out" "pending message(s) in your inbox"
 out="$( cd "$TMP/hop-b" && printf '{}' | VDX_INTERCOM=1 VDX_FOCUSED=1 bash "$HOOK" )"
 says_not "a focused session started for mail too is focused" "$out" "📮"
@@ -1371,7 +1372,7 @@ echo "-- a mail session ends itself with close (intercom-session-wake, DL #13)"
 # owner, read from `taken:`. A letter nobody took is a letter nobody handled.
 mkrepo "$TMP/mail-x" "git@example.com:acme/mail-x.git"
 ( cd "$TMP/mail-x" && bash "$IC" register --name "mail-x" --describe "a project with a mail session" >/dev/null 2>&1 )
-for s in mx-1 mx-2 mx-3; do ( cd "$TMP/hop-a" && bash "$IC" send mail-x "$s" --body "$B/live.md" >/dev/null 2>&1 ); done
+for s in mx-1 mx-2 mx-3 mx-4; do ( cd "$TMP/hop-a" && bash "$IC" send mail-x "$s" --body "$B/live.md" >/dev/null 2>&1 ); done
 ( cd "$TMP/mail-x" && bash "$IC" send mail-x mx-note --body "$B/live.md" >/dev/null 2>&1 )
 mclose() { ( cd "$TMP/mail-x" && PATH="$VX:$PATH" bash "$IC" close 2>&1 ); }
 : > "$TMP/vdx.log"
@@ -1383,11 +1384,13 @@ eq "…a focused one is not a mail session either" "$rc" "1"
 ( cd "$TMP/mail-x" && VDX_INTERCOM=1 bash "$IC" take mx-1 >/dev/null 2>&1 )
 awk 'NR == 1 { print; print "taken: m-other/mail-x-mail 2026-10-04T10:00:00Z"; next } { print }' \
   "$VDM_INTERCOM_ROOT/mail-x/mx-2.md" > "$TMP/mx-2" && mv "$TMP/mx-2" "$VDM_INTERCOM_ROOT/mail-x/mx-2.md"
+( cd "$TMP/mail-x" && VDX_INTERCOM=1 bash "$IC" release mx-4 --note "waits for the deploy" >/dev/null 2>&1 )
 out="$(VDX_INTERCOM=1 mclose)"; rc=$?
 eq "a letter nobody took keeps the session open" "$rc" "1"
 says "RED: …and is named" "$out" "mx-3 — from hop-a"
 says_not "…a note the project left for itself is not one of them" "$out" "mx-note"
 says_not "…nor a letter taken by a session elsewhere" "$out" "mx-2"
+says_not "RED: …nor a letter released with a note — it waits, and says for what" "$out" "mx-4"
 [ ! -s "$TMP/vdx.log" ] && ok "…and vdx is not called" || bad "a refused close called vdx" "$(cat "$TMP/vdx.log")"
 ( cd "$TMP/mail-x" && VDX_INTERCOM=1 bash "$IC" pickup mx-3 >/dev/null 2>&1 )
 out="$(VDX_INTERCOM=1 mclose)"; rc=$?
@@ -1533,6 +1536,37 @@ out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-22 bash "$IC" pickup
 eq "RED: --force takes over a letter whose session is gone" "$rc" "0"
 out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-22 bash "$IC" pickup one-stale --grow 2>&1 )"
 says "RED: pickup --grow marks the letter taken" "$(grep '^taken:' "$VDM_INTERCOM_ROOT/hop-b/one-stale.md")" "/hop-b-22 "
+
+# release — the reverse of take (a demo project's agent, 2026-10-24): a letter taken, looked at
+# and found waiting for another agent's move. With no way back, the mark of a
+# closed session stayed on it and the next session was refused; it was removed
+# by hand with `sed`, past the scripts.
+OS="$VDM_INTERCOM_ROOT/hop-b/one-stale.md"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-11 bash "$IC" release one-stale --note "x" 2>&1 )"; rc=$?
+eq "RED: another session cannot release a letter it did not take" "$rc" "1"
+says "…and is told whose it is" "$out" "/hop-b-22"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-22 bash "$IC" release one-stale --note "  " 2>&1 )"; rc=$?
+eq "an empty --note is refused" "$rc" "1"
+grep -q '^taken:' "$OS" && ok "…and changes nothing" || bad "…and changes nothing" "the mark is gone"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-22 bash "$IC" release one-stale --note "waits until the
+directory moves to the new host" 2>&1 )"; rc=$?
+eq "RED: the session that took it releases it, with a note" "$rc" "0"
+grep -q '^taken:' "$OS" && bad "RED: …the mark is gone" "$(grep '^taken:' "$OS")" || ok "RED: …the mark is gone"
+says "RED: …the note is written, on one line" "$(grep '^deferred:' "$OS")" "Z waits until the directory moves to the new host"
+out="$( cd "$TMP/hop-b" && bash "$IC" check 2>&1 )"
+says "RED: check shows what the letter waits for" "$out" "— waits until the directory moves to the new host"
+says "…and how to pick it up again" "$out" "when the wait is over: /vdm:intercom take one-stale"
+says_not "…not as a letter nobody looked at" "$out" "take before work: /vdm:intercom take one-stale"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-11 bash "$IC" take one-stale 2>&1 )"; rc=$?
+eq "RED: any session takes a deferred letter" "$rc" "0"
+grep -q '^deferred:' "$OS" && bad "…and the note goes with it" "$(grep '^deferred:' "$OS")" || ok "…and the note goes with it"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-11 bash "$IC" release one-stale 2>&1 )"; rc=$?
+eq "without a note, release gives the letter back" "$rc" "0"
+grep -q '^taken:\|^deferred:' "$OS" && bad "…with no mark at all" "$(grep '^taken:\|^deferred:' "$OS")" || ok "…with no mark at all"
+says "…and check offers take for it again" "$( cd "$TMP/hop-b" && bash "$IC" check 2>&1 )" "take before work: /vdm:intercom take one-stale"
+out="$( cd "$TMP/hop-b" && bash "$IC" release one-stale 2>&1 )"; rc=$?
+eq "a letter nobody took has nothing to release" "$rc" "0"
+says "…and says so" "$out" "is not taken — nothing to release"
 rm -rf "$PROJ"; rm -f "$VDM_INTERCOM_ROOT"/hop-b/one-*.md
 
 echo "-- session start, the sender's side"

@@ -357,7 +357,8 @@ re-derive its logic:
 | `send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--body FILE] [--to ID] [--first-contact]` | Scaffold an envelope message addressed to `<to>` (identity, alias or name) and print its path. Unknown / ambiguous target = **hard stop** with suggestions and the next command. `--to <identity>` delivers there and records `<to>` as that agent's name (the resend after the user said whom they meant). `--reply-to <ref>` records which letter this one continues (§ The relay form). `--body <file>` makes the file the letter's body, byte for byte (§ Sending a message). `--first-contact` creates a fresh inbox for a recipient that has never registered. |
 | `chain <slug>` | The relay chain behind a letter — every link it continues, and where each one lives right now. |
 | `claim <inbox> [--force]` | Move an unclaimed inbox (no registered agent) whose name matches one of your names/aliases into your own inbox; `to:` is rewritten to your identity, `to_input` stays as the trace, the name is recorded. `--force` for an orphan that matches none of your names. |
-| `take <slug> [--force]` | Mark a letter in your inbox as taken by this session before working on it (§ Receiving). Refuses a letter taken by another session unless `--force`. |
+| `take <slug> [--force]` | Mark a letter in your inbox as taken by this session before working on it (§ Receiving). Refuses a letter taken by another session unless `--force`. A `deferred:` note left by `release` goes with the new mark. |
+| `release <slug> [--note "<what it waits for>"] [--force]` | The reverse of `take` (§ Receiving). Drops this session's mark; with `--note`, writes `deferred: <time> <note>` in its place, which `check` shows beside the letter and `close` counts as handled. Refuses a letter taken by another session unless `--force`, and an empty note. |
 | `pickup <slug> [--grow] [--force]` | Archive a message to `_done/` (or, with `--grow`, hand it to `/vdm:crystal-grow` — the letter stays in the inbox, marked taken). Refuses a letter taken by another session unless `--force`. When the sender has a live session on this machine, prints the receipt to send it (§ Delivery is not receipt). For a brief whose outcome has not gone back yet it prints the `reply` that closes it; with `--grow` it prints that as a Next action for the crystal (§ Closing a brief with its outcome). |
 | `reply <letter> (--done "<what>" [--link <url>]… --ball "<who — what ⏰ date>" \| --body FILE) [--title T] [--slug S] [--force]` | Close a letter **you received** with its outcome. It goes to the letter's sender as a `reply-to` link; recipient and link come from the envelope. Works on a letter in the inbox (archived in the same step; refused while another session has it taken, unless `--force`) or in `_done/`. `--done` and `--ball` repeat; `--ball` is required — "nobody — closed" is an answer (§ Closing a brief with its outcome). |
 | `sent` (aka `outbox`) | Every letter **you** wrote that still lies unpicked in someone's inbox, oldest first, with its age and whether the recipient has a live session to wake now — or a mail session to start (§ Mail sessions). |
@@ -499,6 +500,15 @@ pending messages:
    elsewhere alone too, but by then the work is done twice (field case, echelon,
    2026-10-21: two works, six Syncthing conflicts). `--force` takes over from a
    session that is gone. A note you only archive needs no mark.
+   A letter you took that waits for something outside the inbox — another
+   agent's move, a deploy, the user's word — goes back with its reason:
+   `intercom.sh release <slug> --note "<what it waits for>"`. The mark goes,
+   `deferred: <time> <note>` takes its place, `check` shows the note and the
+   `take` that picks it up again, and `close` counts it as handled. Without
+   `--note` the letter is simply given back. Field case (a demo project's agent, 2026-10-24): a
+   letter asked for a change only after another agent's move, which had not
+   happened; with no way back the mark of a closed session would have stayed on
+   it and refused the next one, and it was removed by hand with `sed`.
    A note to yourself is read against the clock: `pickup` prints the local time
    beside it. A move the note binds to a later time or event («с утра», «после
    сбора») is named deferred, not proposed — the note may have been written for
@@ -750,7 +760,8 @@ session started with both is focused.
   ago"*.
 - **The inbox is the work.** Its session-start line says so instead of the
   pending count: check now and at every wake, then each letter in turn — take,
-  read, act, close with `reply` or `pickup`.
+  read, act, close with `reply` or `pickup`, or `release --note` one that waits
+  for something outside the inbox.
 - **What stays out of it.** Work that changes the code is left for the user's
   main session as a crystal (`/vdm:crystal-grow`, or `/vdm:crystal-bud` on an
   active one): the two sessions share one working tree, and an edit here rides
@@ -796,7 +807,7 @@ session started with both is focused.
 - **It ends itself with `close`.** Once the inbox is handled, the mail session
   says what was done and runs `/vdm:intercom close`. That is refused outside a
   mail session, and while a letter nobody took is in the inbox (one may have
-  come in after the last check). Otherwise it runs `vdx ai --close --waiting
+  come in after the last check); one released with a note is handled. Otherwise it runs `vdx ai --close --waiting
   <n>`, n being the letters in the inbox it took and left for the user, read
   from `taken:` and kept nowhere. vdx marks the project's other tmux sessions on
   this machine with that n and closes the mail session's pane; the turn ends on

@@ -18,6 +18,8 @@
 #   intercom send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--body FILE] [--to ID] [--first-contact]
 #   intercom claim <inbox> [--force]      move an unclaimed inbox addressed to one of your names home
 #   intercom take <slug> [--force]        mark a letter taken by this session before working on it
+#   intercom release <slug> [--note T] [--force]
+#                                         give a taken letter back; with --note it waits, and check says for what
 #   intercom pickup <slug> [--grow] [--force]
 #                                         archive a message (or promote with --grow)
 #   intercom reply <letter> (--done T [--link U]... --ball T | --body F)
@@ -414,7 +416,7 @@ cmd_check() {
   fi
   _ic_print_unclaimed "$id" "   "
   printf '📬 intercom: %s pending message(s) for `%s`\n   inbox: %s\n\n' "$n" "$id" "$(intercom_inbox_dir "$id")"
-  local f from created slug title prev taken
+  local f from created slug title prev taken deferred
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     from="$(intercom_fm_field "$f" from)"
@@ -426,8 +428,14 @@ cmd_check() {
     printf '  • %s\n    from: %s   created: %s\n    file: %s\n' \
       "$title" "${from:-?}" "${created:-?}" "$f"
     taken="$(intercom_fm_field "$f" taken)"
+    deferred="$(intercom_fm_field "$f" deferred)"
+    if [ -n "$deferred" ]; then
+      printf '    deferred at %s — %s\n' "${deferred%% *}" "${deferred#* }"
+    fi
     if [ -n "$taken" ]; then
       printf '    taken by %s at %s — leave it to that session\n' "${taken%% *}" "${taken#* }"
+    elif [ -n "$deferred" ]; then
+      printf '    when the wait is over: /vdm:intercom take %s\n' "$(basename "$f" .md)"
     else
       # The mark from the other machine arrives about a minute after it is set,
       # so this list can be older than the letter's state. Field case (echelon,
@@ -1095,13 +1103,17 @@ cmd_close() {
       [ "${taken%% *}" != "$me" ] || n=$((n + 1))
       continue
     fi
+    # Released with a note: handled for now, it waits for something outside
+    # the inbox, and the note says what.
+    [ -z "$(intercom_fm_field "$f" deferred)" ] || continue
     from="$(intercom_fm_field "$f" from)"
     [ "$from" != "$id" ] || continue
     open="${open}     • $(basename "$f" .md) — from ${from:-?}"$'\n'
   done < <(intercom_inbox_list "$id")
   if [ -n "$open" ]; then
     printf 'intercom: ✗ not closing — letters nobody has taken are in the inbox:\n%s' "$open" >&2
-    printf '   Handle each (take it, then reply or pickup), or take it and leave it for the owner; then close again.\n' >&2
+    printf '   Handle each (take it, then reply or pickup), take it and leave it for the owner, or release it\n' >&2
+    printf '   with --note "<what it waits for>"; then close again.\n' >&2
     exit 1
   fi
   command -v vdx >/dev/null 2>&1 || _ic_die "close: no vdx on PATH — the mail session is vdx's to close."
@@ -1254,6 +1266,45 @@ cmd_take() {
   [ "$force" -eq 1 ] || _ic_refuse_if_taken "take" "$msg" "$slug"
   intercom_take "$msg" || _ic_die "take: could not write the mark into $msg"
   printf '✋ intercom: %s taken by %s — work on it, then reply or pickup.\n' "$slug" "$(intercom_fm_field "$msg" taken)"
+}
+
+# `release <slug> [--note "<what it waits for>"]` — the reverse of take. A
+# letter taken, looked at, and found waiting for something outside the inbox
+# goes back with its reason, so the next session reads why instead of a refusal
+# (`taken by another session`) for a session long gone. Without a note it is
+# simply given back, and counts as nobody's again.
+cmd_release() {
+  local slug="" force=0 note="" note_set=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --force) force=1; shift ;;
+      --note)  [ $# -ge 2 ] || _ic_die "release: --note needs a value. Usage: intercom release <slug> [--note \"<what it waits for>\"] [--force]"
+               note="$2"; note_set=1; shift 2 ;;
+      -*)      _ic_die "release: unknown argument '$1'. Usage: intercom release <slug> [--note \"<what it waits for>\"] [--force]" ;;
+      *)       [ -z "$slug" ] && slug="$1"; shift ;;
+    esac
+  done
+  [ -n "$slug" ] || _ic_die "release: missing <slug>. Usage: intercom release <slug> [--note \"<what it waits for>\"] [--force]"
+  [ "$note_set" -eq 0 ] || [ -n "$(printf '%s' "$note" | tr -d '[:space:]')" ] \
+    || _ic_die "release: an empty --note says nothing to the next session — name what the letter waits for, or leave --note out."
+  slug="$(_ic_sanitize_slug "${slug%.md}")"
+  local id msg taken
+  id="$(intercom_identity)"
+  msg="$(intercom_inbox_dir "$id")/$slug.md"
+  [ -f "$msg" ] || _ic_die "release: no pending message '$slug' in your inbox ($(intercom_inbox_dir "$id"))."
+  [ "$force" -eq 1 ] || _ic_refuse_if_taken "release" "$msg" "$slug"
+  taken="$(intercom_fm_field "$msg" taken)"
+  if [ -z "$taken" ] && [ "$note_set" -eq 0 ]; then
+    printf 'intercom: %s is not taken — nothing to release.\n' "$slug"
+    return 0
+  fi
+  intercom_release "$msg" "$note" || _ic_die "release: could not rewrite the marks in $msg"
+  if [ "$note_set" -eq 1 ]; then
+    printf '⏸  intercom: %s released, deferred — %s\n' "$slug" "${note}"
+    printf '    check shows the note beside it; take it again when the wait is over.\n'
+  else
+    printf '↩  intercom: %s released — nobody'"'"'s again; the next session takes it.\n' "$slug"
+  fi
 }
 
 cmd_pickup() {
@@ -1550,6 +1601,7 @@ case "$sub" in
   claim)                      cmd_claim "$@" ;;
   pickup)                     cmd_pickup "$@" ;;
   take)                       cmd_take "$@" ;;
+  release)                    cmd_release "$@" ;;
   reply)                      cmd_reply "$@" ;;
   sent|outbox)                cmd_sent "$@" ;;
   chain)                      cmd_chain "$@" ;;
@@ -1591,6 +1643,9 @@ intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
                                         your names into your own inbox
   intercom take <slug> [--force]        mark a letter taken by this session before working on it;
                                         pickup, reply and the wake leave a letter taken elsewhere alone
+  intercom release <slug> [--note "<what it waits for>"] [--force]
+                                        give a taken letter back; with --note it is deferred: check
+                                        shows the note, and close counts it as handled
   intercom pickup <slug> [--grow] [--force]
                                         archive a message (or promote with --grow, which marks it taken)
   intercom reply <letter> (--done "<what>" [--link <url>]... --ball "<who — what ⏰ date>" | --body FILE)
