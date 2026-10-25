@@ -510,9 +510,15 @@ pending messages:
    happened; with no way back the mark of a closed session would have stayed on
    it and refused the next one, and it was removed by hand with `sed`.
    A note to yourself is read against the clock: `pickup` prints the local time
-   beside it. A move the note binds to a later time or event («с утра», «после
-   сбора») is named deferred, not proposed — the note may have been written for
-   the morning and picked up the same evening (field case, 2026-10-21).
+   beside it. A move the note binds to a later time («с утра», «завтра») is named
+   deferred, not proposed — the note may have been written for the morning and
+   picked up the same evening (field case, 2026-10-21). Two things are not a
+   later time. A due date (`due:`, «по сроку», ⏰) is a deadline, not a start:
+   the item can be done now. A move bound to an event («после сбора») is due once
+   the event happened — check whether it has before calling it deferred. Field
+   case (echelon, 2026-10-24): every dated item of a note was read as deferred
+   and the owner was told «сегодня ничего»; one waited on an event two hours
+   past, the others carried `due:`.
 4. Then either:
    - **Act now** → do the work, then `intercom.sh reply <slug> --done … --ball …`:
      the outcome goes to the sender and the letter is archived in the same step.

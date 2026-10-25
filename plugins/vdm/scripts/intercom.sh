@@ -1357,10 +1357,17 @@ cmd_pickup() {
   # note "first — the sheet for 22.10" was written at 22:11 for the morning,
   # picked up at 22:15, and the sheet for tomorrow was proposed on the evening
   # before. The local time is printed here, at the moment the note is taken, so
-  # a move bound to a later time or event is named deferred instead.
+  # a move bound to a later time is named deferred instead.
+  #
+  # Only a later time. A due date is a deadline, and a move bound to an event is
+  # due once the event happened: on 2026-10-24 a note read with this line at
+  # 18:38 had items "by 25.10" and "by 26.10"; all were called deferred and the
+  # owner was told "nothing today" — one was bound to an event that had happened
+  # at 16:35, the others carried `due:` and could be done at once (echelon).
   if [ -n "$sender" ] && [ "$sender" = "$id" ]; then
-    printf '    🕐 local time: %s — a move this note binds to a later time or event is deferred, not proposed.\n' \
+    printf '    🕐 local time: %s — a move this note binds to a later time («с утра», «завтра») is deferred, not proposed;\n' \
       "$(date '+%Y-%m-%d %H:%M %Z')"
+    printf '       a due date is a deadline, not a start; a move bound to an event — check whether it has happened.\n'
   fi
 
   # The receipt: the sender otherwise learns "received" only by auditing the

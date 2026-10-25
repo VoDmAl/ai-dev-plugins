@@ -1668,6 +1668,9 @@ eq "no path in the store is made of output" "0" "$junk"
 out="$( cd "$TMP/hop-a" && bash "$IC" pickup clock-note 2>&1 )"
 says "RED: pickup of a note to yourself prints the local time" "$out" "🕐 local time: $(date '+%Y-%m-%d')"
 says "…and names a move bound to a later time deferred" "$out" "deferred, not proposed"
+# echelon, 2026-10-24: every dated item read as deferred, "nothing today".
+says "RED: …but a due date as a deadline, not a start" "$out" "a due date is a deadline, not a start"
+says "RED: …and an event as something to check" "$out" "a move bound to an event — check whether it has happened"
 ( cd "$TMP/hop-b" && bash "$IC" send hop-a clock-letter --title "From b" --body "$B/ask.md" >/dev/null 2>&1 )
 out="$( cd "$TMP/hop-a" && bash "$IC" pickup clock-letter 2>&1 )"
 says_not "…a letter from another agent carries no clock line" "$out" "local time:"
