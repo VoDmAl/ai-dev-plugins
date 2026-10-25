@@ -2,8 +2,11 @@
 # crystal-capture-reminder.sh — UserPromptSubmit hook. In-flight discipline:
 # when an active workitem exists, remind the assistant to capture decisions
 # to `## Decision Log` and observations as sidetracks. Counterpart to the
-# terminal-discipline hooks (crystal-hydrate at start, crystal-stop-reminder
-# at end, crystal-completion-guard at done-transition).
+# terminal-discipline hooks (crystal-hydrate at start, crystal-completion-guard
+# at done-transition). It is the only one that asks the assistant this in the
+# middle of a session: crystal-stop-reminder at the end of a turn speaks
+# through systemMessage, which the user sees and the model does not
+# (late-grow DL #5, #7).
 #
 # Smart by design — does not fire on every prompt. Mechanical reminders cost
 # ~500 chars × N turns of context budget for zero marginal value once the

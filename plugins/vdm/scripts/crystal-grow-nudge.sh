@@ -18,6 +18,13 @@
 # already had active crystals: "no active crystal" would have caught none of
 # them (late-grow DL #3, #5).
 #
+# Four days in the field (late-grow DL #6): 22 nudges in 91 sessions, two of
+# which sent decisions into a live crystal and none of which was followed by a
+# birth. Three were false — the session had written its workitem through Bash —
+# one was a repeat in a conversation continued under a new session id, and all
+# five that fired on steps alone answered a report. Hence the shape and the
+# condition below.
+#
 # Hook protocol (Claude Code hooks reference, Stop):
 #   - the answer arrives as `last_assistant_message`; the transcript may not hold
 #     it yet when Stop runs, so the transcript is read only for earlier turns —
@@ -56,6 +63,10 @@ payload=$(cat 2>/dev/null || true)
 KEY="crystal-grow-nudge"
 MIN_STEPS=5       # numbered steps of a plan (the skill's plan shape, signal 3)
 MIN_QUESTIONS=2   # questions left to the user
+# The nudge's first words. A transcript holding them as context the model was
+# given is a conversation already asked — the same one continued under a new
+# session id, which the throttle below does not know (late-grow DL #6).
+LEAD="[crystal] This answer reads like a plan"
 
 # Once per session: the state file of the shared throttle exists from the first
 # nudge on, and a window this long never closes within a session.
@@ -77,17 +88,37 @@ read -r steps questions < <(printf '%s\n' "$msg" | awk '
   /^[[:space:]]*[0-9]+[.)][[:space:]]/ { s++ }
   { line = $0; q += gsub(/\?([[:space:]]|$|[)"*_`»])/, "", line) }
   END { print s + 0, q + 0 }')
-[ "${steps:-0}" -ge "$MIN_STEPS" ] || [ "${questions:-0}" -ge "$MIN_QUESTIONS" ] || exit 0
+# Steps alone are a report as often as a plan: all five answers in the field
+# that fired on steps with no question were reports. A plan asks something,
+# "Go?" at least (late-grow DL #6, #7).
+if [ "${questions:-0}" -lt "$MIN_QUESTIONS" ]; then
+  [ "${steps:-0}" -ge "$MIN_STEPS" ] && [ "${questions:-0}" -ge 1 ] || exit 0
+fi
 
-# The condition: this session has not written a workitem, nor run crystal-grow.
-# A transcript that is not on disk is no evidence of a write.
+# The condition: this session has not written a workitem, nor run crystal-grow,
+# nor been given this nudge already. A transcript that is not on disk is no
+# evidence of a write.
+#
+# A write through Bash counts: in the field seven of nine sessions wrote their
+# workitem with python or `sed -i`, and the nudge then told them they had
+# written into none (late-grow DL #6). Such a call names the workitem and
+# writes — write_text, .write(, sed -i, perl -i, or a redirect straight into it;
+# the gap before a redirect's target stops at a newline (JSON's `\n`) and at
+# `|;&`, so a letter that only names a workitem in its text is no write of it.
+# Naming one in a read (`sed -n`, `grep`, `git log`) is not either.
+wi='tasks/[^/" ]+/workitem\.md'
+w='write_text|\.write\(|sed -i|perl -[a-z]*i'
+wrote='"name":"(Write|Edit|MultiEdit)".*"file_path":"[^"]*/'"$wi"'"'
+wrote="$wrote"'|"skill":"[^"]*crystal-grow'
+wrote="$wrote"'|"name":"Bash".*('"$wi"'.*('"$w"')|('"$w"').*'"$wi"'|(>|tee )[^|;&\\]*'"$wi"')'
+wrote="$wrote"'|"hook_additional_context".*'"$(printf '%s' "$LEAD" | sed 's/[][]/\\&/g')"
 if [ -n "$transcript" ] && [ -f "$transcript" ]; then
-  if grep -qE '"name":"(Write|Edit|MultiEdit)".*"file_path":"[^"]*/tasks/[^/"]+/workitem\.md"|"skill":"[^"]*crystal-grow' "$transcript" 2>/dev/null; then
+  if grep -qE "$wrote" "$transcript" 2>/dev/null; then
     exit 0
   fi
 fi
 
-ctx="[crystal] This answer reads like a plan (${steps} numbered steps, ${questions} questions to the user), and this session has written into no workitem. What lives only in the chat is lost at the next compaction. If the work outlives this turn, propose a crystal now, before the next decision: /vdm:crystal-grow, named by the task rather than the current step, or record it in an active crystal (## Decision Log, /vdm:crystal-bud). If it does not, say so in one line. Asked once per session."
+ctx="${LEAD} (${steps} numbered steps, ${questions} questions to the user), and this session has written into no workitem. What lives only in the chat is lost at the next compaction. If the work outlives this turn, propose a crystal now, before the next decision: /vdm:crystal-grow, named by the task rather than the current step, or record it in an active crystal (## Decision Log, /vdm:crystal-bud). If it does not, say so in one line. Asked once per session."
 
 jq -n --arg c "$ctx" '{hookSpecificOutput: {hookEventName: "Stop", additionalContext: $c}}'
 _vdm_reminder_throttle_touch "$KEY" "$sid"

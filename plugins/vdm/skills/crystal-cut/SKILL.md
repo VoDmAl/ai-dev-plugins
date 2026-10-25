@@ -30,7 +30,8 @@ Three layers enforce the same invariant (Decision Log #7):
    gate blocks it. (Relevant when importing an already-complete legacy doc —
    see `crystal-grow` → Migrating legacy docs.)
 2. **Stop reminder** — `${CLAUDE_PLUGIN_ROOT}/scripts/crystal-stop-reminder.sh`
-   surfaces open items at end-of-turn so the assistant doesn't drift.
+   shows the user the open items at end-of-turn. It does not reach the
+   assistant: a Stop hook's `systemMessage` is shown to the user only.
 3. **Backup (git only)** — pre-commit hook ships with `vdm-git` for
    downstream projects with git. See `/vdm-git:guard` for activation.
 

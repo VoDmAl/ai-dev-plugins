@@ -362,12 +362,13 @@ vdm_crystal_walk_prunes() {
   #   eval "find . \\( $prunes \\) -prune -o … -type f -print"
   # Run it from the project root, after vdm_prime_crystal_roots.
   #
-  # One rule for both reminders that ask the question. The Stop hook kept its
-  # own copy, with `-not -path` (which still descends into every excluded
+  # One rule for every walk that asks the question. The Stop hook kept its own
+  # copy, with `-not -path` (which still descends into every excluded
   # directory) and without capture-exclude, after the capture reminder had been
   # fixed: on an 11-crystal note vault it walked the whole tree once per crystal,
   # 10 s a walk, and hit its 30 s ceiling on 96 of its 115 recorded runs in a week
-  # (docs/tasks/hook-timeout-fail-open, DL #9).
+  # (docs/tasks/hook-timeout-fail-open, DL #9). Since 2026-10-25 the Stop hook
+  # does not walk at all (late-grow DL #7); the capture reminder is the caller.
   #
   # `-prune` skips a subtree outright. Each pattern is single-quoted inside the
   # string, so the caller's eval hands the glob to `find` instead of expanding it.

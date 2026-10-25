@@ -187,10 +187,11 @@ printf '\nno evidence: silent, and the window closes anyway — the SCAN is the 
 # is what overran the timeout and got its output discarded.
 #
 # The price is latency: evidence appearing inside a closed window is not
-# reported until the window elapses. Acceptable because the Stop-hook
-# counterpart (crystal-stop-reminder) carries no throttle at all and fires at
-# the end of every turn — the discipline still gets its nudge; only this
-# second, redundant channel waits.
+# reported until the window elapses. This was once called acceptable because
+# the Stop hook (crystal-stop-reminder) asked the same at the end of every
+# turn. It never reached the assistant — a systemMessage is the user's — and
+# no longer asks at all (late-grow DL #5, #7). So this is the only channel, and
+# the window is what keeps it from repeating the question every prompt.
 reset_state; age_all
 touch "$PROJ/tasks/alpha/workitem.md"                # the workitem is now the newest file
 OUT=$(run_hook s3)

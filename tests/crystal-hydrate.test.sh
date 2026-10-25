@@ -85,6 +85,54 @@ crystal "$Q" calm in-progress '- [ ] something to do, whenever: it is not a mark
 out="$(hydrate "$Q")"
 says "the crystal is listed as before" "$out" "calm: 1 open"
 says_not "…and nothing is said about waiting" "$out" "Waiting for an event"
+says_not "…nor about dormant crystals, when none is past due" "$out" "Dormant"
+
+# Field count (late-grow Sidetrack #1, 2026-10-25): 22 crystals on one machine
+# held promises past due; 14 of them were dormant, in nine projects, and the
+# session start named none of those. The singleton invariant sends a crystal to
+# dormant, and a pause is the state in which a date is easiest to miss.
+echo "== a dormant crystal's date past due is named =="
+D="$TMP/dormant"; mkdir -p "$D"; git -C "$D" init -q
+crystal "$D" now in-progress '- [ ] the current work'
+crystal "$D" parked dormant '- [ ] answer the vendor (due: 2020-01-02)
+- [ ] and the second one (due: 2020-03-04)
+- [ ] a later one (due: 2999-01-01)'
+crystal "$D" later dormant '- [ ] nothing due yet (due: 2999-01-01)'
+crystal "$D" closed done '- [x] done long ago (due: 2020-01-01)'
+out="$(hydrate "$D")"
+says "RED: the dormant crystal and its overdue count" "$out" "parked (2)"
+says "…under a line that says what the pause hides" "$out" "Dormant, with promises past due"
+says_not "a dormant crystal with nothing past due is not named" "$out" "later ("
+says_not "…nor a closed one" "$out" "closed ("
+says "the active crystal is listed as before" "$out" "now: 1 open"
+if printf '%s' "$out" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; then
+  ok "…in valid hook JSON"
+else
+  bad "…in valid hook JSON" "${out:0:200}"
+fi
+
+echo "== …also when no crystal is active =="
+N="$TMP/noactive"; mkdir -p "$N"; git -C "$N" init -q
+crystal "$N" asleep dormant '- [ ] renew the certificate (due: 2020-05-06)'
+out="$(hydrate "$N")"
+says "RED: the start is not silent then" "$out" "asleep (1)"
+
+echo "== the path to Read is the file's own =="
+# A project whose crystals live in tasks/, with no crystal.path set, was told to
+# Read docs/tasks/<slug>/workitem.md — the setting's default plus the path under
+# the root, a file that does not exist (a project on this machine, 2026-10-25).
+T="$TMP/bare"; mkdir -p "$T/tasks/here"; git -C "$T" init -q
+printf -- '---\nslug: here\nstatus: in-progress\n---\n\n- [ ] open\n' > "$T/tasks/here/workitem.md"
+git -C "$T" add -- tasks/here/workitem.md
+out="$(hydrate "$T")"
+says "RED: Read tasks/here/workitem.md" "$out" "(Read tasks/here/workitem.md)"
+says "…and docs/tasks keeps its own" "$(hydrate "$Q")" "(Read docs/tasks/calm/workitem.md)"
+
+echo "== nothing active, nothing past due → silence =="
+S="$TMP/silent"; mkdir -p "$S"; git -C "$S" init -q
+crystal "$S" resting dormant '- [ ] some day (due: 2999-01-01)'
+eq_silent=$(hydrate "$S")
+if [ -z "$eq_silent" ]; then ok "silence"; else bad "silence" "${eq_silent:0:200}"; fi
 
 printf '\ncrystal-hydrate: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

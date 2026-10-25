@@ -1,22 +1,22 @@
 #!/bin/bash
-# crystal-stop-reminder.test.sh — the Stop hook's "source edited but workitem.md
-# untouched" check: what it walks, and how many times.
+# crystal-stop-reminder.test.sh — the Stop hook's status line: the active
+# crystals with open items, written for the user, and nothing it has to walk.
 #
-# Field case (hook-timeout-fail-open, DL #9, re-measured 2026-10-08): on a note
-# vault with eleven active crystals the hook ran one `find` per crystal, each
-# descending into every directory it meant to exclude (`-not -path` does not
-# prune), without the project's crystal.capture-exclude. 10 s a walk; in a week
-# the hook hit its 30 s ceiling on 96 of its 115 recorded runs there, and every
-# turn there ended with that wait. The capture reminder had been fixed for the
-# same three defects a month earlier; the Stop hook kept its own copy of the
-# walk. Now both take the rule from lib/crystal-path.sh (vdm_crystal_walk_prunes).
+# Field case (late-grow DL #5, Sidetrack #2): the hook's output is a
+# systemMessage, which reaches the user only — 15 of 15 never reached the model
+# in one session. Its text was written to the assistant all the same: "finish
+# or migrate before declaring done", and a 📌 line asking whether source edits
+# made it into the workitem. To ask that, it walked the whole tree every turn,
+# and that walk had already hit the hook's ceiling on a note vault
+# (hook-timeout-fail-open, DL #9). The question reaches the assistant through
+# crystal-capture-reminder at every user prompt; here it is gone, walk and all
+# (late-grow DL #7).
 #
 # What this file holds:
-#   - one tree walk, whatever the number of crystals (RED on the per-crystal loop);
-#   - the answer per crystal is the one the per-crystal loop gave: a crystal is
-#     named when some file is newer than its workitem, and only then;
-#   - capture-exclude, `.stversions` and the crystal roots are pruned, also when
-#     the session's cwd is a symlink to the project.
+#   - the status line: each active crystal with open items, its count, its path;
+#   - no 📌 line and no instruction to the assistant, whatever is newer;
+#   - no tree walk at all (the find shim journals every call);
+#   - silence without open items; the non-canonical audit line stays.
 #
 # No commit anywhere: crystal roots are found through `git ls-files`, and
 # `git add` is enough for that.
@@ -50,145 +50,84 @@ bad() { FAIL=$((FAIL+1)); printf '  ✗ %s\n' "$1"; [ -n "${2:-}" ] && printf '%
 eq() {
   if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "expected [$2], got [$3]"; fi
 }
+says() { case "$2" in *"$3"*) ok "$1" ;; *) bad "$1" "output did not mention: $3"$'\n'"$2" ;; esac; }
+says_not() {
+  # An empty haystack contains nothing, so absence there proves nothing
+  # (tests/harness-asserts.test.sh). Silence is asserted as silence.
+  [ -n "$2" ] || { bad "$1" "output is empty — absence proves nothing there"; return; }
+  case "$2" in *"$3"*) bad "$1" "output should not mention: $3"$'\n'"$2" ;; *) ok "$1" ;; esac
+}
 
 TMP=$(mktemp -d 2>/dev/null || mktemp -d -t stopreminder)
-# Physical path: the symlinked-cwd case below builds its own logical one.
 TMP=$(cd "$TMP" && pwd -P)
 cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT
 
-# The find journal sits outside every project, or the journal itself would be
-# a file newer than the workitems.
+# The find journal sits outside every project.
 STATE="$TMP/state"; SHIM="$TMP/shim"
 mkdir -p "$STATE" "$SHIM"
 REAL_FIND=$(type -P find)
-# Not `exec`: the shim outlives find to journal how it ended — a walk the hook
-# stopped reading dies of a broken pipe, one read to the end exits 0.
 cat >"$SHIM/find" <<EOF
 #!/bin/bash
 printf '%s\n' "\$*" >>"$STATE/find.log"
-"$REAL_FIND" "\$@"
-rc=\$?
-printf '%s %s\n' "\$rc" "\$*" >>"$STATE/find.rc"
-exit \$rc
+exec "$REAL_FIND" "\$@"
 EOF
 chmod +x "$SHIM/find"
 
 # project <dir> <slug>... — a git work tree with one in-progress crystal with
-# an open item per slug, a src/ file, an excluded data/ directory and a
-# Syncthing archive. Every file starts in 2019; a case moves what it needs.
+# an open item per slug and a src/ file. Every file starts in 2019.
 project() {
   local dir="$1" slug; shift
-  mkdir -p "$dir/.claude" "$dir/src" "$dir/data" "$dir/.stversions/src"
+  mkdir -p "$dir/.claude" "$dir/src"
   for slug in "$@"; do
     mkdir -p "$dir/tasks/$slug"
     printf -- '---\nslug: %s\nstatus: in-progress\n---\n# %s\n\n- [ ] open\n' "$slug" "$slug" \
       >"$dir/tasks/$slug/workitem.md"
   done
-  printf '{"crystal":{"capture-exclude":["data"]}}\n' >"$dir/.claude/vdm-plugins.json"
   printf 'echo hi\n' >"$dir/src/main.sh"
-  printf 'rows\n' >"$dir/data/rows.csv"
-  printf 'echo old\n' >"$dir/.stversions/src/main~20261001.sh"
   ( cd "$dir" && git init -q . && git add -A >/dev/null 2>&1 )
   "$REAL_FIND" "$dir" -path "$dir/.git" -prune -o -type f -exec touch -t 201901010000 {} +
 }
-# at <time> <file>... — set mtimes, [[CC]YY]MMDDhhmm as touch -t takes them.
-at() { local t="$1"; shift; touch -t "$t" "$@"; }
 
 # run <cwd> — the way the harness calls a Stop hook: cwd = the project, the
 # event JSON on stdin, the find shim first on PATH. Prints the message text.
 run() {
-  rm -f "$STATE/find.log" "$STATE/find.rc"
+  rm -f "$STATE/find.log"
   ( cd "$1" && printf '{"session_id":"t"}' \
       | PATH="$SHIM:$PATH" TMPDIR="$STATE" bash "$HOOK" 2>/dev/null ) \
     | python3 -c "import json,sys
 try: print(json.load(sys.stdin).get('systemMessage',''))
 except ValueError: pass"
 }
-# named — the crystals in the hook's nudge, or "-" when it gave none.
-named() {
-  local line
-  line=$(printf '%s\n' "$1" | grep '📌' | sed -e 's/^📌 //' -e 's/: source edited.*//')
-  printf '%s\n' "${line:--}"
-}
 walks() { grep -c -- '-newer' "$STATE/find.log" 2>/dev/null || true; }
 
 # ---------------------------------------------------------------------------
-printf '\none walk, whatever the number of crystals\n'
+printf '\nthe status line\n'
 # ---------------------------------------------------------------------------
-# Nothing is newer than any workitem: the case in which the old loop walked
-# the tree once per crystal, to the end each time.
-P2="$TMP/two"; project "$P2" a1 a2
-at 202001010000 "$P2"/tasks/*/workitem.md
-out=$(run "$P2")
-case "$out" in *"a1: 1 unchecked"*) ok "the canary: the hook ran and saw the crystals" ;;
-  *) bad "the canary: the hook ran and saw the crystals" "$out" ;; esac
-eq "two crystals: one walk" "1" "$(walks)"
-
-P8="$TMP/eight"; project "$P8" b1 b2 b3 b4 b5 b6 b7 b8
-at 202001010000 "$P8"/tasks/*/workitem.md
-out=$(run "$P8")
-eq "RED: eight crystals: still one walk" "1" "$(walks)"
-eq "…and with nothing newer, no crystal is named" "-" "$(named "$out")"
-
-# ---------------------------------------------------------------------------
-printf '\nthe answer per crystal is the one a walk per crystal gave\n'
-# ---------------------------------------------------------------------------
-P="$TMP/proj"; project "$P" alpha beta gamma
-at 202001010000 "$P/tasks/alpha/workitem.md"
-at 202201010000 "$P/tasks/beta/workitem.md"
-at 202401010000 "$P/tasks/gamma/workitem.md"
-
-at 202301010000 "$P/src/main.sh"
-eq "a file between two crystals names the older ones only" "alpha, beta" "$(named "$(run "$P")")"
-
-at 202501010000 "$P/src/main.sh"
-eq "a file newer than all of them names all of them" "alpha, beta, gamma" "$(named "$(run "$P")")"
-
-at 201901010000 "$P/src/main.sh"
-eq "a file older than all of them names none" "-" "$(named "$(run "$P")")"
-
-# The newest file is the answer, wherever the walk meets it. Two newer files,
-# and the same case with their times swapped: whichever order find takes, in
-# one of the two the less new file comes first.
-mkdir -p "$P/src/a" "$P/src/z"
-printf 'x\n' >"$P/src/a/one.sh"; printf 'y\n' >"$P/src/z/two.sh"
-at 202101010000 "$P/src/a/one.sh"; at 202301010000 "$P/src/z/two.sh"
-first=$(named "$(run "$P")")
-at 202301010000 "$P/src/a/one.sh"; at 202101010000 "$P/src/z/two.sh"
-second=$(named "$(run "$P")")
-eq "the newest file decides, not the first one found" "alpha, beta|alpha, beta" "$first|$second"
-at 201901010000 "$P/src/a/one.sh" "$P/src/z/two.sh"
-
-# The walk stops at the first file newer than every crystal: then all of them
-# are named, and reading on cannot change it. More such files than a pipe
-# buffers (64 KiB), so a walk read to the end and one cut short end differently.
-mkdir -p "$P/src/many"
-( cd "$P/src/many" && touch -t 202501010000 f{1..3000}-a-name-long-enough-to-fill-the-pipe.sh )
+P="$TMP/proj"; project "$P" alpha beta
+# A source file newer than both workitems: the case in which the 📌 line spoke.
+touch -t 202501010000 "$P/src/main.sh"
 out=$(run "$P")
-eq "a file newer than every crystal names them all" "alpha, beta, gamma" "$(named "$out")"
-rc=$(grep -- '-newer' "$STATE/find.rc" 2>/dev/null | tail -1 | cut -d' ' -f1)
-if [ -n "$rc" ] && [ "$rc" != 0 ]; then ok "…and the walk stops there (find ended by the closed pipe, rc $rc)"
-else bad "…and the walk stops there (find ended by the closed pipe)" "find exit status: [${rc}] — read to the end"; fi
-rm -rf "$P/src/many"
+says "each active crystal, its count" "$out" "alpha: 1 open  ("
+# The fixture's crystals live in tasks/, with no crystal.path set; the path
+# was built as the setting's default (docs/tasks) plus the path under the root.
+says "RED: …and its own path from the project root, not one under docs/tasks/" "$out" "alpha: 1 open  (tasks/alpha/workitem.md)"
+says "…the second one too" "$out" "beta: 1 open"
+says_not "RED: no 📌 line, though a source file is newer than every workitem" "$out" "📌"
+says_not "RED: no instruction to the assistant, who never sees this text" "$out" "before declaring done"
+eq "RED: no tree walk at all" "0" "$(walks)"
 
 # ---------------------------------------------------------------------------
-printf '\nwhat is not work does not count\n'
+printf '\nsilence and the audit line\n'
 # ---------------------------------------------------------------------------
-at 202501010000 "$P/data/rows.csv"
-eq "RED: a file under crystal.capture-exclude is not evidence" "-" "$(named "$(run "$P")")"
-at 201901010000 "$P/data/rows.csv"
+Q="$TMP/closed"; project "$Q" gamma
+printf -- '---\nslug: gamma\nstatus: in-progress\n---\n# gamma\n\n- [x] done\n' >"$Q/tasks/gamma/workitem.md"
+eq "an active crystal with nothing open → silence" "" "$(run "$Q")"
 
-at 202501010000 "$P/.stversions/src/main~20261001.sh"
-eq "RED: Syncthing's archive of old versions is not evidence" "-" "$(named "$(run "$P")")"
-at 201901010000 "$P/.stversions/src/main~20261001.sh"
-
-# Another crystal's workitem is newer than alpha's — it lives under the crystal
-# root, which is pruned. The cwd the hook is given may be a symlink to the
-# project (macOS: /var → /private/var), while the roots come back physical.
-ln -s "$P" "$TMP/link"
-eq "a newer workitem of another crystal is not evidence" "-" "$(named "$(run "$P")")"
-eq "RED: …nor when the session's cwd is a symlink to the project" "-" "$(named "$(run "$TMP/link")")"
+A="$TMP/audit"; project "$A" delta
+printf -- '---\nslug: delta\nstatus: someday-maybe\n---\n# delta\n\n- [ ] open\n' >"$A/tasks/delta/workitem.md"
+out=$(run "$A")
+says "a non-canonical status is still named" "$out" "Non-canonical statuses: 1"
 
 printf '\ncrystal-stop-reminder: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

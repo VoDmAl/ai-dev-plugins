@@ -214,16 +214,19 @@ invoked, which is why the description line now carries them, and why (7) exists.
 ### (7) The backstop — a Stop hook outside any crystal
 
 Text, here or in the description, does nothing until it is read.
-`crystal-grow-nudge.sh` runs at **Stop**: when an answer has ≥5 numbered steps
-or ≥2 questions to the user, and **this session** has written into no workitem
-and not run this skill, it asks once per session — through `additionalContext`,
-so you receive it and the turn continues — whether the work belongs in a new
-crystal or an active one. Answer it: propose the grow, or say in one line that
-the work does not outlive the turn.
+`crystal-grow-nudge.sh` runs at **Stop**: when an answer has ≥2 questions to
+the user, or ≥5 numbered steps and at least one question, and **this session**
+has written into no workitem (with a tool or through Bash) and not run this
+skill, it asks once per conversation — through `additionalContext`, so you
+receive it and the turn continues — whether the work belongs in a new crystal
+or an active one. Answer it: propose the grow, record the decision in the
+active crystal, or say in one line that the work does not outlive the turn.
 
 The condition is the session's, not the repository's: of 116 crystal births
 measured since 2026-09-15, 8 began with the user asking, and every one of those
-repositories already had active crystals. Off with `crystal.grow-nudge: false`.
+repositories already had active crystals. Steps alone do not count: in its
+first four days in the field all five answers that fired on steps with no
+question were reports. Off with `crystal.grow-nudge: false`.
 
 ### Why "forced" matters
 
@@ -253,12 +256,15 @@ discipline runs *continuously* while a crystal is active, not only at
 grow/cut moments. Two complementary hooks remind the assistant:
 
 - `crystal-hydrate.sh` at **SessionStart** — surfaces the active workitem(s)
-  with the source-of-truth reminder.
+  with the source-of-truth reminder, and names dormant crystals holding a
+  promise past due: a pause does not move a date.
 - `crystal-capture-reminder.sh` at **UserPromptSubmit** — fires when source
   edits accumulate without workitem.md being touched (smart mode default;
   per-session throttle).
-- `crystal-stop-reminder.sh` at **Stop** — emits the work-without-capture
-  nudge at end-of-turn when source files are newer than workitem.md.
+
+A third, `crystal-stop-reminder.sh` at **Stop**, is the user's status line —
+the active crystals with open items. Its `systemMessage` reaches the user
+only; you never see it.
 
 Below is the explicit checklist the hooks are pointing at. Read it once
 when working inside an active crystal — the discipline is small and

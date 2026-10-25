@@ -12,10 +12,13 @@
 # session's ("wrote no workitem"), not the repository's (late-grow DL #3, #5).
 #
 # What this file holds:
-#   - the shape: ≥5 numbered steps or ≥2 questions, code blocks not counted;
-#   - the condition: a session that already wrote a workitem, or ran
-#     crystal-grow, is not asked;
-#   - once per session, silent while the hook itself keeps the turn going;
+#   - the shape: ≥2 questions, or ≥5 numbered steps with a question — steps
+#     alone were reports in the field (DL #6, #7); code blocks not counted;
+#   - the condition: a session that already wrote a workitem — with a tool or
+#     through Bash — or ran crystal-grow, is not asked; a read is no write;
+#   - once per conversation: per session id, and a transcript that already
+#     holds the nudge is not asked again; silent while the hook itself keeps
+#     the turn going;
 #   - the channel: additionalContext for the Stop event, never systemMessage,
 #     which reaches only the user.
 #
@@ -82,11 +85,41 @@ printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id"
 TR_GREW="$TMP/grew.jsonl"
 printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t3","name":"Skill","input":{"skill":"vdm:crystal-grow","args":"foo"}}]}}' > "$TR_GREW"
 
+# bash_tr <file> <command> — a transcript whose one call is Bash with that
+# command, in the harness's compact JSON (jq escapes the newlines as it does).
+bash_tr() {
+  jq -nc --arg c "$2" '{type:"assistant",message:{content:[{type:"tool_use",id:"b1",name:"Bash",input:{command:$c,description:"x"}}]}}' > "$1"
+}
+# The field's three ways (late-grow DL #6): python through a heredoc, sed in
+# place — once flipping the status itself — and a redirect into the file.
+TR_PY="$TMP/py.jsonl"
+bash_tr "$TR_PY" $'cd /x && python3 - <<\'EOF\'\np=\'docs/tasks/foo/workitem.md\'\ns=open(p,encoding=\'utf-8\').read()\nopen(p,\'w\').write(s.replace(\'a\',\'b\'))\nEOF'
+TR_PATHLIB="$TMP/pathlib.jsonl"
+bash_tr "$TR_PATHLIB" $'python3 - <<\'EOF\'\nimport pathlib\np = pathlib.Path("docs/tasks/foo/workitem.md"); t = p.read_text()\np.write_text(t)\nEOF'
+TR_SED="$TMP/sed.jsonl"
+bash_tr "$TR_SED" "sed -i '' 's/^status: in-progress\$/status: done/' docs/tasks/foo/workitem.md && sed -n 1,9p docs/tasks/foo/workitem.md"
+TR_REDIR="$TMP/redir.jsonl"
+bash_tr "$TR_REDIR" $'cat > docs/tasks/foo/workitem.md <<\'EOF\'\n---\nstatus: in-progress\n---\nEOF'
+# Reading is not writing, and a letter that names a workitem is not the workitem.
+TR_READ="$TMP/read.jsonl"
+bash_tr "$TR_READ" "sed -n 1,12p docs/tasks/foo/workitem.md; grep -n x docs/tasks/foo/workitem.md 2>/dev/null; git log -2 -- docs/tasks/foo/workitem.md"
+TR_LETTER="$TMP/letter.jsonl"
+bash_tr "$TR_LETTER" $'cat > /tmp/brief.md <<\'EOF\'\nThe plan lives in docs/tasks/foo/workitem.md\nEOF'
+
+# A conversation continued under a new session id carries its earlier turns,
+# the nudge it was already given among them (late-grow DL #6: asked twice).
+TR_NUDGED="$TMP/nudged.jsonl"
+printf '%s\n' '{"type":"attachment","attachment":{"type":"hook_additional_context","content":["[crystal] This answer reads like a plan (8 numbered steps, 2 questions to the user), and this session has written into no workitem."],"hookName":"Stop","hookEvent":"Stop"}}' > "$TR_NUDGED"
+# …while the same words quoted in a tool's output were never given to anyone.
+TR_QUOTED="$TMP/quoted.jsonl"
+printf '%s\n' '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"b1","content":"ctx=\"[crystal] This answer reads like a plan (${steps} numbered steps\""}]}}' > "$TR_QUOTED"
+
 PLAN=$'Here is the plan:\n\n1. Update the servers\n2. Pause the containers\n3. Move the service\n4. Write to both agents\n5. Verify the backup\n\nGo?'
 TWO_Q=$'Two things are yours. Should the old archives stay? And do we turn auto-updates on?'
 SMALL=$'Done:\n1. one\n2. two\n3. three\n4. four\nAnything else?'
 FENCED=$'Run this:\n\n```\n1. a\n2. b\n3. c\n4. d\n5. e\n```\n\nThat is all.'
 URLQ=$'See https://example.com/x?a=1 and https://example.com/y?b=2 for the details.'
+REPORT=$'Checked:\n\n1. Both servers are updated\n2. The containers are paused\n3. The service has moved\n4. Both agents have the letter\n5. The backup verified'
 
 # run <session> <transcript> <message> [stop_hook_active]
 run() {
@@ -112,6 +145,7 @@ echo "== the shape =="
 eq "two questions to the user → a nudge" "Stop" \
    "$(run s3 "$TR_CLEAN" "$TWO_Q" | jq -r '.hookSpecificOutput.hookEventName // empty' 2>/dev/null)"
 eq "four steps and one question → silence" "" "$(run s4 "$TR_CLEAN" "$SMALL")"
+eq "RED: five steps and no question — a report, not a plan → silence" "" "$(run s4r "$TR_CLEAN" "$REPORT")"
 eq "numbered lines inside a code block do not count" "" "$(run s5 "$TR_CLEAN" "$FENCED")"
 eq "a question mark inside a URL is not a question" "" "$(run s6 "$TR_CLEAN" "$URLQ")"
 eq "an empty answer → silence" "" "$(run s7 "$TR_CLEAN" "")"
@@ -120,6 +154,18 @@ echo "== the condition: this session, not the repository =="
 eq "a session that wrote a workitem is not asked" "" "$(run s8 "$TR_WROTE" "$PLAN")"
 eq "…nor one that edited one" "" "$(run s9 "$TR_EDITED" "$PLAN")"
 eq "…nor one that ran crystal-grow" "" "$(run s10 "$TR_GREW" "$PLAN")"
+eq "RED: …nor one that wrote it with python through Bash" "" "$(run s10a "$TR_PY" "$PLAN")"
+eq "RED: …nor with pathlib's write_text" "" "$(run s10b "$TR_PATHLIB" "$PLAN")"
+eq "RED: …nor with sed in place" "" "$(run s10c "$TR_SED" "$PLAN")"
+eq "RED: …nor with a redirect into it" "" "$(run s10d "$TR_REDIR" "$PLAN")"
+eq "a session that only read a workitem through Bash is asked" "Stop" \
+   "$(run s10e "$TR_READ" "$PLAN" | jq -r '.hookSpecificOutput.hookEventName // empty' 2>/dev/null)"
+eq "…and so is one that wrote a letter naming a workitem" "Stop" \
+   "$(run s10f "$TR_LETTER" "$PLAN" | jq -r '.hookSpecificOutput.hookEventName // empty' 2>/dev/null)"
+eq "RED: a conversation already given the nudge is not asked again under a new session id" "" \
+   "$(run s10g "$TR_NUDGED" "$PLAN")"
+eq "…but the nudge's words quoted in a tool's output were given to no one" "Stop" \
+   "$(run s10h "$TR_QUOTED" "$PLAN" | jq -r '.hookSpecificOutput.hookEventName // empty' 2>/dev/null)"
 eq "a transcript not on disk yet is no evidence of a write → nudge" "Stop" \
    "$(run s11 "$TMP/missing.jsonl" "$PLAN" | jq -r '.hookSpecificOutput.hookEventName // empty' 2>/dev/null)"
 eq "a session asked once is not asked again after it wrote nothing" "" "$(run s11 "$TMP/missing.jsonl" "$PLAN")"

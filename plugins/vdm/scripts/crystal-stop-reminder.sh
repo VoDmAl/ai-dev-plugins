@@ -1,21 +1,26 @@
 #!/bin/bash
-# crystal-stop-reminder.sh — Stop hook, silent reminder about active crystals
-# with open items. Implements the visibility leg of Decision Log #7.
+# crystal-stop-reminder.sh — Stop hook: the user's status line at the end of a
+# turn — the active crystals with open items. Implements the visibility leg of
+# Decision Log #7 (crystal-design).
 #
-# Hook protocol (Claude Code): runs at the end of an assistant turn. Output
-# is informational — we never block, never set `decision: block`. The reminder
-# is here to defend against context pressure: if assistant forgets about an
-# active workitem, this surfaces it once per turn.
+# Hook protocol (Claude Code): runs at the end of an assistant turn. We never
+# block, never set `decision: block`. The output is `systemMessage`, and a
+# systemMessage reaches the user only: in one session 15 of 15 never reached
+# the model (late-grow DL #5, Sidetrack #2). So the text is written for the
+# user, and nothing in it asks the assistant to act. What the assistant must
+# hear goes elsewhere: the session start (crystal-hydrate) and every user
+# prompt (crystal-capture-reminder, which also asks whether source edits made
+# it into the workitem — this hook used to ask the same, of no one, and walked
+# the whole tree each turn to do it; late-grow DL #7).
 #
 # Output formats follow crystal-multi-root DL #13:
-#   single-root: flat list with Read hints
+#   single-root: flat list with paths
 #   multi-root:  group-by-root summary (slug only, fewer chars per row)
 # Audit line appended when non-canonical drift detected.
 #
 # Must be cheap — it runs at the end of every turn — and silent (zero output)
-# when there's nothing to report. Cheap is the script's job; the 30 s `timeout`
-# in hooks.json is only a ceiling against a hang. At 5 s that ceiling dropped
-# this reminder on 24 % of turns under load (hook-timeout-fail-open, 2026-10-01).
+# when there's nothing to report. The 30 s `timeout` in hooks.json is only a
+# ceiling against a hang (hook-timeout-fail-open, 2026-10-01).
 
 set -u
 
@@ -68,81 +73,20 @@ fi
 
 roots_count=$(resolve_crystal_roots | grep -c '.' 2>/dev/null || echo 0)
 
-# Detect "work-without-capture" at end of turn — for any active workitem
-# with open items, check if any source file under project root is newer than
-# the workitem.md. If yes, the assistant edited code without mirroring the
-# work into workitem capture; emit an extra soft hint. Same heuristic as
-# crystal-capture-reminder but at end-of-turn boundary instead of next-prompt
-# boundary, and with the same prune rule (vdm_crystal_walk_prunes).
-#
-# ONE walk, whatever the number of crystals. It used to be one `find` per
-# crystal, each descending into every excluded directory: 10 s a walk on an
-# 11-crystal note vault, and the hook hit its 30 s ceiling on 96 of 115 runs
-# there in a week (docs/tasks/hook-timeout-fail-open, DL #9). The answer is
-# unchanged — a crystal is named when some file is newer than its workitem,
-# i.e. when the newest such file is. The walk lists files newer than ANY of
-# them; the newest of those is kept with bash's own `-nt`, no process per file,
-# and the walk stops as soon as one file is newer than every crystal, because
-# then all of them are named. Fails open: a find that errors finds nothing.
-# `-nt` in /bin/bash 3.2 compares whole seconds where `find -newer` compares
-# nanoseconds, so "newer" here means by a second at least: a source file and a
-# workitem written in the same second were edited together, and that is no
-# work-without-capture.
-work_without_capture=""
-if [ -n "$active_with_open" ]; then
-  prunes=$(vdm_crystal_walk_prunes)
-  newers=""
-  wi_newest=""
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    [ -f "$f" ] || continue
-    # A quote in the path would break out of the quoting below; such a path is
-    # pathological for a workitem, and skipping it costs only its own answer.
-    case "$f" in *"'"*) continue ;; esac
-    newers="${newers:+$newers -o }-newer '$f'"
-    if [ -z "$wi_newest" ] || [ "$f" -nt "$wi_newest" ]; then wi_newest="$f"; fi
-  done <<<"$active_with_open"
-
-  newest=""
-  if [ -n "$newers" ]; then
-    # eval is acceptable here: both strings are built from paths we
-    # constructed ourselves, each pattern single-quoted inside.
-    while IFS= read -r p; do
-      if [ -z "$newest" ] || [ "$p" -nt "$newest" ]; then
-        newest="$p"
-        [ "$newest" -nt "$wi_newest" ] && break
-      fi
-    done < <(eval "find . \\( $prunes \\) -prune -o \\( $newers \\) -type f -print" 2>/dev/null)
-  fi
-
-  if [ -n "$newest" ]; then
-    while IFS= read -r f; do
-      [ -n "$f" ] || continue
-      [ -f "$f" ] || continue
-      [ "$newest" -nt "$f" ] || continue
-      slug=$(extract_slug "$f")
-      if [ -z "$work_without_capture" ]; then
-        work_without_capture="$slug"
-      else
-        work_without_capture="${work_without_capture}, ${slug}"
-      fi
-    done <<<"$active_with_open"
-  fi
-fi
-
 lines=""
 if [ -n "$active_with_open" ]; then
   if [ "${roots_count:-1}" -le 1 ]; then
-    cfg_rel=$(vdm_config_read "crystal" "path" "docs/tasks")
-    cfg_rel="${cfg_rel%/}"
-    root=$(resolve_crystal_root)
+    # The path as it stands from the project root, where the roots were found.
+    # It was `crystal.path` (default docs/tasks) plus the path under the root,
+    # and a project whose crystals live in tasks/ was told to Read a file under
+    # docs/tasks/ that does not exist (late-grow, 2026-10-25).
+    top=$(git rev-parse --show-toplevel 2>/dev/null) || top=$(pwd -P)
     while IFS= read -r f; do
       [ -n "$f" ] || continue
       n=$(count_unchecked "$f")
       slug=$(extract_slug "$f")
-      rel="${f#"$root"/}"
-      ref="${cfg_rel}/${rel}"
-      lines="${lines}  - ${slug}: ${n} unchecked  (${ref})\\n"
+      ref="${f#"$top"/}"
+      lines="${lines}  - ${slug}: ${n} open  (${ref})\\n"
     done <<<"$active_with_open"
   else
     summary=$(printf '%s\n' "$active_with_open" | format_active_summary)
@@ -152,7 +96,7 @@ fi
 
 # Header
 if [ -n "$lines" ]; then
-  header="[crystal] Active workitems with open items — finish or migrate before declaring done:"
+  header="[crystal] Active crystals with open items:"
 else
   header="[crystal] No active workitems, but drift detected:"
 fi
@@ -166,22 +110,15 @@ fi
 # Footer
 footer=""
 if [ -n "$lines" ]; then
-  footer="\\n→ /vdm:crystal-cave for full view; /vdm:crystal-cut <slug> to close."
+  footer="\\n→ /vdm:crystal-cave for the full view; /vdm:crystal-cut <slug> to close one."
 fi
 
-# Work-without-capture nudge — appended only when source edits this segment
-# never made it into workitem.md. Phrased as a question, not a directive,
-# because the assistant may legitimately have nothing worth recording.
-capture_nudge=""
-if [ -n "$work_without_capture" ]; then
-  capture_nudge="\\n📌 ${work_without_capture}: source edited but workitem.md untouched — decisions taken or observations worth recording? (\`## Decision Log\` / \`/vdm:crystal-bud\`)"
-fi
-
-context="${header}\\n${lines}${footer}${capture_nudge}${audit_line}"
+context="${header}\\n${lines}${footer}${audit_line}"
 context=$(printf '%s' "$context" | sed 's/\\n\\n*$//')
 
-# Stop hook protocol: top-level fields only. `hookSpecificOutput` is valid for
-# PreToolUse / UserPromptSubmit / PostToolUse / PostToolBatch — not Stop. Use
-# `systemMessage` to inject visible context into the next turn.
+# `systemMessage` is shown to the user, not given to the model: see the header.
+# The model's channel at Stop is `hookSpecificOutput.additionalContext`
+# (crystal-grow-nudge uses it), but it continues the conversation — here that
+# would be one more turn after every turn while a crystal is active.
 printf '{\n  "systemMessage": "%s"\n}\n' "$context"
 exit 0

@@ -47,7 +47,24 @@ if [ -n "$all_items" ]; then
   non_canon_count=${non_canon_count:-0}
 fi
 
-[ -z "$active" ] && [ "$non_canon_count" -eq 0 ] && exit 0
+# Dormant crystals holding a promise past due. The singleton invariant sends a
+# crystal to dormant, and a pause is the state in which a date is easiest to
+# miss: on one machine 14 of the 22 crystals with promises past due were dormant,
+# in nine projects, and the start named none of them (late-grow Sidetrack #1,
+# 2026-10-25). One line, slugs and counts; the dates themselves are in
+# /vdm:crystal-cave. One pass over the whole list, silent at zero.
+dormant_due=""
+if [ -n "$all_items" ] && command -v due_counts_batch >/dev/null 2>&1; then
+  dormant=$(printf '%s\n' "$all_items" | filter_status "dormant")
+  if [ -n "$dormant" ]; then
+    while IFS=$'\t' read -r f od _; do
+      [ "${od:-0}" -gt 0 ] 2>/dev/null || continue
+      dormant_due="${dormant_due:+${dormant_due}, }$(extract_slug "$f") (${od})"
+    done < <(printf '%s\n' "$dormant" | due_counts_batch | sort)
+  fi
+fi
+
+[ -z "$active" ] && [ "$non_canon_count" -eq 0 ] && [ -z "$dormant_due" ] && exit 0
 
 singleton_mode=$(derive_singleton_mode 2>/dev/null || printf 'global')
 roots_count=$(resolve_crystal_roots | grep -c '.' 2>/dev/null || echo 0)
@@ -107,9 +124,11 @@ body=""
 if [ -n "$active" ]; then
   if [ "${roots_count:-1}" -le 1 ]; then
     # Single-root: one line per workitem with Read hint
-    cfg_rel=$(vdm_config_read "crystal" "path" "docs/tasks")
-    cfg_rel="${cfg_rel%/}"
-    root=$(resolve_crystal_root)
+    # The path as it stands from the project root, where the roots were found.
+    # It was `crystal.path` (default docs/tasks) plus the path under the root,
+    # and a project whose crystals live in tasks/ was told to Read a file under
+    # docs/tasks/ that does not exist (late-grow, 2026-10-25).
+    top=$(git rev-parse --show-toplevel 2>/dev/null) || top=$(pwd -P)
     body=""
     while IFS= read -r f; do
       [ -n "$f" ] || continue
@@ -121,8 +140,7 @@ if [ -n "$active" ]; then
       # for six weeks (checkbox-decay-signal, field report from executor).
       # Silent at zero: the marker is optional, so most crystals show nothing.
       od=$(count_overdue "$f")
-      rel="${f#"$root"/}"
-      ref="${cfg_rel}/${rel}"
+      ref="${f#"$top"/}"
       if [ "${od:-0}" -gt 0 ]; then
         body="${body}  - ${slug}: ${n} open, ⏰${od} ПРОСРОЧЕНО  (Read ${ref})\\n"
       else
@@ -159,6 +177,9 @@ if [ -n "$waits" ]; then
   waits="\\nWaiting for an event — nothing watches it. Check the event first, before the step behind it:\\n${waits}"
 fi
 body="${body}${waits}"
+if [ -n "$dormant_due" ]; then
+  body="${body}${body:+\\n}⏰ Dormant, with promises past due — a pause does not move a date: ${dormant_due//\"/\\\"}. /vdm:crystal-cave shows the dates.\\n"
+fi
 
 # Audit line — always last if non-canonical present.
 audit_line=""
