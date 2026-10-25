@@ -558,6 +558,45 @@ out=$("$PREP" "[*] two" --supersede 2>&1); rc=$?
 expect_exit "--supersede is accepted after the message too" 0 "$rc"
 expect_says "…and supersedes" "$out" "never run"
 
+printf '\n=== during a merge: no pathspec, and the index checked when the line runs ===\n'
+# Field case (vorobyev.name, 2026-10-24): `merge --no-ff --no-commit`, two files
+# of its own staged, and the prep printed a pathspec line over the whole index.
+# Git refuses a partial commit during a merge ("cannot do a partial commit
+# during a merge"); a commit then takes the whole index. The controls: the
+# same line commits once the neighbour's file is gone from the index, and the
+# result is a merge commit.
+
+d=$(new_repo merging); cd "$d" || exit 1
+export TMPDIR="$d/tmp"
+base_branch=$(git symbolic-ref --short HEAD)
+git checkout -q -b side
+printf 'side\n' > side.txt; git add side.txt; git commit -qm side
+git checkout -q "$base_branch"
+printf 'main\n' > main.txt; git add main.txt; git commit -qm main
+git merge -q --no-ff --no-commit side >/dev/null 2>&1
+printf 'mine\n' > mine.txt; git add mine.txt
+out=$("$PREP" "[*] merge, mine only" -- mine.txt 2>&1); rc=$?
+expect_exit "RED: a list that leaves part of a merge's index out is refused" 1 "$rc"
+expect_says "…naming what the merge commit would take" "$out" "side.txt"
+expect_not_says "…and emitting no line" "$out" "git commit -F"
+line=$("$PREP" "[*] merge side" 2>/dev/null); rc=$?
+expect_exit "a prep during a merge, no list → exit 0" 0 "$rc"
+expect_not_says "RED: …and the line has no pathspec" "$line" " -- "
+expect_says "…but checks the index when it runs" "$line" "diff --cached --stat --exit-code"
+base=$(git rev-parse HEAD)
+printf 'theirs\n' > theirs.txt; git add theirs.txt
+out=$(run_emitted "$line" 2>&1); rc=$?
+expect_exit "RED: a file staged after the prep stops the line" 1 "$rc"
+expect_says "…named" "$out" "theirs.txt"
+expect_eq "…and HEAD has not moved" "$base" "$(git rev-parse HEAD)"
+git rm -q --cached theirs.txt
+run_emitted "$line" >/dev/null 2>&1; rc=$?
+expect_exit "the same line commits once the index is back (control)" 0 "$rc"
+expect_eq "…and the commit is the merge — two parents" "3" "$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')"
+expect_eq "…with the merge and its own file in it" "main.txt
+mine.txt
+side.txt" "$(git ls-tree --name-only HEAD | grep -v '^\.keep$')"
+
 printf '\n=== the short call: the same line, a short name ===\n'
 # Field case (echelon, 2026-10-23): a ~900-character line handed off, then a
 # new task, and when it was due the owner would have had to scroll back

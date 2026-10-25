@@ -156,6 +156,24 @@
 #   the next prep. The whole-index form commits the index, not the worktree,
 #   and has nothing to repeat.
 #
+# During a merge or a cherry-pick
+#   A commit with a pathspec is a partial commit, and git refuses one while
+#   MERGE_HEAD or CHERRY_PICK_HEAD stands ("cannot do a partial commit during a
+#   merge", also "… a cherry-pick", "… a rebase" — each step of a rebase is a
+#   pick). Field case (vorobyev.name, 2026-10-24): `merge --no-ff --no-commit`,
+#   two files of its own staged, and the prep printed a pathspec line over the
+#   whole index — 30 paths — that git would have refused; the session handed
+#   the user its own line with `-i`. Such a commit takes the whole index, so the
+#   prep treats it like an untracking: the index must hold nothing but the
+#   listed paths — refused and named otherwise, since the commit would take it —
+#   and the line has no pathspec. A revert is not refused by git and is left as
+#   it is.
+#
+#   A line with no pathspec checks, when it runs, that the index is still the
+#   one this prep saw: `git diff --cached --stat --exit-code <tree>` against the
+#   tree written at the prep. Anything staged in between — a neighbour's
+#   `git add` — is named, and nothing is committed.
+#
 # The short call
 #   A line waits while the conversation moves on, and a long one gets buried.
 #   Field case (echelon, 2026-10-23): ~900 characters handed off, then a new
@@ -997,6 +1015,15 @@ fi
 # A deletion whose file is gone from disk is an ordinary `git rm`; the pathspec
 # form commits it correctly and stays.
 
+# A merge or a cherry-pick in progress: git refuses a partial commit then
+# (header, "During a merge or a cherry-pick").
+in_progress=""
+if git -C "$repo_root" rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+  in_progress="merge"
+elif git -C "$repo_root" rev-parse -q --verify CHERRY_PICK_HEAD >/dev/null 2>&1; then
+  in_progress="cherry-pick"
+fi
+
 untracked=()
 while IFS= read -r -d '' st && IFS= read -r -d '' p; do
   [ "$st" = "D" ] || continue
@@ -1006,7 +1033,7 @@ while IFS= read -r -d '' st && IFS= read -r -d '' p; do
 done < <(git -C "$path_base" diff --cached --name-status -z --no-renames -- "${paths[@]}" 2>/dev/null || true)
 
 whole_index=0
-if [ ${#untracked[@]} -gt 0 ]; then
+if [ ${#untracked[@]} -gt 0 ] || [ -n "$in_progress" ]; then
   ours=() others=()
   while IFS= read -r -d '' p; do ours+=("$p"); done \
     < <(git -C "$path_base" diff --cached --name-only -z --no-renames -- "${paths[@]}" 2>/dev/null || true)
@@ -1015,6 +1042,18 @@ if [ ${#untracked[@]} -gt 0 ]; then
     for o in ${ours[@]+"${ours[@]}"}; do [ "$p" = "$o" ] && { hit=1; break; }; done
     [ "$hit" -eq 0 ] && others+=("$p")
   done < <(git -C "$repo_root" diff --cached --name-only -z --no-renames 2>/dev/null || true)
+  if [ ${#others[@]} -gt 0 ] && [ -n "$in_progress" ]; then
+    {
+      echo "git-guard-prepare: a $in_progress is in progress, and git refuses a partial commit during one —"
+      echo "                   the commit takes the whole index, and the index holds what is not named here:"
+      for p in "${others[@]}"; do echo "                     $p"; done
+      echo
+      echo "  If they are part of this $in_progress, prepare without a list:"
+      echo "    git-guard-prepare \"<msg>\""
+      echo "  If they belong to someone else, the $in_progress commit would take them: sort that out first."
+    } >&2
+    exit 1
+  fi
   if [ ${#others[@]} -gt 0 ]; then
     {
       echo "git-guard-prepare: untracked with \`git rm --cached\` and still on disk:"
@@ -1038,6 +1077,16 @@ if [ ${#untracked[@]} -gt 0 ]; then
   paths=(${ours[@]+"${ours[@]}"})
   path_base="$repo_root"
   relative_flag=()
+  # The index this prep saw, as a tree the line compares with when it runs. An
+  # unmerged index has none: git would refuse the commit as well.
+  if ! index_tree=$(git -C "$repo_root" write-tree 2>/dev/null) || [ -z "$index_tree" ]; then
+    {
+      echo "git-guard-prepare: the index has unmerged paths — resolve them (edit, then git add) and run again."
+      git -C "$repo_root" diff --name-only -z --diff-filter=U 2>/dev/null | LC_ALL=C tr '\0' '\n' \
+        | sed 's/^/                     /'
+    } >&2
+    exit 1
+  fi
 fi
 
 # ------------------------------------- Syncthing: still bringing these files
@@ -1301,13 +1350,21 @@ if [ "$whole_index" -eq 1 ]; then
   # No pathspec: see the untracking section. Said on stderr, so the line on
   # stdout stays the one thing to copy.
   {
-    echo "git-guard-prepare: no pathspec in this command — it commits the whole index. Untracked"
-    echo "                   with \`git rm --cached\` and still on disk, so a pathspec would put them back:"
-    for p in "${untracked[@]}"; do echo "                     $p"; done
-    echo "                   The index holds only this commit's paths now; if anything else is staged"
-    echo "                   before the line runs, the next prep reports it as SWEPT IN."
+    if [ -n "$in_progress" ]; then
+      echo "git-guard-prepare: no pathspec in this command — it commits the whole index: a $in_progress is in"
+      echo "                   progress, and git refuses a partial commit during one."
+    else
+      echo "git-guard-prepare: no pathspec in this command — it commits the whole index. Untracked"
+      echo "                   with \`git rm --cached\` and still on disk, so a pathspec would put them back:"
+      for p in "${untracked[@]}"; do echo "                     $p"; done
+    fi
+    echo "                   The index holds only this commit's paths now; the line checks it is unchanged"
+    echo "                   when it runs, and commits nothing if anything else was staged in between."
   } >&2
-  line="$void_check git commit -F $msg_q"
+  # `--cached <tree>`: the index against the tree this prep wrote. `--stat`, for
+  # the person who runs the line, as in the pathspec forms.
+  index_msg="echo 'git-guard: the index changed after this line was prepared (above); nothing committed - ask for a check before running it again' >&2; false;"
+  line="$void_check { git --no-pager -c core.quotePath=false diff --cached --stat --exit-code $index_tree >&2 || { $index_msg }; } && git commit -F $msg_q"
 elif [ ${#paths[@]} -gt "$PATHSPEC_INLINE_MAX" ]; then
   # Long list: hand git a NUL-separated file instead of an unreadable line.
   # --pathspec-from-file requires git >= 2.25.

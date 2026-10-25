@@ -172,6 +172,8 @@ Prevents Claude from running `git commit` and `git push` without explicit user p
 
 **The line checks its paths when it runs (v2.23.0)**: a pathspec commit takes its paths from the working tree, so an edit made after the prep and staged by nobody — a parallel session's, say — used to go in under the line's message. The prep already refused that divergence; the line now repeats the check right before `git commit`, prints a `--stat` of the paths that changed, and commits nothing. An edit meant for the commit rides with it once `git add`ed, and the same line then runs. An edit someone else staged still rides in; the detector reports it on the next prep.
 
+**During a merge or a cherry-pick (v2.24.0)**: git refuses a partial commit while `MERGE_HEAD` or `CHERRY_PICK_HEAD` stands, so the helper prints the line without paths — the whole index — when the index holds nothing but the listed paths, and refuses with the extra paths named otherwise. A line without paths checks, when it runs, that the index is still the one the prep saw.
+
 ### `vdx` — Lifecycle Interface (optional, from another repository)
 
 Listed in this marketplace, developed in [VoDmAl/vdx](https://github.com/VoDmAl/vdx) (its `plugin/`
