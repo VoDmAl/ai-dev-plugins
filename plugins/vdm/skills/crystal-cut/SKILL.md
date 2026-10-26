@@ -29,6 +29,11 @@ Three layers enforce the same invariant (Decision Log #7):
    file written straight at `status: done` must contain zero `- [ ]`, or the
    gate blocks it. (Relevant when importing an already-complete legacy doc —
    see `crystal-grow` → Migrating legacy docs.)
+   **Shell surface** — `"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh" --bash-hook`
+   on PostToolUse(Bash). A status flipped with `sed -i` or python never meets
+   the PreToolUse gate; after the command this names a workitem left `done`
+   with open items, checked against HEAD. The write has already happened:
+   put the status back or resolve the items, with Edit.
 2. **Stop reminder** — `${CLAUDE_PLUGIN_ROOT}/scripts/crystal-stop-reminder.sh`
    shows the user the open items at end-of-turn. It does not reach the
    assistant: a Stop hook's `systemMessage` is shown to the user only.

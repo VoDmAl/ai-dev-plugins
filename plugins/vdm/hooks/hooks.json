@@ -80,6 +80,16 @@
             "timeout": 30
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh\" --bash-hook",
+            "timeout": 30
+          }
+        ]
       }
     ],
     "Stop": [

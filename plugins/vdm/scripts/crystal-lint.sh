@@ -27,6 +27,8 @@
 #   [--summary]                            machine-readable: path<TAB>label<TAB>n
 #   crystal-lint.sh --hook                 PostToolUse payload on stdin: new sidetracks without a checkbox
 #   crystal-lint.sh --pre-hook             PreToolUse payload on stdin: the canon gate — blocks the edit
+#   crystal-lint.sh --bash-hook            PostToolUse (Bash) payload on stdin: workitems a shell command
+#                                          changed, checked against HEAD after the fact
 #   [--quiet]                              suppress per-file OK lines
 #   [--project-root <path>]                root for resolving relative paths
 #
@@ -59,6 +61,13 @@ case " $* " in
     [ -z "$payload" ] && exit 0
     printf '%s' "$payload" | grep -qE '"tool_name"[[:space:]]*:[[:space:]]*"(Write|Edit|MultiEdit)"' 2>/dev/null || exit 0
     printf '%s' "$payload" | grep -qE '"file_path"[[:space:]]*:[[:space:]]*"[^"]*\.md"' 2>/dev/null || exit 0
+    ;;
+  *" --bash-hook "*)
+    # Every shell command in every project comes here, and a command that
+    # names no workitem is not ours: dropped without a process.
+    payload=$(cat)
+    case "$payload" in *workitem*) ;; *) exit 0 ;; esac
+    printf '%s' "$payload" | grep -qE '"tool_name"[[:space:]]*:[[:space:]]*"Bash"' 2>/dev/null || exit 0
     ;;
 esac
 
@@ -100,6 +109,7 @@ while [ $# -gt 0 ]; do
     --print-canon)  mode="canon" ;;
     --hook)         mode="hook" ;;
     --pre-hook)     mode="pre-hook" ;;
+    --bash-hook)    mode="bash-hook" ;;
     --quiet)        quiet="--quiet" ;;
     --summary)      summary="--summary" ;;
     --project-root) shift; project_root="${1:-}" ;;
@@ -401,6 +411,157 @@ left to the done gate.
 EOF
     } >&2
   fi
+  exit 2
+fi
+
+# --- --bash-hook: the shell surface -------------------------------------------
+# PostToolUse on Bash. The gates above hold Write, Edit and MultiEdit before they
+# run; a shell command they never see. In the field seven of nine sessions looked
+# at closely wrote their workitem with python or `sed -i`, one flipping the status
+# to done that way (late-grow DL #6, Sidetrack #3). What a command will leave on
+# disk is not in its text, so this looks after it: every workitem that differs
+# from HEAD or is not committed yet is checked against HEAD by the rules the
+# write gates apply — the canon, an open sidetrack this change introduced without
+# a checkbox, and a terminal status with obligations left (crystal-completion-
+# guard's checker, fed the file as a Write of what is on disk). The same move as
+# comms-sent-check for letters (outgoing-ladder DL #6).
+#
+# After the fact it cannot stop the write. It names it while the file can still
+# be fixed, before the commit and before "done" is reported.
+#
+# Exit: 0 nothing to say / 2 named (stderr returns to the assistant).
+if [ "$mode" = "bash-hook" ]; then
+  command -v git >/dev/null 2>&1 || exit 0
+  repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+  cd "$repo_root" 2>/dev/null || exit 0
+  roots=$(resolve_crystal_roots 2>/dev/null)
+  [ -z "$roots" ] && exit 0
+
+  bash_unverified() {
+    if command -v vdm_gate_unverified >/dev/null 2>&1; then
+      vdm_gate_unverified "crystal-lint" "$1" \
+        "a shell command named a workitem — whether what it left matches the canon and keeps its obligations was never checked" \
+        "install python3 — the linter is a python script — then re-run: \"\${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh\" <file>" \
+        "or compare the file against templates/workitem-template.md by hand"
+    else
+      printf '\n[crystal-lint] NOT CHECKED — %s\n  A shell command named a workitem and the check could not run.\n\n' "$1" >&2
+    fi
+    exit 2
+  }
+  command -v python3 >/dev/null 2>&1 || bash_unverified "python3 is not on PATH"
+
+  # What differs from HEAD, and what is not committed yet; without a HEAD all of
+  # it is new. diff-index, not diff: `git diff <rev>` refreshes the index, and a
+  # hook leaves the index alone (tests/hook-index-writes.test.sh). -z and `tr`
+  # in the C locale for the reason --staged gives below.
+  has_head=""
+  if git rev-parse -q --verify HEAD >/dev/null 2>&1; then
+    has_head="yes"
+    cands=$( { git diff-index --name-only -z HEAD -- 2>/dev/null
+               git ls-files --others --exclude-standard -z 2>/dev/null; } | LC_ALL=C tr '\0' '\n')
+  else
+    cands=$(git ls-files --cached --others --exclude-standard -z 2>/dev/null | LC_ALL=C tr '\0' '\n')
+  fi
+  cands=$(printf '%s\n' "$cands" | LC_ALL=C grep -E '(^|/)workitem\.md$' | LC_ALL=C sort -u)
+  [ -z "$cands" ] && exit 0
+
+  # The completion rule's terminal sets: the canonical status and every alias
+  # the project maps to it — what crystal-completion-guard.sh hands its checker.
+  done_csv="done"; superseded_csv="superseded"
+  if [ -n "$aliases_csv" ]; then
+    while IFS='=' read -r a target; do
+      [ -n "$a" ] || continue
+      case "$target" in
+        done)       done_csv="${done_csv},${a}" ;;
+        superseded) superseded_csv="${superseded_csv},${a}" ;;
+      esac
+    done <<<"$(printf '%s' "$aliases_csv" | tr ',' '\n')"
+  fi
+  roots_colon=$(printf '%s\n' "$roots" | LC_ALL=C tr '\n' ':' | LC_ALL=C sed 's/:$//')
+  checker="$SELF_DIR/crystal-completion-guard.py"
+
+  tmp=$(mktemp -d 2>/dev/null || mktemp -d -t crystallint) || exit 0
+  trap 'rm -rf "$tmp"' EXIT
+
+  report=""
+  n=0
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    abs="$repo_root/$f"
+    [ -f "$abs" ] || continue
+    under=""
+    while IFS= read -r r; do
+      [ -n "$r" ] || continue
+      if is_workitem_path "$abs" "$r"; then under="yes"; break; fi
+    done <<<"$roots"
+    [ -z "$under" ] && continue
+
+    n=$((n + 1))
+    before=""
+    if [ -n "$has_head" ] && git cat-file -e "HEAD:$f" 2>/dev/null; then
+      # The same bytes as committed: a touch, or a rewrite that changed nothing.
+      [ "$(git hash-object -- "$abs" 2>/dev/null)" = "$(git rev-parse -q --verify "HEAD:$f" 2>/dev/null)" ] && continue
+      before="$tmp/$n.before"
+      git show "HEAD:$f" >"$before" 2>/dev/null || before=""
+    fi
+
+    found=""
+    # 1. The canon, as the pre-commit surface asks it: the structure in full,
+    #    Decision Log entries and promises only where the change adds them.
+    out=$(run_linter --against "$before" "$abs" 2>&1)
+    case "$?" in
+      0) ;;
+      1) printf '%s\n' "$out" | grep -q '^  ✗ ' \
+           || bash_unverified "the linter exited 1 without naming a finding"
+         found="${found}${out}"$'\n' ;;
+      *) bash_unverified "the linter ended without a verdict" ;;
+    esac
+
+    # 2. Open sidetracks without a checkbox — only those this change brought.
+    if command -v audit_sidetracks_without_markers >/dev/null 2>&1; then
+      orphans_now=$(audit_sidetracks_without_markers "$abs")
+      if [ -n "$orphans_now" ]; then
+        was=""
+        [ -n "$before" ] && was=$(audit_sidetracks_without_markers "$before")
+        orphans_new=$(only_new_orphans "$orphans_now" "$was")
+        if [ -n "$orphans_new" ]; then
+          found="${found}Open sidetracks this change introduced have no checkbox — one \`- [ ] Sidetrack #N: <what closes it>\` line each:"$'\n'
+          found="${found}$(printf '%s\n' "$orphans_new" | sed 's/^/  /')"$'\n'
+        fi
+      fi
+    fi
+
+    # 3. A terminal status with obligations left, whether or not this change
+    #    made it terminal — as the pre-commit completion gate asks it. The
+    #    checker says nothing about any other status.
+    if [ -f "$checker" ]; then
+      out=$(python3 -c 'import json, sys
+p = sys.argv[1]
+print(json.dumps({"tool_name": "Write", "tool_input": {"file_path": p, "content": open(p, encoding="utf-8", errors="replace").read()}}))' "$abs" \
+        | CRYSTAL_ROOTS="$roots_colon" CRYSTAL_GATE_DONE="$done_csv" CRYSTAL_GATE_SUPERSEDED="$superseded_csv" \
+          python3 "$checker" 2>&1 >/dev/null)
+      case "$?" in
+        0) ;;
+        2) found="${found}${out}"$'\n' ;;
+        *) bash_unverified "the completion checker ended without a verdict" ;;
+      esac
+    fi
+
+    [ -n "$found" ] && report="${report}"$'\n'"── ${f}"$'\n'"${found}"
+  done <<<"$cands"
+
+  [ -z "$report" ] && exit 0
+  {
+    cat <<'EOF'
+
+[crystal-lint] A shell command changed a workitem, and the write gates never saw
+it — they hold Write, Edit and MultiEdit. Checked against HEAD after the fact:
+the change is already on disk. Fix the file before it is committed or reported
+done — with Edit, so the gates see the fix. A workitem changed by someone else's
+session is theirs: name it to the user rather than rewrite it.
+EOF
+    printf '%s' "$report"
+  } >&2
   exit 2
 fi
 
