@@ -1293,20 +1293,37 @@ intercom_mail_run() {
 # ---------------------------------------------------------------------------
 INTERCOM_VDX_MIN=0.36
 
+# intercom_checkouts <identity> — that agent's checkouts on this machine, in
+# registry order, one per line, without the harness's own copies of a plugin's
+# repository (`…/plugins/marketplaces/<name>`, `…/plugins/cache/…`). The
+# registry lists every checkout a session or a hook ever ran in, and the harness
+# clones a plugin's repository for itself: the settings committed in it arrive
+# there too, nobody works there, and the harness does not trust it. This
+# repository's own entry lists its marketplace clone first (vdx, 2026-10-27), so
+# with its mail-session key committed the mail session would have been started
+# there, and `role --path` would name such a copy the same way.
+intercom_checkouts() {
+  local p
+  while IFS= read -r p; do
+    [ -n "$p" ] && [ -d "$p" ] || continue
+    case "$p" in */plugins/marketplaces/*|*/plugins/cache/*) continue ;; esac
+    printf '%s\n' "$p"
+  done <<<"$(intercom_registry_get "$1" '(.paths // [])[]')"
+}
+
 # _intercom_mail_clone <identity> — that agent's checkout on this machine with
-# its mail session switched on, or nothing. Every registered checkout that
-# exists here is looked at: the registry also lists clones nobody configures (a
-# marketplace clone came first in this repo's own entry). The settings file is
+# its mail session switched on, or nothing. Every checkout is looked at, not the
+# first: the registry also lists clones nobody configures. The settings file is
 # found as resolve_config_path finds it: .claude/ when present, else .qwen/.
 _intercom_mail_clone() {
   command -v jq >/dev/null 2>&1 || return 0
   local p cfg
   while IFS= read -r p; do
-    [ -n "$p" ] && [ -d "$p" ] || continue
+    [ -n "$p" ] || continue
     if [ -d "$p/.claude" ]; then cfg="$p/.claude/vdm-plugins.json"; else cfg="$p/.qwen/vdm-plugins.json"; fi
     [ -f "$cfg" ] || continue
     jq -e '.intercom["mail-session"] == true' "$cfg" >/dev/null 2>&1 && { printf '%s' "$p"; return 0; }
-  done <<<"$(intercom_registry_get "$1" '(.paths // [])[]')"
+  done <<<"$(intercom_checkouts "$1")"
   return 0
 }
 

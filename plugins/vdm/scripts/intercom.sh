@@ -295,10 +295,8 @@ cmd_role() {
     printf '%s\n' "$holder"
     return 0
   fi
-  local p found=""
-  while IFS= read -r p; do
-    [ -n "$p" ] && [ -d "$p" ] && { found="$p"; break; }
-  done <<<"$(intercom_registry_get "$holder" '(.paths // [])[]')"
+  local found
+  found="$(intercom_checkouts "$holder" | head -n 1)"
   if [ -z "$found" ]; then
     printf 'intercom: ✗ `%s` holds the role %s, but none of its checkouts is on this machine: %s\n' \
       "$holder" "$role" "$(_ic_reg_list "$holder" .paths)" >&2

@@ -336,6 +336,15 @@ out="$(bash "$IC" role access-layer --path 2>&1)"; rc=$?
 eq "RED: a holder with no checkout on this machine → exit 1" "$rc" "1"
 says "…said as such" "$out" "none of its checkouts is on this machine"
 mv "$TMP/gadget.json.bak" "$gadget_reg"
+# The harness clones a plugin's repository for itself (…/plugins/marketplaces/<name>),
+# and a session or hook run there puts that copy in the registry — first, in this
+# repository's own entry (vdx, 2026-10-27). Nobody works in it.
+mkdir -p "$TMP/claude/plugins/marketplaces/gadget"
+cp "$gadget_reg" "$TMP/gadget.json.bak"
+jq --arg m "$TMP/claude/plugins/marketplaces/gadget" '.paths = [$m] + .paths' "$gadget_reg" > "$gadget_reg.tmp" && mv "$gadget_reg.tmp" "$gadget_reg"
+eq "RED: role --path passes over the harness's copy of a plugin repository, listed first" \
+  "$(bash "$IC" role access-layer --path 2>/dev/null)" "$(jq -r '.paths[1]' "$gadget_reg")"
+mv "$TMP/gadget.json.bak" "$gadget_reg"
 jq '.roles = ["access-layer"]' "$reg" > "$reg.tmp" && mv "$reg.tmp" "$reg"   # a hand-made second holder
 out="$(bash "$IC" role access-layer 2>&1)"; rc=$?
 eq "RED: two holders → exit 3" "$rc" "3"
@@ -1364,6 +1373,16 @@ mkdir -p "$TMP/hop-b-work/.claude"
 printf '{"intercom":{"mail-session":true}}\n' > "$TMP/hop-b-work/.claude/vdm-plugins.json"
 out="$(vsend ms-clone --body "$B/live.md")"
 says "the checkout started is the one with the key, not the first listed" "$out" "--detach '$(cd "$TMP/hop-b-work" && pwd -P)'"
+# A committed key reaches every clone, the harness's copy of a plugin repository
+# too — listed first in this repository's own entry (vdx, 2026-10-27). Started
+# there, the session would wait on a trust prompt (exit 4), or work in a copy
+# nobody works in.
+MKT="$TMP/claude/plugins/marketplaces/hop-b"; mkdir -p "$MKT/.claude"
+printf '{"intercom":{"mail-session":true}}\n' > "$MKT/.claude/vdm-plugins.json"
+reg_b="$VDM_INTERCOM_ROOT/_registry/hop-b.json"
+jq --arg m "$MKT" '.paths = [$m] + .paths' "$reg_b" > "$reg_b.tmp" && mv "$reg_b.tmp" "$reg_b"
+out="$(vsend ms-market --body "$B/live.md")"
+says "RED: the plugin copy with the committed key, listed first, is passed over" "$out" "--detach '$(cd "$TMP/hop-b-work" && pwd -P)'"
 mv -f "$TMP/hop-b.reg.keep" "$VDM_INTERCOM_ROOT/_registry/hop-b.json"
 rm -rf "$TMP/hop-b-work" "$TMP/hop-b/.claude" "$VDM_INTERCOM_ROOT"/hop-b/ms-*.md
 

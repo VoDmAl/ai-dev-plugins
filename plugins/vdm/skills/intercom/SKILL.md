@@ -348,7 +348,7 @@ re-derive its logic:
 | `register [--name N]… [--describe D] [--role R]… [--same-project]` | Record this repo in the directory. Without flags: the mechanical part only. `--name` (repeatable) and `--describe` supply the human part; `--role` declares the role this agent holds (§ Roles); `--same-project` confirms this clone's remote. Refuses a name that routes to another agent and a role another agent holds. |
 | `names [add\|rm] [--for ID] <name>…` | List (no args) or edit human names — own entry by default, `--for <identity>` for another agent's. |
 | `roles [add\|rm] [--for ID] <role>…` | List (no args) or edit an agent's role — own entry by default, `--for <identity>` for another's. Only `access-layer`; one holder. |
-| `role <role> [--path]` | Print the one agent holding `<role>`, or with `--path` its checkout on this machine (exit 2 nobody, 3 several, 1 no checkout here). |
+| `role <role> [--path]` | Print the one agent holding `<role>`, or with `--path` its working checkout on this machine — never the harness's copy of a plugin repository (exit 2 nobody, 3 several, 1 no checkout here). |
 | `describe [--for ID] "<one-liner>"` | Set a description. Own entry by default; `--for` completes another agent's (see § Completing someone else's entry). |
 | `unregister <identity> [--force]` | Remove **one** directory entry. Refuses while the agent is addressed by a human name; `--force` overrides. Never a sweep — there is no bulk form on purpose. |
 | `directory [-v]` (aka `who`, `list`, `agents`) | Every registered agent: identity, names + aliases, description, pending count; `⚠ unnamed` where the human part is missing; plus inboxes that exist with no registered agent (unclaimed first-contact sends). `-v` adds remotes and paths. |
@@ -788,7 +788,10 @@ session started with both is focused.
   session on its own machine. That happens when three things hold: the
   recipient's checkout here has `intercom.mail-session: true` in its
   `vdm-plugins.json`, no mail session of it is live here, and the vdx here is
-  0.36 or later. Then `send` (and `reply`) prints `📮 … start it with your shell
+  0.36 or later. A checkout is a working clone: the harness's own copy of a
+  plugin's repository (`…/plugins/marketplaces/<name>`, `…/plugins/cache/…`)
+  gets the committed key too and is passed over — nobody works there, and the
+  harness does not trust it. `role --path` passes it over the same way. Then `send` (and `reply`) prints `📮 … start it with your shell
   tool` and the command, `vdx ai --intercom --detach '<checkout>'`. Run it in
   the same turn — after the body is written, as with a wake. vdx keeps one mail
   session per project and machine, so a second start does nothing. Its first
