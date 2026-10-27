@@ -14,6 +14,8 @@
 #   git-guard-prepare --supersede "<commit message>" [-- <path>...]
 #                                            # replace a line still waiting
 #   git-guard-prepare --pending              # the waiting line's short call
+#   git-guard-prepare --check ["<message>"] [-- <path>...]
+#                                            # the prep's checks for a look only
 #
 # Output (stdout):
 #   <single-line shell command>           # the user copy-pastes this
@@ -587,6 +589,7 @@ Usage: git-guard-prepare "<commit message>" [-- <path>...]
        git-guard-prepare --supersede "<commit message>" [-- <path>...]
        git-guard-prepare --verify-last
        git-guard-prepare --pending
+       git-guard-prepare --check ["<commit message>"] [-- <path>...]
 
 Writes the message to a per-prep file under ${TMPDIR:-/tmp} and prints a
 single-line `git commit -F <path> -- <paths>` command for the user to run.
@@ -611,6 +614,13 @@ tree differs from the index on any of those paths.
 Every prep records its intended path list. The next prep — or --verify-last —
 compares that intent against what the commit actually contains and reports any
 path that was swept in or dropped.
+
+--check runs the checks a prep makes and prints what a prep would print, for a
+look only: nothing is written, a line still waiting stays as it was handed off,
+and the exit is the prep's (0, or 1 where a prep would refuse). Without paths it
+checks the waiting line's paths, or the index when no line waits. The documents
+a commit may leave behind are listed in full. A message, when given, has its
+subject measured.
 USAGE
 }
 
@@ -684,23 +694,48 @@ if [ "$1" = "--verify-last" ]; then
   exit 0
 fi
 
+# --check: the checks a prep makes, for a look only. Field case (the machines
+# agent, 2026-10-25): with a line handed off, the agent wanted to see the prep's
+# warnings again and ran `--supersede` with a dummy message — which prepared a
+# line "x" and killed the one the owner held. Without --supersede a prep refuses
+# while a line waits, so there was no way to look. Here every check below runs
+# as for a prep; the waiting line is not a refusal but the paths to check; the
+# run ends before "write files", so no sidecar is written or removed and the
+# detector is not consulted (that is --verify-last). The message is optional: a
+# subject given is measured, none is not needed.
+check=0
+if [ "$1" = "--check" ]; then
+  check=1
+  shift
+  for a in "$@"; do
+    [ "$a" = "--" ] && break
+    if [ "$a" = "--supersede" ]; then
+      echo "git-guard-prepare: --check never replaces a line — drop --supersede, or prepare without --check" >&2
+      exit 1
+    fi
+  done
+fi
+
 # --supersede: replace a line of this session that is still waiting to be run.
 # Accepted before the message or right after it.
 supersede=0
-if [ "$1" = "--supersede" ]; then
+if [ "$check" -eq 0 ] && [ "$1" = "--supersede" ]; then
   supersede=1
   shift
   [ $# -ge 1 ] || { usage; exit 1; }
 fi
 
-if [ "$1" = "-" ]; then
+if [ "$check" -eq 1 ] && { [ $# -eq 0 ] || [ "$1" = "--" ]; }; then
+  message=""
+elif [ "$1" = "-" ]; then
   message=$(cat)
+  shift
 else
   message="$1"
+  shift
 fi
-shift
 
-if [ $# -gt 0 ] && [ "$1" = "--supersede" ]; then
+if [ "$check" -eq 0 ] && [ $# -gt 0 ] && [ "$1" = "--supersede" ]; then
   supersede=1
   shift
 fi
@@ -717,7 +752,7 @@ if [ $# -gt 0 ]; then
   explicit_paths=("$@")
 fi
 
-if [ -z "${message//[[:space:]]/}" ]; then
+if [ "$check" -eq 0 ] && [ -z "${message//[[:space:]]/}" ]; then
   echo "git-guard-prepare: empty commit message" >&2
   exit 1
 fi
@@ -750,7 +785,7 @@ fi
 case "$subject_max" in ''|*[!0-9]*|0) subject_max=72 ;; esac
 subj=${message%%$'\n'*}
 subj_len=$(printf '%s' "$subj" | LC_ALL=C tr -d '\200-\277' | wc -c | tr -d ' ')
-if [ "$subj_len" -gt "$subject_max" ]; then
+if [ -n "$subj" ] && [ "$subj_len" -gt "$subject_max" ]; then
   if [ -f "$repo_root/PROJECT_CHANGELOG.md" ]; then
     detail_home="PROJECT_CHANGELOG.md"
   else
@@ -885,11 +920,16 @@ fi
 #
 # Decided before any other check: when a line is waiting, the answer is "hand
 # off nothing new" whatever the index looks like now. See the header.
+check_subject="" check_stem=""
 if [ "$supersede" -eq 0 ]; then
   wl_tmp="${TMPDIR:-/tmp}"; wl_tmp="${wl_tmp%/}"
   waiting=$(waiting_line "$(session_scope "$wl_tmp")" "${repo_name}-${branch_safe}-commit" \
               "$(git rev-parse --verify -q HEAD 2>/dev/null || true)")
-  if [ -n "$waiting" ]; then
+  if [ -n "$waiting" ] && [ "$check" -eq 1 ]; then
+    # A look: the waiting line is what to look at, not a reason to refuse.
+    wl_rest="${waiting#*$'\t'}"
+    check_stem="${wl_rest%%$'\t'*}"; check_subject="${wl_rest#*$'\t'}"
+  elif [ -n "$waiting" ]; then
     # Not `read`: TAB is whitespace to it, and an empty epoch would collapse.
     wl_epoch="${waiting%%$'\t'*}"; wl_rest="${waiting#*$'\t'}"
     wl_stem="${wl_rest%%$'\t'*}"; wl_subject="${wl_rest#*$'\t'}"
@@ -932,8 +972,37 @@ fi
 # legally contain.
 
 paths=()
+check_base=""
 if [ ${#explicit_paths[@]} -gt 0 ]; then
   paths=("${explicit_paths[@]}")
+elif [ -n "$check_stem" ] && [ -f "$check_stem.paths" ]; then
+  # The waiting line's paths, named from where its prep stood — the caller's
+  # cwd for an explicit list, the top for a snapshot of the index. Neither is
+  # recorded, so each is tried: every path must be a file there, or one the
+  # index or HEAD has. A path that resolves nowhere would be checked as absent
+  # and pass in silence; that is refused instead.
+  while IFS= read -r -d '' p; do paths+=("$p"); done < "$check_stem.paths"
+  check_places() {
+    local b="$1" p
+    for p in "${paths[@]}"; do
+      { [ -e "$b/$p" ] || [ -L "$b/$p" ]; } && continue
+      git -C "$b" ls-files --error-unmatch -- "$p" >/dev/null 2>&1 && continue
+      git -C "$b" cat-file -e "HEAD:./$p" 2>/dev/null && continue
+      return 1
+    done
+  }
+  if [ ${#paths[@]} -gt 0 ] && check_places "$(pwd)"; then
+    check_base="cwd"
+  elif [ ${#paths[@]} -gt 0 ] && check_places "$repo_root"; then
+    check_base="top"
+  else
+    {
+      echo "git-guard-prepare: --check — the waiting line's paths cannot be placed from here:"
+      for p in "${paths[@]}"; do echo "                     $p"; done
+      echo "                   Run it from where that line was prepared, or name them: --check -- <path>..."
+    } >&2
+    exit 1
+  fi
 else
   while IFS= read -r -d '' p; do
     paths+=("$p")
@@ -952,7 +1021,7 @@ fi
 # below reads from this base. Reading snapshot paths from the cwd instead was a
 # silent hole: run from a subdirectory, `sub/x.md` resolved to `sub/sub/x.md`,
 # the U+FFFD check found no file and passed, and so did the check below.
-if [ ${#explicit_paths[@]} -gt 0 ]; then
+if [ ${#explicit_paths[@]} -gt 0 ] || [ "$check_base" = cwd ]; then
   path_base=$(pwd)
   relative_flag=(--relative)
 else
@@ -1236,8 +1305,11 @@ fi
 docs_pairs="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/docs-pairs.py"
 if [ -f "$docs_pairs" ] && command -v python3 >/dev/null 2>&1 \
    && { ! command -v vdm_is_enabled >/dev/null 2>&1 || vdm_is_enabled "docs-sync"; }; then
+  # A look lists them all: "read each" cannot be done behind "+5 more".
+  pairs_max=()
+  [ "$check" -eq 1 ] && pairs_max=(--max-docs 1000 --max-ids 1000)
   pairs=$(cd "$path_base" && PYTHONIOENCODING=utf-8 GIT_OPTIONAL_LOCKS=0 \
-            python3 "$docs_pairs" --staged -- "${paths[@]}" 2>/dev/null || true)
+            python3 "$docs_pairs" --staged ${pairs_max[@]+"${pairs_max[@]}"} -- "${paths[@]}" 2>/dev/null || true)
   if [ -n "$pairs" ]; then
     {
       echo "git-guard-prepare: documents this commit may leave behind — they name what its code removed or"
@@ -1247,6 +1319,19 @@ if [ -f "$docs_pairs" ] && command -v python3 >/dev/null 2>&1 \
       echo "                   with --supersede. All still right: the line below stands."
     } >&2
   fi
+fi
+
+# --check ends here: every check has spoken, nothing has been written.
+if [ "$check" -eq 1 ]; then
+  if [ -n "$check_subject" ]; then
+    echo "git-guard-prepare: --check — the line still waiting passes what a prep checks; it stands as handed off:"
+    echo "                     $check_subject"
+  else
+    echo "git-guard-prepare: --check — these paths pass what a prep checks:"
+  fi
+  for p in "${paths[@]}"; do echo "                     $p"; done
+  echo "                   Nothing written; no line prepared or replaced."
+  exit 0
 fi
 
 # ------------------------------------------------------------- write files

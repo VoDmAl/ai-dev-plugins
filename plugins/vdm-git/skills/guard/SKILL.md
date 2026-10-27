@@ -132,6 +132,8 @@ When the assistant has finished work that warrants a commit — implementation d
 
    **Superseding kills the earlier line — yours, not a neighbour's.** `git-guard-prepare --supersede "<subject>"` is for a line the user reported failed, or a block that changed in substance. It deletes the earlier line's message file, so that command fails instead of committing a message that has since been revised (see [Superseding a prepared line](#superseding-a-prepared-line)). The helper then reports `a prepared command for this branch was never run`; say so on hand-off: the user still has the dead line in their scrollback.
 
+   **To look again, `--check` — never `--supersede`.** `git-guard-prepare --check [-- <path>...]` runs the checks a prep makes and prints what a prep prints — the documents left behind in full, with no `+N more` — but writes nothing and leaves a waiting line as handed off; the exit is the prep's (0, or 1 where it would refuse). Without paths it checks the waiting line's, or the index when none waits. Field case (the machines agent, 2026-10-25): it re-ran `--supersede` with a dummy message to see the warnings again, prepared a line «x» and killed the one the owner held.
+
 4. **Hand off to the user.** Your end-of-work message should contain:
    - what was staged (file list);
    - what is intentionally not staged (other tickets);
@@ -413,6 +415,8 @@ you:
   longer true, a file joins it, the user sent corrections). Then
   `git-guard-prepare --supersede "<subject>" [-- <path>...]`, and say the earlier
   line is void.
+- **Look without replacing it:** `git-guard-prepare --check` runs the prep's
+  checks on the waiting line's paths and writes nothing.
 
 A dead line still gets run — from the scrollback, by a mistaken paste, in a
 restored session where every old line looks current. Git runs pre-commit before
@@ -563,7 +567,8 @@ its code **removed or rewrote**, or that its code points at with `@see`:
 
 It never refuses over it: a pair is a reason to read a document, not proof that it is wrong. Read
 each; one that is now wrong is fixed, `git add`-ed and prepared again with `--supersede`, so the fix
-goes into the same commit. When all are still right, the line stands as printed. Off together with
+goes into the same commit. When all are still right, the line stands as printed. The full list —
+past `+N more` — is `git-guard-prepare --check`, which writes nothing and keeps the waiting line. Off together with
 the vdm reminder: `docs-sync.enabled: false` in `.claude/vdm-plugins.json`. The pairs come from
 `"${CLAUDE_PLUGIN_ROOT}/lib/docs-pairs.py"`, the same function as the vdm docs-sync reminder's.
 
