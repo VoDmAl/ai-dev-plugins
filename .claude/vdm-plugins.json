@@ -1,5 +1,8 @@
 {
   "git-guard": {
     "subject-max": 80
+  },
+  "intercom": {
+    "mail-session": true
   }
 }
