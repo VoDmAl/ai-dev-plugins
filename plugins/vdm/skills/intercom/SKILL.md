@@ -800,7 +800,13 @@ session started with both is focused.
   the same start for a letter still lying there. With vdx missing or older, a
   line says so and the letter goes as without it. The key is off by default
   and is set by hand, because every mail session is a whole agent session. The
-  user's word (2026-10-22): only where it was switched on. One case where the
+  user's word (2026-10-22): only where it was switched on. And (2026-10-27):
+  where mail piles up, the key is offered. With five letters from other agents
+  in the inbox, the oldest three days old, and no key, the session-start line
+  says so (`📨`): offer the mail session to the user once, in one line; the key
+  is the project's own commit. The sender's `sent` names such recipients in one
+  line after the list. A note to oneself is not counted, nor is a recipient
+  with no working checkout here. One case where the
   start does not happen: a checkout Claude Code does not trust yet on this
   machine (a new folder, or one that moved). From vdx 0.39 nothing starts
   there: the command exits 4 and prints the one to run at a terminal. Hand that

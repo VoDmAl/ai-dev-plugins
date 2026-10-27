@@ -203,6 +203,57 @@ intercom_inbox_count() {
   intercom_inbox_list "${1:-}" | wc -l | tr -d ' '
 }
 
+# Mail piling up, and the mail session offered for it (vdx, 2026-10-27). The
+# owner: the mail-session key must be known and offered where mail is seen to
+# pile up — since it shipped in vdm 2.58.0 no project had set it, while letters
+# from other agents lay 54–89 days in four inboxes of one machine. Only intercom
+# sees the pile, so it says so: on the recipient's session start and in the
+# sender's `sent`. Five letters and three days: below that a busy week looks
+# the same as a forgotten inbox.
+INTERCOM_BACKLOG_MIN=5
+INTERCOM_BACKLOG_DAYS=3
+
+# intercom_backlog <identity> — "<letters>\t<oldest, in days>" for the letters
+# from other agents lying in that inbox; nothing when there are none. A note
+# the project left for itself is not mail (intercom-session-wake, DL #12).
+intercom_backlog() {
+  local id="$1" f files=()
+  while IFS= read -r f; do [ -n "$f" ] && files+=("$f"); done < <(intercom_inbox_list "$id")
+  [ ${#files[@]} -gt 0 ] || return 0
+  awk -v me="$id" -v today="$(_intercom_today)" '
+    function days(s,   y, m, d, era, yoe, doy) {
+      if (s !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/) return -1
+      y = substr(s, 1, 4) + 0; m = substr(s, 6, 2) + 0; d = substr(s, 9, 2) + 0
+      y -= (m <= 2)
+      era = int(y / 400); yoe = y - era * 400
+      doy = int((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5) + d - 1
+      return era * 146097 + yoe * 365 + int(yoe / 4) - int(yoe / 100) + doy
+    }
+    function strip(v) { gsub(/^[ \t]+|[ \t]+$/, "", v); gsub(/^"|"$/, "", v); return v }
+    BEGIN {
+      t = days(today); n = 0; oldest = 0
+      for (i = 1; i < ARGC; i++) {
+        f = ARGV[i]; from = ""; created = ""; infm = 0; first = 1
+        while ((getline line < f) > 0) {
+          if (first) { first = 0; infm = (line == "---"); if (!infm) break; continue }
+          if (line == "---") break
+          if (line ~ /^from:/)    from = strip(substr(line, 6))
+          if (line ~ /^created:/) created = strip(substr(line, 9))
+        }
+        close(f)
+        if (from == "" || from == me) continue
+        n++
+        c = days(created)
+        if (c >= 0 && t >= 0 && t - c > oldest) oldest = t - c
+      }
+      if (n > 0) printf "%d\t%d\n", n, oldest
+    }' "${files[@]}"
+}
+
+# intercom_mail_switched_on <identity> — some working checkout of it here has
+# its mail session switched on.
+intercom_mail_switched_on() { [ -n "$(_intercom_mail_clone "$1")" ]; }
+
 # ---------------------------------------------------------------------------
 # Frontmatter scalar extraction (for `check` listings).
 # ---------------------------------------------------------------------------

@@ -176,6 +176,18 @@ if intercom_mail_session; then
   • Inbox handled: say what was done, then end this session with /vdm:intercom close — it refuses while a letter nobody took is in the inbox, and runs \`vdx ai --close --waiting <n>\`, n being the letters you took and left for the owner. Your turn ends on its result."
 fi
 
+# Mail piling up here, with no mail session switched on: offered once per
+# session start, to be put to the user in a line (see intercom_backlog).
+if ! intercom_mail_session; then
+  backlog="$(intercom_backlog "$id" 2>/dev/null)"
+  b_n="${backlog%%$'\t'*}"; b_days="${backlog#*$'\t'}"
+  if [ -n "$backlog" ] && [ "$b_n" -ge "$INTERCOM_BACKLOG_MIN" ] && [ "$b_days" -ge "$INTERCOM_BACKLOG_DAYS" ] \
+     && ! intercom_mail_switched_on "$id"; then
+    msg="${msg}
+📨 ${b_n} letters from other agents wait in this inbox, the oldest ${b_days}d. A mail session — a separate agent session that takes letters as they come — would answer them without waiting for a session here: offer it to the user once, in one line. It is switched on by this project's own commit, \`\"intercom\": {\"mail-session\": true}\` in .claude/vdm-plugins.json, and costs a whole agent session per project and machine."
+  fi
+fi
+
 # Delivery is not receipt, from the sender's side. A letter this agent wrote
 # that has sat unpicked for three days is a promise nobody is keeping, and
 # `check` shows only what came in. Three days, because that is how long the

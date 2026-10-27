@@ -1029,7 +1029,7 @@ cmd_sent() {
   fi
   n="$(printf '%s\n' "$list" | wc -l | tr -d ' ')"
   printf '📤 intercom: %s letter(s) from `%s` not picked up yet (oldest first):\n\n' "$n" "$id"
-  local age inbox slug title file live lines choice start verdict wname wstatus why wmode taken seen="" cache=""
+  local age inbox slug title file live lines choice start verdict wname wstatus why wmode taken seen="" cache="" piled="" seen_pile=""
   while IFS=$'\t' read -r age inbox slug title file; do
     [ -n "$inbox" ] || continue
     printf '  • %sd  %s/%s — %s\n' "$age" "$inbox" "$slug" "$title"
@@ -1037,6 +1037,18 @@ cmd_sent() {
     if [ -n "$taken" ]; then
       printf '      taken by %s at %s — in work, nobody to wake\n' "${taken%% *}" "${taken#* }"
       continue
+    fi
+    # A recipient that keeps letters 3+ days, has a checkout here and no mail
+    # session switched on: named once, in a line after the list (see
+    # intercom_backlog).
+    if [ "$age" -ge "$INTERCOM_BACKLOG_DAYS" ]; then
+      case "|$seen_pile|" in
+        *"|$inbox|"*) ;;
+        *) seen_pile="${seen_pile}|$inbox"
+           if [ -n "$(intercom_checkouts "$inbox" | head -n 1)" ] && ! intercom_mail_switched_on "$inbox"; then
+             piled="${piled:+$piled, }\`$inbox\`"
+           fi ;;
+      esac
     fi
     # One lookup per recipient, not per letter — bash 3.2 has no maps, so a
     # plain "<inbox>=<live>\x1e<choice>\x1e<start>" list stands in for one.
@@ -1077,6 +1089,9 @@ cmd_sent() {
       printf '      %s\n' "$choice"
     fi
   done <<<"$list"
+  if [ -n "$piled" ]; then
+    printf '\n📨 No mail session: %s — your letters wait 3+ days there for a session someone opens. The user can switch one on in such a project: `"intercom": {"mail-session": true}` in its .claude/vdm-plugins.json, its own commit; worth saying once.\n' "$piled"
+  fi
 }
 
 # `close` — the mail session ends itself once its inbox is handled

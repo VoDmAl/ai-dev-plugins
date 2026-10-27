@@ -1617,6 +1617,36 @@ says_not "RED: …with no count of its inbox" "$out" "pending message"
 says_not "…no call to read it" "$out" "/vdm:intercom check"
 says_not "…and no letters of its own to chase" "$out" "unpicked for 3+ days"
 
+echo "-- mail piling up: the mail session is offered (vdx, 2026-10-27)"
+# The owner (2026-10-27, through vdx): the mail-session key must be known and
+# offered where mail is seen to pile up. Since the key shipped (vdm 2.58.0) no
+# project had set it; letters from other agents lay 54–89 days in four inboxes
+# on one machine. Only intercom sees the pile: five letters from others, the
+# oldest three days old, and no key → one line, on the recipient's session start
+# and in the sender's `sent`. A note the project left for itself is not mail.
+mkrepo "$TMP/pile" "git@example.com:acme/pile.git"
+( cd "$TMP/pile" && bash "$IC" register --name "pile" --describe "a project whose mail piles up" >/dev/null 2>&1 )
+for s in pl-1 pl-2 pl-3 pl-4; do ( cd "$TMP/hop-a" && bash "$IC" send pile "$s" --body "$B/live.md" >/dev/null 2>&1 ); done
+( cd "$TMP/pile" && bash "$IC" send pile pl-note --body "$B/live.md" >/dev/null 2>&1 )
+later="$(date -u -v+9d +%Y-%m-%d 2>/dev/null || date -u -d '+9 days' +%Y-%m-%d)"
+startline() { ( cd "$TMP/pile" && printf '{}' | VDM_INTERCOM_TODAY="$1" bash "$HOOK" ); }
+says_not "four letters from others and a note to itself — no offer yet" "$(startline "$later")" "📨"
+( cd "$TMP/hop-a" && bash "$IC" send pile pl-5 --body "$B/live.md" >/dev/null 2>&1 )
+out="$(startline "$later")"
+says "RED: five from others, the oldest 3+ days, no key → the mail session is offered" "$out" "📨 5 letters from other agents wait in this inbox, the oldest 9d"
+says "…with the key and what it costs" "$out" "mail-session"
+says "…in the project's own settings" "$out" ".claude/vdm-plugins.json, and costs a whole agent session"
+says "…and whose word it is" "$out" "offer it to the user"
+says_not "five, but all younger than three days — no offer" "$(startline "$(date -u +%Y-%m-%d)")" "📨"
+says_not "a focused session is not offered it" "$( cd "$TMP/pile" && printf '{}' | VDX_FOCUSED=1 VDM_INTERCOM_TODAY="$later" bash "$HOOK" )" "📨"
+out="$( cd "$TMP/hop-a" && VDM_INTERCOM_TODAY="$later" bash "$IC" sent 2>&1 )"
+says "RED: the sender's sent names the recipient with no mail session" "$(printf '%s\n' "$out" | grep '📨')" "\`pile\`"
+eq "…in one line after the list, each recipient once" "$(printf '%s\n' "$out" | grep -c '📨'):$(printf '%s\n' "$out" | grep '📨' | grep -o '`pile`' | wc -l | tr -d ' ')" "1:1"
+mkdir -p "$TMP/pile/.claude"; printf '{"intercom":{"mail-session":true}}\n' > "$TMP/pile/.claude/vdm-plugins.json"
+says_not "the key switched on — the start line offers nothing" "$(startline "$later")" "📨"
+says_not "…nor does sent" "$( cd "$TMP/hop-a" && VDM_INTERCOM_TODAY="$later" bash "$IC" sent 2>&1 | grep '📨' || echo none )" "\`pile\`"
+rm -rf "$TMP/pile" "$VDM_INTERCOM_ROOT/pile" "$VDM_INTERCOM_ROOT/_registry/pile.json"
+
 echo ""
 echo "== reply: a brief is closed with its outcome, not with a receipt =="
 # Field case (product, 2026-09-29): a brief's item was closed by a comment in a
