@@ -2214,6 +2214,18 @@ printf -- '---\ndraft: true\n---\n\nОльга, добрый вечер.\n' > "$
 OUT=$(vpay Write "$NEW1" | bash "$VERSIONS_SH" 2>&1)
 expect_silent "GREEN: a new letter with a text of its own comes from nowhere" "$(vlast "$VS/vx/t__comms__2026-10-29-olga-out.md" from)"
 
+# A suite that knows nothing of the store must not fill the machine's one: a
+# letter under a temporary directory is a fixture, kept only where a test names
+# a store of its own. Field case 2026-10-28: comms-pending's shell fixture left
+# five versions in the real store from inside the pre-commit.
+FAKE_HOME="$TMP/fake-home"
+mkdir -p "$FAKE_HOME"
+OUT=$(vpay Write "$NEW1" | env -u VDM_LETTER_VERSIONS_ROOT HOME="$FAKE_HOME" bash "$VERSIONS_SH" 2>&1)
+OUT=$(vbash "sed -i '' 's/x/y/' t/comms/2026-10-29-olga-out.md" | env -u VDM_LETTER_VERSIONS_ROOT HOME="$FAKE_HOME" bash "$SENTCHECK" 2>&1)
+[ ! -e "$FAKE_HOME/.claude/vdm/letter-versions" ] \
+  && ok "RED: a fixture letter under a temporary directory never lands in the machine's store" \
+  || bad "RED: a fixture letter under a temporary directory never lands in the machine's store" "found: $(find "$FAKE_HOME/.claude" -type f | head -3)"
+
 NOTE_MD="$VX/t/notes.md"
 printf 'not a letter\n' > "$NOTE_MD"
 OUT=$(vpay Write "$NOTE_MD" | bash "$VERSIONS_SH" 2>&1)

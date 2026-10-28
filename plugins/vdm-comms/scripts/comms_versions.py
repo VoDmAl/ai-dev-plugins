@@ -49,6 +49,7 @@ import os
 import re
 import socket
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import comms_frontmatter as fmmod  # noqa: E402
@@ -77,6 +78,23 @@ def store_root():
 
 def is_letter(path):
     return isinstance(path, str) and bool(LETTER.search(path.replace(os.sep, "/")))
+
+
+def _temp_roots():
+    roots = {tempfile.gettempdir(), "/tmp", "/var/tmp", "/var/folders"}
+    return tuple(os.path.realpath(r).rstrip(os.sep) + os.sep for r in roots)
+
+
+def is_fixture(path):
+    """A letter under a temporary directory is a test's fixture, not a letter to
+    anyone: it never lands in the machine's store. A test that wants versions
+    names its own store ($VDM_LETTER_VERSIONS_ROOT), and then it is kept. Held
+    here, not in each suite: the pre-commit of vdm 0.37.0 ran a suite that
+    knew nothing of the store, and five fixture versions landed in the real one
+    (2026-10-28)."""
+    if os.environ.get(ROOT_ENV):
+        return False
+    return os.path.realpath(path).startswith(_temp_roots())
 
 
 def project_root(path):
@@ -281,6 +299,8 @@ def save(path, how, payload=None, command=None, data=None):
     session, its transcript and the command come from the hook payload.
     → None when kept or when there was nothing new; a line saying why not."""
     path = os.path.realpath(path)
+    if is_fixture(path):
+        return None
     try:
         if data is None:
             with open(path, "rb") as fh:

@@ -343,7 +343,9 @@ asked.
 
 The versions lie outside the repository, in
 `~/.claude/vdm/letter-versions/<project>/<letter>/snap/` (`$VDM_LETTER_VERSIONS_ROOT`
-overrides it), and nothing is committed. A letter renamed or moved keeps its
+overrides it), and nothing is committed. A letter under a temporary directory
+is a test's fixture and is not kept there; a test that wants versions sets
+`$VDM_LETTER_VERSIONS_ROOT` to a store of its own. A letter renamed or moved keeps its
 history: the date in the name is the day of the send, and the first version
 under the new name points to the old one.
 
