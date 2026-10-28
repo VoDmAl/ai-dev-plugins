@@ -321,6 +321,46 @@ so — a narrowed guard looks exactly like a quiet one.
 A new draft that passes gets the checklist of `/vdm-comms:letters` as context —
 the skill's short form, at the moment of writing; never a block.
 
+### Every version of a letter is kept
+
+After the send, the file in `comms/` is rewritten to the text that left. Git sees
+only commits, and the harness deletes its transcripts after about a month. So
+the draft the owner saw, and each edit of it, would be lost. The plugin keeps
+every text the letter has, as it is written:
+
+- before a Write, Edit or MultiEdit — the file as it lies on disk, so an edit
+  made in an editor becomes a version of its own;
+- after the write;
+- before a shell command, each letter it names by path — so an editor edit
+  just before it stays a version of its own;
+- after a shell command that names a letter — every `*/comms/*-out.md` that
+  differs from HEAD or is not committed, and each letter the command names,
+  inside a git work tree or not.
+
+The same text twice is one version. Each version carries the owner's turn
+that came before it: the version shows what changed, the turn shows what was
+asked.
+
+The versions lie outside the repository, in
+`~/.claude/vdm/letter-versions/<project>/<letter>/snap/` (`$VDM_LETTER_VERSIONS_ROOT`
+overrides it), and nothing is committed. A letter renamed or moved keeps its
+history: the date in the name is the day of the send, and the first version
+under the new name points to the old one.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/comms-versions.py" list <letter.md>    # every version, oldest first
+"${CLAUDE_PLUGIN_ROOT}/scripts/comms-versions.py" diff <letter.md>    # what each changed, after which turn
+```
+
+A letter the owner edited in the mail client and sent is covered the usual
+way: bringing the copy to the text in Sent is a write, so it is the last
+version, and the last step of `diff` is what the owner changed there.
+
+Not seen: a script that writes a letter without naming its path, outside a git
+work tree; a mail draft made through the access layer with no file — write the
+draft into `comms/` first (*The letter file is the record*). If a version could
+not be saved, the hook says so. Nothing is ever blocked.
+
 ### Start a draft from the scaffold
 
 ```bash

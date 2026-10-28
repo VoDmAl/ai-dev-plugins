@@ -52,7 +52,7 @@ with agenda/prep/index, a file per series, and `comms/` letters beside each trac
 
 | Skill | Command | Description |
 |-------|---------|-------------|
-| meetings | `/vdm-comms:meetings` | The contract over a meetings tree — what is checked, how to configure it, how to onboard a repo that already has one |
+| meetings | `/vdm-comms:meetings` | The contract over a meetings tree — what is checked, how to configure it, how to onboard a repo that already has one. Since v0.37.0 every version of an outgoing letter is kept as it is written — before and after a write or a shell command that names it — with the owner's turn that led to it, outside the repository (`comms-versions.py list\|diff`) |
 | index | `/vdm-comms:index` | Rebuild the generated layer: the registry, the per-series lists, and the pointer each track's `comms/` gets for a meeting that touched it |
 | communications | `/vdm-comms:letters` | What an outgoing text — letter, message, SMS, ticket comment — carries and what stays out: goal, one subject, channel, register, claims with a source, the sender's commitments, the cutting pass, replying in a thread |
 | pending | `/vdm-comms:pending` | Who owes what, to whom and by when — open items across the files a project declares, by owner; and the live `signals/now.md` built from them (v0.13.0): your move, today and tomorrow, led by others, with block ids and `>>@ai` replies kept across rebuilds. Since v0.36.0 it reads the lines Obsidian Tasks writes (`[-]` cancelled closes an item, `[/]` and other states stay open; `(due:: …)` in round brackets is the due field), the session-start line says whose the counts are — `5 overdue (агент 2 · Olga 1 · …)` — and that hook stops at its own deadline and says `NOT CHECKED` instead of being killed in silence |

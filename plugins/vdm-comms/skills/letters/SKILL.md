@@ -487,12 +487,15 @@ And around them:
     hypothesis back for evaluation, which is a returned exit.
 - **Check against a list, not by taste**: the owner's strikes are the list. A
   project keeps its log of struck clauses (`docs/llm/`); read it before sending,
-  add a line after each new strike.
+  add a line after each new strike. The strikes are read off the letter's
+  versions: `comms-versions.py diff <letter>` shows each version under the
+  owner's turn that led to it (`/vdm-comms:meetings` → *Every version of a
+  letter is kept*).
 - **A letter the owner sent by hand is reconciled with what left.** The owner
   edits in the mail client too, and nobody sees those strikes: once the letter
   is marked `sent-proof: owner`, find it in Sent (through the access layer where
   it is), make the copy in `comms/` the text that left, and add each difference
-  to the log of struck clauses. A promise of the owner's that appears only in the
+  to the log of struck clauses — the last step of `diff`. A promise of the owner's that appears only in the
   sent text goes to their list at HQ. The guard says so at the moment the letter
   turns sent. Field case (2026-10-18): a reply went out with its greeting and one
   request rewritten — a question to one person became a promise to ask another —

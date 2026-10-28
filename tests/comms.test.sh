@@ -68,6 +68,11 @@ mkdir -p "$TMP/fx"
 FX=$(cd "$TMP/fx" && pwd -P)
 ( cd "$FX" && git init -q . ) >/dev/null 2>&1
 
+# The hooks keep every version of an outgoing letter in a machine-level store
+# (comms_versions.py). Pointed here for the whole suite, so no guard run below
+# writes a fixture letter into the store of the machine it runs on.
+export VDM_LETTER_VERSIONS_ROOT="$TMP/versions"
+
 # The access layer's journal of sends, as a stub: the guard asks it about an id
 # in `sent-proof:` (vdm-comms 0.27.0). Exported for the whole suite, so no check
 # here reaches the access layer of the machine it runs on. Every question is
@@ -2051,6 +2056,229 @@ hq_answer ""
 OUT=$(cd "$HAND" && env -u ECHELON_BIN -u ECHELON_HOME COMMS_TODAY="$TODAY" VDM_INTERCOM_ROOT="$STORE" python3 "$NEW" --project-root "$HAND" --channel email --to boris --track gaps/alpha 2>&1); rc=$?
 expect_exit "GREEN: a project with no people/ at all still gets its draft ⇒ exit 0" 0 "$rc"
 expect_says "…and is told why the recipient counts as careful" "$OUT" "people: unresolved"
+
+echo ""
+echo "== versions: every text an outgoing letter had, kept as it is written =="
+
+# The file in comms/ is rewritten to what left, git sees only commits, and the
+# harness deletes transcripts after a month — crystal `letter-versions`, DL #5.
+VS="$TMP/vstore"
+export VDM_LETTER_VERSIONS_ROOT="$VS"
+mkdir -p "$TMP/vx/t/comms"
+VX=$(cd "$TMP/vx" && pwd -P)
+( cd "$VX" && git init -q . ) >/dev/null 2>&1
+VERSIONS_SH="$P/scripts/comms-versions.sh"
+VERSIONS_CLI="$P/scripts/comms-versions.py"
+VL="$VX/t/comms/2026-10-27-vera-out.md"
+VD="$VS/vx/t__comms__2026-10-27-vera-out.md"
+vcount() { find "$1/snap" -name '*.json' 2>/dev/null | wc -l | tr -d ' '; }
+vlast() { # vlast <folder> <key> — a field of the newest version's meta
+  python3 - "$1" "$2" <<'PY'
+import json, os, sys
+snap = os.path.join(sys.argv[1], "snap")
+names = sorted(n for n in os.listdir(snap) if n.endswith(".json"))
+print(json.load(open(os.path.join(snap, names[-1]))).get(sys.argv[2], ""))
+PY
+}
+TR="$TMP/session.jsonl"
+vpay() { # vpay <tool> <path> [old new] — a hook payload with a session and its transcript
+  python3 - "$TR" "$@" <<'PY'
+import json, sys
+tr, tool, path = sys.argv[1:4]
+ti = {"file_path": path}
+if tool == "Write":
+    ti["content"] = open(path).read() if len(sys.argv) < 5 else sys.argv[4]
+else:
+    ti.update(old_string=sys.argv[4], new_string=sys.argv[5])
+print(json.dumps({"tool_name": tool, "tool_input": ti, "cwd": ".",
+                  "session_id": "s-1", "transcript_path": tr}))
+PY
+}
+vbash() { # vbash <command> — a Bash payload from the fixture repository
+  python3 - "$TR" "$1" "$VX" <<'PY'
+import json, sys
+print(json.dumps({"tool_name": "Bash", "tool_input": {"command": sys.argv[2]}, "cwd": sys.argv[3],
+                  "session_id": "s-1", "transcript_path": sys.argv[1]}))
+PY
+}
+turn() { # turn <text> — the owner types, then the harness answers a tool call and runs a command
+  python3 - "$TR" "$1" <<'PY'
+import json, sys
+n = sum(1 for _ in open(sys.argv[1]))
+with open(sys.argv[1], "a") as fh:
+    for rec in ({"type": "user", "timestamp": "2026-10-27T12:%02d:00Z" % n,
+                 "message": {"role": "user", "content": sys.argv[2]}},
+                {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "ok"}]}},
+                {"type": "user", "toolUseResult": {"stdout": "x"}, "message": {"role": "user", "content": [{"type": "tool_result", "content": "x"}]}},
+                {"type": "user", "message": {"role": "user", "content": "<bash-input>ls</bash-input>"}},
+                {"type": "user", "isMeta": True, "message": {"role": "user", "content": "a notice"}}):
+        fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+PY
+}
+: > "$TR"
+
+printf -- '---\ndraft: true\n---\n\nДобрый день. Прошу прислать отчёт до пятницы. Спасибо заранее.\n' > "$VL"
+turn "напиши коллеге про отчёт"
+OUT=$(vpay Write "$VL" | bash "$VERSIONS_SH" 2>&1); rc=$?
+expect_exit "GREEN: the versions hook never blocks ⇒ exit 0" 0 "$rc"
+expect_silent "…and keeping a version says nothing" "$OUT"
+expect_exit "RED: a letter just written is kept as a version" 1 "$(vcount "$VD")"
+cmp -s "$VL" "$(ls "$VD"/snap/*.md | tail -1)" && ok "…byte for byte" || bad "…byte for byte" "the kept text differs from the file"
+expect_says "…with what made it" "$(vlast "$VD" how)" "after Write"
+# The harness writes transcripts owner-only; a copy of the same text is no easier to read.
+expect_says "RED: a kept version is readable by its owner only" "$(ls -l "$VD"/snap/*.md "$VD"/snap/*.json | cut -c1-10 | sort -u | tr '\n' ' ')" "-rw------- "
+expect_says "…and so are the folders the store had to create" "$(ls -ld "$VS" "$VS/vx" "$VD" "$VD/snap" | cut -c1-10 | sort -u | tr '\n' ' ')" "drwx------ "
+expect_not_says "…every one of them" "$(ls -ld "$VS" "$VS/vx" "$VD" "$VD/snap" "$VD"/snap/* | cut -c1-10 | sort -u | tr '\n' ' ')" "r--"
+expect_says "RED: …and the owner's turn before it — not the harness's lines after it" "$(vlast "$VD" owner_turn)" "напиши коллеге про отчёт"
+
+OUT=$(vpay Write "$VL" | bash "$VERSIONS_SH" 2>&1)
+expect_exit "GREEN: the same text again is not a new version" 1 "$(vcount "$VD")"
+
+# The owner edits the draft in an editor: no tool call sees it. The next write
+# finds it on disk first, and it becomes a version of its own.
+python3 - "$VL" <<'PY'
+import sys
+p = sys.argv[1]; t = open(p).read()
+open(p, "w").write(t.replace(" Спасибо заранее.", ""))
+PY
+OUT=$(vpay Edit "$VL" "до пятницы" "до четверга" | bash "$GUARD" 2>&1); rc=$?
+expect_exit "GREEN: the guard still lets a draft edit through ⇒ exit 0" 0 "$rc"
+expect_exit "RED: an edit made outside any tool call is kept before the next write" 2 "$(vcount "$VD")"
+expect_says "…as what lay on disk before that write" "$(vlast "$VD" how)" "before Edit"
+expect_not_says "RED: the same owner turn is not copied again" "x$(vlast "$VD" owner_turn)" "напиши коллеге"
+expect_says "…but the version still says which turn it follows" "$(vlast "$VD" owner_turn_at)" "2026-10-27T12:00:00Z"
+
+python3 - "$VL" <<'PY'
+import sys
+p = sys.argv[1]; t = open(p).read()
+open(p, "w").write(t.replace("до пятницы", "до четверга"))
+PY
+turn "лучше до четверга"
+OUT=$(vpay Edit "$VL" "до пятницы" "до четверга" | bash "$VERSIONS_SH" 2>&1)
+expect_exit "RED: the edit itself is the next version" 3 "$(vcount "$VD")"
+expect_says "…after the owner's new turn" "$(vlast "$VD" owner_turn)" "лучше до четверга"
+
+# The shell: a command that names the letter, and another letter it does not
+# name, changed meanwhile by something else.
+OTHER="$VX/t/comms/2026-10-27-ivan-out.md"
+printf -- '---\ndraft: true\n---\n\nИван, привет.\n' > "$OTHER"
+python3 - "$VL" <<'PY'
+import sys
+p = sys.argv[1]; t = open(p).read()
+open(p, "w").write(t.replace("Добрый день.", "Здравствуйте, коллега."))
+PY
+OUT=$(vbash "sed -i '' 's/Добрый день./Здравствуйте, коллега./' t/comms/2026-10-27-vera-out.md" | bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "GREEN: after a shell command, keeping versions blocks nothing ⇒ exit 0" 0 "$rc"
+expect_exit "RED: a letter a shell command changed is kept" 4 "$(vcount "$VD")"
+expect_says "…with the command" "$(vlast "$VD" command)" "sed -i"
+OD="$VS/vx/t__comms__2026-10-27-ivan-out.md"
+expect_says "RED: a letter the command did not name is kept too, and says so" "$(vlast "$OD" how)" "found after Bash"
+expect_silent "…without the command, which did not touch it" "$(vlast "$OD" command)"
+
+# Sent on another day: the date in the name is the day of the send, so the
+# letter is renamed — and its versions must not start over.
+VL2="$VX/t/comms/2026-10-28-vera-out.md"
+mv "$VL" "$VL2"
+python3 - "$VL2" <<'PY'
+import sys
+p = sys.argv[1]; t = open(p).read()
+open(p, "w").write(t.replace("draft: true", "sent: 2026-10-28\nsent-proof: owner"))
+PY
+OUT=$(vbash "git mv t/comms/2026-10-27-vera-out.md t/comms/2026-10-28-vera-out.md && sed -i '' 's/draft: true/sent: 2026-10-28/' t/comms/2026-10-28-vera-out.md" | bash "$SENTCHECK" 2>&1); rc=$?
+VD2="$VS/vx/t__comms__2026-10-28-vera-out.md"
+expect_says "RED: a renamed letter's first version names the folder it came from" "$(vlast "$VD2" from)" "t__comms__2026-10-27-vera-out.md"
+expect_says "…and the note on the owner's send names the versions" "$OUT" "diff <letter>\` shows every version"
+OUT=$(python3 "$VERSIONS_CLI" list "$VL2" 2>&1); rc=$?
+expect_exit "GREEN: list ⇒ exit 0" 0 "$rc"
+expect_says "RED: list follows the rename back to the first version" "$OUT" "2026-10-27-vera-out.md"
+expect_says "…and numbers every version across both names" "$OUT" " 5  "
+expect_says "…with the owner's turn" "$OUT" "owner: лучше до четверга"
+OUT=$(python3 "$VERSIONS_CLI" diff "$VL2" 2>&1); rc=$?
+expect_says "RED: diff shows what the owner struck" "$OUT" "[- Спасибо заранее.-]"
+expect_says "…what the owner asked for, word by word" "$OUT" "[-пятницы.-]{+четверга.+}"
+expect_says "…the owner's turn above the step it led to" "$OUT" "👤"
+expect_says "…and the frontmatter as a line, not as words" "$OUT" "frontmatter  sent: — → 2026-10-28"
+OUT=$(python3 "$VERSIONS_CLI" diff "$VL2" 1 now 2>&1)
+expect_says "GREEN: diff between two named versions" "$OUT" "1 ("
+OUT=$(python3 "$VERSIONS_CLI" diff "$VL2" 99 2>&1); rc=$?
+expect_exit "RED: a version that does not exist ⇒ exit 2" 2 "$rc"
+
+# Moved by a script that names neither path: the text below the frontmatter
+# is what ties the two.
+VL3="$VX/t/comms/2026-10-29-ivan-out.md"
+mv "$OTHER" "$VL3"
+OUT=$(vpay Write "$VL3" | bash "$VERSIONS_SH" 2>&1)
+expect_says "RED: a letter moved without its name in any command is tied by its text" "$(vlast "$VS/vx/t__comms__2026-10-29-ivan-out.md" from)" "2026-10-27-ivan-out.md"
+NEW1="$VX/t/comms/2026-10-29-olga-out.md"
+printf -- '---\ndraft: true\n---\n\nОльга, добрый вечер.\n' > "$NEW1"
+OUT=$(vpay Write "$NEW1" | bash "$VERSIONS_SH" 2>&1)
+expect_silent "GREEN: a new letter with a text of its own comes from nowhere" "$(vlast "$VS/vx/t__comms__2026-10-29-olga-out.md" from)"
+
+NOTE_MD="$VX/t/notes.md"
+printf 'not a letter\n' > "$NOTE_MD"
+OUT=$(vpay Write "$NOTE_MD" | bash "$VERSIONS_SH" 2>&1)
+[ ! -e "$VS/vx/t__notes.md" ] && ok "GREEN: a file that is not an outgoing letter is not kept" || bad "GREEN: a file that is not an outgoing letter is not kept"
+
+# A store that cannot be written: the version is lost, and that is said — but
+# the gate it rides on answers exactly as without it.
+printf 'a file where the store should be\n' > "$TMP/not-a-dir"
+python3 - "$VL2" <<'PY'
+import sys
+p = sys.argv[1]; open(p, "a").write("P.S.\n")
+PY
+OUT=$(vpay Edit "$VL2" "P.S." "P.P.S." | VDM_LETTER_VERSIONS_ROOT="$TMP/not-a-dir" bash "$VERSIONS_SH" 2>&1); rc=$?
+expect_exit "GREEN: a version not saved still blocks nothing ⇒ exit 0" 0 "$rc"
+expect_says "RED: …and is said, not lost in silence" "$OUT" "was not saved"
+OUT=$(vpay Write "$VX/t/comms/2026-10-30-new-out.md" $'---\nsent: 2026-10-30\n---\n\nx\n' | VDM_LETTER_VERSIONS_ROOT="$TMP/not-a-dir" bash "$GUARD" 2>&1); rc=$?
+expect_exit "RED: with the store broken, the guard still refuses a send without proof ⇒ exit 2" 2 "$rc"
+
+# A recorder that cannot even be imported must not take the gate down with it.
+BROKEN="$TMP/broken-scripts"
+mkdir -p "$BROKEN/scripts" && cp -R "$P/lib" "$BROKEN/lib" && cp "$P"/scripts/*.py "$P"/scripts/*.sh "$BROKEN/scripts/"
+printf 'raise RuntimeError("a broken recorder")\n' > "$BROKEN/scripts/comms_versions.py"
+OUT=$(vpay Write "$VX/t/comms/2026-10-30-new-out.md" $'---\nsent: 2026-10-30\n---\n\nx\n' | bash "$BROKEN/scripts/comms-draft-guard.sh" 2>&1); rc=$?
+expect_exit "RED: a recorder that raises on import ⇒ the guard still refuses (exit 2)" 2 "$rc"
+expect_says "…for the reason it always had" "$OUT" "this write marks an outgoing letter as sent"
+expect_not_says "…not because it could not run" "$OUT" "NOT CHECKED"
+# A letter already sent, edited with a word the guard's fallback looks for: a
+# guard that crashed would fail closed here and hold every such edit.
+OUT=$(vpay Edit "$VL2" "P.S." "P.S. (sent separately)" | bash "$BROKEN/scripts/comms-draft-guard.sh" 2>&1); rc=$?
+expect_exit "RED: …and an ordinary edit of a sent letter still goes through ⇒ exit 0" 0 "$rc"
+OUT=$(vbash "sed -i '' 's/x/y/' t/comms/2026-10-28-vera-out.md" | bash "$BROKEN/scripts/comms-sent-check.sh" 2>&1); rc=$?
+expect_exit "GREEN: …and the check after a shell command still answers" 0 "$rc"
+
+# An edit in an editor, then a shell command on the same letter: before the
+# command the hook keeps what lies on disk, so the two do not merge into one.
+VE="$VX/t/comms/2026-10-31-edit-out.md"
+VED="$VS/vx/t__comms__2026-10-31-edit-out.md"
+printf -- '---\ndraft: true\n---\n\nПервый вариант.\n' > "$VE"
+OUT=$(vpay Write "$VE" | bash "$VERSIONS_SH" 2>&1)
+printf -- '---\ndraft: true\n---\n\nВторой вариант, из редактора.\n' > "$VE"
+CMD="sed -i '' 's/draft: true/draft: true # ok/' t/comms/2026-10-31-edit-out.md"
+OUT=$(vbash "$CMD" | bash "$VERSIONS_SH" 2>&1); rc=$?
+expect_exit "GREEN: before a shell command, keeping versions blocks nothing ⇒ exit 0" 0 "$rc"
+expect_says "RED: an editor edit is kept before the command that names the letter" "$(vlast "$VED" how)" "before Bash"
+printf -- '---\ndraft: true # ok\n---\n\nВторой вариант, из редактора.\n' > "$VE"
+OUT=$(vbash "$CMD" | bash "$SENTCHECK" 2>&1)
+expect_exit "…and the command's result is a version of its own" 3 "$(vcount "$VED")"
+OUT=$(vbash "ls t/comms" | bash "$VERSIONS_SH" 2>&1)
+expect_silent "GREEN: a command naming no letter starts nothing and says nothing" "$OUT"
+
+# Outside a git work tree there is no HEAD to list letters by: the letter the
+# command names is kept all the same. A path with a space comes quoted.
+mkdir -p "$TMP/no git/t/comms"
+NG=$(cd "$TMP/no git" && pwd -P)
+NGL="$NG/t/comms/2026-10-31-loose-out.md"
+printf -- '---\ndraft: true\n---\n\nБез репозитория.\n' > "$NGL"
+NGCMD="sed -i '' 's/Без/Вне/' \"$NGL\""
+ng_payload=$(python3 -c 'import json, sys; print(json.dumps({"tool_name": "Bash", "tool_input": {"command": sys.argv[1]}, "cwd": sys.argv[2]}))' "$NGCMD" "$NG")
+OUT=$(printf '%s' "$ng_payload" | bash "$VERSIONS_SH" 2>&1)
+printf -- '---\ndraft: true\n---\n\nВне репозитория.\n' > "$NGL"
+OUT=$(printf '%s' "$ng_payload" | bash "$SENTCHECK" 2>&1); rc=$?
+NGD="$VS/_unknown/2026-10-31-loose-out.md"
+expect_exit "RED: a letter outside git, named by a quoted path, is kept before and after the command" 2 "$(vcount "$NGD")"
+expect_says "…the second as the command left it" "$(vlast "$NGD" how)" "after Bash"
+export VDM_LETTER_VERSIONS_ROOT="$TMP/versions"
 
 printf '\ncomms: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

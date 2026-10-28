@@ -1,5 +1,5 @@
 {
-  "description": "VDM comms hooks — meeting contract linter (PostToolUse), pending-item contract linter (PostToolUse), outgoing-draft guard (PreToolUse), a check after shell commands that no outgoing letter was left marked sent without proof (PostToolUse), and two session-start signals: the registry/pointer drift and what is overdue. Every hook exits silently in a project that has not configured the part it guards.",
+  "description": "VDM comms hooks — meeting contract linter (PostToolUse), pending-item contract linter (PostToolUse), outgoing-draft guard (PreToolUse), a check after shell commands that no outgoing letter was left marked sent without proof (PostToolUse), a copy of every version of an outgoing letter as it is written — before and after a write or a shell command (PreToolUse on Bash, PostToolUse, and inside the draft guard and the shell check) — and two session-start signals: the registry/pointer drift and what is overdue. Every hook exits silently in a project that has not configured the part it guards.",
   "hooks": {
     "SessionStart": [
       {
@@ -41,6 +41,16 @@
             "timeout": 60
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/comms-versions.sh\"",
+            "timeout": 60
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -60,6 +70,16 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh\" --hook",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/comms-versions.sh\"",
             "timeout": 30
           }
         ]

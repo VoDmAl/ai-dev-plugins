@@ -61,6 +61,25 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import comms_frontmatter as fmmod  # noqa: E402
 
+# The versions of a letter are kept from the processes this module already
+# runs — before a write and after a shell command (comms_versions.py). A
+# recorder must never take the gate down with it: anything it raises is
+# swallowed here, and the gate answers as if it were not there.
+try:
+    import comms_versions as vermod  # noqa: E402
+except Exception:  # pragma: no cover — a broken recorder, the gate goes on
+    vermod = None
+
+
+def _keep(call, *args):
+    """→ what the recorder returned, or None when it failed or is absent."""
+    if vermod is None:
+        return None
+    try:
+        return getattr(vermod, call)(*args)
+    except Exception:
+        return None
+
 PROOF_KEY = "sent-proof"
 OWNER = "owner"
 
@@ -98,6 +117,8 @@ AFTER_BASH = (
     "  A letter this session did not mark sent: tell the owner, and leave the file to them.\n"
 )
 
+VERSIONS_CLI = os.path.join(os.path.dirname(os.path.abspath(__file__)), "comms-versions.py")
+
 # The owner sent it by hand: what left is the owner's text, and it can differ
 # from this copy. Field case (program, 2026-10-18): a reply sent from the mail
 # client went out with the greeting and a request rewritten — the «Hi» went from
@@ -109,7 +130,10 @@ RECONCILE = (
     "📮 comms: the owner sent %s by hand (`sent-proof: owner`), so what left may differ from this copy. "
     "Find the letter in Sent — through the access layer where it is on this machine — and make this "
     "copy the text that left. Each difference is a line in the project's journal of cuts (skill "
-    "`letters` § 9), and a promise of the owner's that appears in it goes to their list at HQ."
+    "`letters` § 9), and a promise of the owner's that appears in it goes to their list at HQ. "
+    "Then `\"" + VERSIONS_CLI.replace("%", "%%") + "\" diff <letter>` shows every version the letter "
+    "had, each after the owner's turn that preceded it: the last step is what the owner changed in the "
+    "mail client, the steps before it what they asked for in the conversation — lines for the same journal."
 )
 
 
@@ -247,6 +271,9 @@ def verdict(payload):
                 before = fh.read()
         except OSError:
             return 3
+        # The letter as it lies before this write: an edit made outside any
+        # tool call — the owner in an editor — is a version of its own.
+        _keep("save", path, "before %s" % tool, payload)
     after, ok = after_text(tool, tool_input, before)
     if not ok:
         return 3
@@ -284,16 +311,10 @@ def _paths(raw):
     return [p for p in (raw or b"").decode("utf-8", "surrogateescape").split("\0") if p]
 
 
-def unproven_since_head(cwd, hand=None):
-    """Outgoing letters sent now without a proof that holds, and not sent in HEAD.
-    → [(path relative to the work tree, why)], or None outside a git work tree —
-    nothing to compare with, nothing is said. A list given as `hand` collects the
-    letters that turned sent with `sent-proof: owner` in the last FRESH_SECONDS.
-
-    Candidates are the letters that differ from HEAD (added or modified) and the
-    untracked ones; a letter as committed is not read at all. A letter sent in
-    HEAD is history, as in the guard. No HEAD yet — every letter is new. A proof
-    is asked of the journal only for a letter written in the last FRESH_SECONDS."""
+def changed_letters(cwd):
+    """→ (work tree, has HEAD, [letter relative to it…]) — the outgoing letters
+    that differ from HEAD (added or modified) and the untracked ones — or None
+    outside a git work tree. No HEAD yet — every letter is new."""
     top = _git(cwd, "rev-parse", "--show-toplevel")
     top = top.decode("utf-8", "surrogateescape").strip() if top else ""
     if not top:
@@ -305,11 +326,30 @@ def unproven_since_head(cwd, hand=None):
     else:
         changed = _git(top, "ls-files", "-z", "--cached", "--", LETTERS)
     untracked = _git(top, "ls-files", "-z", "--others", "--exclude-standard", "--", LETTERS)
-    found, seen = [], set()
+    rels = []
     for rel in _paths(changed) + _paths(untracked):
-        if rel in seen:
-            continue
-        seen.add(rel)
+        if rel not in rels:
+            rels.append(rel)
+    return top, has_head, rels
+
+
+def unproven_since_head(cwd, hand=None, changed=None):
+    """Outgoing letters sent now without a proof that holds, and not sent in HEAD.
+    → [(path relative to the work tree, why)], or None outside a git work tree —
+    nothing to compare with, nothing is said. A list given as `hand` collects the
+    letters that turned sent with `sent-proof: owner` in the last FRESH_SECONDS.
+
+    Candidates are `changed_letters` — given as `changed` when the caller has
+    them already; a letter as committed is not read at all. A letter sent in
+    HEAD is history, as in the guard. A proof is asked of the journal only for a
+    letter written in the last FRESH_SECONDS."""
+    if changed is None:
+        changed = changed_letters(cwd)
+    if changed is None:
+        return None
+    top, has_head, rels = changed
+    found = []
+    for rel in rels:
         try:
             with open(os.path.join(top, rel), encoding="utf-8", errors="replace") as fh:
                 keys = _keys(fh.read(READ_LIMIT))
@@ -357,12 +397,20 @@ def bash_verdict(payload):
     if not any(word in command for word in ("comms", "-out.md", "sent:")):
         return 0
     cwd = payload.get("cwd")
+    cwd = cwd if isinstance(cwd, str) and cwd else os.getcwd()
+    changed = changed_letters(cwd)
     hand = []
-    found = unproven_since_head(cwd if isinstance(cwd, str) and cwd else os.getcwd(), hand)
+    found = unproven_since_head(cwd, hand, changed) if changed is not None else None
     # Said after the command that marks a letter sent, not after every later
     # command that names `comms` within the window.
     hand = hand if "sent" in command else []
     note = RECONCILE % ", ".join("`%s`" % rel for rel in hand[:SHOWN]) if hand else ""
+    unsaved = (_keep("save_changed", changed[0], changed[2], payload, command) or []) if changed else []
+    # The letters it names, too: outside a git work tree there is nothing to
+    # list by, and a command that commits leaves nothing that differs from HEAD.
+    unsaved += _keep("save_named", command, cwd, payload, "after Bash") or []
+    if unsaved:
+        note = "\n\n".join(n for n in (note, vermod.unsaved_note(unsaved)) if n)
     if not found:
         if note:
             _context("PostToolUse", note)
