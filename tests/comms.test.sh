@@ -328,6 +328,15 @@ expect_says "RED: …and a signature only where the owner signs" "$OUT" "a signa
 # The layer's rule is read at session start; the ask is written here.
 expect_says "RED: a question about their system's state is measured first" "$OUT" "first measured with your own tools"
 expect_says "RED: …\"most\" and \"only\" come from a source that counts everyone" "$OUT" "a source that counts everyone"
+# HQ lesson, 2026-10-27, by way of the access layer (letters-ask-after-our-move): a
+# draft asked an outside partner to switch on our extension before we had the
+# developer account and the moderation it needs. The owner: too early.
+expect_says "RED: a request the reader cannot do before our step turns into a report of that step" "$OUT" "with nothing from us first"
+# HQ lessons, 2026-10-28, by way of the access layer (letters-mail-over-meetings,
+# -refined): a reply in the owner's name widened a meeting to everyone the
+# addressee mentioned. The owner: a letter, or a meeting with the one who answered.
+expect_says "RED: the step after is a letter first" "$OUT" "a letter first"
+expect_says "…and a meeting holds anyone besides the one who answered only by the owner's word" "$OUT" "anyone else in it only if the owner named them"
 # Same HQ, 2026-10-21 (letters-closing-status-line): three drafts of a reply each
 # ended «Вопрос снимаю.»; the owner sent it without that line.
 expect_says "RED: the last sentence is checked for the sender's status" "$OUT" "a last sentence that reports the sender's status"

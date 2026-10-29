@@ -55,6 +55,16 @@ is shown to anyone, and open the sections below when a line does not settle.
   chat whether the release went out and whether their commit was in it; a reply
   was drafted, while the deploy bot had already said both in the colleague's own
   ticket. The owner: no answer, it is clear as it is.
+- **Ask only for what the reader can do on reading.** Before each request, lay
+  out what has to happen for them to be able to do it. Where a step of ours
+  stands in that chain and is not done, the request turns into a report of our
+  step and names what we will ask for once it is done. Test: could they do it
+  right after reading, with nothing from us first? Field case (an HQ,
+  2026-10-27): a draft to an outside partner asked for a key to a test host and
+  for our extension to be switched on; the switch needed a developer account of
+  ours and the extension sent to moderation, and neither had happened. The
+  owner: too early — we ask them for what they cannot do because we have not
+  done ours; a slightly different text is more honest.
 - **A double goal** (for now and for later) needs a sentence in the text for each
   half. A half with no sentence is either written or dropped.
 - **One subject per letter**: one request or one statement, fixed before the
@@ -213,6 +223,24 @@ is shown to anyone, and open the sections below when a line does not settle.
   reason to reply; "let me know when it is ready" leaves them to guess what for.
   The step after is the sender's commitment: propose it to the owner above the
   separator (§ 8), never write it in.
+- **The step after goes by letter; a meeting is with the one who answered.**
+  Proposing that step, offer the owner a letter first: mail is the main channel.
+  A meeting with the person who answered may be proposed; anyone else joins only
+  by the owner's word. The addressee's own "let's all get together" is not a
+  plan, and the session does not widen the circle from it. A proposed meeting
+  names its time: for an ordinary matter, the nearest window both are free; on
+  an urgent track, the nearest window the other person is free, counting as free
+  the owner's meetings that can move — and it names what to move. Windows come
+  from the calendar, through the access layer; what can move is the owner's
+  recurring meetings they organise, anything else only by the owner's word.
+  Field case (an HQ, 2026-10-28): a partner's contact agreed to meet together
+  with two more people, and the reply in the owner's name promised to set it up
+  (a promise the owner had not given, § 8). The owner: fewer meetings, more
+  done; mail works well. Having read the thread whole, the owner allowed a
+  meeting with the one who answered — why drag everyone there; the wider circle
+  had been read off the contact's words about merging two stages, and nobody
+  asked. For that meeting the nearest common free window was six days out; the
+  owner: progress every day — move or cancel something of mine.
 - **Pre-empt the legitimate "it depends"**: name it, offer two cheap options,
   take away the fear of choosing wrong — in the same sentence.
 - **Offering to take something over, name three things**: what I do · what I need
