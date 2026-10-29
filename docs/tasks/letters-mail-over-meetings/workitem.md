@@ -49,7 +49,8 @@ last-updated: 2026-10-29
 
 ## Текущая модель
 
-Состояние на 2026-10-29, по рабочему дереву после правки (vdm-comms 0.39.0, ещё не закоммичено):
+Состояние на 2026-10-29, после коммита `cbe77c3` (vdm-comms 0.39.0); ответ echelon ушёл письмом
+`letters-mail-over-meetings-refined-outcome`:
 
 - Само «Встречу поставлю» в черновике — обещание, которого владелец не давал. Его ловят § 8 п. 1
   `letters/SKILL.md` («Did the owner give it?») и правило общего слоя `~/.claude/vdm/rules.md`
@@ -65,7 +66,8 @@ last-updated: 2026-10-29
   through the access layer» и называет класс сдвигаемых: регулярные встречи, где организатор
   владелец, остальное — по слову владельца (DL #4, #5). Имя инструмента — после итога echelon.
 - Соседний кристалл [[letters-premature-ask/workitem|letters-premature-ask]] вышел тем же бампом
-  0.39.0.
+  0.39.0 и закрыт 2026-10-29.
+- Открыт один пункт — ждём хода echelon без срока: имя инструмента окон итогом `meeting-windows`.
 
 ## Decision Log
 
@@ -200,11 +202,14 @@ last-updated: 2026-10-29
 - [x] Бамп `vdm-comms` в `plugin.json` и `marketplace.json`, запись в `PROJECT_CHANGELOG.md`. Если
       [[letters-premature-ask/workitem|letters-premature-ask]] ещё открыт — одним бампом — 0.39.0,
       одним бампом с ним
-- [ ] Outcome to `echelon`: intercom reply letters-mail-over-meetings-refined --done "<что легло в
+- [x] Outcome to `echelon`: intercom reply letters-mail-over-meetings-refined --done "<что легло в
       § 4 и чек-лист, версия vdm-comms; закрывает и letters-mail-over-meetings,
       letters-urgent-slot-move-own>" --ball "echelon — передать штабу; его запись памяти об этом
       уроке становится указателем". Все три письма в архиве `_done/`; slug двух других назвать в
-      тексте ответа — так intercom считает отвеченными и их
+      тексте ответа — так intercom считает отвеченными и их — отправлен 2026-10-29 письмом
+      `letters-mail-over-meetings-refined-outcome`, все три slug названы: § 4, строка «No exit»,
+      vdm-comms 0.39.0, коммит `cbe77c3` (ещё не запушен); мячи — echelon: передать штабу; имя
+      инструмента окон итогом `meeting-windows`
 - [ ] Когда echelon пришлёт имя инструмента окон итогом своего `meeting-windows`: решить, называть
       ли его в § 4 или оставить «по календарю через echelon» (DL #4). Ждём хода echelon, срока нет
 

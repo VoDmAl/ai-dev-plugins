@@ -2,7 +2,7 @@
 title: "vdm-comms:letters — просить только то, что адресат может сделать сейчас"
 slug: letters-premature-ask
 description: "Ловить в черновике просьбу, которую адресат не выполнит, пока мы не сделали свой шаг"
-status: in-progress
+status: done
 session-type: prd-prep
 created: 2026-10-27
 last-updated: 2026-10-29
@@ -34,7 +34,7 @@ last-updated: 2026-10-29
 
 ## Текущая модель
 
-Состояние на 2026-10-29, по рабочему дереву после правки (vdm-comms 0.39.0, ещё не закоммичено):
+Состояние на 2026-10-29, после коммита `cbe77c3` (vdm-comms 0.39.0):
 
 - § 1 «Before the text» ловит три соседние ошибки: просьбу, на которую почти наверняка ответят
   «да, конечно», вопрос, ответ на который спрашивающий уже видит, и — с 0.39.0 — просьбу, которую
@@ -46,7 +46,7 @@ last-updated: 2026-10-29
   тот же принцип с владельца на внешнего адресата.
 - Чек-лист приходит в контекст сам, когда создаётся черновик (`comms-new.py` и запись нового
   `*/comms/*-out.md`): строка, добавленная туда, доходит до каждого черновика без нового хука.
-- Остаётся ответ echelon с хешем коммита выпуска.
+- Ответ echelon ушёл письмом `letters-ask-after-our-move-outcome`; мяч у echelon — передать штабу.
 
 ## Decision Log
 
@@ -82,9 +82,11 @@ last-updated: 2026-10-29
       сьют 553/553
 - [x] Бамп `vdm-comms` в `plugin.json` и `marketplace.json`, запись в `PROJECT_CHANGELOG.md` — 0.39.0,
       одним бампом с [[letters-mail-over-meetings/workitem|letters-mail-over-meetings]]
-- [ ] Outcome to `echelon`: intercom reply letters-ask-after-our-move --done "<что легло в § 1 и чек-лист,
+- [x] Outcome to `echelon`: intercom reply letters-ask-after-our-move --done "<что легло в § 1 и чек-лист,
       версия vdm-comms>" --ball "echelon — передать штабу; его запись памяти об этом уроке становится
-      указателем". Письмо в архиве `_done/`
+      указателем". Письмо в архиве `_done/` — отправлен 2026-10-29 письмом
+      `letters-ask-after-our-move-outcome`: § 1, строка чек-листа, vdm-comms 0.39.0, коммит `cbe77c3`
+      (ещё не запушен); мяч — echelon, передать штабу. Почтовая сессия echelon запущена
 
 ## References
 
