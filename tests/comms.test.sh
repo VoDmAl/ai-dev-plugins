@@ -901,7 +901,6 @@ aud_pitch() {
 ---
 type: meeting
 date: $FUTURE
-tracks: [gaps/alpha]
 topics: $2
 ${3:-series: null}
 ---
@@ -961,8 +960,8 @@ expect_says "…named by its line in the file" "$OUT" "line 20 carries «**Pitch
 expect_not_says "GREEN: …while a warning in the agenda is the owner's to keep" "$OUT" "line 18 carries"
 run_lint "$AUD/pitch.md"; rc=$?
 expect_exit "RED: the internal in the pitch ⇒ exit 1" 1 "$rc"
-expect_says "…a warning sign without its variation selector is the same mark" "$OUT" "line 15 carries «⚠️»"
-expect_says "…and a marker is matched case-blind" "$OUT" "line 17 carries «For myself»"
+expect_says "…a warning sign without its variation selector is the same mark" "$OUT" "line 14 carries «⚠️»"
+expect_says "…and a marker is matched case-blind" "$OUT" "line 16 carries «For myself»"
 aud_agenda "Password policy: we hold the line"
 run_lint "$AUD/agenda.md"; rc=$?
 expect_says "RED: a position in a topic's name — the anchor and the record's heading" "$OUT" "topic name «Password policy: we hold the line» carries «we hold»"
@@ -977,10 +976,7 @@ cat > "$AUD/pitch.md" <<EOF
 ---
 type: meeting
 date: $FUTURE
-tracks: [gaps/alpha]
-topics:
-  - name: "Password policy"
-    track: gaps/alpha
+topics: ["Password policy"]
 ---
 
 # Meeting
@@ -992,6 +988,62 @@ EOF
 run_lint "$AUD/pitch.md"; rc=$?
 expect_exit "GREEN: topic-sections does not ask a pitch for the topics' names as headings ⇒ exit 0" 0 "$rc"
 rm -rf "$AUD"
+
+echo ""
+echo "== the pitch is shown on the screen whole =="
+
+# The owner, 2026-10-29: "pitch is always what can be shared … I will share the
+# whole Obsidian window". The window shows the properties and every link, and a
+# link opens on the same screen.
+SCR="$FX/meetings/$FUTURE-screen"; mkdir -p "$SCR"
+cat > "$FX/.claude/vdm-plugins.json" <<'JSON'
+{"comms": {"meeting-rules": {"required-keys": ["series", "tracks"]}}}
+JSON
+scr_pitch() { # scr_pitch <dir> <date> <extra frontmatter lines> <body>
+  printf -- '---\ntype: meeting\ndate: %s\nseries: null\n%s---\n\n# Meeting\n\n%s\n' "$2" "$3" "$4" > "$1/pitch.md"
+}
+scr_pitch "$SCR" "$FUTURE" "" '![[scheme.png]] and ![flow](flow.svg) — the diagrams they have seen.
+The public page: [policy](https://example.com/policy); further down: [below](#2-next), [[#2. Next]].
+
+```
+[agenda](agenda.md) inside a code block is text, not a link
+```'
+run_lint "$SCR/pitch.md"; rc=$?
+expect_exit "GREEN: no tracks, embedded images, an outside URL, anchors, a link in a code block ⇒ exit 0" 0 "$rc"
+expect_silent "…and the project's required keys are not asked of the pitch" "$OUT"
+printf -- '---\ntype: meeting\ndate: %s\nseries: null\n---\n\n# Agenda\n' "$FUTURE" > "$SCR/agenda.md"
+run_lint "$SCR/agenda.md"; rc=$?
+expect_says "GREEN: …while the agenda still owes them" "$OUT" "no \`tracks:\` — comms.meeting-rules.required-keys asks for it"
+rm -f "$SCR/agenda.md"
+
+scr_pitch "$SCR" "$FUTURE" $'tracks: [gaps/alpha]\n' 'Text.'
+run_lint "$SCR/pitch.md"; rc=$?
+expect_exit "RED: a pitch of a meeting ahead with a track in its properties ⇒ exit 1" 1 "$rc"
+expect_says "…the properties are on the screen, the tracks live in the agenda" "$OUT" "\`tracks: gaps/alpha\` — a pitch is shown on the screen with its properties"
+scr_pitch "$SCR" "$FUTURE" $'tracks: null\n' 'Text.'
+run_lint "$SCR/pitch.md"; rc=$?
+expect_exit "GREEN: \`tracks: null\` names no track ⇒ exit 0" 0 "$rc"
+
+scr_pitch "$SCR" "$FUTURE" "" '[agenda](agenda.md) for the order.
+See [[../../gaps/alpha/notes]] and [Anna](../../people/anna.md).
+![[agenda]]'
+run_lint "$SCR/pitch.md"; rc=$?
+expect_exit "RED: links into the project from a pitch ⇒ exit 1" 1 "$rc"
+expect_says "…named by the line in the file" "$OUT" "line 9 links to «agenda.md»"
+expect_says "…a wikilink into a track" "$OUT" "links to «../../gaps/alpha/notes»"
+expect_says "…a link to a profile" "$OUT" "links to «../../people/anna.md»"
+expect_says "…and a note embedded whole is a link too" "$OUT" "line 11 links to «agenda»"
+
+# History: a pitch already shown, and a pitch imported as it was.
+PSCR="$FX/meetings/$PAST-screen"; mkdir -p "$PSCR"
+scr_pitch "$PSCR" "$PAST" $'tracks: [gaps/alpha]\n' '[agenda](agenda.md)'
+run_lint "$PSCR/pitch.md"; rc=$?
+expect_not_says "GREEN: a pitch of a meeting already held is not fitted to the rule" "$OUT" "shown on the screen"
+scr_pitch "$SCR" "$FUTURE" $'tracks: [gaps/alpha]\nmigrated_from: elsewhere\n' '[agenda](agenda.md)'
+run_lint "$SCR/pitch.md"; rc=$?
+expect_exit "GREEN: an imported pitch is history ⇒ exit 0" 0 "$rc"
+rm -rf "$SCR" "$PSCR"
+rm -f "$FX/.claude/vdm-plugins.json"
 
 # The plugin's templates, filled the way a meeting fills them, meet the floor and
 # the audience rules a project would name.

@@ -9,7 +9,7 @@ files. One home for a tool three repositories had each copied and drifted.
 |-------|------|------|
 | meeting contract linter | `PostToolUse` hook + CLI | after any write into the meetings tree |
 | a project's own meeting rules | same linter, `comms.meeting-rules` | only the rules the project named |
-| who reads which meeting file | same linter | a pitch names the agenda's topics by `name`, and an agenda topic with `pitch: true` has a pitch that lists it; with `comms.meeting-rules`, no speech marker in the agenda and no internal marker in the pitch or a topic name |
+| who reads which meeting file | same linter | a pitch names the agenda's topics by `name`, and an agenda topic with `pitch: true` has a pitch that lists it; a pitch of a meeting not yet held is shown on the screen whole — no `tracks:` value and no link into the project (v0.38.0); with `comms.meeting-rules`, no speech marker in the agenda and no internal marker in the pitch or a topic name |
 | meeting templates | `templates/meeting/` | agenda, prep, pitch and index, split by who reads them — copied when a meeting file is started |
 | attachment checklist of a letter | same linter | after a write to an unsent `*/comms/*-out.md` that attaches something |
 | pending-item linter | `PostToolUse` hook + CLI | after a write into a `pending-paths` file — **new lines only** |

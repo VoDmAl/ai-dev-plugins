@@ -54,7 +54,7 @@ mixed in one sentence, and the clean pitch was assembled minutes before it began
 |---|---|---|---|
 | `prep.md` | the owner, before | the reasoning, objections and answers, the tree of branches | — |
 | `agenda.md` | the owner, at the meeting | the order, the owners, what to do when someone is missing, warnings; internal wording is fine. No speech | would the owner mind the counterpart seeing it? It is not for them anyway |
-| `pitch.md` | the counterpart | only what is said aloud or shown on the screen; headings are the topics as the counterpart knows them — from the letter, if there was one | every line can be read to them as it stands |
+| `pitch.md` | the counterpart, on the owner's shared screen | only what is said aloud or shown on the screen; headings are the topics as the counterpart knows them — from the letter, if there was one | every line can be read to them as it stands, and the whole file — properties and links — can be on their screen |
 | `index.md` | the participants, later | the record | it may be forwarded to anyone who was there |
 
 **An ask in an agenda topic is measured before it is asked.** A question to
@@ -62,6 +62,20 @@ someone about the state of their system — a version, a config, a count, a
 status — is first measured with your own tools (`/vdm-comms:letters` § 7): the
 agenda carries the fact, and the ask is for what only they have. The same holds
 for "most" and "only": from a source that counts everyone.
+
+**The pitch is the file that can be shown; the agenda and the prep never are.**
+The owner shares the whole editor window with the pitch open (2026-10-29): its
+properties are on the screen and every link in it opens there. So the pitch
+holds nothing internal anywhere in the file — no tactics or notes, no "not in
+the track", no track names and no `tracks:` value, no link to the agenda, the
+prep, a letter, a track or a profile. The tracks live in the agenda's
+properties. A diagram or an image the counterpart has seen is embedded in the
+pitch, not in the agenda. The linter holds this for a meeting not yet held: a
+`tracks:` value or a link into the project in a pitch is an error, while an
+embedded image, an outside URL and an anchor within the pitch are fine, and the
+project's `required-keys` are never asked of a pitch. Words that mark the
+internal in a project's own language — ⚠️, "not in the track" — go into its
+`internal-markers`.
 
 **The pitch is outgoing text, spoken.** It goes by `/vdm-comms:letters` line by
 line: the cutting pass, no denial of motives, no reference to an unanswered
@@ -112,6 +126,7 @@ language.
 | each track in `tracks:` resolves as `<track>/` **or** `<track>.md` | error |
 | a track's first segment is a configured root (when configured) | error |
 | `topics[].track` is one of this meeting's `tracks:` | error |
+| a pitch of a meeting not yet held carries a `tracks:` value, or links into the project — an embedded image, an outside URL and an anchor are fine | error |
 | a pitch's `topics:` names a topic no other role file of the meeting declares | error |
 | an agenda topic says `pitch: true` and no `pitch*.md` beside it lists it | error |
 | a series file's `slug:`, when present, disagrees with its file name | error |
@@ -207,7 +222,7 @@ floor, because none of them was shared by all three field repositories.
 | `series-slug` | `true` | every series file carries `slug:` (a slug that disagrees with the file name is an error regardless) |
 | `covered-bool` | `true` | a record's `covered:` is `true` or `false` — a warning |
 | `unique-topics` | `true` | a topic name does not repeat within a meeting — a warning |
-| `required-keys` | list of keys | keys that must be present; `null` and `[]` count as present |
+| `required-keys` | list of keys | keys that must be present; `null` and `[]` count as present. Never asked of a pitch: its properties are on the screen, and the agenda carries them |
 | `speech-markers` | list of marks, e.g. `["**Pitch**"]` | no line of `agenda.md` holds one: what is said aloud lives in `pitch.md` |
 | `internal-markers` | list of marks, e.g. `["⚠️", "for myself", "not to say"]` | no line of `pitch.md` holds one, and no topic name does — the pitch is read to the counterpart as it stands, the name is the record's heading. Matched case-blind; `⚠` and `⚠️` are one mark |
 

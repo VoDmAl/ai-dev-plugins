@@ -34,6 +34,11 @@ Everything else is hardcoded here, because it did NOT differ:
   * a series file's `slug:`, when present, names the file — a slug that
     disagrees is a contradiction, and contradictions are what the floor reports
   * the BODY of a series file is never checked
+  * a pitch of a meeting not yet held is shown on the screen whole — the
+    editor window, properties included: it carries no `tracks:` value and no
+    link into the project (an embedded image or diagram, an outside URL and
+    an anchor within the pitch are fine). A pitch of a past meeting was
+    shown already, and is not fitted to this
   * a directory without <meetings-dir> exits silently
 
 Above the floor sit a project's OWN conventions, which the plugin enforces
@@ -50,7 +55,9 @@ only when the project names them — `comms.meeting-rules`:
     series-slug       true     a series file carries `slug:` at all
     covered-bool      true     a record's `covered:` is true or false (warning)
     unique-topics     true     topic names do not repeat (warning)
-    required-keys     [keys]   keys that must be present (null and [] allowed)
+    required-keys     [keys]   keys that must be present (null and [] allowed);
+                               never asked of a pitch, whose properties are on
+                               the screen — the agenda carries them
     speech-markers    [marks]  agenda.md carries none of them: what is said aloud
                                lives in pitch.md
     internal-markers  [marks]  pitch.md carries none of them, and no topic name
@@ -537,6 +544,7 @@ def _lint_meeting(rep, data, body, path, rel, kind, dir_name, leaf, cfg, project
     if not ROLE_RE.match(leaf):
         rep.warn("file name %r is not a known role (index|prep|agenda|pitch)" % leaf)
 
+    upcoming = False
     raw_date = data.get("date")
     date_str = str(raw_date) if raw_date is not None else ""
     if not date_str:
@@ -547,6 +555,7 @@ def _lint_meeting(rep, data, body, path, rel, kind, dir_name, leaf, cfg, project
         rep.error("`date: %s` disagrees with the directory date %s" % (date_str, dir_date))
     else:
         meeting_date = datetime.date.fromisoformat(date_str)
+        upcoming = meeting_date >= today()
         index_path = os.path.join(os.path.dirname(os.path.abspath(path)), "index.md")
         if meeting_date < today() and not os.path.isfile(index_path):
             rep.error("the meeting is in the past and %s/%s/index.md does not exist "
@@ -593,6 +602,8 @@ def _lint_meeting(rep, data, body, path, rel, kind, dir_name, leaf, cfg, project
                 rep.warn("topic %d has no track and is not marked `tail: true`" % idx)
 
     _lint_pitch_link(rep, data, path, leaf)
+    if upcoming:
+        _lint_pitch_screen(rep, data, body, path, leaf)
     _lint_meeting_rules(rep, data, body, leaf, cfg, project_root, path)
     _lint_hidden_promises(rep, data, path, cfg, project_root)
 
@@ -673,6 +684,58 @@ def _topic_names(data):
         if isinstance(name, str) and name.strip():
             out.append(name.strip())
     return out
+
+
+LINK_RE = re.compile(r"(!?)\[\[([^\]|#]*)(?:[^\]]*)\]\]|(!?)\[[^\]]*\]\(([^)\s]*)[^)]*\)")
+SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+
+
+def _lint_pitch_screen(rep, data, body, path, leaf):
+    """A pitch is shown on the screen whole (the owner, 2026-10-29: "pitch is
+    always what can be shared … I will share the whole Obsidian window"). The
+    window shows the file's properties and every link in it, and a link opens
+    on the same screen. So: no track in the properties — tracks are the
+    project's inner structure and live in the agenda — and no link into the
+    project: the agenda, the prep, a letter, a track, a profile. An embedded
+    image or diagram is what the counterpart is meant to see; an outside URL
+    and an anchor inside the pitch open nothing of ours.
+
+    Asked only before the meeting. Of 11 pitches in the one project that keeps
+    them (2026-10-29), 10 carried a track and 9 linked into the project — all
+    of meetings already held, shown as they were; fitting them now would
+    rewrite what was on the screen."""
+    if not leaf.startswith("pitch") or data.get("migrated_from") or not path:
+        return
+    tracks = data.get("tracks")
+    tracks = [tracks] if isinstance(tracks, str) else (tracks if isinstance(tracks, list) else [])
+    named = [str(t) for t in tracks if t]
+    if named:
+        rep.error("`tracks: %s` — a pitch is shown on the screen with its properties, and "
+                  "tracks are the project's inner structure; they live in agenda.md"
+                  % ", ".join(named))
+    try:
+        with open(path, encoding="utf-8") as fh:
+            before = fh.read().count("\n") - (body or "").count("\n")
+    except (OSError, UnicodeDecodeError):
+        before = 0
+    fence = False
+    for i, line in enumerate((body or "").split("\n"), before + 1):
+        if line.lstrip().startswith(("```", "~~~")):
+            fence = not fence
+            continue
+        if fence:
+            continue
+        for m in LINK_RE.finditer(line):
+            embed = (m.group(1) or m.group(3)) == "!"
+            target = (m.group(2) if m.group(2) is not None else m.group(4) or "").strip()
+            if not target or target.startswith("#") or SCHEME_RE.match(target):
+                continue
+            ext = os.path.splitext(urllib.parse.unquote(target).rstrip("/"))[1].lower()
+            if embed and ext and ext != ".md":
+                continue
+            rep.error("line %d links to «%s» — a pitch is shown on the screen whole, and a link "
+                      "into the project opens it there; name it in words, or move the link to "
+                      "agenda.md" % (i, target))
 
 
 def _lint_pitch_link(rep, data, path, leaf):
@@ -772,7 +835,7 @@ def _lint_meeting_rules(rep, data, body, leaf, cfg, project_root, path=None):
             if key in t:
                 rep.error("%s carries the retired key `%s:`" % (topic_label(idx, t), key))
 
-    for key in _str_list(rules.get("required-keys")):
+    for key in _str_list(rules.get("required-keys")) if role != "pitch" else []:
         if key not in data:
             rep.error("no `%s:` — comms.meeting-rules.required-keys asks for it "
                       "(null and [] are fine; the key itself says the question was answered)"
@@ -933,6 +996,7 @@ def print_contract():
     print("warning\tunknown type")
     print("warning\tseries file missing")
     print("warning\ttopic without track and without tail")
+    print("error\ta pitch of a meeting not yet held with a `tracks:` value, or a link into the project (an embedded image, an outside URL and an anchor are fine)")
     print("error\ta pitch's `topics:` name that no other role file of the meeting declares")
     print("error\tan agenda topic with `pitch: true` that no pitch*.md lists in `topics:`")
     print("never\tbody of a series file")
@@ -947,7 +1011,7 @@ def print_contract():
     print("rule\tseries-slug true\terror: a series file without `slug:`")
     print("rule\tcovered-bool true\twarning: `covered:` in index.md neither true nor false")
     print("rule\tunique-topics true\twarning: a topic name that repeats")
-    print("rule\trequired-keys [keys]\terror: a key absent from a meeting file (null and [] allowed)")
+    print("rule\trequired-keys [keys]\terror: a key absent from a meeting file (null and [] allowed); never asked of a pitch")
     print("rule\tspeech-markers [marks]\terror: a line of agenda.md holding one — speech lives in pitch.md")
     print("rule\tinternal-markers [marks]\terror: a line of pitch.md, or a topic name, holding one")
     print("relax\tmigrated_from\tauthoring rules skip it; people-profiles and tail-owner only warn")
