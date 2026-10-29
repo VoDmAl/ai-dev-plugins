@@ -301,6 +301,11 @@ is shown to anyone, and open the sections below when a line does not settle.
   nobody. Example: a member
   shares a document with you and with their mentor; you answer the member, copy
   whoever acts on it, and the mentor is in BCC (the owner, 2026-10-04).
+- **Whoever the greeting names is in To, not in copy.** The greeting says whom
+  the text speaks to; a copy says who only needs to know. A person greeted by
+  name and kept in Cc gets two answers to "is this to me?". Field case
+  (2026-10-09): a reply greeted two people and had one of them in Cc; the owner
+  moved that one into To before sending.
 - **A request is addressed to a person**, chosen for the competence — an open
   call ("any takers?") is not a request. Check: is there a sentence that starts
   with a name? Offer a choice only when the candidates are equal.
@@ -381,6 +386,11 @@ will hold is outgoing too.
   each holds in every case, not only the default one — or it is a question to the
   owner before it is written down.
 - **Every fact about someone else's system or about a person has a source.**
+- **A number about the owner that no record here shows exactly goes as a bound
+  they can stand behind** — "20+ days", not "20 days". An exact figure invites a
+  check against a record nobody here holds. Field case (2026-10-01): a letter
+  stated how many days of leave the owner had taken; the owner sent it as a lower
+  bound.
 - **Circumstances** (when, where, why) only as the owner named them or as they are
   recorded. Filled-in circumstances are struck; a named reason is written as named.
 - **No filler in lists** ("and others", "etc.") — only confirmed cases.
