@@ -1411,7 +1411,7 @@ echo "-- an intercom session ends itself with close (intercom-session-wake, DL #
 # owner, read from `taken:`. A letter nobody took is a letter nobody handled.
 mkrepo "$TMP/mail-x" "git@example.com:acme/mail-x.git"
 ( cd "$TMP/mail-x" && bash "$IC" register --name "mail-x" --describe "a project with an intercom session" >/dev/null 2>&1 )
-for s in mx-1 mx-2 mx-3 mx-4; do ( cd "$TMP/hop-a" && bash "$IC" send mail-x "$s" --body "$B/live.md" >/dev/null 2>&1 ); done
+for s in mx-1 mx-2 mx-3 mx-4 mx-5; do ( cd "$TMP/hop-a" && bash "$IC" send mail-x "$s" --body "$B/live.md" >/dev/null 2>&1 ); done
 ( cd "$TMP/mail-x" && bash "$IC" send mail-x mx-note --body "$B/live.md" >/dev/null 2>&1 )
 mclose() { ( cd "$TMP/mail-x" && PATH="$VX:$PATH" bash "$IC" close 2>&1 ); }
 : > "$TMP/vdx.log"
@@ -1423,6 +1423,10 @@ eq "…a focused one is not an intercom session either" "$rc" "1"
 ( cd "$TMP/mail-x" && VDX_INTERCOM=1 bash "$IC" take mx-1 >/dev/null 2>&1 )
 awk 'NR == 1 { print; print "taken: m-other/mail-x-mail 2026-10-04T10:00:00Z"; next } { print }' \
   "$VDM_INTERCOM_ROOT/mail-x/mx-2.md" > "$TMP/mx-2" && mv "$TMP/mx-2" "$VDM_INTERCOM_ROOT/mail-x/mx-2.md"
+# Taken by a session of this machine that is gone: it waits for the owner too
+# (intercom-taken-by-gone-session, DL #4).
+awk -v m="$machine" 'NR == 1 { print; print "taken: " m "/mail-x-gone 2026-10-04T10:00:00Z"; next } { print }' \
+  "$VDM_INTERCOM_ROOT/mail-x/mx-5.md" > "$TMP/mx-5" && mv "$TMP/mx-5" "$VDM_INTERCOM_ROOT/mail-x/mx-5.md"
 ( cd "$TMP/mail-x" && VDX_INTERCOM=1 bash "$IC" release mx-4 --note "waits for the deploy" >/dev/null 2>&1 )
 out="$(VDX_INTERCOM=1 mclose)"; rc=$?
 eq "a letter nobody took keeps the session open" "$rc" "1"
@@ -1434,8 +1438,8 @@ says_not "RED: …nor a letter released with a note — it waits, and says for w
 ( cd "$TMP/mail-x" && VDX_INTERCOM=1 bash "$IC" pickup mx-3 >/dev/null 2>&1 )
 out="$(VDX_INTERCOM=1 mclose)"; rc=$?
 eq "inbox handled — close goes through" "$rc" "0"
-eq "RED: …running vdx with the letters this session took and left for the owner" "$(cat "$TMP/vdx.log")" "ai --close --waiting 1"
-says "…and saying so first" "$out" "1 letter(s) left for the owner"
+eq "RED: …running vdx with the letters this session took, and one a gone session of this machine took, left for the owner" "$(cat "$TMP/vdx.log")" "ai --close --waiting 2"
+says "…and saying so first" "$out" "2 letter(s) left for the owner"
 rm -rf "$VDM_INTERCOM_ROOT/mail-x" "$TMP/vdx.log"
 kill "$MAIL_PID" 2>/dev/null
 
@@ -1591,6 +1595,56 @@ out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-22 bash "$IC" pickup
 eq "RED: --force takes over a letter whose session is gone" "$rc" "0"
 out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-22 bash "$IC" pickup one-stale --grow 2>&1 )"
 says "RED: pickup --grow marks the letter taken" "$(grep '^taken:' "$VDM_INTERCOM_ROOT/hop-b/one-stale.md")" "/hop-b-22 "
+
+echo "-- taken by a session that is gone (intercom-taken-by-gone-session)"
+# Nobody removes the mark when its session ends, and read as if that session
+# were alive it held the letter for good (hq, 2026-10-29): `check` said leave
+# it, `sent` said in work. The mark is checked against the sessions live here:
+# a named session of this machine that is not live is gone, and the way past
+# it is named; another machine is not checked from here; a focused session is
+# alive, though nobody wakes it.
+markit() { awk -v m="$2" 'NR == 1 { print; print "taken: " m " 2026-10-29T20:19:00Z"; next } { print }' \
+  "$VDM_INTERCOM_ROOT/hop-b/$1.md" > "$TMP/mark.tmp" && mv "$TMP/mark.tmp" "$VDM_INTERCOM_ROOT/hop-b/$1.md"; }
+for s in tg-gone tg-live tg-nosock tg-other tg-self tg-focus; do
+  ( cd "$TMP/hop-a" && bash "$IC" send hop-b "$s" --body "$B/live.md" >/dev/null 2>&1 )
+done
+env VDX_FOCUSED=1 python3 -c 'import time; time.sleep(300)' & TGF_PID=$!; disown "$TGF_PID" 2>/dev/null || true
+mksession tg-foc.json "$TGF_PID" "$TMP/hop-b" hop-b-tgfocus idle "$SOCKS/b.sock"
+markit tg-gone   "$machine/hop-b-dead"
+markit tg-live   "$machine/hop-b-11"
+markit tg-nosock "$machine/hop-b-nosock"
+markit tg-other  "m-other/hop-b-7"
+markit tg-self   "$machine/hop-b-22"
+markit tg-focus  "$machine/hop-b-tgfocus"
+tgline() { printf '%s\n' "$1" | grep -A1 "/$2.md" | tail -1; }
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-22 bash "$IC" check 2>&1 )"
+says "RED: check names a letter whose session is gone, and the way to take it over" "$(tgline "$out" tg-gone)" "that session is gone: take it over with /vdm:intercom take tg-gone --force"
+says "…a live one is left to it, as before" "$(tgline "$out" tg-live)" "leave it to that session"
+says_not "…and is not called gone" "$(tgline "$out" tg-live)" "gone"
+says "RED: a live pid without its socket is not the session — gone" "$(tgline "$out" tg-nosock)" "that session is gone"
+says "RED: another machine is not checked from here, and says so" "$(tgline "$out" tg-other)" "not checked from here"
+says "…this session's own mark says so" "$(tgline "$out" tg-self)" "— this session"
+says "RED: a focused session is alive, though nobody wakes it" "$(tgline "$out" tg-focus)" "leave it to that session"
+says_not "…and is not called gone" "$(tgline "$out" tg-focus)" "gone"
+out="$( cd "$TMP/hop-a" && VDM_INTERCOM_NOW="$NOW_EPOCH" VDM_INTERCOM_TODAY=2026-10-04 bash "$IC" sent 2>&1 )"
+gl="$(printf '%s\n' "$out" | grep -A1 'hop-b/tg-gone' | tail -1)"
+says "RED: sent does not call a letter of a gone session in work" "$gl" "that session is gone: the session there takes it over with take --force"
+says "RED: …and goes on to the wake, since nobody holds the letter" "$(printf '%s\n' "$out" | grep -A2 'hop-b/tg-gone' | tail -1)" "wake"
+says "…another machine: not checked from here, nobody to wake" "$(printf '%s\n' "$out" | grep -A1 'hop-b/tg-other' | tail -1)" "not checked from here, nobody to wake"
+says "…a live one: in work, as before" "$(printf '%s\n' "$out" | grep -A1 'hop-b/tg-live' | tail -1)" "in work, nobody to wake"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-22 bash "$IC" take tg-gone 2>&1 )"; rc=$?
+eq "take still refuses a letter of a gone session without --force" "$rc" "1"
+says "RED: …and says the session is gone, naming the way past it" "$out" "that session is gone — no live session by that name here. Take it over: intercom take tg-gone --force"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-22 bash "$IC" take tg-live 2>&1 )"; rc=$?
+eq "a letter of a live session is refused" "$rc" "1"
+says "RED: …and the refusal says that session is live" "$out" "that session is live here"
+says_not "…offering no way past it" "$out" "--force"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-22 bash "$IC" take tg-other 2>&1 )"
+says "…another machine: the old words, with the way past it if that session is gone" "$out" "If that session is gone: intercom take tg-other --force"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-hop-b-22 bash "$IC" take tg-gone --force 2>&1 )"; rc=$?
+eq "take --force takes it over" "$rc" "0"
+kill "$TGF_PID" 2>/dev/null
+rm -f "$SESS/tg-foc.json" "$VDM_INTERCOM_ROOT"/hop-b/tg-*.md
 
 # release — the reverse of take (a demo project's agent, 2026-10-24): a letter taken, looked at
 # and found waiting for another agent's move. With no way back, the mark of a

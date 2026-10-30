@@ -2,7 +2,7 @@
 title: "intercom: «почтовая сессия» → «сессия intercom» в том, что доходит до владельца"
 slug: intercom-session-name
 description: "Переименовать mail session в строках и текстах, которые читает владелец: путается с Gmail"
-status: in-progress
+status: done
 session-type: maintenance
 created: 2026-10-28
 last-updated: 2026-10-29
@@ -31,7 +31,7 @@ Echelon у себя уже пишет «сессия intercom»: так же н�
 
 ## Текущая модель
 
-Состояние 2026-10-29, рабочее дерево vdm 2.65.0 (не закоммичено). Замер 28.10, с которого начинали: 17 строк скилла,
+Состояние 2026-10-29, vdm 2.65.0, коммит `b08c706`. Замер 28.10, с которого начинали: 17 строк скилла,
 18 печатаемых строк в трёх скриптах, 29 строк тестов.
 
 - **Печатаемое и скилл — «intercom session».** `intercom.sh`, `intercom-common.sh`, `intercom-identity-check.sh`
@@ -143,8 +143,13 @@ Echelon у себя уже пишет «сессия intercom»: так же н�
 - [x] Ключ `intercom.mail-session` и поле `session: mail`: оставить или переименовать. Ключ доходит до владельца через
       строку 📨 (Текущая модель). При переименовании старый ключ читается и дальше: он закоммичен в проектах —
       владелец 2026-10-29, DL #3: ключ `intercom.session`, старшинство нового, поле конверта осталось
-- [ ] Бриф vdx: в его строке старта сессии intercom то же «mail session». Отправить, когда имя подтверждено
-- [ ] Outcome to `echelon` — окончательный. Промежуточный ушёл 28.10 (`intercom-session-name-outcome`), поэтому slug
+- [x] Бриф vdx: в его строке старта сессии intercom то же «mail session». Отправить, когда имя подтверждено —
+      2026-10-29, `intercom-session-name-vdx`: его строки (`vdx ai --check`, справка, README, скилл `vdx-ai`),
+      чтение старого `MAIL_LINE_PREFIX` в `conversations.ts`, суффикс `-mail` — на его решение; мяч у vdx, срока нет
+- [x] Outcome to `echelon` — окончательный, отправлен 2026-10-29 письмом `intercom-session-name-result`: имя, ключ
+      со старшинством, строка 📮, vdm 2.65.0, коммит `b08c706`; мячи — echelon (README, память о ключе), vdx (бриф).
+      Первый реальный вывод новых строк — в ответ на этот `reply`: «has its intercom session switched on».
+      Промежуточный ушёл 28.10 (`intercom-session-name-outcome`), поэтому slug Промежуточный ушёл 28.10 (`intercom-session-name-outcome`), поэтому slug
       свой: intercom reply intercom-session-name --slug intercom-session-name-result --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
 
 ## References

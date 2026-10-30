@@ -489,7 +489,13 @@ pending messages:
 
 1. `intercom.sh check` → list what's waiting.
 2. Read the message file(s). A letter `check` shows as **taken by** another
-   session is that session's — leave it.
+   session is that session's — leave it. Unless `check` says *that session is
+   gone*: the mark names a session of this machine, and none by that name is
+   live here — its pid answers nothing, or its socket is gone. Nobody removes
+   the mark when a session ends, so the letter waits for no one: take it over
+   with `intercom.sh take <slug> --force`. A mark from the user's other machine
+   is not checked from here, and `check` says so; it stays that session's
+   unless the user says that session is over.
 3. Before you start on a letter, take it: `intercom.sh take <slug>` — the first
    step, before you read it in depth or touch anything; `check` prints the
    command beside every letter nobody has taken. The mark
@@ -499,12 +505,16 @@ pending messages:
    letter and tell the user. `pickup`, `reply` and the wake leave a letter taken
    elsewhere alone too, but by then the work is done twice (field case, echelon,
    2026-10-21: two works, six Syncthing conflicts). `--force` takes over from a
-   session that is gone. A note you only archive needs no mark.
+   session that is gone; `check`, `sent` and the refusal of `take` name it when
+   that session is of this machine. A note you only archive needs no mark.
    A letter you took that waits for something outside the inbox — another
    agent's move, a deploy, the user's word — goes back with its reason:
    `intercom.sh release <slug> --note "<what it waits for>"`. The mark goes,
    `deferred: <time> <note>` takes its place, `check` shows the note and the
-   `take` that picks it up again, and `close` counts it as handled. Without
+   `take` that picks it up again, and `close` counts it as handled. The note
+   names what the letter waits for — an answer, a deploy, a date — not a
+   session: a session ends, and a note waiting for it then says nothing (hq,
+   2026-10-29: three letters released "for session X", X closed). Without
    `--note` the letter is simply given back. Field case (a demo project's agent, 2026-10-24): a
    letter asked for a change only after another agent's move, which had not
    happened; with no way back the mark of a closed session would have stayed on
@@ -824,11 +834,12 @@ anything the user reads is "intercom session" ("сессия intercom").
   the intercom session archived the note, it would never reach the session it was
   written for.
 - **It ends itself with `close`.** Once the inbox is handled, the intercom session
-  says what was done and runs `/vdm:intercom close`. That is refused outside a
+  says what was done and runs `/vdm:intercom close`. That is refused outside an
   intercom session, and while a letter nobody took is in the inbox (one may have
   come in after the last check); one released with a note is handled. Otherwise it runs `vdx ai --close --waiting
-  <n>`, n being the letters in the inbox it took and left for the user, read
-  from `taken:` and kept nowhere. vdx marks the project's other tmux sessions on
+  <n>`, n being the letters in the inbox it took and left for the user — and
+  those a session of this machine took and is gone, which wait for the user
+  too — read from `taken:` and kept nowhere. vdx marks the project's other tmux sessions on
   this machine with that n and closes the intercom session's pane; the turn ends on
   its result.
 

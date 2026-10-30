@@ -1873,6 +1873,51 @@ intercom_taken_elsewhere() {
   printf '%s' "$mark"
 }
 
+# Nobody removes the mark when its session ends, and read as if its session
+# were alive it held letters for good: `check` said "leave it to that session",
+# `sent` said "in work" (docs/tasks/intercom-taken-by-gone-session, DL #1, #3).
+#
+# _intercom_session_live_here <name> — a session by that name is live on this
+# machine: a session file that is not a sync conflict, its pid answers
+# `kill -0`, and the socket it names, if it names one, exists — a pid can pass
+# to another process, the socket goes with its session. Focused and intercom
+# sessions count: this asks whether the holder of a mark is alive, not whom to
+# wake (DL #2). With no jq it cannot tell, and says live: calling a live session
+# gone hands its letter to a second session, the double work the mark is for.
+_intercom_session_live_here() {
+  local f pid sock
+  command -v jq >/dev/null 2>&1 || return 0
+  for f in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"/*.json; do
+    [ -f "$f" ] || continue
+    case "${f##*/}" in *.sync-conflict-*) continue ;; esac
+    IFS=$'\037' read -r pid sock < <(
+      jq -r --arg n "$1" 'select(.name == $n) | [(.pid // "" | tostring), (.messagingSocketPath // "")] | join("\u001f")' \
+        "$f" 2>/dev/null
+    ) || continue
+    case "$pid" in ''|*[!0-9]*) continue ;; esac
+    kill -0 "$pid" 2>/dev/null || continue
+    [ -z "$sock" ] || [ -S "$sock" ] || continue
+    return 0
+  done
+  return 1
+}
+
+# intercom_mark_state <mark> — what the holder of a `taken:` mark is now:
+#   self       this session;
+#   live       a live session by that name on this machine;
+#   gone       a named session of this machine that is not live;
+#   unchecked  another machine, or a mark with no session name — not checked from here.
+intercom_mark_state() {
+  local who="${1%% *}" m name
+  [ "$who" = "$(_intercom_taker)" ] && { printf 'self'; return 0; }
+  case "$who" in
+    */*) m="${who%%/*}"; name="${who#*/}" ;;
+    *)   printf 'unchecked'; return 0 ;;
+  esac
+  [ "$m" = "$(_intercom_machine_name)" ] || { printf 'unchecked'; return 0; }
+  if _intercom_session_live_here "$name"; then printf 'live'; else printf 'gone'; fi
+}
+
 # _intercom_mark <letter> <taken value> <deferred value> — rewrite the two
 # marks of the envelope: each key dropped, then written again when its value is
 # not empty. One writer for take and release, so neither can leave the other's

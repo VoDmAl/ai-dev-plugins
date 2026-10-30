@@ -431,7 +431,15 @@ cmd_check() {
       printf '    deferred at %s — %s\n' "${deferred%% *}" "${deferred#* }"
     fi
     if [ -n "$taken" ]; then
-      printf '    taken by %s at %s — leave it to that session\n' "${taken%% *}" "${taken#* }"
+      # Checked against the sessions live here: a mark outlives its session
+      # (intercom-taken-by-gone-session, DL #3).
+      case "$(intercom_mark_state "$taken")" in
+        self)      printf '    taken by %s at %s — this session\n' "${taken%% *}" "${taken#* }" ;;
+        gone)      printf '    taken by %s at %s — that session is gone: take it over with /vdm:intercom take %s --force\n' \
+                     "${taken%% *}" "${taken#* }" "$(basename "$f" .md)" ;;
+        unchecked) printf '    taken by %s at %s — not checked from here; leave it to that session\n' "${taken%% *}" "${taken#* }" ;;
+        *)         printf '    taken by %s at %s — leave it to that session\n' "${taken%% *}" "${taken#* }" ;;
+      esac
     elif [ -n "$deferred" ]; then
       printf '    when the wait is over: /vdm:intercom take %s\n' "$(basename "$f" .md)"
     else
@@ -1035,8 +1043,16 @@ cmd_sent() {
     printf '  • %sd  %s/%s — %s\n' "$age" "$inbox" "$slug" "$title"
     taken="$(intercom_fm_field "$file" taken)"
     if [ -n "$taken" ]; then
-      printf '      taken by %s at %s — in work, nobody to wake\n' "${taken%% *}" "${taken#* }"
-      continue
+      # A letter whose session is gone waits for nobody: the wake below goes on,
+      # and the session it reaches takes the letter over.
+      case "$(intercom_mark_state "$taken")" in
+        gone)      printf '      taken by %s at %s — that session is gone: the session there takes it over with take --force\n' \
+                     "${taken%% *}" "${taken#* }" ;;
+        unchecked) printf '      taken by %s at %s — not checked from here, nobody to wake\n' "${taken%% *}" "${taken#* }"
+                   continue ;;
+        *)         printf '      taken by %s at %s — in work, nobody to wake\n' "${taken%% *}" "${taken#* }"
+                   continue ;;
+      esac
     fi
     # A recipient that keeps letters 3+ days, has a checkout here and no mail
     # session switched on: named once, in a line after the list (see
@@ -1113,7 +1129,12 @@ cmd_close() {
     [ -n "$f" ] || continue
     taken="$(intercom_fm_field "$f" taken)"
     if [ -n "$taken" ]; then
-      [ "${taken%% *}" != "$me" ] || n=$((n + 1))
+      # Taken by this session, or by one of this machine that is gone: either
+      # way it waits for the owner (intercom-taken-by-gone-session, DL #4).
+      # One of another machine may be in work there, and is not counted.
+      if [ "${taken%% *}" = "$me" ] || [ "$(intercom_mark_state "$taken")" = gone ]; then
+        n=$((n + 1))
+      fi
       continue
     fi
     # Released with a note: handled for now, it waits for something outside
@@ -1251,11 +1272,16 @@ _ic_reply_hint() {
 
 # _ic_refuse_if_taken <verb> <letter> <slug> — stop when another session has
 # taken the letter (wake-one-machine DL #3); `--force` is the way past it, for a
-# session that is gone.
+# session that is gone — said outright when it is a session of this machine
+# that is not live (intercom-taken-by-gone-session, DL #3).
 _ic_refuse_if_taken() {
   local mark
   mark="$(intercom_taken_elsewhere "$2")"
   [ -n "$mark" ] || return 0
+  case "$(intercom_mark_state "$mark")" in
+    gone) _ic_die "$1: '$3' is taken by ${mark%% *} at ${mark#* }, and that session is gone — no live session by that name here. Take it over: intercom $1 $3 --force" ;;
+    live) _ic_die "$1: '$3' is taken by ${mark%% *} at ${mark#* } — that session is live here, and the letter is its." ;;
+  esac
   _ic_die "$1: '$3' is taken by ${mark%% *} at ${mark#* } — it is that session's. If that session is gone: intercom $1 $3 --force"
 }
 
