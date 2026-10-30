@@ -10,6 +10,33 @@ This file tracks significant changes: features, bugs, architecture decisions, an
 
 ## 2026-10-29
 
+### 🔧 TOOLING — intercom: «mail session» → «intercom session», ключ `intercom.session` (vdm 2.65.0)
+
+**Что было.** Владелец 28.10 спросил echelon, о чём речь, когда тот назвал сессию `vdx ai --intercom` «почтовой»:
+в его мире почта — это Gmail (у echelon `mail_search`, `mail_send`, у штабов `mail.yaml`). Слово пришло из наших
+строк и писем: стартовая строка «📮 Mail session of …», указатель побудки «You are the mail session», строка 📨 с
+ключом `"intercom": {"mail-session": true}`, раздел скилла «Mail sessions». Echelon уже писал «сессия intercom», как
+называются флаг и `VDX_INTERCOM=1`.
+
+**Что сделано.**
+- Имя (владелец, 29.10): «intercom session» / «сессия intercom» во всём, что печатают `intercom.sh`,
+  `intercom-common.sh` и `intercom-identity-check.sh`, в скилле intercom (раздел «Intercom sessions»), README и
+  `docs/model/suite.md`. Скилл называет и прежнее имя: им говорят старые письма и транскрипты.
+- Ключ (владелец, 29.10): `intercom.session: true` — его печатают строка 📨 и `sent`. Старый
+  `intercom.mail-session` читается и дальше: он закоммичен в пяти проектах. Если заданы оба ключа, решает новый,
+  поэтому `session: false` выключает сессию и при оставшемся старом `true`.
+- Режим сессии отправитель читает по стартовой строке 📮 в транскрипте, а транскрипты ходят между машинами. Парсер
+  принимает обе формулировки, иначе сессия, начатая до обновления, читалась бы как обычная. Поле конверта
+  `session: mail` и имена функций не тронуты: владелец их не видит.
+- Тесты `tests/intercom.test.sh`: старый ключ включает сессию, новый `false` перекрывает старый `true`, ключ в строке
+  📨 без «mail», старая строка 📮 в транскрипте по-прежнему опознаётся. Каждая проверка краснеет на копии, где
+  откатана её часть правки.
+- Незакрытые кристаллы: «почтовая сессия» → «сессия intercom» (Sidetrack #1). С переименованием закоммичены
+  кристаллы, которые сессии intercom завели 27–29.10 и которые правка задела, и записи побегов в `crystal-wake`
+  (#26) и `wrap-skill` (#3), лежавшие незакоммиченными. Sidetrack #2 (`close` и письмо ушедшей сессии) перенесён в
+  [intercom-taken-by-gone-session](docs/tasks/intercom-taken-by-gone-session/workitem.md).
+- Кристалл [intercom-session-name](docs/tasks/intercom-session-name/workitem.md), DL #2–#3.
+
 ### ✨ FEATURE — letters: просить только то, что адресат может сделать сейчас; шаг после письма — письмо, встреча — с ответившим (vdm-comms 0.39.0)
 
 **Что было.** Три урока штаба 27–28.10, поднятые echelon в общий слой (письма `letters-ask-after-our-move`,

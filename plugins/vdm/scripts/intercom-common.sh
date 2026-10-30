@@ -203,8 +203,8 @@ intercom_inbox_count() {
   intercom_inbox_list "${1:-}" | wc -l | tr -d ' '
 }
 
-# Mail piling up, and the mail session offered for it (vdx, 2026-10-27). The
-# owner: the mail-session key must be known and offered where mail is seen to
+# Mail piling up, and the intercom session offered for it (vdx, 2026-10-27). The
+# owner: the session key must be known and offered where mail is seen to
 # pile up — since it shipped in vdm 2.58.0 no project had set it, while letters
 # from other agents lay 54–89 days in four inboxes of one machine. Only intercom
 # sees the pile, so it says so: on the recipient's session start and in the
@@ -251,7 +251,7 @@ intercom_backlog() {
 }
 
 # intercom_mail_switched_on <identity> — some working checkout of it here has
-# its mail session switched on.
+# its intercom session switched on.
 intercom_mail_switched_on() { [ -n "$(_intercom_mail_clone "$1")" ]; }
 
 # ---------------------------------------------------------------------------
@@ -1271,12 +1271,12 @@ _intercom_owner_of() {
 intercom_focused() { [ "${VDX_FOCUSED:-}" = 1 ]; }
 
 # ---------------------------------------------------------------------------
-# Mail sessions (docs/tasks/intercom-session-wake, DL #3, #4). The owner,
+# Intercom sessions (docs/tasks/intercom-session-wake, DL #3, #4). The owner,
 # 2026-10-20: a project gets a session of its own for mail — `vdx ai
 # --intercom` — so that letters and wakes go there and the owner's own session,
 # started `--focused`, stays quiet: «мне будет понятнее и не будет прерываться
 # сообщениями и отвлечениями агент. И все будут получать сообщения быстрее».
-# Nobody sits at a mail session by construction, so it is woken at once, ahead
+# Nobody sits at an intercom session by construction, so it is woken at once, ahead
 # of the session the owner typed into last and without the quiet window; its
 # inbox is its work, not a reminder; and a letter it writes is marked
 # `session: mail` in the envelope, which is how a chain counts the links that
@@ -1288,7 +1288,7 @@ intercom_focused() { [ "${VDX_FOCUSED:-}" = 1 ]; }
 # ---------------------------------------------------------------------------
 INTERCOM_MAIL_ENV=VDX_INTERCOM
 
-# intercom_mail_session — this session is its project's mail session (and not
+# intercom_mail_session — this session is its project's intercom session (and not
 # also focused: deaf wins).
 intercom_mail_session() { [ "${!INTERCOM_MAIL_ENV:-}" = 1 ] && ! intercom_focused; }
 
@@ -1306,19 +1306,19 @@ _intercom_pid_mode() {
   ps -wwE -p "$1" -o command= 2>/dev/null | awk -v mail="$INTERCOM_MAIL_ENV" "$awk_mode"
 }
 
-# A chain of letters between mail sessions stops after this many links in a
+# A chain of letters between intercom sessions stops after this many links in a
 # row (intercom-session-wake, item 4). The owner accepted the condition: agents
 # answering each other fast may agree on what is the owner's to decide. A link
-# written in a mail session is a link with no move of the owner's — nobody sits
+# written in an intercom session is a link with no move of the owner's — nobody sits
 # at it — so the run of `session: mail` links at the end of a chain is what is
 # counted; a letter from any other session ends the run. Three: a brief, and
-# three answers back and forth between the two mail sessions, before the fourth
+# three answers back and forth between the two intercom sessions, before the fourth
 # is refused and goes to the owner instead. The number is ours, not the owner's;
 # they named the rule, not the count.
 INTERCOM_CHAIN_LIMIT=3
 
 # intercom_mail_run <ref> — how many links, from <ref> back along `reply-to:`,
-# were written in a mail session, until the first that was not (or a missing
+# were written in an intercom session, until the first that was not (or a missing
 # link, or a cycle).
 intercom_mail_run() {
   local n=0 ref path title
@@ -1331,15 +1331,16 @@ intercom_mail_run() {
 }
 
 # ---------------------------------------------------------------------------
-# Starting a mail session (intercom-session-wake, DL #9–#12). A letter that
+# Starting an intercom session (intercom-session-wake, DL #9–#12). A letter that
 # arrives by sync starts nothing by itself, so the sender starts the
-# recipient's mail session on its own machine: `vdx ai --intercom --detach
-# '<the recipient's checkout here>'`. One mail session per project and machine,
+# recipient's intercom session on its own machine: `vdx ai --intercom --detach
+# '<the recipient's checkout here>'`. One intercom session per project and machine,
 # so a second start is a no-op, and its first turn is `/vdm:intercom check`.
-# Only where the owner switched it on (DL #10): `intercom.mail-session: true`
-# in that checkout's settings — every mail session is a whole agent session.
+# Only where the owner switched it on (DL #10): `intercom.session: true` (the older
+# `intercom.mail-session` is still read; when both are set, `session` decides)
+# in that checkout's settings — every intercom session is a whole agent session.
 # vdx before 0.36 refuses `--intercom` with exit 2, so its version is asked
-# first. Started, the mail session replaces the wake of any other session
+# first. Started, the intercom session replaces the wake of any other session
 # (DL #11); a letter to the sender's own project starts nothing (DL #12).
 # ---------------------------------------------------------------------------
 INTERCOM_VDX_MIN=0.36
@@ -1351,7 +1352,7 @@ INTERCOM_VDX_MIN=0.36
 # clones a plugin's repository for itself: the settings committed in it arrive
 # there too, nobody works there, and the harness does not trust it. This
 # repository's own entry lists its marketplace clone first (vdx, 2026-10-27), so
-# with its mail-session key committed the mail session would have been started
+# with its session key committed the intercom session would have been started
 # there, and `role --path` would name such a copy the same way.
 intercom_checkouts() {
   local p
@@ -1363,7 +1364,7 @@ intercom_checkouts() {
 }
 
 # _intercom_mail_clone <identity> — that agent's checkout on this machine with
-# its mail session switched on, or nothing. Every checkout is looked at, not the
+# its intercom session switched on, or nothing. Every checkout is looked at, not the
 # first: the registry also lists clones nobody configures. The settings file is
 # found as resolve_config_path finds it: .claude/ when present, else .qwen/.
 _intercom_mail_clone() {
@@ -1373,7 +1374,8 @@ _intercom_mail_clone() {
     [ -n "$p" ] || continue
     if [ -d "$p/.claude" ]; then cfg="$p/.claude/vdm-plugins.json"; else cfg="$p/.qwen/vdm-plugins.json"; fi
     [ -f "$cfg" ] || continue
-    jq -e '.intercom["mail-session"] == true' "$cfg" >/dev/null 2>&1 && { printf '%s' "$p"; return 0; }
+    jq -e '(.intercom // {}) as $i | if ($i | has("session")) then $i.session == true else $i["mail-session"] == true end' \
+      "$cfg" >/dev/null 2>&1 && { printf '%s' "$p"; return 0; }
   done <<<"$(intercom_checkouts "$1")"
   return 0
 }
@@ -1393,11 +1395,11 @@ _intercom_version_ge() {
 }
 
 # intercom_mail_start <identity> <live> <sender> — whether the sender starts that
-# agent's mail session here. <live> is the caller's `intercom_live_sessions`
+# agent's intercom session here. <live> is the caller's `intercom_live_sessions`
 # output. One line, or nothing:
 #   "start<US><checkout>"                 start it there
 #   "novdx<US><checkout><US><version>"    switched on, but this vdx cannot (no version: no vdx)
-# Nothing when a mail session of it is live here (the wake takes the letter),
+# Nothing when an intercom session of it is live here (the wake takes the letter),
 # when none is switched on here, and for a letter to the sender's own project.
 intercom_mail_start() {
   local id="$1" live="$2" sender="$3" clone ver
@@ -1440,7 +1442,7 @@ _intercom_sid_focused_here() {
 # intercom_live_sessions <identity> — "name<TAB>status<TAB>sessionId<TAB>mode<TAB>updated"
 # for every LIVE session of that agent on this machine, other than the caller's
 # own and other than a focused one: a session started focused is not offered to
-# anybody to wake. `mode` is `mail` for the project's mail session, `plain`
+# anybody to wake. `mode` is `mail` for the project's intercom session, `plain`
 # otherwise — never empty, because TAB is whitespace to `read` and an empty
 # field in the middle would collapse. `updated` is the session file's
 # statusUpdatedAt (ms), empty when absent, and so last.
@@ -1638,7 +1640,8 @@ _intercom_transcript_machine() {
   [ -n "$m" ] || return 0
   case "$line" in
     *'🔇 Focused session'*) mode=focused ;;
-    *'📮 Mail session'*)    mode=mail ;;
+    # The old wording stays: transcripts started before vdm 2.65.0 carry it.
+    *'📮 Intercom session'*|*'📮 Mail session'*) mode=mail ;;
   esac
   printf '%s\037%s\n' "$m" "$mode"
 }
@@ -1717,7 +1720,7 @@ intercom_elsewhere_line() {
   elif [ "$mode" = focused ]; then
     printf 'no live session on this machine — on `%s` a focused one was active %s ago; it cannot be woken from here and reads mail only when asked' "$m" "$(_intercom_ago "$mins")"
   elif [ "$mode" = mail ]; then
-    printf 'no live session on this machine — on `%s` its mail session was active %s ago; it cannot be woken from here and takes the letter at its next check' "$m" "$(_intercom_ago "$mins")"
+    printf 'no live session on this machine — on `%s` its intercom session was active %s ago; it cannot be woken from here and takes the letter at its next check' "$m" "$(_intercom_ago "$mins")"
   else
     printf 'no live session on this machine — on `%s` one was active %s ago; it cannot be woken from here: the letter reaches it as one line with your next message there, or at its next `check`' "$m" "$(_intercom_ago "$mins")"
   fi
@@ -1731,10 +1734,10 @@ intercom_elsewhere_line() {
 # TAB: TAB is whitespace to `read`, and the empty fields of "wait" would collapse.
 #   "wake<US><name><US><status><US><why><US><mode>"   wake this one session
 #   "wait<US><US><US><why>"                           wake nobody here
-# <mode> is `mail` when the session is the project's mail session: the pointer
+# <mode> is `mail` when the session is the project's intercom session: the pointer
 # into it says "handle it", not "not urgent".
 #
-# A live mail session here comes first, before the owner's last turn and the
+# A live intercom session here comes first, before the owner's last turn and the
 # quiet window: nobody sits at it (intercom-session-wake, DL #4). Two of them
 # on one machine should not happen; the most recently active one is taken.
 intercom_wake_choice() {
@@ -1748,7 +1751,7 @@ intercom_wake_choice() {
     if [ "$u" -gt "$mail_upd" ]; then mail="$name"; mail_status="$status"; mail_upd="$u"; fi
   done <<<"$live"
   if [ -n "$mail" ]; then
-    printf 'wake\037%s\037%s\037the mail session of `%s` — nobody sits at it, so it is woken at once\037mail\n' \
+    printf 'wake\037%s\037%s\037the intercom session of `%s` — nobody sits at it, so it is woken at once\037mail\n' \
       "$mail" "$mail_status" "$id"
     return 0
   fi

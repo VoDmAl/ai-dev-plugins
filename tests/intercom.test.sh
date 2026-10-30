@@ -1228,7 +1228,7 @@ out="$(wake_out far-wait)"
 says "RED: the session the letter waits for is named by its machine" "$out" "was in a session on \`m-other\` — the letter waits for it"
 rm -f "$PROJ/hb/sid-elsewhere.jsonl" "$VDM_INTERCOM_ROOT/hop-b/far-wait.md"
 
-echo "-- a mail session is woken at once (intercom-session-wake, DL #4)"
+echo "-- an intercom session is woken at once (intercom-session-wake, DL #4)"
 # The owner, 2026-10-20: `vdx ai --intercom` starts a session of the project for
 # mail, so the letters and wakes go there and the owner's own session stays
 # quiet. Nobody sits at it, so neither the owner's last turn nor the quiet
@@ -1245,13 +1245,13 @@ cp "$PROJ/hb/sid-hop-b-11.jsonl" "$TMP/hb-11.keep"             # the blocks belo
 turn hb "sid-hop-b-11" "$TMP/hop-b" "2026-10-04T10:59:00Z"   # the owner is at hop-b-11 this minute
 mksession mail-b.json "$MAIL_PID" "$TMP/hop-b" hop-b-mail busy "$SOCKS/b.sock"
 out="$(wake_out mail-wake)"
-says "the mail session is listed as one" "$out" "hop-b-mail (busy, mail)"
+says "the intercom session is listed as one" "$out" "hop-b-mail (busy, mail)"
 says "RED: it is the one woken — ahead of where the owner typed last, busy or not" "$out" "→ wake one: hop-b-mail"
-says "…and the line says why" "$out" "the mail session of \`hop-b\` — nobody sits at it"
-says "RED: the pointer tells it to handle the letter" "$out" "You are the mail session: take it and handle it"
+says "…and the line says why" "$out" "the intercom session of \`hop-b\` — nobody sits at it"
+says "RED: the pointer tells it to handle the letter" "$out" "You are the intercom session: take it and handle it"
 says_not "…not that the user's steps come first: there are none in it" "$(printf '%s\n' "$out" | grep '📬')" "pending steps"
 out="$( cd "$TMP/hop-a" && VDM_INTERCOM_NOW="$NOW_EPOCH" VDM_INTERCOM_TODAY=2026-10-04 bash "$IC" sent 2>&1 )"
-says "RED: sent offers the mail session with the same pointer" "$(printf '%s\n' "$out" | grep -m1 'hop-b/mail-wake' -A1)" "You are the mail session"
+says "RED: sent offers the intercom session with the same pointer" "$(printf '%s\n' "$out" | grep -m1 'hop-b/mail-wake' -A1)" "You are the intercom session"
 rm -f "$SESS/mail-b.json"
 mksession both-b.json "$BOTH_PID" "$TMP/hop-b" hop-b-both idle "$SOCKS/b.sock"
 out="$(wake_out mail-both)"
@@ -1260,9 +1260,9 @@ rm -f "$SESS/both-b.json" "$VDM_INTERCOM_ROOT"/hop-b/mail-*.md
 mv -f "$TMP/hb-11.keep" "$PROJ/hb/sid-hop-b-11.jsonl"
 kill "$BOTH_PID" 2>/dev/null
 
-echo "-- a mail session's start line: the inbox is its work"
+echo "-- an intercom session's start line: the inbox is its work"
 out="$( cd "$TMP/hop-b" && printf '{}' | VDX_INTERCOM=1 bash "$HOOK" )"
-says "RED: the mail session is told what it is" "$out" "📮 Mail session of \`hop-b\`"
+says "RED: the intercom session is told what it is" "$out" "📮 Intercom session of \`hop-b\`"
 says "…that the inbox is its work" "$out" "the inbox is your work, not a reminder"
 says "…to check now and at every wake" "$out" "Now and at every wake: /vdm:intercom check"
 says "RED: …to leave work that changes the code to the main session" "$out" "Work that changes the code is left for the owner's main session as a crystal"
@@ -1275,7 +1275,7 @@ says_not "…with no 'pending → check' reminder line of its own" "$out" "pendi
 out="$( cd "$TMP/hop-b" && printf '{}' | VDX_INTERCOM=1 VDX_FOCUSED=1 bash "$HOOK" )"
 says_not "a focused session started for mail too is focused" "$out" "📮"
 out="$( cd "$TMP/hop-b" && printf '{}' | bash "$HOOK" )"
-says_not "an ordinary session is not called a mail session" "$out" "📮"
+says_not "an ordinary session is not called an intercom session" "$out" "📮"
 # The 📮 line is the mark a sender on the other machine reads.
 hookrec hc "sid-c-mail" "$TMP/hop-c" "2026-10-04T10:50:00Z" m-other
 o="$(tail -1 "$PROJ/hc/sid-c-mail.jsonl")"; rm -f "$PROJ/hc/sid-c-mail.jsonl"
@@ -1285,10 +1285,20 @@ jq -cn --arg ts "2026-10-04T10:50:00Z" --arg cwd "$TMP/hop-c" --arg out "$mo" \
     attachment:{type:"hook_success", hookName:"SessionStart:startup", hookEvent:"SessionStart", stdout:$out}}' > "$PROJ/hc/sid-c-mail.jsonl"
 turn hc "sid-c-mail" "$TMP/hop-c" "2026-10-04T10:58:00Z"
 out="$(sent_c)"
-says "RED: a mail session on the other machine is named as the mail session" "$out" "on \`m-other\` its mail session was active 2 min ago"
+says "RED: an intercom session on the other machine is named as the intercom session" "$out" "on \`m-other\` its intercom session was active 2 min ago"
+# Transcripts travel between machines, and those started before the rename
+# carry the old wording of the 📮 line; it still marks the session.
+mo_old="${mo//📮 Intercom session/📮 Mail session}"
+jq -cn --arg ts "2026-10-04T10:50:00Z" --arg cwd "$TMP/hop-c" --arg out "$mo_old" \
+  '{type:"attachment", timestamp:$ts, sessionId:"sid-c-mail", cwd:$cwd,
+    attachment:{type:"hook_success", hookName:"SessionStart:startup", hookEvent:"SessionStart", stdout:$out}}' > "$PROJ/hc/sid-c-mail.jsonl"
+turn hc "sid-c-mail" "$TMP/hop-c" "2026-10-04T10:58:00Z"
+eq "…the hook's line carries the new wording, so the old one is a real difference" "$([ "$mo_old" != "$mo" ] && echo differs)" "differs"
+out="$(sent_c)"
+says "RED: an old transcript's 📮 Mail session line still names the session" "$out" "on \`m-other\` its intercom session was active 2 min ago"
 rm -rf "$PROJ/hc"
 
-echo "-- a chain between mail sessions stops (intercom-session-wake, item 4)"
+echo "-- a chain between intercom sessions stops (intercom-session-wake, item 4)"
 # The owner accepted it as a condition of the mode: agents answering each other
 # fast may agree on what is the owner's to decide. A link written in a mail
 # session is marked `session: mail`; past 3 such links in a row the next one is
@@ -1297,29 +1307,30 @@ msend() { ( cd "$TMP/$1" && shift && VDX_INTERCOM=1 bash "$IC" send "$@" --body 
 ( cd "$TMP/hop-a" && bash "$IC" send hop-b ch-0 --body "$B/live.md" >/dev/null 2>&1 )
 says_not "a letter from an ordinary session carries no session mark" "$(cat "$VDM_INTERCOM_ROOT/hop-b/ch-0.md")" "session:"
 out="$(msend hop-b hop-a ch-1 --reply-to hop-b/ch-0)"; rc=$?
-eq "a mail session answers a brief" "$rc" "0"
-eq "RED: …and its letter is marked as written in a mail session" "$(grep '^session:' "$VDM_INTERCOM_ROOT/hop-a/ch-1.md")" "session: mail"
+eq "an intercom session answers a brief" "$rc" "0"
+eq "RED: …and its letter is marked as written in an intercom session" "$(grep '^session:' "$VDM_INTERCOM_ROOT/hop-a/ch-1.md")" "session: mail"
 msend hop-a hop-b ch-2 --reply-to hop-a/ch-1 >/dev/null
 out="$(msend hop-b hop-a ch-3 --reply-to hop-b/ch-2)"; rc=$?
-eq "the third link in a row between mail sessions still goes" "$rc" "0"
+eq "the third link in a row between intercom sessions still goes" "$rc" "0"
 out="$(msend hop-a hop-b ch-4 --reply-to hop-a/ch-3)"; rc=$?
 eq "RED: the fourth is refused" "$rc" "4"
-says "…naming the run and the chain" "$out" "the last 3 links of this chain were written by mail sessions"
+says "…naming the run and the chain" "$out" "the last 3 links of this chain were written by intercom sessions"
 says "…and where the question goes instead" "$out" "one line on their list at HQ"
 [ ! -e "$VDM_INTERCOM_ROOT/hop-b/ch-4.md" ] && ok "…and writes no letter" || bad "a refused link was written"
 out="$( cd "$TMP/hop-a" && VDX_INTERCOM=1 bash "$IC" reply ch-3 --done "agreed" --ball "nobody — closed" 2>&1 )"; rc=$?
-eq "RED: reply in a mail session is held by the same limit" "$rc" "4"
+eq "RED: reply in an intercom session is held by the same limit" "$rc" "4"
 [ -f "$VDM_INTERCOM_ROOT/hop-a/ch-3.md" ] && ok "…and the letter stays in the inbox, not archived" || bad "a refused reply archived its letter"
 out="$( cd "$TMP/hop-a" && bash "$IC" send hop-b ch-4 --reply-to hop-a/ch-3 --body "$B/live.md" 2>&1 )"; rc=$?
 eq "a session the owner works in continues the chain" "$rc" "0"
 out="$(msend hop-b hop-a ch-5 --reply-to hop-b/ch-4)"; rc=$?
-eq "…and after that move the mail sessions may answer again" "$rc" "0"
+eq "…and after that move the intercom sessions may answer again" "$rc" "0"
 rm -f "$VDM_INTERCOM_ROOT"/hop-a/ch-*.md "$VDM_INTERCOM_ROOT"/hop-b/ch-*.md
 
-echo "-- the sender starts the recipient's mail session (intercom-session-wake, DL #9–#12)"
+echo "-- the sender starts the recipient's intercom session (intercom-session-wake, DL #9–#12)"
 # A letter that arrives by sync starts nothing, so the sender starts the mail
 # session on its own machine — only where the owner switched it on
-# (`intercom.mail-session: true` in the recipient's checkout), and only with a
+# (`intercom.session: true` in the recipient's checkout; the older
+# `intercom.mail-session` is still read, and `session` decides when both are set), and only with a
 # vdx that knows `--intercom` (0.36). Started, it takes the letter on its first
 # turn, so no other session is woken. A note to one's own project is not mail.
 # The machine's own vdx must not decide a case: every send below names its shim.
@@ -1328,10 +1339,10 @@ printf '#!/bin/sh\n[ "$1" = --version ] && { [ -n "${VDX_SHIM_VERSION-0.36.0}" ]
 chmod +x "$VX/vdx"
 vsend() { ( cd "$TMP/hop-a" && PATH="$VX:$PATH" CLAUDE_CODE_SESSION_ID=self-sid bash "$IC" send hop-b "$@" 2>&1 ); }
 mkdir -p "$TMP/hop-b/.claude"
-printf '{"intercom":{"mail-session":true}}\n' > "$TMP/hop-b/.claude/vdm-plugins.json"
+printf '{"intercom":{"session":true}}\n' > "$TMP/hop-b/.claude/vdm-plugins.json"
 HB_PATH="$(jq -r '.paths[0]' "$VDM_INTERCOM_ROOT/_registry/hop-b.json")"
 out="$(vsend ms-start --body "$B/live.md")"
-says "RED: switched on and none live here — the start is named" "$out" "has its mail session switched on, and none is live here — start it with your shell tool now"
+says "RED: switched on and none live here — the start is named" "$out" "has its intercom session switched on, and none is live here — start it with your shell tool now"
 says "…as the command vdx takes, with the recipient's checkout here" "$out" "vdx ai --intercom --detach '$HB_PATH'"
 says "…and the start replaces the wake" "$out" "no other session is woken"
 says "RED: …and names the one case nothing starts — the trust prompt, exit 4" "$out" "does not trust yet nothing starts: exit 4, and vdx prints the command"
@@ -1349,16 +1360,25 @@ out="$(VDX_SHIM_VERSION=0.100.0 vsend ms-newer --body "$B/live.md")"
 says "versions compare as numbers: 0.100 is past 0.36" "$out" "vdx ai --intercom --detach"
 out="$(VDX_SHIM_VERSION= vsend ms-novdx --body "$B/live.md")"
 says "a vdx that gives no version starts nothing, and that is said" "$out" "there is no vdx here to start one"
-printf '{"intercom":{"mail-session":false}}\n' > "$TMP/hop-b/.claude/vdm-plugins.json"
+printf '{"intercom":{"session":false}}\n' > "$TMP/hop-b/.claude/vdm-plugins.json"
 out="$(vsend ms-off --body "$B/live.md")"
-says_not "switched off — nothing about a mail session" "$out" "📮"
+says_not "switched off — nothing about an intercom session" "$out" "📮"
+# The owner, 2026-10-29 (intercom-session-name, DL #3): the key the owner reads
+# names no mail. The old key is committed in five projects and keeps working;
+# when both are set, the new one decides — so `session: false` switches it off.
 printf '{"intercom":{"mail-session":true}}\n' > "$TMP/hop-b/.claude/vdm-plugins.json"
+out="$(vsend ms-oldkey --body "$B/live.md")"
+says "RED: the older key alone still switches it on" "$out" "has its intercom session switched on, and none is live here"
+printf '{"intercom":{"session":false,"mail-session":true}}\n' > "$TMP/hop-b/.claude/vdm-plugins.json"
+out="$(vsend ms-both --body "$B/live.md")"
+says_not "RED: both set — the new key decides, and false switches it off" "$out" "📮"
+printf '{"intercom":{"session":true}}\n' > "$TMP/hop-b/.claude/vdm-plugins.json"
 mksession mail-b.json "$MAIL_PID" "$TMP/hop-b" hop-b-mail idle "$SOCKS/b.sock"
 out="$(vsend ms-live --body "$B/live.md")"
-says "a mail session live here is woken, as before" "$out" "→ wake one: hop-b-mail"
+says "an intercom session live here is woken, as before" "$out" "→ wake one: hop-b-mail"
 says_not "…and none is started" "$out" "vdx ai --intercom"
 out="$( cd "$TMP/hop-b" && PATH="$VX:$PATH" bash "$IC" send hop-b ms-self --body "$B/live.md" 2>&1 )"
-says_not "RED: a note to one's own project does not wake its mail session" "$out" "wake one: hop-b-mail"
+says_not "RED: a note to one's own project does not wake its intercom session" "$out" "wake one: hop-b-mail"
 rm -f "$SESS/mail-b.json"
 out="$( cd "$TMP/hop-b" && PATH="$VX:$PATH" bash "$IC" send hop-b ms-self2 --body "$B/live.md" 2>&1 )"
 says_not "RED: …nor starts one" "$out" "vdx ai --intercom"
@@ -1370,7 +1390,7 @@ cp "$VDM_INTERCOM_ROOT/_registry/hop-b.json" "$TMP/hop-b.reg.keep"
 mkrepo "$TMP/hop-b-work" "git@example.com:acme/hop-b.git"
 ( cd "$TMP/hop-b-work" && bash "$IC" register --same-project >/dev/null 2>&1 )
 mkdir -p "$TMP/hop-b-work/.claude"
-printf '{"intercom":{"mail-session":true}}\n' > "$TMP/hop-b-work/.claude/vdm-plugins.json"
+printf '{"intercom":{"session":true}}\n' > "$TMP/hop-b-work/.claude/vdm-plugins.json"
 out="$(vsend ms-clone --body "$B/live.md")"
 says "the checkout started is the one with the key, not the first listed" "$out" "--detach '$(cd "$TMP/hop-b-work" && pwd -P)'"
 # A committed key reaches every clone, the harness's copy of a plugin repository
@@ -1378,7 +1398,7 @@ says "the checkout started is the one with the key, not the first listed" "$out"
 # there, the session would wait on a trust prompt (exit 4), or work in a copy
 # nobody works in.
 MKT="$TMP/claude/plugins/marketplaces/hop-b"; mkdir -p "$MKT/.claude"
-printf '{"intercom":{"mail-session":true}}\n' > "$MKT/.claude/vdm-plugins.json"
+printf '{"intercom":{"session":true}}\n' > "$MKT/.claude/vdm-plugins.json"
 reg_b="$VDM_INTERCOM_ROOT/_registry/hop-b.json"
 jq --arg m "$MKT" '.paths = [$m] + .paths' "$reg_b" > "$reg_b.tmp" && mv "$reg_b.tmp" "$reg_b"
 out="$(vsend ms-market --body "$B/live.md")"
@@ -1386,20 +1406,20 @@ says "RED: the plugin copy with the committed key, listed first, is passed over"
 mv -f "$TMP/hop-b.reg.keep" "$VDM_INTERCOM_ROOT/_registry/hop-b.json"
 rm -rf "$TMP/hop-b-work" "$TMP/hop-b/.claude" "$VDM_INTERCOM_ROOT"/hop-b/ms-*.md
 
-echo "-- a mail session ends itself with close (intercom-session-wake, DL #13)"
+echo "-- an intercom session ends itself with close (intercom-session-wake, DL #13)"
 # `vdx ai --close --waiting <n>`, n being the letters it took and leaves for the
 # owner, read from `taken:`. A letter nobody took is a letter nobody handled.
 mkrepo "$TMP/mail-x" "git@example.com:acme/mail-x.git"
-( cd "$TMP/mail-x" && bash "$IC" register --name "mail-x" --describe "a project with a mail session" >/dev/null 2>&1 )
+( cd "$TMP/mail-x" && bash "$IC" register --name "mail-x" --describe "a project with an intercom session" >/dev/null 2>&1 )
 for s in mx-1 mx-2 mx-3 mx-4; do ( cd "$TMP/hop-a" && bash "$IC" send mail-x "$s" --body "$B/live.md" >/dev/null 2>&1 ); done
 ( cd "$TMP/mail-x" && bash "$IC" send mail-x mx-note --body "$B/live.md" >/dev/null 2>&1 )
 mclose() { ( cd "$TMP/mail-x" && PATH="$VX:$PATH" bash "$IC" close 2>&1 ); }
 : > "$TMP/vdx.log"
 out="$(mclose)"; rc=$?
-eq "close outside a mail session is refused" "$rc" "1"
-says "…and says why" "$out" "this is not a mail session"
+eq "close outside an intercom session is refused" "$rc" "1"
+says "…and says why" "$out" "this is not an intercom session"
 out="$(VDX_INTERCOM=1 VDX_FOCUSED=1 mclose)"; rc=$?
-eq "…a focused one is not a mail session either" "$rc" "1"
+eq "…a focused one is not an intercom session either" "$rc" "1"
 ( cd "$TMP/mail-x" && VDX_INTERCOM=1 bash "$IC" take mx-1 >/dev/null 2>&1 )
 awk 'NR == 1 { print; print "taken: m-other/mail-x-mail 2026-10-04T10:00:00Z"; next } { print }' \
   "$VDM_INTERCOM_ROOT/mail-x/mx-2.md" > "$TMP/mx-2" && mv "$TMP/mx-2" "$VDM_INTERCOM_ROOT/mail-x/mx-2.md"
@@ -1617,8 +1637,8 @@ says_not "RED: …with no count of its inbox" "$out" "pending message"
 says_not "…no call to read it" "$out" "/vdm:intercom check"
 says_not "…and no letters of its own to chase" "$out" "unpicked for 3+ days"
 
-echo "-- mail piling up: the mail session is offered (vdx, 2026-10-27)"
-# The owner (2026-10-27, through vdx): the mail-session key must be known and
+echo "-- mail piling up: the intercom session is offered (vdx, 2026-10-27)"
+# The owner (2026-10-27, through vdx): the session key must be known and
 # offered where mail is seen to pile up. Since the key shipped (vdm 2.58.0) no
 # project had set it; letters from other agents lay 54–89 days in four inboxes
 # on one machine. Only intercom sees the pile: five letters from others, the
@@ -1633,16 +1653,17 @@ startline() { ( cd "$TMP/pile" && printf '{}' | VDM_INTERCOM_TODAY="$1" bash "$H
 says_not "four letters from others and a note to itself — no offer yet" "$(startline "$later")" "📨"
 ( cd "$TMP/hop-a" && bash "$IC" send pile pl-5 --body "$B/live.md" >/dev/null 2>&1 )
 out="$(startline "$later")"
-says "RED: five from others, the oldest 3+ days, no key → the mail session is offered" "$out" "📨 5 letters from other agents wait in this inbox, the oldest 9d"
-says "…with the key and what it costs" "$out" "mail-session"
+says "RED: five from others, the oldest 3+ days, no key → the intercom session is offered" "$out" "📨 5 letters from other agents wait in this inbox, the oldest 9d"
+says "…with the key and what it costs" "$out" '{\"session\": true}'
+says_not "RED: …and the key it names has no mail in it" "$out" "mail-session"
 says "…in the project's own settings" "$out" ".claude/vdm-plugins.json, and costs a whole agent session"
 says "…and whose word it is" "$out" "offer it to the user"
 says_not "five, but all younger than three days — no offer" "$(startline "$(date -u +%Y-%m-%d)")" "📨"
 says_not "a focused session is not offered it" "$( cd "$TMP/pile" && printf '{}' | VDX_FOCUSED=1 VDM_INTERCOM_TODAY="$later" bash "$HOOK" )" "📨"
 out="$( cd "$TMP/hop-a" && VDM_INTERCOM_TODAY="$later" bash "$IC" sent 2>&1 )"
-says "RED: the sender's sent names the recipient with no mail session" "$(printf '%s\n' "$out" | grep '📨')" "\`pile\`"
+says "RED: the sender's sent names the recipient with no intercom session" "$(printf '%s\n' "$out" | grep '📨')" "\`pile\`"
 eq "…in one line after the list, each recipient once" "$(printf '%s\n' "$out" | grep -c '📨'):$(printf '%s\n' "$out" | grep '📨' | grep -o '`pile`' | wc -l | tr -d ' ')" "1:1"
-mkdir -p "$TMP/pile/.claude"; printf '{"intercom":{"mail-session":true}}\n' > "$TMP/pile/.claude/vdm-plugins.json"
+mkdir -p "$TMP/pile/.claude"; printf '{"intercom":{"session":true}}\n' > "$TMP/pile/.claude/vdm-plugins.json"
 says_not "the key switched on — the start line offers nothing" "$(startline "$later")" "📨"
 says_not "…nor does sent" "$( cd "$TMP/hop-a" && VDM_INTERCOM_TODAY="$later" bash "$IC" sent 2>&1 | grep '📨' || echo none )" "\`pile\`"
 rm -rf "$TMP/pile" "$VDM_INTERCOM_ROOT/pile" "$VDM_INTERCOM_ROOT/_registry/pile.json"

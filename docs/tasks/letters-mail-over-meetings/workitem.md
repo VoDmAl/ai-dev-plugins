@@ -10,7 +10,7 @@ last-updated: 2026-10-29
 
 # vdm-comms:letters — шаг после письма: письмо — основной канал, встреча — с тем, кто ответил
 
-> Заведён почтовой сессией 2026-10-28 по письму echelon `letters-mail-over-meetings`. Это урок
+> Заведён сессией intercom 2026-10-28 по письму echelon `letters-mail-over-meetings`. Это урок
 > штаба того же дня, который echelon поднял в общий слой. Тем же вечером владелец урок уточнил, и
 > echelon прислал письмо `letters-mail-over-meetings-refined`; кристалл переписан под него (DL #2).
 > Третье и последнее письмо урока, `letters-urgent-slot-move-own` — о времени встречи (DL #3).

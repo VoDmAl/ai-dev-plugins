@@ -153,30 +153,30 @@ Before other work, register the names this project really goes by. A default der
 Verify with /vdm:intercom whoami. This notice repeats every session until the registration is complete (opt out: /vdm:intercom identity-check off)."
 fi
 
-# A mail session (`vdx ai --intercom`) is told what it is for. For it the
+# An intercom session (`vdx ai --intercom`) is told what it is for. For it the
 # inbox is the work, not a reminder: nobody sits at it, and the wakes that would
 # have gone to the owner's session come here. The owner accepted three
 # conditions with the mode, and they are said where the session starts, which
 # is the only moment this plugin has with it before the mail: a question for the
 # owner goes to their list at HQ, not into a pane nobody looks at; work that
 # changes the code is left for the owner's main session, which shares the
-# working tree; a chain between mail sessions stops (send enforces that one).
+# working tree; a chain between intercom sessions stops (send enforces that one).
 # Two more come with starting it from `send` (DL #12, #13): a note the project
 # left for itself is not its mail, and the session ends itself with `close`.
 # The 📮 line is also the mark a sender on the other machine reads in this
-# session's transcript. @see intercom-common.sh → "Mail sessions"
+# session's transcript. @see intercom-common.sh → "Intercom sessions"
 if intercom_mail_session; then
   if [ "$pending" -gt 0 ]; then inbox_now="${pending} letter(s) are waiting now."; else inbox_now="The inbox is empty now."; fi
   msg="${msg}
-📮 Mail session of \`${id}\`: the inbox is your work, not a reminder — nobody sits at this session, and the wakes for this project come here. ${inbox_now} Now and at every wake: /vdm:intercom check, then each letter in turn — take it, read it, act, and close it: reply for a brief, pickup for a note; one that waits for something outside the inbox goes back with release --note \"<what it waits for>\".
+📮 Intercom session of \`${id}\`: the inbox is your work, not a reminder — nobody sits at this session, and the wakes for this project come here. ${inbox_now} Now and at every wake: /vdm:intercom check, then each letter in turn — take it, read it, act, and close it: reply for a brief, pickup for a note; one that waits for something outside the inbox goes back with release --note \"<what it waits for>\".
   • Here you answer, check and do small things. Work that changes the code is left for the owner's main session as a crystal (/vdm:crystal-grow, or /vdm:crystal-bud on an active one): the working tree is shared with it, and an edit here rides into its commit.
   • A question for the owner is not asked in this pane — nobody reads it. Put one line on their list at HQ (the access layer's \`hq <project root> --obligations\` names it; the access layer: /vdm:intercom role access-layer) and take the next letter; do not wait for the answer.
-  • A chain of letters between mail sessions stops after ${INTERCOM_CHAIN_LIMIT} links in a row; send refuses the next one, and it goes to the owner the same way.
+  • A chain of letters between intercom sessions stops after ${INTERCOM_CHAIN_LIMIT} links in a row; send refuses the next one, and it goes to the owner the same way.
   • A letter from \`${id}\` itself is a note for the owner's next session, not mail: leave it untaken.
   • Inbox handled: say what was done, then end this session with /vdm:intercom close — it refuses while a letter nobody took is in the inbox, and runs \`vdx ai --close --waiting <n>\`, n being the letters you took and left for the owner. Your turn ends on its result."
 fi
 
-# Mail piling up here, with no mail session switched on: offered once per
+# Mail piling up here, with no intercom session switched on: offered once per
 # session start, to be put to the user in a line (see intercom_backlog).
 if ! intercom_mail_session; then
   backlog="$(intercom_backlog "$id" 2>/dev/null)"
@@ -184,7 +184,7 @@ if ! intercom_mail_session; then
   if [ -n "$backlog" ] && [ "$b_n" -ge "$INTERCOM_BACKLOG_MIN" ] && [ "$b_days" -ge "$INTERCOM_BACKLOG_DAYS" ] \
      && ! intercom_mail_switched_on "$id"; then
     msg="${msg}
-📨 ${b_n} letters from other agents wait in this inbox, the oldest ${b_days}d. A mail session — a separate agent session that takes letters as they come — would answer them without waiting for a session here: offer it to the user once, in one line. It is switched on by this project's own commit, \`\"intercom\": {\"mail-session\": true}\` in .claude/vdm-plugins.json, and costs a whole agent session per project and machine."
+📨 ${b_n} letters from other agents wait in this inbox, the oldest ${b_days}d. An intercom session — a separate agent session that takes letters as they come — would answer them without waiting for a session here: offer it to the user once, in one line. It is switched on by this project's own commit, \`\"intercom\": {\"session\": true}\` in .claude/vdm-plugins.json, and costs a whole agent session per project and machine."
   fi
 fi
 

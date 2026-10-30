@@ -361,8 +361,8 @@ re-derive its logic:
 | `release <slug> [--note "<what it waits for>"] [--force]` | The reverse of `take` (§ Receiving). Drops this session's mark; with `--note`, writes `deferred: <time> <note>` in its place, which `check` shows beside the letter and `close` counts as handled. Refuses a letter taken by another session unless `--force`, and an empty note. |
 | `pickup <slug> [--grow] [--force]` | Archive a message to `_done/` (or, with `--grow`, hand it to `/vdm:crystal-grow` — the letter stays in the inbox, marked taken). Refuses a letter taken by another session unless `--force`. When the sender has a live session on this machine, prints the receipt to send it (§ Delivery is not receipt). For a brief whose outcome has not gone back yet it prints the `reply` that closes it; with `--grow` it prints that as a Next action for the crystal (§ Closing a brief with its outcome). |
 | `reply <letter> (--done "<what>" [--link <url>]… --ball "<who — what ⏰ date>" \| --body FILE) [--title T] [--slug S] [--force]` | Close a letter **you received** with its outcome. It goes to the letter's sender as a `reply-to` link; recipient and link come from the envelope. Works on a letter in the inbox (archived in the same step; refused while another session has it taken, unless `--force`) or in `_done/`. `--done` and `--ball` repeat; `--ball` is required — "nobody — closed" is an answer (§ Closing a brief with its outcome). |
-| `sent` (aka `outbox`) | Every letter **you** wrote that still lies unpicked in someone's inbox, oldest first, with its age and whether the recipient has a live session to wake now — or a mail session to start (§ Mail sessions). |
-| `close` | In a mail session, once its inbox is handled: run `vdx ai --close --waiting <n>`, n being the letters it took and left for the user. Refused outside a mail session and while a letter nobody took is in the inbox (§ Mail sessions). |
+| `sent` (aka `outbox`) | Every letter **you** wrote that still lies unpicked in someone's inbox, oldest first, with its age and whether the recipient has a live session to wake now — or an intercom session to start (§ Intercom sessions). |
+| `close` | In an intercom session, once its inbox is handled: run `vdx ai --close --waiting <n>`, n being the letters it took and left for the user. Refused outside an intercom session and while a letter nobody took is in the inbox (§ Intercom sessions). |
 
 ### Sending a message
 
@@ -662,7 +662,7 @@ So three things happen on top of the inbox, and none of them replaces it:
   wake only once the body is written; with `--body` the letter is complete and
   you wake at once. When it prints `→ do not wake here`, wake nobody: the
   letter waits, and the line says for what. When it prints `📮 … start it`,
-  run the command it names instead, and wake nobody (§ Mail sessions).
+  run the command it names instead, and wake nobody (§ Intercom sessions).
 - **Not a session the user may be at.** A message into an idle session starts a
   turn at once, and into a busy one it lands in the middle of the work — either
   way on the screen the user is reading or typing into. So the session is woken
@@ -747,22 +747,25 @@ the environment a process was started with cannot outlive the session, nor
 follow a resume that started without the flag. Guards such as git-guard are not
 nudges and keep working.
 
-### Mail sessions — the inbox is their work
+### Intercom sessions — the inbox is their work
 
 A session started with `vdx ai --intercom` carries `VDX_INTERCOM=1` (the name is
-vdx's to settle) and is the project's session for mail. The user's words
-(2026-10-20): the agent is not interrupted by messages, and everybody gets
-messages faster and answers each other. The user's own session runs
-`--focused` beside it and stays quiet. Read from the process, like focused; a
-session started with both is focused.
+vdx's to settle) and is the project's intercom session: the one that takes its
+letters. The user's words (2026-10-20): the agent is not interrupted by
+messages, and everybody gets messages faster and answers each other. The
+user's own session runs `--focused` beside it and stays quiet. Read from the
+process, like focused; a session started with both is focused. Before vdm
+2.65.0 it was the "mail session", and older letters and transcripts say so.
+The user read that as a session for their e-mail (2026-10-28), so the name in
+anything the user reads is "intercom session" ("сессия intercom").
 
-- **Woken at once.** When the recipient has a live mail session on this
+- **Woken at once.** When the recipient has a live intercom session on this
   machine, `send`, `sent` and the receipt after `pickup` wake that one, ahead
   of the session where the user typed last and without the 15-minute window:
-  nobody sits at it. Its pointer says what to do — *"You are the mail session:
+  nobody sits at it. Its pointer says what to do — *"You are the intercom session:
   take it and handle it — /vdm:intercom check"* — with no "not urgent". The
   live list marks it `(idle, mail)`. On the user's other machine it is named
-  from its transcript, like any session: *"its mail session was active 2 min
+  from its transcript, like any session: *"its intercom session was active 2 min
   ago"*.
 - **The inbox is the work.** Its session-start line says so instead of the
   pending count: check now and at every wake, then each letter in turn — take,
@@ -775,8 +778,8 @@ session started with both is focused.
   which nobody reads: one line goes to the user's list at HQ (the access
   layer's `hq <project root> --obligations` names it), and the session takes
   the next letter without waiting for the answer.
-- **A chain between mail sessions stops.** A letter written in a mail session
-  carries `session: mail` in its envelope. When a mail session continues a
+- **A chain between intercom sessions stops.** A letter written in an intercom session
+  carries `session: mail` in its envelope. When an intercom session continues a
   chain (`send --reply-to`, `reply`) whose last 3 links all carry it, the
   link is refused with exit 4 and nothing is written; the question goes to
   the user at HQ instead, and `reply` leaves the brief in the inbox. A link
@@ -786,8 +789,9 @@ session started with both is focused.
 - **Started by the sender, where it is switched on.** A letter that arrives by
   sync starts nothing by itself, so the sender starts the recipient's mail
   session on its own machine. That happens when three things hold: the
-  recipient's checkout here has `intercom.mail-session: true` in its
-  `vdm-plugins.json`, no mail session of it is live here, and the vdx here is
+  recipient's checkout here has `intercom.session: true` in its
+  `vdm-plugins.json` (the older key `intercom.mail-session` is still read;
+  when both are set, `session` decides), no intercom session of it is live here, and the vdx here is
   0.36 or later. A checkout is a working clone: the harness's own copy of a
   plugin's repository (`…/plugins/marketplaces/<name>`, `…/plugins/cache/…`)
   gets the committed key too and is passed over — nobody works there, and the
@@ -799,11 +803,11 @@ session started with both is focused.
   session is woken: two sessions would only do the letter twice. `sent` names
   the same start for a letter still lying there. With vdx missing or older, a
   line says so and the letter goes as without it. The key is off by default
-  and is set by hand, because every mail session is a whole agent session. The
+  and is set by hand, because every intercom session is a whole agent session. The
   user's word (2026-10-22): only where it was switched on. And (2026-10-27):
   where mail piles up, the key is offered. With five letters from other agents
   in the inbox, the oldest three days old, and no key, the session-start line
-  says so (`📨`): offer the mail session to the user once, in one line; the key
+  says so (`📨`): offer the intercom session to the user once, in one line; the key
   is the project's own commit. The sender's `sent` names such recipients in one
   line after the list. A note to oneself is not counted, nor is a recipient
   with no working checkout here. One case where the
@@ -816,16 +820,16 @@ session started with both is focused.
   the start.
 - **A note to its own project is not its mail.** A letter from the project to
   itself, a note for its next session (`/vdm:wrap`), neither starts nor wakes
-  the mail session. Its start line tells it to leave such a letter untaken: if
-  the mail session archived the note, it would never reach the session it was
+  the intercom session. Its start line tells it to leave such a letter untaken: if
+  the intercom session archived the note, it would never reach the session it was
   written for.
-- **It ends itself with `close`.** Once the inbox is handled, the mail session
+- **It ends itself with `close`.** Once the inbox is handled, the intercom session
   says what was done and runs `/vdm:intercom close`. That is refused outside a
-  mail session, and while a letter nobody took is in the inbox (one may have
+  intercom session, and while a letter nobody took is in the inbox (one may have
   come in after the last check); one released with a note is handled. Otherwise it runs `vdx ai --close --waiting
   <n>`, n being the letters in the inbox it took and left for the user, read
   from `taken:` and kept nowhere. vdx marks the project's other tmux sessions on
-  this machine with that n and closes the mail session's pane; the turn ends on
+  this machine with that n and closes the intercom session's pane; the turn ends on
   its result.
 
 ## Configuration Sub-commands
@@ -848,7 +852,7 @@ above, behave as the regular skill described here.
 | `reset` | Remove the `intercom` key (revert to defaults) |
 
 **Defaults when the section is missing:** `enabled: false` (opt-in), `mode: "smart"`,
-`identity-check: true`, `arrival-line: true`, `mail-session: false` (no subcommand for the last two: set them in the file). The two defaults differ on purpose: the *reminder*
+`identity-check: true`, `arrival-line: true`, `session: false` (no subcommand for the last two: set them in the file). The two defaults differ on purpose: the *reminder*
 interrupts ongoing work, so it is opt-in (see § Automatic activation); the
 *identity check* fires once at session start and never mid-session, so it is on.
 Once the reminder is on: throttle window `intercom.throttle` seconds (default
