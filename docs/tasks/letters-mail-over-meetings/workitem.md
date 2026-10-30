@@ -210,8 +210,10 @@ last-updated: 2026-10-29
       `letters-mail-over-meetings-refined-outcome`, все три slug названы: § 4, строка «No exit»,
       vdm-comms 0.39.0, коммит `cbe77c3` (ещё не запушен); мячи — echelon: передать штабу; имя
       инструмента окон итогом `meeting-windows`
-- [ ] Когда echelon пришлёт имя инструмента окон итогом своего `meeting-windows`: решить, называть
-      ли его в § 4 или оставить «по календарю через echelon» (DL #4). Ждём хода echelon, срока нет
+- [ ] Решить, называть ли имя инструмента окон в § 4 или оставить «by the calendar, through the access layer»
+      (DL #4, #5) — when: echelon прислал итог своего `meeting-windows`; check: `/vdm:intercom check` (письмо
+      echelon о `meeting-windows`) или статус `docs/tasks/meeting-windows/workitem.md` в checkout echelon
+      (`intercom role access-layer --path`). Ждём хода echelon, срока нет
 
 ## References
 

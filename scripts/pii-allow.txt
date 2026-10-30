@@ -145,3 +145,5 @@ host claude.ai
 host claude.com
 host python.org
 host google.com
+word Ложноположительный
+word Ложноотрицательный

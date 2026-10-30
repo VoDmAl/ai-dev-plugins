@@ -2,7 +2,7 @@
 title: "intercom: письмо, взятое закрытой сессией, видно как взятое закрытой"
 slug: intercom-taken-by-gone-session
 description: "check, sent и take сверяют пометку taken: с живыми сессиями и называют выход — take --force"
-status: in-progress
+status: done
 session-type: short-bug
 created: 2026-10-29
 last-updated: 2026-10-30
@@ -32,7 +32,7 @@ relates-to:
 
 ## Текущая модель
 
-Состояние 2026-10-30, рабочее дерево vdm 2.65.1 (не закоммичено).
+Состояние 2026-10-30, vdm 2.65.1, коммит `d4a172f`.
 
 - Дефект наблюдён на двух ящиках этой машины 29.10 (DL #1): у проекта-получателя штаба два письма за сессией,
   закрытой 28.10, и в собственном ящике этого репозитория — `focused-topic-letters` за `cc-vdm-plugins-a0`, которой
@@ -158,7 +158,11 @@ work» без сверки; `cmd_check` (`intercom.sh:434`) — «leave it to th
       сокет), — каждая роняет свою проверку и только её
 - [x] SKILL.md intercom § Receiving, версия vdm, `PROJECT_CHANGELOG.md` — 2026-10-30: § Receiving п. 2–3, заметка
       `release`, абзац `close`; vdm 2.65.1; `docs/model/suite.md`
-- [ ] Ответ штабу о выходе версии со строкой проверки — `send <штаб> <slug> --reply-to <штаб>/sent-taken-by-gone-session-outcome`
+- [x] Ответ штабу о выходе версии со строкой проверки — `send <штаб> <slug> --reply-to <штаб>/sent-taken-by-gone-session-outcome`
+      — отправлен 2026-10-30 через `reply sent-taken-by-gone-session --slug sent-taken-by-gone-session-result` (второй
+      итог того же брифа, так его закрывает скилл): что видно теперь, `close`, ответ на `release` «для сессии X»,
+      vdm 2.65.1, коммит `d4a172f`, строка проверки у получателя. Мяч — штаб: передать проекту-получателю. Его сессия
+      разбужена указателем
 - [x] Закоммитить кристалл вместе с первой работой над ним (заметка `queue-after-letters-pair`, п. 3) — 2026-10-29,
       в коммите переименования `intercom-session-name`, с которым сюда перенесён его Sidetrack #2 (здесь — #3)
 
