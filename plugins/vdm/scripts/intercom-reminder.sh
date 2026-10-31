@@ -57,12 +57,17 @@ command -v intercom_inbox_count >/dev/null 2>&1 || exit 0
 # and none that a session has taken. `intercom.arrival-line: false` turns it off.
 # ---------------------------------------------------------------------------
 
-# _ic_arrivals <identity> <session id> — one "`<file>` from `<sender>` — <title>"
-# line per letter that arrived during this session and was not named in it
-# yet; each one printed is recorded as named. The session's start comes from
-# the harness's own session file; no file, no verdict, nothing printed.
+# _ic_arrivals <identity> <session id> [<own topic>] — one "`<file>` from
+# `<sender>` — <title>" line per letter that arrived during this session and was
+# not named in it yet; each one printed is recorded as named. The session's
+# start comes from the harness's own session file; no file, no verdict, nothing
+# printed. Topics (intercom-focused-topic, DL #4): with <own topic> — a focused
+# session — only letters on that topic are named, and one off it is looked at
+# again on the next message, since its topic may be named afterwards (`intercom
+# topic`); in any other session a letter on the topic of a live focused session
+# here is that session's, and is not named.
 _ic_arrivals() {
-  local id="$1" sid="$2" sdir sfile started seen f base created epoch title
+  local id="$1" sid="$2" own="${3:-}" sdir sfile started seen f base
   case "$sid" in ''|default) return 0 ;; esac
   command -v jq >/dev/null 2>&1 || return 0
   sdir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"
@@ -70,25 +75,66 @@ _ic_arrivals() {
   [ -n "$sfile" ] || return 0
   started="$(jq -r '.startedAt // empty' "$sfile" 2>/dev/null)"
   case "$started" in ''|*[!0-9]*) return 0 ;; esac
-  started=$((started / 1000))
+  started="$(_intercom_iso_utc "$((started / 1000))")"
+  [ -n "$started" ] || return 0
   # Every letter is looked at once per session, named or not: this runs on
   # every message the owner sends, and an inbox of old letters would otherwise
-  # cost a few processes per letter on each of them.
+  # cost processes on each of them. The letters not looked at yet are read in
+  # one pass.
   seen="${TMPDIR:-/tmp}/vdm-intercom-arrivals/$sid"
-  local known=""
+  local known="" fresh=()
   [ -f "$seen" ] && known="$(cat "$seen" 2>/dev/null)"
   mkdir -p "${seen%/*}" 2>/dev/null
   while IFS= read -r f; do
     base="${f##*/}"; base="${base%.md}"
     case $'\n'"$known"$'\n' in *$'\n'"$base"$'\n'*) continue ;; esac
-    printf '%s\n' "$base" >> "$seen" 2>/dev/null
-    [ -z "$(intercom_fm_field "$f" taken)" ] || continue
-    created="$(intercom_fm_field "$f" created)"
-    epoch="$(_intercom_epoch_utc "$created")"
-    [ -n "$epoch" ] && [ "$epoch" -ge "$started" ] || continue
-    title="$(grep -m1 '^# ' "$f" 2>/dev/null | sed 's/^# //')"
-    printf '`%s` from `%s` — %s\n' "$base" "$(intercom_fm_field "$f" from)" "${title:-$base}"
+    fresh+=("$f")
   done < <(intercom_inbox_list "$id")
+  [ ${#fresh[@]} -gt 0 ] || return 0
+  local taken created from topic title ts
+  while IFS=$'\037' read -r f taken created from topic title; do
+    [ -n "$f" ] || continue
+    base="${f##*/}"; base="${base%.md}"
+    # Created before the session started (the start line named it), or with
+    # no time to tell: never named.
+    if [ -n "$taken" ] || [ -z "$created" ] || [ "$created" \< "$started" ]; then
+      printf '%s\n' "$base" >> "$seen" 2>/dev/null
+      continue
+    fi
+    topic="$(_intercom_topic_clean "$topic")"
+    if [ -n "$own" ]; then
+      [ "$topic" = "$own" ] || continue
+    elif [ -n "$topic" ]; then
+      ts="$(intercom_letter_topic "$f")"
+      if [ "${ts%%$'\037'*}" = held ]; then
+        printf '%s\n' "$base" >> "$seen" 2>/dev/null
+        continue
+      fi
+    fi
+    printf '%s\n' "$base" >> "$seen" 2>/dev/null
+    printf '`%s` from `%s` — %s\n' "$base" "$from" "${title:-$base}"
+  done < <(awk '
+    function val(line, n) { v = substr(line, n); gsub(/^[ \t]+|[ \t]+$/, "", v); gsub(/^"|"$/, "", v); return v }
+    BEGIN {
+      for (i = 1; i < ARGC; i++) {
+        f = ARGV[i]; first = 1; infm = 0; taken = created = from = topic = title = ""
+        while ((getline line < f) > 0) {
+          if (first) { first = 0; infm = (line == "---"); if (infm) continue }
+          if (infm && line == "---") { infm = 0; continue }
+          if (infm) {
+            if (line ~ /^taken:/)   taken = val(line, 7)
+            if (line ~ /^created:/) created = val(line, 9)
+            if (line ~ /^from:/)    from = val(line, 6)
+            if (line ~ /^topic:/)   topic = val(line, 7)
+            continue
+          }
+          if (line ~ /^# /) { title = substr(line, 3); break }
+        }
+        close(f)
+        if (!first) printf "%s\037%s\037%s\037%s\037%s\037%s\n", f, taken, created, from, topic, title
+      }
+      exit
+    }' "${fresh[@]}")
 }
 
 arrival_on="$(vdm_config_read intercom arrival-line true)"
@@ -101,21 +147,34 @@ case "$count" in ''|*[!0-9]*) count=0 ;; esac
 
 # Receiver-side condition: only ever fire when the inbox is non-empty.
 [ "$count" -gt 0 ] || exit 0
-# A focused session is not called to its inbox (intercom-common.sh → "Focused sessions").
-intercom_focused && exit 0
+# A focused session is not called to its inbox (intercom-common.sh → "Focused
+# sessions") — except by a letter on its topic, which a sender may wake it with
+# and so it hears of here (intercom-focused-topic, DL #4).
+own_topic=""
+if intercom_focused; then
+  own_topic="$(intercom_own_topic)"
+  [ -n "$own_topic" ] && [ "$arrival_on" = "true" ] || exit 0
+fi
 
 sid=$(printf '%s' "$payload" | _vdm_reminder_session_id 2>/dev/null || printf 'default')
 
 if [ "$arrival_on" = "true" ]; then
-  arrived="$(_ic_arrivals "$id" "$sid")"
+  arrived="$(_ic_arrivals "$id" "$sid" "$own_topic")"
   if [ -n "$arrived" ]; then
     n="$(printf '%s\n' "$arrived" | wc -l | tr -d ' ')"
     list="$(printf '%s\n' "$arrived" | sed 's/^/- /')"
-    msg="[intercom] 📬 Arrived while the user was in this session — not urgent, and no turn of its own:\n$(_vdm_json_escape "$list")\nAnswer the user's message first. At the end, one line that it waits (/vdm:intercom check); retell nothing else — the user's open steps are still on their screen."
+    if [ -n "$own_topic" ]; then
+      lead="Arrived on this session's topic «$(_vdm_json_escape "$own_topic")» while the user was in it"
+    else
+      lead="Arrived while the user was in this session"
+    fi
+    msg="[intercom] 📬 ${lead} — not urgent, and no turn of its own:\n$(_vdm_json_escape "$list")\nAnswer the user's message first. At the end, one line that it waits (/vdm:intercom check); retell nothing else — the user's open steps are still on their screen."
     _vdm_reminder_emit intercom 1 "📬 intercom: ${n} arrived during this session → /vdm:intercom check" "$msg"
     exit 0
   fi
 fi
+# A focused session hears of nothing but its topic.
+[ -z "$own_topic" ] || exit 0
 
 # ---------------------------------------------------------------------------
 # The general reminder — OFF BY DEFAULT (opt-in): read enabled with default

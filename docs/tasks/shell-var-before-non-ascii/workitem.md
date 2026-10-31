@@ -5,7 +5,7 @@ description: "Научить shell-syntax-check называть `$имя` пе�
 status: ready
 session-type: other
 created: 2026-10-29
-last-updated: 2026-10-29
+last-updated: 2026-10-30
 ---
 
 # shell-syntax: `$имя` вплотную к не-ASCII под bash 3.2
@@ -112,6 +112,19 @@ bash 4+ не проверялся: ни `/opt/homebrew/bin/bash`, ни `/usr/loc
 
 **Status:** open
 
+### #3. Полевой случай 30.10: 18 мест в одной сессии, поймал только `set -u` набора
+
+**Возникло в:** сессия кристалла `intercom-focused-topic`, 2026-10-30
+**Описание:** за одну сессию в `plugins/vdm/scripts/intercom*.sh` легло 6 мест вида `«$topic»` и
+`«$old» — $why`, в `tests/intercom.test.sh` — 12 вида `«$T1»`. Замер DL #2 «0 в дереве» был верен на
+29.10 и устарел за сутки: шаблон рождается там, где в строку подставляют русский текст в кавычках-ёлочках.
+Скрипты без `set -u` подставили бы пустое молча; заметил набор тестов — он под `set -u` упал на
+`T1\xC2: unbound variable`. Исправлено на `${имя}` до коммита (perl по шаблону брифа, затем 0 совпадений).
+Вывод для правила: охват — и тесты (`tests/*.sh`), не только `plugins/`; гейт на `PostToolUse(Write|Edit)`
+поймал бы каждое место в момент записи.
+
+**Status:** open
+
 ## Next actions
 
 - [ ] Красный тест: новая секция в `tests/shell-syntax-check.test.sh` — находка на `"«$t»"`,
@@ -126,6 +139,7 @@ bash 4+ не проверялся: ни `/opt/homebrew/bin/bash`, ни `/usr/loc
       `marketplace.json`, запись в `PROJECT_CHANGELOG.md`; `distill-scan.sh --drift` для `docs/model/suite.md`
 - [ ] Sidetrack #1: решить, входит ли zsh с буквами в правило, — DL-запись или отдельный кристалл
 - [ ] Sidetrack #2: проверить bash 5 на другой машине или писать подсказку без утверждения о нём
+- [ ] Sidetrack #3: охват правила — и `tests/*.sh`; полевой случай 30.10 — в красный тест как форма `"«$T1»"`
 - [ ] Outcome to `vdx`: `intercom reply sh-var-before-non-ascii --done "<правило в shell-syntax-check, версия vdm>" --ball "nobody — closed"`
 
 ## References

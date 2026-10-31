@@ -414,7 +414,7 @@ cmd_check() {
   fi
   _ic_print_unclaimed "$id" "   "
   printf '📬 intercom: %s pending message(s) for `%s`\n   inbox: %s\n\n' "$n" "$id" "$(intercom_inbox_dir "$id")"
-  local f from created slug title prev taken deferred
+  local f from created slug title prev taken deferred tstate ttopic tname trest
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     from="$(intercom_fm_field "$f" from)"
@@ -430,6 +430,15 @@ cmd_check() {
     if [ -n "$deferred" ]; then
       printf '    deferred at %s — %s\n' "${deferred%% *}" "${deferred#* }"
     fi
+    # By its topic (intercom-focused-topic, DL #4): a letter on the topic of a
+    # live focused session here is that session's, as a taken one is.
+    IFS=$'\037' read -r tstate ttopic tname trest <<<"$(intercom_letter_topic "$f")"
+    case "$tstate" in
+      self) printf '    on this session'"'"'s topic «%s» — yours. Not on it after all? Give it back: /vdm:intercom topic %s --miss "<why>"\n' \
+              "$ttopic" "$(basename "$f" .md)" ;;
+      held) printf '    on the topic «%s» of the focused session %s, live here — leave it to that session\n' "$ttopic" "$tname" ;;
+      free) printf '    topic «%s» — no live focused session here is on it: an ordinary letter\n' "$ttopic" ;;
+    esac
     if [ -n "$taken" ]; then
       # Checked against the sessions live here: a mark outlives its session
       # (intercom-taken-by-gone-session, DL #3).
@@ -442,6 +451,8 @@ cmd_check() {
       esac
     elif [ -n "$deferred" ]; then
       printf '    when the wait is over: /vdm:intercom take %s\n' "$(basename "$f" .md)"
+    elif [ "$tstate" = held ]; then
+      :
     else
       # The mark from the other machine arrives about a minute after it is set,
       # so this list can be older than the letter's state. Field case (echelon,
@@ -552,12 +563,12 @@ _ic_splice_body() {
 
 cmd_send() {
   local to="" slug="" title="" title_given=0 from_agent="" first_contact=0 deliver_to="" reply_to=""
-  local body_file="" body_set=0
+  local body_file="" body_set=0 topic="" topic_set=0
   to="${1:-}"; [ $# -gt 0 ] && shift
   slug="${1:-}"; [ $# -gt 0 ] && shift
   while [ $# -gt 0 ]; do
     case "$1" in
-      --title|--from-agent|--to|--reply-to|--body)
+      --title|--from-agent|--to|--reply-to|--body|--topic)
                         _intercom_need_value "$1" $# || exit 2 ;;
     esac
     case "$1" in
@@ -571,23 +582,32 @@ cmd_send() {
       --reply-to=*)     reply_to="${1#--reply-to=}"; shift ;;
       --body)           body_file="$2"; body_set=1; shift 2 ;;
       --body=*)         body_file="${1#--body=}"; body_set=1; shift ;;
+      --topic)          topic="$2"; topic_set=1; shift 2 ;;
+      --topic=*)        topic="${1#--topic=}"; topic_set=1; shift ;;
       --first-contact)  first_contact=1; shift ;;
       # An unknown flag used to be shifted past in silence, so a typo
       # (`--reply-too`) produced a letter with no chain and no complaint —
       # the same shape as every other defect this suite hunts: silence that
       # reads as success. Caught on the first real use of `--reply-to`, against
       # an installed version that predated the flag.
-      -*)               _ic_die "send: unknown option '$1'. Usage: intercom send <target> <slug> [--title T] [--from-agent A] [--reply-to <ref>] [--body <file>] [--to <identity>] [--first-contact]" ;;
+      -*)               _ic_die "send: unknown option '$1'. Usage: intercom send <target> <slug> [--title T] [--from-agent A] [--reply-to <ref>] [--body <file>] [--topic \"<topic>\"] [--to <identity>] [--first-contact]" ;;
       # A stray word after <slug> is almost always a value whose flag was
       # forgotten — a title without --title — and dropping it sends a letter
       # that is not the one the sender wrote.
-      *)                _ic_die "send: unexpected argument '$1' — after <target> <slug> every value takes a flag. Usage: intercom send <target> <slug> [--title T] [--from-agent A] [--reply-to <ref>] [--body <file>] [--to <identity>] [--first-contact]" ;;
+      *)                _ic_die "send: unexpected argument '$1' — after <target> <slug> every value takes a flag. Usage: intercom send <target> <slug> [--title T] [--from-agent A] [--reply-to <ref>] [--body <file>] [--topic \"<topic>\"] [--to <identity>] [--first-contact]" ;;
     esac
   done
-  [ -n "$to" ]   || _ic_die "send: missing <target>. Usage: intercom send <target> <slug> [--title T] [--from-agent A] [--reply-to <ref>] [--body <file>] [--to <identity>] [--first-contact]"
+  [ -n "$to" ]   || _ic_die "send: missing <target>. Usage: intercom send <target> <slug> [--title T] [--from-agent A] [--reply-to <ref>] [--body <file>] [--topic \"<topic>\"] [--to <identity>] [--first-contact]"
   [ -n "$slug" ] || _ic_die "send: missing <slug>."
   slug="$(_ic_sanitize_slug "$slug")"
   [ -n "$slug" ] || _ic_die "send: slug is empty after sanitization."
+  # The sender judges whether a letter is on a focused session's topic: the
+  # letter is at hand here, and its topic is compared whole on the other side
+  # (intercom-focused-topic, DL #2).
+  if [ "$topic_set" -eq 1 ]; then
+    topic="$(_intercom_topic_clean "$topic")"
+    [ -n "$topic" ] || _ic_die "send: --topic is empty — name the topic, as \`intercom topics $to\` prints it, or leave --topic out." 2
+  fi
 
   # The sender side of the envelope gets the same law as the recipient side: a
   # letter nobody can answer is as broken as a letter to nobody. Outside a
@@ -834,6 +854,8 @@ cmd_send() {
   # A letter written in an intercom session says so: the chain limit counts these.
   local session_line=""
   intercom_mail_session && session_line="session: mail"
+  local topic_line=""
+  [ -z "$topic" ] || topic_line="topic: \"$topic\""
 
   local reply_line="" reply_banner=""
   if [ -n "$reply_ref" ]; then
@@ -861,9 +883,10 @@ cmd_send() {
     line="${line//'{{REPLY_TO_LINE}}'/$reply_line}"
     line="${line//'{{REPLY_TO_BANNER}}'/$reply_banner}"
     line="${line//'{{SESSION_LINE}}'/$session_line}"
+    line="${line//'{{TOPIC_LINE}}'/$topic_line}"
     # A token line that expanded to nothing leaves no blank line behind.
     case "$raw" in
-      *'{{REPLY_TO_'*|*'{{SESSION_LINE}}'*) [ -z "$line" ] && continue ;;
+      *'{{REPLY_TO_'*|*'{{SESSION_LINE}}'*|*'{{TOPIC_LINE}}'*) [ -z "$line" ] && continue ;;
     esac
     line="${line//'{{FROM}}'/$from}"
     line="${line//'{{FROM_AGENT}}'/$from_agent}"
@@ -934,8 +957,37 @@ cmd_send() {
   # body, or the recipient reads a placeholder.
   # One session is woken, the one where the owner typed last (wake-one-machine
   # DL #3); `intercom_wake_choice` says which, or that it lives elsewhere.
-  local live wlive start choice verdict wname wstatus why wmode
-  live="$(intercom_live_sessions "$canon")"
+  local rows live wlive start choice verdict wname wstatus why wmode
+  rows="$(_intercom_session_rows "$canon")"
+  live="$(intercom_live_sessions "$canon" "$rows")"
+  # A letter on the topic of a live focused session here is that session's
+  # (intercom-focused-topic, DL #4): it alone is woken, by the rule of any
+  # session the owner may sit at, and no intercom session is started for it.
+  if [ -n "$topic" ]; then
+    local holder hname hstatus hsid hupd engaged
+    holder="$(intercom_topic_holder "$canon" "$topic" "$rows")"
+    if [ -n "$holder" ]; then
+      IFS=$'\037' read -r hname hstatus hsid hupd <<<"$holder"
+      printf '    🎯 on the topic of the focused session %s of `%s`, «%s» — the letter is that session'"'"'s alone.\n' "$hname" "$canon" "$topic"
+      if engaged="$(_intercom_engaged "$hstatus" "$hupd")"; then
+        printf '       → do not wake here: %s is %s — you are likely at it; the letter reaches it as one line with your next message there.\n' "$hname" "$engaged"
+      else
+        _ic_wake_lines "$hname" "the focused session on «${topic}»" "$slug" "$from" "$title" topic "$body_set" "$topic"
+      fi
+      return 0
+    fi
+    printf '    🎯 topic «%s»: no live focused session of `%s` on this machine is on it — an ordinary letter here; a session on another machine compares it with its own topic.\n' "$topic" "$canon"
+  else
+    # The sender who did not name a topic is shown the ones there are, before
+    # any wake: a letter on one of them goes to that session alone (DL #2).
+    local topics
+    topics="$(intercom_focused_sessions "$canon" "$rows" | awk -F '\037' '$5 != "" { printf "%s%s «%s»", (n++ ? ", " : ""), $1, $5 }')"
+    if [ -n "$topics" ]; then
+      printf '    🎯 focused session(s) of `%s` here, by topic: %s.\n' "$canon" "$topics"
+      printf '       If this letter is on one of those topics, say so before any wake — it then goes to that session alone:\n'
+      printf '         intercom topic %s/%s "<topic>"\n' "$canon" "$slug"
+    fi
+  fi
   start="$(intercom_mail_start "$canon" "$live" "$from")"
   [ -z "$live" ] || printf '    📣 live session(s) of `%s` on this machine: %s\n' "$canon" "$(_ic_live_list "$live")"
   if [ "${start%%$'\037'*}" = start ]; then
@@ -972,15 +1024,7 @@ cmd_send() {
     fi
     IFS=$'\037' read -r verdict wname wstatus why wmode <<<"$choice"
     if [ "$verdict" = "wake" ]; then
-      printf '       → wake one: %s — %s.\n' "$wname" "$why"
-      if [ "$body_set" -eq 1 ]; then
-        printf '         Wake it now with your cross-session message tool (Claude Code: SendMessage).\n'
-      else
-        printf '         Wake it once the body is written — not before, or it reads a placeholder —\n'
-        printf '         with your cross-session message tool (Claude Code: SendMessage).\n'
-      fi
-      printf '         It is a pointer; the inbox stays the truth. Text, first line self-contained:\n'
-      printf '         %s\n' "$(_ic_pointer "$slug" "$from" "$title" "$wmode")"
+      _ic_wake_lines "$wname" "$why" "$slug" "$from" "$title" "$wmode" "$body_set"
     else
       printf '       → do not wake here: %s.\n' "$why"
     fi
@@ -1013,12 +1057,30 @@ _ic_live_list() {
   printf '%s\n' "$1" | awk -F '\t' '{ printf "%s%s (%s%s)", (NR > 1 ? ", " : ""), $1, $2, ($4 == "mail" ? ", mail" : "") }'
 }
 
-# _ic_pointer <slug> <from> <title> <mode> — the wake text. Into a mail
+# _ic_wake_lines <name> <why> <slug> <from> <title> <mode> <body set> [<topic>]
+# — the lines of `send` that wake one session: which, when, and the pointer.
+_ic_wake_lines() {
+  printf '       → wake one: %s — %s.\n' "$1" "$2"
+  if [ "$7" -eq 1 ]; then
+    printf '         Wake it now with your cross-session message tool (Claude Code: SendMessage).\n'
+  else
+    printf '         Wake it once the body is written — not before, or it reads a placeholder —\n'
+    printf '         with your cross-session message tool (Claude Code: SendMessage).\n'
+  fi
+  printf '         It is a pointer; the inbox stays the truth. Text, first line self-contained:\n'
+  printf '         %s\n' "$(_ic_pointer "$3" "$4" "$5" "$6" "${8:-}")"
+}
+
+# _ic_pointer <slug> <from> <title> <mode> [<topic>] — the wake text. Into a mail
 # session it says what to do: the inbox is that session's work, and there are
 # no steps of the user's in it to come first (intercom-session-wake, DL #4).
+# Into a focused session (mode `topic`) it names the topic: that is why the
+# session hears of this letter at all (intercom-focused-topic, DL #4).
 _ic_pointer() {
   if [ "$4" = mail ]; then
     printf '📬 intercom: `%s` from `%s` — %s. You are the intercom session: take it and handle it — /vdm:intercom check' "$1" "$2" "$3"
+  elif [ "$4" = topic ]; then
+    printf '📬 intercom: `%s` from `%s` — %s. On your topic «%s»: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first' "$1" "$2" "$3" "$5"
   else
     printf '📬 intercom: `%s` from `%s` — %s. Read: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first' "$1" "$2" "$3"
   fi
@@ -1038,6 +1100,7 @@ cmd_sent() {
   n="$(printf '%s\n' "$list" | wc -l | tr -d ' ')"
   printf '📤 intercom: %s letter(s) from `%s` not picked up yet (oldest first):\n\n' "$n" "$id"
   local age inbox slug title file live lines choice start verdict wname wstatus why wmode taken seen="" cache="" piled="" seen_pile=""
+  local ts tstate ttopic hname hstatus hsid hupd engaged
   while IFS=$'\t' read -r age inbox slug title file; do
     [ -n "$inbox" ] || continue
     printf '  • %sd  %s/%s — %s\n' "$age" "$inbox" "$slug" "$title"
@@ -1054,6 +1117,22 @@ cmd_sent() {
                    continue ;;
       esac
     fi
+    # On the topic of a live focused session here: that session alone is
+    # woken, and no intercom session is started (intercom-focused-topic, DL #4).
+    ts="$(intercom_letter_topic "$file")"
+    case "${ts%%$'\037'*}" in
+      held)
+        IFS=$'\037' read -r tstate ttopic hname hstatus hsid hupd <<<"$ts"
+        if engaged="$(_intercom_engaged "$hstatus" "$hupd")"; then
+          printf '      on the topic «%s» of the focused session %s — do not wake here: it is %s\n' "$ttopic" "$hname" "$engaged"
+        else
+          printf '      on the topic «%s» of the focused session %s → wake it with SendMessage: %s\n' \
+            "$ttopic" "$hname" "$(_ic_pointer "$slug" "$id" "$title" topic "$ttopic")"
+        fi
+        continue ;;
+      free)
+        printf '      topic «%s» — no live focused session here is on it: an ordinary letter\n' "${ts#free$'\037'}" ;;
+    esac
     # A recipient that keeps letters 3+ days, has a checkout here and no mail
     # session switched on: named once, in a line after the list (see
     # intercom_backlog).
@@ -1122,7 +1201,7 @@ cmd_sent() {
 cmd_close() {
   [ $# -eq 0 ] || _ic_die "close: takes no arguments. Usage: intercom close"
   intercom_mail_session || _ic_die "close: this is not an intercom session (vdx ai --intercom) — nothing to close here."
-  local id me f taken from n=0 open=""
+  local id me f taken from ts n=0 open=""
   id="$(intercom_identity)"
   me="$(_intercom_taker)"
   while IFS= read -r f; do
@@ -1140,6 +1219,10 @@ cmd_close() {
     # Released with a note: handled for now, it waits for something outside
     # the inbox, and the note says what.
     [ -z "$(intercom_fm_field "$f" deferred)" ] || continue
+    # On the topic of a live focused session here: that session's, not open
+    # here (intercom-focused-topic, DL #4).
+    ts="$(intercom_letter_topic "$f")"
+    [ "${ts%%$'\037'*}" != held ] || continue
     from="$(intercom_fm_field "$f" from)"
     [ "$from" != "$id" ] || continue
     open="${open}     • $(basename "$f" .md) — from ${from:-?}"$'\n'
@@ -1154,6 +1237,248 @@ cmd_close() {
   printf '📮 intercom: inbox handled — %s letter(s) left for the owner: vdx ai --close --waiting %s\n' "$n" "$n"
   vdx ai --close --waiting "$n"
   exit $?
+}
+
+# ---------------------------------------------------------------------------
+# Topics (docs/tasks/intercom-focused-topic, DL #2, #5). The sender names the
+# topic, `topics` shows what there is to name, `topic` names it afterwards or
+# corrects it, and a correction is a miss — written into the letter, where the
+# judgement was made, and counted by `topic-misses` for the review with vdx.
+# ---------------------------------------------------------------------------
+
+# `topics [<agent>]` — the topics of that agent's live focused sessions on this
+# machine (this repository's without an argument, this session included).
+cmd_topics() {
+  [ $# -le 1 ] || _ic_die "topics: one agent at most. Usage: intercom topics [<agent>]"
+  local canon rc lines own=""
+  if [ -n "${1:-}" ]; then
+    canon="$(intercom_resolve_target "$1")"; rc=$?
+    [ "$rc" -eq 0 ] || _ic_die "topics: \"$1\" does not resolve to exactly one registered agent (intercom directory)."
+  else
+    canon="$(intercom_identity)"
+    own="$(intercom_own_topic)"
+  fi
+  lines="$(intercom_focused_sessions "$canon")"
+  if [ -z "$lines" ] && [ -z "$own" ]; then
+    printf '🎯 intercom: no live focused session of `%s` on this machine — a letter to it goes as an ordinary one here.\n' "$canon"
+    return 0
+  fi
+  printf '🎯 intercom: focused sessions of `%s` on this machine, by topic:\n' "$canon"
+  [ -z "$own" ] || printf '  • this session — «%s»\n' "$own"
+  printf '%s\n' "$lines" | awk -F '\037' 'NF { if ($5 != "") printf "  • %s — «%s»\n", $1, $5; else printf "  • %s — no topic: deaf to every letter\n", $1 }'
+  printf '   A topic is compared whole: send --topic "<as printed>", or afterwards: intercom topic <letter> "<topic>"\n'
+}
+
+# _ic_topic_letter <verb> <ref> — the one letter a reference names: this
+# repository's inbox first for a bare slug, then the whole store; a letter
+# still in an inbox before its archived namesake.
+_ic_topic_letter() {
+  local hits n
+  case "$2" in
+    */*) hits="$(intercom_find_letter "$2")" ;;
+    *)   hits="$(intercom_find_letter "$(intercom_identity)/$2")"
+         [ -n "$hits" ] || hits="$(intercom_find_letter "$2")" ;;
+  esac
+  [ -n "$hits" ] || _ic_die "$1: no letter '$2' in the store — a reference is <identity>/<slug>, or a bare <slug>."
+  n="$(printf '%s\n' "$hits" | wc -l | tr -d ' ')"
+  if [ "$n" -gt 1 ]; then
+    local live
+    live="$(printf '%s\n' "$hits" | grep -v '/_done/')"
+    if [ "$(printf '%s' "$live" | grep -c .)" -eq 1 ]; then hits="$live"
+    else _ic_die "$1: '$2' names $n letters — qualify it: <identity>/<slug>."
+    fi
+  fi
+  printf '%s' "$hits"
+}
+
+# _ic_topic_route <letter> — after a letter's topic changed: whose it is now,
+# and how it reaches that session.
+_ic_topic_route() {
+  local f="$1" slug from title id ts tstate ttopic hname hstatus hsid hupd engaged
+  slug="$(basename "$f" .md)"
+  from="$(intercom_fm_field "$f" from)"
+  title="$(grep -m1 '^# ' "$f" 2>/dev/null | sed 's/^# //')"; [ -n "$title" ] || title="$slug"
+  id="${f%/*}"; id="${id##*/}"
+  ts="$(intercom_letter_topic "$f")"
+  case "${ts%%$'\037'*}" in
+    self)
+      printf '    this session is on «%s» — the letter is yours: /vdm:intercom take %s\n' "${ts#self$'\037'}" "$slug"
+      return 0 ;;
+    held)
+      IFS=$'\037' read -r tstate ttopic hname hstatus hsid hupd <<<"$ts"
+      printf '    🎯 the focused session %s of `%s` is on «%s» — the letter is that session'"'"'s alone.\n' "$hname" "$id" "$ttopic"
+      if engaged="$(_intercom_engaged "$hstatus" "$hupd")"; then
+        printf '       → do not wake here: %s is %s — you are likely at it; the letter reaches it as one line with your next message there.\n' "$hname" "$engaged"
+      else
+        _ic_wake_lines "$hname" "the focused session on «${ttopic}»" "$slug" "$from" "$title" topic 1 "$ttopic"
+      fi
+      return 0 ;;
+    free)
+      printf '    topic «%s»: no live focused session of `%s` on this machine is on it — an ordinary letter here; a session on another machine compares it with its own topic.\n' \
+        "${ts#free$'\037'}" "$id" ;;
+  esac
+  local live start choice verdict wname wstatus why wmode
+  live="$(intercom_live_sessions "$id")"
+  start="$(intercom_mail_start "$id" "$live" "$from")"
+  if [ "${start%%$'\037'*}" = start ]; then
+    printf '    📮 `%s` has its intercom session switched on, and none is live here — start it with your shell tool:\n' "$id"
+    printf '         %s\n' "$(intercom_mail_start_cmd "${start#start$'\037'}")"
+  elif [ -n "$live" ]; then
+    choice="$(intercom_wake_choice "$id" "$live")"
+    IFS=$'\037' read -r verdict wname wstatus why wmode <<<"$choice"
+    if [ "$verdict" = wake ]; then
+      _ic_wake_lines "$wname" "$why" "$slug" "$from" "$title" "$wmode" 1
+    else
+      printf '       → do not wake here: %s.\n' "$why"
+    fi
+  else
+    printf '    no other live session of `%s` here — the letter waits for its next check.\n' "$id"
+  fi
+}
+
+# `topic <letter> "<topic>"` — name the topic afterwards: the sender on a letter
+# of its own in another inbox, or the recipient on one in its own (an intercom
+# session handing a letter to the focused session it is for).
+# `topic <letter> --miss "<why>"` — the recipient gives a letter back: it is not
+# on the topic it carries. The field goes, `topic-miss:` stays, and the letter is
+# ordinary again.
+# `topic <letter> --missed "<topic>" "<why>"` — a letter on a topic went past it.
+# `topic-missed:` is written in the inbox or the archive; a letter still in the
+# inbox and taken by nobody is handed over too.
+cmd_topic() {
+  local usage='Usage: intercom topic <letter> "<topic>" | intercom topic <letter> --miss "<why>" | intercom topic <letter> --missed "<topic>" "<why>"'
+  local ref="${1:-}" mode=set value="" why=""
+  [ $# -gt 0 ] && shift
+  case "$ref" in ''|-*) _ic_die "topic: the first argument is the letter. $usage" ;; esac
+  case "${1:-}" in
+    --miss)   [ $# -eq 2 ] || _ic_die "topic: --miss takes the reason, one quoted argument. $usage"
+              mode=miss; why="$2" ;;
+    --missed) [ $# -eq 3 ] || _ic_die "topic: --missed takes the topic and the reason. $usage"
+              mode=missed; value="$2"; why="$3" ;;
+    -*)       _ic_die "topic: unknown option '$1'. $usage" ;;
+    *)        [ $# -eq 1 ] || _ic_die "topic: one topic, quoted. $usage"
+              value="$1" ;;
+  esac
+  value="$(_intercom_topic_clean "$value")"
+  why="$(_intercom_topic_clean "$why")"
+  [ "$mode" = miss ] || [ -n "$value" ] || _ic_die "topic: the topic is empty. $usage"
+  [ "$mode" = set ] || [ -n "$why" ] || _ic_die "topic: say why — the reason is what the review of misses reads. $usage"
+
+  local id f inbox_id from in_done=0 old taken who now
+  id="$(intercom_identity)"
+  f="$(_ic_topic_letter topic "$ref")" || exit 1
+  case "$f" in */_done/*) in_done=1; inbox_id="${f%/_done/*}" ;; *) inbox_id="${f%/*}" ;; esac
+  inbox_id="${inbox_id##*/}"
+  from="$(intercom_fm_field "$f" from)"
+  old="$(_intercom_topic_clean "$(intercom_fm_field "$f" topic)")"
+  who="$(_intercom_taker)"
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  case "$mode" in
+    set)
+      [ "$in_done" -eq 0 ] || _ic_die "topic: '$ref' is archived — a topic routes a letter still in an inbox. One that went past its topic: intercom topic $ref --missed \"<topic>\" \"<why>\""
+      [ "$from" = "$id" ] || [ "$inbox_id" = "$id" ] \
+        || _ic_die "topic: '$ref' is neither yours to send nor in your inbox — the topic is named by its sender, or by its recipient handing it on."
+      _intercom_fm_put "$f" topic "\"$value\"" || _ic_die "topic: could not write the topic into $f"
+      printf '🎯 intercom: %s/%s — topic «%s»%s.\n' "$inbox_id" "$(basename "$f" .md)" "$value" "${old:+ (was «${old}»)}"
+      ;;
+    miss)
+      [ "$in_done" -eq 0 ] || _ic_die "topic: '$ref' is archived — --miss gives back a letter still in the inbox. A miss noticed afterwards: intercom topic $ref --missed \"<topic>\" \"<why>\""
+      [ "$inbox_id" = "$id" ] || _ic_die "topic: '$ref' is not in your inbox — --miss is the recipient's, for a letter given to it off its topic."
+      [ -n "$old" ] || _ic_die "topic: '$ref' carries no topic — nothing to give back."
+      _intercom_fm_put "$f" topic "" && _intercom_fm_put "$f" topic-miss "$who $now «${old}» — $why" append \
+        || _ic_die "topic: could not rewrite the envelope of $f"
+      printf '↩  intercom: %s given back — not on «%s»: %s. Recorded as a miss (intercom topic-misses); an ordinary letter now.\n' \
+        "$(basename "$f" .md)" "$old" "$why"
+      ;;
+    missed)
+      [ "$from" = "$id" ] || [ "$inbox_id" = "$id" ] \
+        || _ic_die "topic: '$ref' is neither yours nor in your inbox — a miss is recorded by its sender or its recipient."
+      _intercom_fm_put "$f" topic-missed "$who $now «${value}» — $why" append \
+        || _ic_die "topic: could not write the miss into $f"
+      printf '🎯 intercom: %s/%s — recorded: on «%s», and it went past (%s).\n' "$inbox_id" "$(basename "$f" .md)" "$value" "$why"
+      taken="$(intercom_fm_field "$f" taken)"
+      if [ "$in_done" -eq 1 ]; then
+        printf '    archived already — the record is for the count: intercom topic-misses\n'
+        return 0
+      fi
+      if [ -n "$taken" ] && [ "${taken%% *}" != "$who" ]; then
+        printf '    taken by %s — the letter stays with that session; the record is for the count.\n' "${taken%% *}"
+        return 0
+      fi
+      _intercom_fm_put "$f" topic "\"$value\"" || _ic_die "topic: could not write the topic into $f"
+      ;;
+  esac
+  # A letter this session had taken and now hands on, or gives back, is not
+  # held by it any more.
+  taken="$(intercom_fm_field "$f" taken)"
+  if [ -n "$taken" ] && [ "${taken%% *}" = "$who" ]; then
+    intercom_release "$f" || printf 'intercom: ⚠ could not drop this session'"'"'s mark from %s\n' "$f" >&2
+  fi
+  _ic_topic_route "$f"
+}
+
+# `topic-misses [--since <YYYY-MM-DD>]` — every miss recorded in the store,
+# inboxes and archives, with the count of letters routed by a topic beside it:
+# a zero means something only next to how many could have missed.
+cmd_topic_misses() {
+  local since=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --since)   [ $# -ge 2 ] || _ic_die "topic-misses: --since needs a date, YYYY-MM-DD."
+                 since="$2"; shift 2 ;;
+      --since=*) since="${1#--since=}"; shift ;;
+      *)         _ic_die "topic-misses: unknown argument '$1'. Usage: intercom topic-misses [--since YYYY-MM-DD]" ;;
+    esac
+  done
+  case "$since" in ''|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*) ;; *) _ic_die "topic-misses: --since takes YYYY-MM-DD, not '$since'." ;; esac
+  local root d f files=()
+  root="$(intercom_store_root)"
+  for d in "$root"/*/; do
+    d="${d%/}"
+    case "${d##*/}" in _*) continue ;; esac
+    for f in "$d"/*.md "$d"/_done/*.md; do [ -f "$f" ] && files+=("$f"); done
+  done
+  local report=""
+  [ ${#files[@]} -eq 0 ] || report="$(awk -v since="$since" '
+    function ref(file,   n, p) { n = split(file, p, "/"); sub(/\.md$/, "", p[n]); return (p[n - 1] == "_done" ? p[n - 2] : p[n - 1]) "/" p[n] }
+    BEGIN {
+      for (i = 1; i < ARGC; i++) {
+        f = ARGV[i]; first = 1; infm = 0; routed = 0
+        while ((getline line < f) > 0) {
+          if (first) { first = 0; infm = (line == "---"); if (!infm) break; continue }
+          if (line == "---") break
+          if (line ~ /^topic:/) routed = 1
+          if (line ~ /^topic-miss(ed)?:/) {
+            routed = 1
+            kind = (line ~ /^topic-missed:/) ? "missed" : "miss"
+            v = line; sub(/^topic-miss(ed)?:[ \t]*/, "", v)
+            split(v, w, " ")
+            if (since != "" && w[2] < since) continue
+            printf "%s\t%s\t%s\n", kind, ref(f), v
+          }
+        }
+        close(f)
+        if (routed) n_routed++
+      }
+      printf "routed\t%d\n", n_routed
+      exit
+    }' "${files[@]}")"
+  local routed n_miss n_missed scope=""
+  routed="$(printf '%s\n' "$report" | awk -F '\t' '$1 == "routed" { print $2 }')"
+  n_miss="$(printf '%s\n' "$report" | awk -F '\t' '$1 == "miss" { n++ } END { print n + 0 }')"
+  n_missed="$(printf '%s\n' "$report" | awk -F '\t' '$1 == "missed" { n++ } END { print n + 0 }')"
+  [ -z "$since" ] || scope=" since $since"
+  printf '🎯 intercom: topic misses%s — %s given to a session off its topic, %s on a topic that went past; %s letter(s) in the store were routed by a topic (all time).\n' \
+    "$scope" "$n_miss" "$n_missed" "${routed:-0}"
+  if [ "$n_miss" -gt 0 ]; then
+    printf '  given off its topic (topic-miss):\n'
+    printf '%s\n' "$report" | awk -F '\t' '$1 == "miss" { printf "    • %s — %s\n", $2, $3 }'
+  fi
+  if [ "$n_missed" -gt 0 ]; then
+    printf '  went past its topic (topic-missed):\n'
+    printf '%s\n' "$report" | awk -F '\t' '$1 == "missed" { printf "    • %s — %s\n", $2, $3 }'
+  fi
 }
 
 cmd_claim() {
@@ -1274,10 +1599,18 @@ _ic_reply_hint() {
 # taken the letter (wake-one-machine DL #3); `--force` is the way past it, for a
 # session that is gone — said outright when it is a session of this machine
 # that is not live (intercom-taken-by-gone-session, DL #3).
+#
+# A letter on the topic of a live focused session here is that session's the
+# same way, though no mark says so (intercom-focused-topic, DL #4).
 _ic_refuse_if_taken() {
-  local mark
+  local mark ts tstate ttopic tname trest
   mark="$(intercom_taken_elsewhere "$2")"
-  [ -n "$mark" ] || return 0
+  if [ -z "$mark" ]; then
+    ts="$(intercom_letter_topic "$2")"
+    [ "${ts%%$'\037'*}" = held ] || return 0
+    IFS=$'\037' read -r tstate ttopic tname trest <<<"$ts"
+    _ic_die "$1: '$3' is on the topic «${ttopic}» of the focused session $tname, live here — the letter is that session's. Not on that topic? That session gives it back: intercom topic $3 --miss \"<why>\". Past it only on the owner's word: intercom $1 $3 --force"
+  fi
   case "$(intercom_mark_state "$mark")" in
     gone) _ic_die "$1: '$3' is taken by ${mark%% *} at ${mark#* }, and that session is gone — no live session by that name here. Take it over: intercom $1 $3 --force" ;;
     live) _ic_die "$1: '$3' is taken by ${mark%% *} at ${mark#* } — that session is live here, and the letter is its." ;;
@@ -1652,6 +1985,9 @@ case "$sub" in
   sent|outbox)                cmd_sent "$@" ;;
   chain)                      cmd_chain "$@" ;;
   close)                      cmd_close "$@" ;;
+  topics)                     cmd_topics "$@" ;;
+  topic)                      cmd_topic "$@" ;;
+  topic-misses)               cmd_topic_misses "$@" ;;
   ""|-h|--help|help)
     cat <<'HELP'
 intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
@@ -1680,11 +2016,13 @@ intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
   intercom resolve <name>               which agent does <name> address?
   intercom check [--count]              list (or count) pending messages for this repo
   intercom chain <slug>                 the relay chain behind a letter, and where each link lives
-  intercom send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--body FILE] [--to ID] [--first-contact]
+  intercom send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--body FILE] [--topic "<topic>"] [--to ID] [--first-contact]
                                         stage a message addressed to <to> (identity, alias
                                         or name); unknown target = hard stop with next steps.
                                         --to <identity>: deliver there and record <to> as
-                                        that agent's name (after the user said whom they meant)
+                                        that agent's name (after the user said whom they meant).
+                                        --topic: the letter is on the topic of the recipient's
+                                        focused session, which alone takes it and is woken
   intercom claim <inbox> [--force]      move an unclaimed inbox that was addressed to one of
                                         your names into your own inbox
   intercom take <slug> [--force]        mark a letter taken by this session before working on it;
@@ -1703,7 +2041,12 @@ intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
   intercom close                        in an intercom session, once the inbox is handled: end it
                                         (vdx ai --close --waiting <letters left for the owner>);
                                         refuses while a letter nobody took is in the inbox
+  intercom topics [<agent>]             the topics of an agent's live focused sessions here
+  intercom topic <letter> "<topic>"     name a letter's topic afterwards (its sender, or its recipient
+                                        handing it on); --miss "<why>": give back a letter off your
+                                        topic; --missed "<topic>" "<why>": a letter that went past it
+  intercom topic-misses [--since DATE]  the misses recorded in the store, for the review
 HELP
     ;;
-  *) _ic_die "unknown subcommand '$sub' (try: identity|whoami|store|register|names|describe|unregister|directory|resolve|check|send|claim|take|pickup|reply|sent|chain|close)" ;;
+  *) _ic_die "unknown subcommand '$sub' (try: identity|whoami|store|register|names|describe|unregister|directory|resolve|check|send|claim|take|pickup|reply|sent|chain|close|topics|topic|topic-misses)" ;;
 esac

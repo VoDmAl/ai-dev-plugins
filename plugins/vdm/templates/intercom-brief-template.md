@@ -8,6 +8,7 @@ created: {{CREATED}}
 slug: {{SLUG}}
 {{REPLY_TO_LINE}}
 {{SESSION_LINE}}
+{{TOPIC_LINE}}
 status: pending
 ---
 

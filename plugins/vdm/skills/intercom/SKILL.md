@@ -280,7 +280,8 @@ The primary `remote` is never overwritten by a later clone.
 `intercom.identity-check: true`). It is *not* the inbox reminder: it fires once,
 at session start, and says nothing mid-session. In a focused session it
 registers and prints only who the agent is and that the session is focused —
-none of the items from 2 on (§ Focused sessions). What it does:
+none of the items from 2 on (§ Focused sessions); with a topic, also the topic
+and how many letters on it wait (§ A focused session's topic). What it does:
 
 1. **Registers the mechanical part** of this repo deterministically — identity,
    remote, auto-aliases, path. No assistant involvement, no memory to rely on.
@@ -354,7 +355,7 @@ re-derive its logic:
 | `directory [-v]` (aka `who`, `list`, `agents`) | Every registered agent: identity, names + aliases, description, pending count; `⚠ unnamed` where the human part is missing; plus inboxes that exist with no registered agent (unclaimed first-contact sends). `-v` adds remotes and paths. |
 | `resolve <name>` | Print the canonical identity `<name>` addresses; on failure list the nearest agents (exit 2 unknown, 3 ambiguous). |
 | `check [--count]` | List (or count) pending messages for this repo; also registers it. |
-| `send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--body FILE] [--to ID] [--first-contact]` | Scaffold an envelope message addressed to `<to>` (identity, alias or name) and print its path. Unknown / ambiguous target = **hard stop** with suggestions and the next command. `--to <identity>` delivers there and records `<to>` as that agent's name (the resend after the user said whom they meant). `--reply-to <ref>` records which letter this one continues (§ The relay form). `--body <file>` makes the file the letter's body, byte for byte (§ Sending a message). `--first-contact` creates a fresh inbox for a recipient that has never registered. |
+| `send <to> <slug> [--title T] [--from-agent A] [--reply-to REF] [--body FILE] [--topic "<topic>"] [--to ID] [--first-contact]` | Scaffold an envelope message addressed to `<to>` (identity, alias or name) and print its path. Unknown / ambiguous target = **hard stop** with suggestions and the next command. `--to <identity>` delivers there and records `<to>` as that agent's name (the resend after the user said whom they meant). `--reply-to <ref>` records which letter this one continues (§ The relay form). `--body <file>` makes the file the letter's body, byte for byte (§ Sending a message). `--topic` says the letter is on the topic of the recipient's focused session, which alone takes it and is woken (§ A focused session's topic). `--first-contact` creates a fresh inbox for a recipient that has never registered. |
 | `chain <slug>` | The relay chain behind a letter — every link it continues, and where each one lives right now. |
 | `claim <inbox> [--force]` | Move an unclaimed inbox (no registered agent) whose name matches one of your names/aliases into your own inbox; `to:` is rewritten to your identity, `to_input` stays as the trace, the name is recorded. `--force` for an orphan that matches none of your names. |
 | `take <slug> [--force]` | Mark a letter in your inbox as taken by this session before working on it (§ Receiving). Refuses a letter taken by another session unless `--force`. A `deferred:` note left by `release` goes with the new mark. |
@@ -363,6 +364,9 @@ re-derive its logic:
 | `reply <letter> (--done "<what>" [--link <url>]… --ball "<who — what ⏰ date>" \| --body FILE) [--title T] [--slug S] [--force]` | Close a letter **you received** with its outcome. It goes to the letter's sender as a `reply-to` link; recipient and link come from the envelope. Works on a letter in the inbox (archived in the same step; refused while another session has it taken, unless `--force`) or in `_done/`. `--done` and `--ball` repeat; `--ball` is required — "nobody — closed" is an answer (§ Closing a brief with its outcome). |
 | `sent` (aka `outbox`) | Every letter **you** wrote that still lies unpicked in someone's inbox, oldest first, with its age and whether the recipient has a live session to wake now — or an intercom session to start (§ Intercom sessions). |
 | `close` | In an intercom session, once its inbox is handled: run `vdx ai --close --waiting <n>`, n being the letters it took and left for the user. Refused outside an intercom session and while a letter nobody took is in the inbox (§ Intercom sessions). |
+| `topics [<agent>]` | The topics of that agent's live focused sessions on this machine — this repository's without an argument, this session included (§ A focused session's topic). |
+| `topic <letter> "<topic>"` · `topic <letter> --miss "<why>"` · `topic <letter> --missed "<topic>" "<why>"` | Name a letter's topic afterwards (its sender, or its recipient handing it on); give back a letter off your topic; record a letter on a topic that went past. Each prints whom the letter goes to now and the wake for it (§ A focused session's topic). |
+| `topic-misses [--since YYYY-MM-DD]` | Every `topic-miss:` and `topic-missed:` recorded in the store, inboxes and archives, beside the number of letters a topic routed. |
 
 ### Sending a message
 
@@ -740,7 +744,8 @@ user had opened as "isolated, without intercom" was woken twice, because it was
 where the user had typed last; after the first pointer it went off to read what
 nobody had asked it to.
 
-- **Nobody wakes it.** `send`, `sent` and the receipt after `pickup` leave it out
+- **Nobody wakes it** — except with a letter on its topic (§ A focused session's
+  topic). `send`, `sent` and the receipt after `pickup` leave it out
   of the live sessions entirely. A turn the user typed into it is passed over,
   and the turn before it decides whom to wake; when the recipient has no other
   live session here, nothing is printed, as for a recipient with none.
@@ -756,6 +761,58 @@ The flag is read from the session's own process, not from a mark in the store:
 the environment a process was started with cannot outlive the session, nor
 follow a resume that started without the flag. Guards such as git-guard are not
 nudges and keep working.
+
+### A focused session's topic — the letters on it are its own
+
+The user (2026-10-27): focused mode keeps a session on its topic and stops it
+drifting; a letter on that topic the session may read and be woken with, and
+the other sessions of the project leave it alone. Misses both ways are expected
+— they are to be seen and made fewer.
+
+vdx gives the topic (0.41.0): `vdx ai --focused "<topic>"`, or the agent sets it
+from the user's first message, and it may change during the session. It is the
+tmux option `@vdx_topic` of the agent's tmux session, read through the session's
+process environment (`TMUX`, `TMUX_PANE`); nothing is stored here. No tmux, or no
+option: a focused session with no topic, deaf as above.
+
+- **The sender judges.** The letter is at hand on the sender's side; a focused
+  session that read every letter to decide whether it is its own would be the
+  leak the mode is for. `intercom.sh topics <agent>` prints the topics of that
+  agent's live focused sessions on this machine; `send … --topic "<topic>"`
+  writes `topic:` into the envelope. A `send` without `--topic` names the topics
+  there are, before any wake, with the line that names one afterwards:
+  `intercom.sh topic <identity>/<slug> "<topic>"` — run it before waking anyone.
+- **The measure is the session's subject** — the options, people and tasks of
+  its crystal — not which session or channel started the exchange. Field case
+  (2026-10-27): a focused HQ session called a correspondence another session's
+  work because the neighbouring session had started it, while its subject was an
+  option from its own crystal; the user corrected it — a letter on the topic that
+  went past.
+- **Intercom only compares.** The field against the option of a live focused
+  session of the recipient on this machine, whole, after one cleaning on both
+  sides (one line, single spaces). A session on another machine compares with
+  its own tmux; the field travels with the letter.
+- **A letter on a live session's topic is that session's**, as a taken letter
+  is, with no mark written. `take`, `pickup`, `reply` and `release` in any other
+  session refuse it (`--force` only on the user's word); `check` there says to
+  leave it; `close` does not count it as open. `send` and `sent` wake that
+  session alone, by the rule of any session the user may sit at: not while it is
+  busy, waiting, or idle under 15 minutes — then the letter reaches it as one line
+  with the user's next message there. No intercom session is started or woken for
+  it. The topic changes or the session ends, and the letter is ordinary again.
+- **In the focused session** the start line names the topic and counts the
+  letters on it; the arrival line names only letters on its topic; `check` marks
+  such a letter as its own.
+- **Corrections are misses, and are counted.** A letter given to it off its topic
+  the focused session gives back: `topic <slug> --miss "<why>"` drops `topic:`,
+  writes `topic-miss: <session> <time> «<topic>» — <why>`, and prints whom the
+  now ordinary letter goes to. An intercom session that finds a letter on a
+  focused session's topic hands it on: `topic <slug> "<topic>"`. A letter on a
+  topic that went past is recorded by its recipient or its sender:
+  `topic <letter> --missed "<topic>" "<why>"`, in the inbox or the archive — one
+  still in the inbox and taken by nobody is handed over too. `topic-misses
+  [--since YYYY-MM-DD]` lists both marks across the store beside the number of
+  letters a topic routed: the material for the review of misses with vdx.
 
 ### Intercom sessions — the inbox is their work
 

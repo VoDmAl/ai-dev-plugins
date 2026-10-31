@@ -77,10 +77,22 @@ machine="$(_intercom_machine_name)"
 # letters of its own waiting, no notice asking for work before other work. The
 # registration above still runs: it is silent, and routing depends on it.
 # @see intercom-common.sh → "Focused sessions"
+#
+# A focused session with a topic hears of the letters on it
+# (intercom-focused-topic, DL #4): its start line names the topic, says such
+# letters come here, and counts those already waiting.
 if intercom_focused; then
   msg="[intercom] 🪪 You are \`${id}\` on \`${machine}\`"
   [ -n "$names" ] && msg="${msg} — aka: ${names}"
-  msg="${msg}. 🔇 Focused session: mail is not shown here and no other session wakes this one; read the inbox only when the user asks."
+  topic="$(intercom_own_topic)"
+  if [ -n "$topic" ]; then
+    on_topic="$(intercom_topic_letters "$id" "$topic" | grep -c .)"
+    msg="${msg}. 🔇 Focused session on «${topic}»: mail is not shown here, except letters on this topic — they are this session's, and a sender may wake it with one."
+    [ "$on_topic" -eq 0 ] || msg="${msg} 📬 ${on_topic} on this topic in the inbox → /vdm:intercom check."
+    msg="${msg} A letter on it that is not: /vdm:intercom topic <slug> --miss \"<why>\". Read the rest of the inbox only when the user asks."
+  else
+    msg="${msg}. 🔇 Focused session: mail is not shown here and no other session wakes this one; read the inbox only when the user asks."
+  fi
   jq -c -n --arg c "$msg" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
   exit 0
 fi

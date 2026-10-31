@@ -1455,8 +1455,21 @@ _intercom_sid_focused_here() {
 # owner's machines no longer sync sessions/ at all; the checks stay, because a
 # harness directory synced elsewhere would bring the same copies back.
 # Belongs to the agent `_intercom_owner_of` names. Silent, and harmless,
-# wherever the harness keeps no such files.
+# wherever the harness keeps no such files. [<rows>] is the caller's own
+# `_intercom_session_rows` output when it needs the focused ones too.
 intercom_live_sessions() {
+  local rows="${2-}"
+  [ $# -ge 2 ] || rows="$(_intercom_session_rows "$1")"
+  [ -n "$rows" ] || return 0
+  printf '%s\n' "$rows" | awk -F '\037' '$5 != "focused" { printf "%s\t%s\t%s\t%s\t%s\n", $2, $3, $4, $5, $6 }'
+}
+
+# _intercom_session_rows <identity> — the one pass over the session files behind
+# `intercom_live_sessions` and `intercom_focused_sessions`:
+# "pid<US>name<US>status<US>sessionId<US>mode<US>updated" for every live session
+# of that agent here other than the caller's own, focused ones included
+# (mode `focused`).
+_intercom_session_rows() {
   local id="$1" dir regdir
   command -v jq >/dev/null 2>&1 || return 0
   dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"
@@ -1487,8 +1500,7 @@ intercom_live_sessions() {
     fi
     [ "$(_intercom_owner_of "$(_intercom_realpath "$cwd")" "$owners")" = "$id" ] || continue
     mode="$(_intercom_pid_mode "$pid")"
-    [ "$mode" = focused ] && continue
-    printf '%s\t%s\t%s\t%s\t%s\n' "$name" "${status:-?}" "$sid" "${mode:-plain}" "$upd"
+    printf '%s\037%s\037%s\037%s\037%s\037%s\n' "$pid" "$name" "${status:-?}" "$sid" "${mode:-plain}" "$upd"
   done
   return 0
 }
@@ -1960,6 +1972,166 @@ intercom_release() {
   note="$(printf '%s' "${2:-}" | tr '\n\r\t' '   ' | sed 's/  */ /g; s/^ //; s/ $//')"
   [ -z "$note" ] || note="$(date -u +%Y-%m-%dT%H:%M:%SZ) $note"
   _intercom_mark "$1" "" "$note"
+}
+
+# ---------------------------------------------------------------------------
+# The topic of a focused session (docs/tasks/intercom-focused-topic, DL #2–#5).
+# The owner, 2026-10-27: a focused session keeps to its topic, and a letter on
+# that topic it may read and be woken with; the other sessions of the project
+# leave such a letter alone. Misses both ways are expected, and are counted.
+#
+# vdx keeps the topic as the tmux option `@vdx_topic` of the agent's tmux
+# session (vdx 0.41.0). The way there starts at the agent's process: its
+# environment carries TMUX (the server's socket first) and TMUX_PANE, and tmux
+# resolves the option from the pane. Read from the environment like the mode,
+# so nothing is stored and nothing of vdx's is called. `-u`: without it and a
+# UTF-8 locale tmux prints a Cyrillic topic as garbage.
+#
+# Who judges: the sender, who has the letter at hand — `send --topic "<topic>"`
+# writes `topic:` into the envelope. A focused session that read every letter
+# to decide whether it is its own would be the leak of focus the mode is for.
+# Here only strings are compared, whole: the field against the option of a
+# live focused session of the recipient on THIS machine. A session elsewhere
+# compares with its own tmux; the field travels with the letter.
+# ---------------------------------------------------------------------------
+
+# _intercom_topic_clean <text> — one line, single spaces, no edge whitespace:
+# the form a topic is written and compared in, on both sides.
+_intercom_topic_clean() { printf '%s' "$1" | tr '\n\r\t' '   ' | sed 's/  */ /g; s/^ //; s/ $//'; }
+
+# _intercom_tmux_topic <TMUX value> <TMUX_PANE value> — the session's topic as
+# tmux sees it from that pane, or nothing (no tmux, no pane, no option).
+_intercom_tmux_topic() {
+  local sock="${1%%,*}" pane="$2"
+  [ -n "$sock" ] && [ -n "$pane" ] || return 0
+  command -v tmux >/dev/null 2>&1 || return 0
+  _intercom_topic_clean "$(tmux -S "$sock" -u display-message -p -t "$pane" '#{@vdx_topic}' 2>/dev/null)"
+}
+
+# _intercom_pid_topic <pid> — the topic of that live process's tmux session.
+_intercom_pid_topic() {
+  local tp sock pane
+  if [ -r "/proc/$1/environ" ]; then
+    tp="$(LC_ALL=C tr '\0' '\n' < "/proc/$1/environ" 2>/dev/null \
+          | awk '/^TMUX=/ { t = substr($0, 6) } /^TMUX_PANE=/ { p = substr($0, 11) } END { printf "%s\037%s", t, p }')"
+  else
+    tp="$(ps -wwE -p "$1" -o command= 2>/dev/null \
+          | awk '{ for (i = 1; i <= NF; i++) { if ($i ~ /^TMUX=/) t = substr($i, 6); if ($i ~ /^TMUX_PANE=/) p = substr($i, 11) } }
+                 END { printf "%s\037%s", t, p }')"
+  fi
+  IFS=$'\037' read -r sock pane <<<"$tp"
+  _intercom_tmux_topic "$sock" "$pane"
+}
+
+# intercom_own_topic — this session's topic: started focused, in tmux, the
+# option set. Nothing otherwise.
+intercom_own_topic() {
+  intercom_focused || return 0
+  _intercom_tmux_topic "${TMUX:-}" "${TMUX_PANE:-}"
+}
+
+# intercom_focused_sessions <identity> [<rows>] — "name<US>status<US>sessionId<US>updated<US>topic"
+# for every live focused session of that agent here other than the caller's
+# own; the topic is empty for one that has none.
+intercom_focused_sessions() {
+  local rows="${2-}" pid name status sid mode upd
+  [ $# -ge 2 ] || rows="$(_intercom_session_rows "$1")"
+  while IFS=$'\037' read -r pid name status sid mode upd; do
+    [ "$mode" = focused ] || continue
+    printf '%s\037%s\037%s\037%s\037%s\n' "$name" "$status" "$sid" "$upd" "$(_intercom_pid_topic "$pid")"
+  done <<<"$rows"
+}
+
+# intercom_topic_holder <identity> <topic> [<rows>] — "name<US>status<US>sessionId<US>updated"
+# of the live focused session of that agent here whose topic is <topic>, or
+# nothing. Two on one topic: the most recently active.
+intercom_topic_holder() {
+  local want rows="${3-}" name status sid upd topic best="" best_upd=-1 u
+  want="$(_intercom_topic_clean "$2")"
+  [ -n "$want" ] || return 0
+  [ $# -ge 3 ] || rows="$(_intercom_session_rows "$1")"
+  while IFS=$'\037' read -r name status sid upd topic; do
+    [ -n "$name" ] && [ "$topic" = "$want" ] || continue
+    case "$upd" in ''|*[!0-9]*) u=0 ;; *) u="$upd" ;; esac
+    if [ "$u" -gt "$best_upd" ]; then best="$name"$'\037'"$status"$'\037'"$sid"$'\037'"$upd"; best_upd="$u"; fi
+  done < <(intercom_focused_sessions "$1" "$rows")
+  [ -z "$best" ] || printf '%s\n' "$best"
+}
+
+# intercom_letter_topic <letter> — whose a letter in an inbox is by its topic:
+#   nothing                                  it carries no `topic:`
+#   "self<US><topic>"                        this session is focused on it
+#   "held<US><topic><US><holder fields>"     a live focused session here is (DL #4):
+#                                            the letter is that session's, as a taken one is
+#   "free<US><topic>"                        none here: an ordinary letter
+# The holder is derived, never written: the topic changes or the session goes,
+# and the letter is ordinary again without anybody removing a mark.
+intercom_letter_topic() {
+  local f="$1" topic id own holder
+  topic="$(_intercom_topic_clean "$(intercom_fm_field "$f" topic)")"
+  [ -n "$topic" ] || return 0
+  id="${f%/*}"; id="${id##*/}"
+  own="$(intercom_own_topic)"
+  if [ -n "$own" ] && [ "$own" = "$topic" ] && [ "$(intercom_identity 2>/dev/null)" = "$id" ]; then
+    printf 'self\037%s\n' "$topic"
+    return 0
+  fi
+  holder="$(intercom_topic_holder "$id" "$topic")"
+  if [ -n "$holder" ]; then
+    printf 'held\037%s\037%s\n' "$topic" "$holder"
+  else
+    printf 'free\037%s\n' "$topic"
+  fi
+}
+
+# intercom_topic_letters <identity> <topic> — the letters in that inbox on that
+# topic which no session has taken, one path per line. One pass over the inbox:
+# the session-start line of a focused session counts them.
+intercom_topic_letters() {
+  local want files=() f
+  want="$(_intercom_topic_clean "$2")"
+  [ -n "$want" ] || return 0
+  while IFS= read -r f; do [ -n "$f" ] && files+=("$f"); done < <(intercom_inbox_list "$1")
+  [ ${#files[@]} -gt 0 ] || return 0
+  _IC_WANT="$want" awk '
+    function val(line, n) { v = substr(line, n); gsub(/[\t\r]/, " ", v); gsub(/  +/, " ", v); gsub(/^ +| +$/, "", v); gsub(/^"|"$/, "", v); return v }
+    BEGIN {
+      want = ENVIRON["_IC_WANT"]
+      for (i = 1; i < ARGC; i++) {
+        f = ARGV[i]; first = 1; topic = ""; taken = ""
+        while ((getline line < f) > 0) {
+          if (first) { first = 0; if (line != "---") break; continue }
+          if (line == "---") break
+          if (line ~ /^topic:/) topic = val(line, 7)
+          if (line ~ /^taken:/) taken = val(line, 7)
+        }
+        close(f)
+        if (topic == want && taken == "") print f
+      }
+      exit
+    }' "${files[@]}"
+}
+
+# _intercom_fm_put <letter> <key> <value> [append] — write one envelope key:
+# every earlier line of that key dropped, then the new one written when the
+# value is not empty. With `append` the earlier lines stay: a miss is a record,
+# and a letter may be missed twice.
+_intercom_fm_put() {
+  local f="$1" key="$2" value="$3" mode="${4:-}" tmp
+  [ -f "$f" ] || return 1
+  tmp="$(mktemp 2>/dev/null)" || return 1
+  # The value through the environment: `-v` would turn a backslash in a topic
+  # into an escape sequence.
+  _IC_FM_VALUE="$value" awk -v key="$key" -v append="$mode" '
+    BEGIN { value = ENVIRON["_IC_FM_VALUE"] }
+    NR == 1 && $0 == "---" { infm = 1; print; next }
+    infm && $0 == "---"    { if (value != "") print key ": " value; infm = 0; print; next }
+    infm && append == "" && index($0, key ":") == 1 { next }
+    { print }
+  ' "$f" > "$tmp" 2>/dev/null && head -1 "$tmp" | grep -q '^---$' \
+    && cat "$tmp" > "$f" && rm -f "$tmp" && return 0
+  rm -f "$tmp"
+  return 1
 }
 
 # _intercom_today — today's date, YYYY-MM-DD (UTC). VDM_INTERCOM_TODAY pins it

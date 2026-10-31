@@ -26,7 +26,7 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION \
       GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
       GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR \
-      VDX_FOCUSED VDX_INTERCOM 2>/dev/null || true
+      VDX_FOCUSED VDX_INTERCOM TMUX TMUX_PANE 2>/dev/null || true
 
 # Nor the machine's git config: git 2.54 runs a hook declared there
 # (`hook.<name>.command`) on every commit, a fixture's included — the case is
@@ -1677,6 +1677,183 @@ out="$( cd "$TMP/hop-b" && bash "$IC" release one-stale 2>&1 )"; rc=$?
 eq "a letter nobody took has nothing to release" "$rc" "0"
 says "…and says so" "$out" "is not taken — nothing to release"
 rm -rf "$PROJ"; rm -f "$VDM_INTERCOM_ROOT"/hop-b/one-*.md
+
+echo "-- a letter on the topic of a focused session (intercom-focused-topic)"
+# The owner, 2026-10-27: a focused session keeps to its topic — a letter on it
+# the session may take and be woken with, the other sessions of the project
+# leave it alone, and misses both ways are seen and counted. vdx keeps the
+# topic as the tmux option @vdx_topic of the agent's tmux session (0.41.0); the
+# way there starts at the agent's process environment, TMUX and TMUX_PANE. A
+# tmux stub on PATH answers from a file per pane: the machine's tmux server is
+# never asked, and a pane with no file is a session with no topic.
+TX="$TMP/tmux-stub"; mkdir -p "$TX/panes" "$TMP/arr-tmp"
+cat > "$TX/tmux" <<'STUB'
+#!/bin/bash
+sock="" pane=""
+while [ $# -gt 0 ]; do
+  case "$1" in -S) sock="$2"; shift 2 ;; -t) pane="$2"; shift 2 ;; *) shift ;; esac
+done
+[ "$sock" = "$TMUX_STUB_DIR/sock" ] || exit 1
+[ -f "$TMUX_STUB_DIR/panes/${pane#%}" ] && cat "$TMUX_STUB_DIR/panes/${pane#%}"
+exit 0
+STUB
+chmod +x "$TX/tmux"
+export TMUX_STUB_DIR="$TX"
+settopic() { printf '%s\n' "$2" > "$TX/panes/$1"; }    # settopic <pane> <topic>
+TP="$TX:$PATH"
+T1="ревью архитектуры"
+mkrepo "$TMP/hop-t" "git@example.com:acme/hop-t.git"
+( cd "$TMP/hop-t" && bash "$IC" register --name "hop-t" --describe "topics fixture" >/dev/null 2>&1 )
+TI="$VDM_INTERCOM_ROOT/hop-t"
+env VDX_FOCUSED=1 TMUX="$TX/sock,4242,0" TMUX_PANE=%7 python3 -c 'import time; time.sleep(300)' & TF_PID=$!; disown "$TF_PID" 2>/dev/null || true
+env VDX_FOCUSED=1 TMUX="$TX/sock,4242,0" TMUX_PANE=%8 python3 -c 'import time; time.sleep(300)' & TQ_PID=$!; disown "$TQ_PID" 2>/dev/null || true
+python3 -c 'import time; time.sleep(300)' & TPL_PID=$!; disown "$TPL_PID" 2>/dev/null || true
+trap 'kill "$LIVE_PID" "$TF_PID" "$TQ_PID" "$TPL_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
+for _ in 1 2 3 4 5 6 7 8 9 10; do   # until both have exec'd with their environment
+  { [ -r "/proc/$TF_PID/environ" ] || ps -wwE -p "$TF_PID" -o command= 2>/dev/null | grep -q 'TMUX_PANE=%7'; } \
+    && { [ -r "/proc/$TQ_PID/environ" ] || ps -wwE -p "$TQ_PID" -o command= 2>/dev/null | grep -q 'TMUX_PANE=%8'; } && break
+  python3 -c 'import time; time.sleep(0.2)'
+done
+mksession tf.json "$TF_PID"  "$TMP/hop-t" hop-t-focus idle "$SOCKS/b.sock"
+mksession tq.json "$TQ_PID"  "$TMP/hop-t" hop-t-quiet idle "$SOCKS/b.sock"
+mksession tp.json "$TPL_PID" "$TMP/hop-t" hop-t-plain idle "$SOCKS/b.sock"
+settopic 7 "$T1"
+tsend() { ( cd "$TMP/hop-a" && PATH="$TP" CLAUDE_CODE_SESSION_ID=self-sid VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" send hop-t "$@" 2>&1 ); }
+tfoc()  { ( cd "$TMP/hop-t" && PATH="$TP" VDX_FOCUSED=1 TMUX="$TX/sock,4242,0" TMUX_PANE=%7 CLAUDE_CODE_SESSION_ID=sid-hop-t-focus \
+            VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" "$@" 2>&1 ); }
+tpl()   { ( cd "$TMP/hop-t" && PATH="$TP" CLAUDE_CODE_SESSION_ID=sid-hop-t-plain VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" "$@" 2>&1 ); }
+tl()    { printf '%s\n' "$1" | grep -A3 "/$2.md"; }
+
+out="$( cd "$TMP/hop-a" && PATH="$TP" bash "$IC" topics hop-t 2>&1 )"
+says "RED: topics names a focused session's topic, read through tmux from its process" "$out" "hop-t-focus — «${T1}»"
+says "…and one with no topic as deaf" "$out" "hop-t-quiet — no topic"
+says_not "…not an ordinary session" "$out" "hop-t-plain"
+
+out="$(tsend tp-none --body "$B/live.md")"
+says "RED: a send with no topic names the recipient's topics before any wake" "$out" "focused session(s) of \`hop-t\` here, by topic: hop-t-focus «${T1}»"
+says "…and how to name one afterwards" "$out" "intercom topic hop-t/tp-none \"<topic>\""
+says "…while the wake goes as before, to an ordinary session" "$out" "→ wake one: hop-t-plain"
+
+out="$(tsend tp-on --topic "  ревью   архитектуры " --body "$B/live.md")"
+eq "RED: --topic is written into the envelope, one line, single spaces" "$(grep '^topic:' "$TI/tp-on.md")" "topic: \"$T1\""
+says "RED: a letter on a live focused session's topic is that session's alone" "$out" "on the topic of the focused session hop-t-focus of \`hop-t\`, «${T1}»"
+says "RED: …it is the one woken" "$out" "→ wake one: hop-t-focus"
+eq "…and the only one" "$(printf '%s\n' "$out" | grep -c '→ wake one:')" "1"
+says "…with a pointer that names the topic" "$out" "On your topic «${T1}»"
+
+out="$(tsend tp-off --topic "другое" --body "$B/live.md")"
+says "RED: a topic no live focused session is on: an ordinary letter here, and said so" "$out" "no live focused session of \`hop-t\` on this machine is on it"
+says "…woken as before" "$out" "→ wake one: hop-t-plain"
+out="$(tsend tp-empty --topic "  " --body "$B/live.md")"; rc=$?
+eq "an empty --topic is refused" "$rc" "2"
+[ ! -f "$TI/tp-empty.md" ] && ok "…before a byte is written" || bad "…before a byte is written" "the letter is there"
+out="$(tsend tp-bs --topic 'a\nb' --body "$B/live.md")"
+eq "a backslash in a topic is written as typed" "$(grep '^topic:' "$TI/tp-bs.md")" 'topic: "a\nb"'
+
+# Where the owner may sit, the holder is not woken: the rule of any session (DL #4).
+jq --argjson ms "$(( (NOW_EPOCH - 300) * 1000 ))" '.statusUpdatedAt = $ms' "$SESS/tf.json" > "$TMP/tf.json" && mv "$TMP/tf.json" "$SESS/tf.json"
+out="$(tsend tp-busy --topic "$T1" --body "$B/live.md")"
+says "RED: a holder the owner may be at is not woken" "$out" "do not wake here: hop-t-focus is idle for 5 min"
+says_not "…nor anybody else in its place" "$out" "→ wake one:"
+jq 'del(.statusUpdatedAt)' "$SESS/tf.json" > "$TMP/tf.json" && mv "$TMP/tf.json" "$SESS/tf.json"
+
+out="$(tpl check)"
+says "RED: check in another session leaves a letter on the topic to its session" "$(tl "$out" tp-on)" "on the topic «${T1}» of the focused session hop-t-focus, live here — leave it to that session"
+says_not "…offering no take" "$(tl "$out" tp-on)" "take before work"
+says "…a topic nobody here is on is an ordinary letter" "$(tl "$out" tp-off)" "no live focused session here is on it: an ordinary letter"
+says "…and take is offered for it" "$(tl "$out" tp-off)" "take before work"
+out="$(tpl take tp-on)"; rc=$?
+eq "take in another session is refused" "$rc" "1"
+says "RED: …because the letter is the focused session's" "$out" "focused session hop-t-focus, live here — the letter is that session's"
+out="$(tpl pickup tp-on)"; rc=$?
+eq "…pickup too" "$rc" "1"
+says "RED: …for the same reason" "$out" "focused session hop-t-focus, live here — the letter is that session's"
+[ -f "$TI/tp-on.md" ] && ok "…which archives nothing" || bad "…which archives nothing" "archived"
+out="$(tfoc check)"
+says "RED: in the focused session it is its own" "$(tl "$out" tp-on)" "on this session's topic «${T1}» — yours"
+out="$(tfoc take tp-on)"; rc=$?
+eq "RED: …and it takes it" "$rc" "0"
+
+out="$(tfoc topic tp-on --miss "about the deploy, not the review")"; rc=$?
+eq "RED: the holder gives back a letter off its topic" "$rc" "0"
+grep -q '^topic:' "$TI/tp-on.md" && bad "…the topic goes" "$(grep '^topic:' "$TI/tp-on.md")" || ok "…the topic goes"
+says "RED: …a miss stays: who, when, the topic and why" "$(grep '^topic-miss:' "$TI/tp-on.md")" "/hop-t-focus 20"
+says "…" "$(grep '^topic-miss:' "$TI/tp-on.md")" "«${T1}» — about the deploy, not the review"
+grep -q '^taken:' "$TI/tp-on.md" && bad "…and the session's own mark goes" "$(grep '^taken:' "$TI/tp-on.md")" || ok "…and the session's own mark goes"
+says "…the letter goes on as an ordinary one, to an ordinary session" "$out" "→ wake one: hop-t-plain"
+out="$(tpl topic tp-on --miss "x")"; rc=$?
+eq "a letter with no topic has nothing to give back" "$rc" "1"
+
+out="$( cd "$TMP/hop-a" && PATH="$TP" VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" topic hop-t/tp-none "$T1" 2>&1 )"; rc=$?
+eq "RED: the sender names the topic afterwards" "$rc" "0"
+eq "…into the envelope" "$(grep '^topic:' "$TI/tp-none.md")" "topic: \"$T1\""
+says "…and is told whom to wake now" "$out" "→ wake one: hop-t-focus"
+out="$( cd "$TMP/mail-x" && bash "$IC" topic hop-t/tp-none "x" 2>&1 )"; rc=$?
+eq "nobody else names a letter's topic" "$rc" "1"
+says "RED: …because it is neither theirs to send nor in their inbox" "$out" "neither yours to send nor in your inbox"
+eq "…and the envelope is as it was" "$(grep '^topic:' "$TI/tp-none.md")" "topic: \"$T1\""
+out="$(tpl topic tp-bs 'c\td')"
+eq "the recipient names one too, a backslash as typed" "$(grep '^topic:' "$TI/tp-bs.md")" 'topic: "c\td"'
+
+( cd "$TMP/hop-t" && PATH="$TP" bash "$IC" pickup tp-off >/dev/null 2>&1 )
+out="$(tpl topic tp-off --missed "$T1" "it was the review after all")"; rc=$?
+eq "RED: a letter that went past its topic is recorded, archived as it is" "$rc" "0"
+says "…in its archived envelope" "$(grep '^topic-missed:' "$TI/_done/tp-off.md")" "«${T1}» — it was the review after all"
+tsend tp-past --body "$B/live.md" >/dev/null
+out="$(tpl topic tp-past --missed "$T1" "the review again")"; rc=$?
+eq "a letter still in the inbox that went past its topic" "$rc" "0"
+eq "RED: …is handed over: the topic is written" "$(grep '^topic:' "$TI/tp-past.md")" "topic: \"$T1\""
+says "…and its session is the one woken" "$out" "→ wake one: hop-t-focus"
+
+out="$( cd "$TMP/hop-a" && bash "$IC" topic-misses 2>&1 )"
+says "RED: topic-misses counts both ways" "$out" "1 given to a session off its topic, 2 on a topic that went past"
+says "…beside how many letters a topic routed" "$out" "6 letter(s) in the store were routed by a topic"
+says "…and lists them" "$out" "hop-t/tp-on — "
+out="$( cd "$TMP/hop-a" && bash "$IC" topic-misses --since 2999-01-01 2>&1 )"
+says "…--since leaves the older ones out" "$out" "0 given to a session off its topic, 0 on a topic that went past"
+
+out="$( cd "$TMP/hop-a" && PATH="$TP" VDM_INTERCOM_NOW="$NOW_EPOCH" VDM_INTERCOM_TODAY=2026-10-04 bash "$IC" sent 2>&1 )"
+says "RED: sent sends a letter on the topic to its session" "$(printf '%s\n' "$out" | grep -A1 'hop-t/tp-none' | tail -1)" "on the topic «${T1}» of the focused session hop-t-focus → wake it with SendMessage"
+
+: > "$TMP/vdx.log"
+out="$( cd "$TMP/hop-t" && PATH="$TX:$VX:$PATH" VDX_INTERCOM=1 bash "$IC" close 2>&1 )"; rc=$?
+eq "close still refuses a letter nobody took" "$rc" "1"
+says "…naming it" "$out" "tp-on — from hop-a"
+says_not "RED: …not a letter on a live focused session's topic: that session's" "$out" "tp-none"
+
+STARTED_MS=$(( ($(date -u +%s) - 3600) * 1000 ))
+jq -n --argjson ms "$STARTED_MS" '{pid: 1, sessionId: "tarr-plain", startedAt: $ms}' > "$SESS/tarr1.json"
+jq -n --argjson ms "$STARTED_MS" '{pid: 1, sessionId: "tarr-focus", startedAt: $ms}' > "$SESS/tarr2.json"
+tsend tp-late --body "$B/live.md" >/dev/null
+farrive() { ( cd "$TMP/hop-t" && printf '{"session_id":"tarr-focus"}' | PATH="$TP" VDX_FOCUSED=1 TMUX="$TX/sock,4242,0" TMUX_PANE=%7 \
+              TMPDIR="$TMP/arr-tmp" bash "$REM" 2>&1 ); }
+out="$(farrive)"
+says "RED: a focused session hears of a letter on its topic" "$out" '`tp-none` from `hop-a`'
+says "…named as on its topic" "$out" "on this session's topic «${T1}»"
+says_not "…and of nothing else" "$out" "tp-late"
+tpl topic tp-late "$T1" >/dev/null
+out="$(farrive)"
+says "RED: a letter handed to it after it was looked at is heard of then" "$out" '`tp-late` from `hop-a`'
+says_not "…once" "$out" "tp-none"
+out="$( cd "$TMP/hop-t" && printf '{"session_id":"tarr-plain"}' | PATH="$TP" TMPDIR="$TMP/arr-tmp" bash "$REM" 2>&1 )"
+says "an ordinary session hears of an ordinary letter" "$out" '`tp-on` from `hop-a`'
+says_not "RED: …not of one on a live focused session's topic" "$out" "tp-none"
+
+out="$( cd "$TMP/hop-t" && printf '{}' | PATH="$TP" VDX_FOCUSED=1 TMUX="$TX/sock,4242,0" TMUX_PANE=%7 bash "$HOOK" )"
+says "RED: a focused session's start line names its topic" "$out" "Focused session on «${T1}»"
+says "…and counts the letters on it no session took" "$out" "📬 4 on this topic in the inbox"
+says_not "…and nothing else of the inbox" "$out" "pending message"
+out="$( cd "$TMP/hop-t" && printf '{}' | PATH="$TP" VDX_FOCUSED=1 TMUX="$TX/sock,4242,0" TMUX_PANE=%8 bash "$HOOK" )"
+says "…one with no topic is deaf, as before" "$out" "Focused session: mail is not shown here"
+
+settopic 7 "другое"
+out="$(tpl check)"
+says "RED: once the session's topic changes, its letter is ordinary again — no mark to remove" "$(tl "$out" tp-none)" "no live focused session here is on it: an ordinary letter"
+kill "$TF_PID" "$TQ_PID" "$TPL_PID" 2>/dev/null
+trap 'kill "$LIVE_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
+rm -f "$SESS"/tf.json "$SESS"/tq.json "$SESS"/tp.json "$SESS"/tarr*.json "$TMP/vdx.log"
+rm -rf "$TI"
+unset TMUX_STUB_DIR
 
 echo "-- session start, the sender's side"
 out="$( cd "$TMP/hop-a" && printf '{}' | VDM_INTERCOM_TODAY=2026-09-24 bash "$HOOK" )"
