@@ -2173,32 +2173,116 @@ intercom_letter_topic() {
   fi
 }
 
-# intercom_topic_letters <identity> <topic> — the letters in that inbox on that
-# topic which no session has taken, one path per line. One pass over the inbox:
-# the session-start line of a focused session counts them.
-intercom_topic_letters() {
-  local want files=() f
-  want="$(_intercom_topic_clean "$2")"
-  [ -n "$want" ] || return 0
+# _intercom_letters_where <identity> <field> <value> — the letters in that inbox
+# whose envelope field holds that value and which no session has taken, one path
+# per line. One pass over the inbox: the session-start line of a focused session
+# counts them.
+_intercom_letters_where() {
+  local files=() f
+  [ -n "$3" ] || return 0
   while IFS= read -r f; do [ -n "$f" ] && files+=("$f"); done < <(intercom_inbox_list "$1")
   [ ${#files[@]} -gt 0 ] || return 0
-  _IC_WANT="$want" awk '
+  _IC_WANT="$3" awk -v field="$2:" '
     function val(line, n) { v = substr(line, n); gsub(/[\t\r]/, " ", v); gsub(/  +/, " ", v); gsub(/^ +| +$/, "", v); gsub(/^"|"$/, "", v); return v }
     BEGIN {
       want = ENVIRON["_IC_WANT"]
       for (i = 1; i < ARGC; i++) {
-        f = ARGV[i]; first = 1; topic = ""; taken = ""
+        f = ARGV[i]; first = 1; got = ""; taken = ""
         while ((getline line < f) > 0) {
           if (first) { first = 0; if (line != "---") break; continue }
           if (line == "---") break
-          if (line ~ /^topic:/) topic = val(line, 7)
+          if (index(line, field) == 1) got = val(line, length(field) + 1)
           if (line ~ /^taken:/) taken = val(line, 7)
         }
         close(f)
-        if (topic == want && taken == "") print f
+        if (got == want && taken == "") print f
       }
       exit
     }' "${files[@]}"
+}
+
+# intercom_topic_letters <identity> <topic> — the letters on that topic no session took.
+intercom_topic_letters() { _intercom_letters_where "$1" topic "$(_intercom_topic_clean "$2")"; }
+
+# ---------------------------------------------------------------------------
+# The session a letter answers (docs/tasks/intercom-hitl-via-initiator, DL #2–#4).
+# A reply is addressed to a project, and in a project the intercom session was
+# woken first and a focused session not at all. Field case (echelon, 2026-10-30):
+# a focused session sent two briefs and waited for the answers; both started the
+# intercom session, which took them, and the session that asked was refused its
+# own answers. So `send` writes the harness's id of this conversation into the
+# envelope (`from-session:`), and a letter that continues it back to its sender
+# carries that id (`for-session:`).
+#
+# The id, not the session's name: the transcript lies under it, a restart keeps
+# it (measured 2026-11-01: 4 of 12 live sessions run on a transcript older than
+# their process), and a new conversation in the same process gets another —
+# rightly, as it has none of the letter's context. The holder is derived, never
+# written, as for a topic: the session goes, and the letter is ordinary again.
+# ---------------------------------------------------------------------------
+
+# _intercom_sid_row <sessionId> — "name<US>status<US>updated" of a session live
+# on this machine under that id, or nothing. Live as a mark's holder is: the pid
+# answers, and the socket it names, if it names one, exists.
+_intercom_sid_row() {
+  local f pid name status sock upd
+  command -v jq >/dev/null 2>&1 || return 0
+  for f in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"/*.json; do
+    [ -f "$f" ] || continue
+    case "${f##*/}" in *.sync-conflict-*) continue ;; esac
+    grep -qF "\"$1\"" "$f" 2>/dev/null || continue
+    IFS=$'\037' read -r pid name status sock upd < <(
+      jq -r --arg s "$1" 'select(.sessionId == $s)
+        | [(.pid // "" | tostring), (.name // ""), (.status // ""), (.messagingSocketPath // ""),
+           ((.statusUpdatedAt // .updatedAt // "") | tostring)] | join("\u001f")' "$f" 2>/dev/null
+    ) || continue
+    case "$pid" in ''|*[!0-9]*) continue ;; esac
+    kill -0 "$pid" 2>/dev/null || continue
+    [ -z "$sock" ] || [ -S "$sock" ] || continue
+    printf '%s\037%s\037%s\n' "$name" "${status:-?}" "$upd"
+    return 0
+  done
+  return 0
+}
+
+# intercom_session_state <sessionId> — where the session of that id is now:
+#   self                                    this session
+#   live<US><name><US><status><US><updated>   live on this machine
+#   away<US><machine><US><minutes ago>      its transcript was started on another
+#                                           machine and written inside the presence
+#                                           window; whether it is still open nobody
+#                                           here can say (see "Where a session runs")
+#   gone                                    none of those
+# A conversation open on both machines shares one id: live here wins.
+intercom_session_state() {
+  local sid="$1" row tf mm m mode ts e mins
+  if [ "$sid" = "${CLAUDE_CODE_SESSION_ID:-}" ]; then printf 'self'; return 0; fi
+  row="$(_intercom_sid_row "$sid")"
+  if [ -n "$row" ]; then printf 'live\037%s' "$row"; return 0; fi
+  for tf in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"/*/"$sid".jsonl; do
+    [ -f "$tf" ] || continue
+    mm="$(_intercom_transcript_machine "$tf")"
+    IFS=$'\037' read -r m mode <<<"$mm"
+    [ -n "$m" ] && [ "$m" != "$(_intercom_machine_name)" ] || continue
+    ts="$(tail -n 30 "$tf" 2>/dev/null | grep -o '"timestamp":"[^"]*"' | tail -1 | sed 's/^"timestamp":"//; s/"$//')"
+    ts="${ts%%.*}"; ts="${ts%Z}Z"
+    e="$(_intercom_epoch_utc "$ts")"
+    [ -n "$e" ] || continue
+    mins=$(( ($(_intercom_now) - e) / 60 )); [ "$mins" -ge 0 ] || mins=0
+    [ "$mins" -le $((INTERCOM_PRESENCE_WINDOW_H * 60)) ] || continue
+    printf 'away\037%s\037%s' "$m" "$mins"
+    return 0
+  done
+  printf 'gone'
+}
+
+# intercom_letter_for <letter> — the state of the session a letter answers;
+# nothing when it answers none.
+intercom_letter_for() {
+  local sid
+  sid="$(intercom_fm_field "$1" for-session)"
+  [ -n "$sid" ] || return 0
+  intercom_session_state "$sid"
 }
 
 # _intercom_fm_put <letter> <key> <value> [append] — write one envelope key:

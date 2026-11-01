@@ -760,7 +760,8 @@ where the user had typed last; after the first pointer it went off to read what
 nobody had asked it to.
 
 - **Nobody wakes it** — except with a letter on its topic (§ A focused session's
-  topic). `send`, `sent` and the receipt after `pickup` leave it out
+  topic) or an answer to a letter it wrote (§ An answer goes to the session that
+  asked). `send`, `sent` and the receipt after `pickup` leave it out
   of the live sessions entirely. A turn the user typed into it is passed over,
   and the turn before it decides whom to wake; when the recipient has no other
   live session here, nothing is printed, as for a recipient with none.
@@ -829,6 +830,42 @@ option: a focused session with no topic, deaf as above.
   [--since YYYY-MM-DD]` lists both marks across the store beside the number of
   letters a topic routed: the material for the review of misses with vdx.
 
+### An answer goes to the session that asked
+
+A reply is addressed to a project, and in a project the intercom session is woken
+first and a focused session not at all. Field case (echelon, 2026-10-30): a
+focused session sent two briefs and waited for the answers; both started the
+intercom session, which took them, and the `pickup` of the session that asked was
+refused. So the answer goes to the session that wrote the letter, while it is
+there.
+
+- **Two fields, written by `send`.** A letter carries `from-session: <id>`, the
+  harness's id of the conversation that wrote it. Not a letter from an intercom
+  session: whichever intercom session is live answers for it. Not a note to the
+  project itself. `reply` and `send --reply-to` addressed back to that letter's
+  sender carry `for-session: <id>`; a relay to a third party carries none. A
+  harness that names no session writes neither, and the letter goes as without
+  them.
+- **The id, not the name.** A restart keeps it. A new conversation in the same
+  process gets another, and rightly: it has none of the letter's context.
+- **While that session is live here, the letter is its own,** as a taken letter
+  is, with no mark written. `take`, `pickup`, `reply` and `release` in any other
+  session refuse it (`--force` only on the user's word); `check` there says to
+  leave it; `close` does not count it as open. `send` and `sent` wake that session
+  alone, by the rule of any session the user may sit at: not while it is busy,
+  waiting, or idle under 15 minutes — then the letter reaches it as one line with
+  the user's next message there. No intercom session is started or woken for it.
+- **On the user's other machine** the same holds while its transcript was written
+  inside the last 12 hours: it cannot be woken from here, and `check` and the
+  refusal name the machine. Whether it is still open nobody here can say, so a
+  session that is over needs `--force`.
+- **Once it is gone the letter is ordinary** — no mark to remove, and it goes to
+  the intercom session or the session where the user typed last, as any letter
+  does. `send` and `check` say so.
+- **In that session** the arrival line names the answer, focused or not, with a
+  topic or without; the start line of a focused session counts such answers;
+  `check` marks each as its own.
+
 ### Intercom sessions — the inbox is their work
 
 A session started with `vdx ai --intercom` carries `VDX_INTERCOM=1` (the name is
@@ -848,7 +885,9 @@ anything the user reads is "intercom session" ("сессия intercom").
   take it and handle it — /vdm:intercom check"* — with no "not urgent". The
   live list marks it `(idle, mail)`. On the user's other machine it is named
   from its transcript, like any session: *"its intercom session was active 2 min
-  ago"*.
+  ago"*. Two kinds of letter are not its own: one on the topic of a live focused
+  session, and the answer to a letter of a session still there (§ An answer goes
+  to the session that asked).
 - **The inbox is the work.** Its session-start line says so instead of the
   pending count: check now and at every wake, then each letter in turn — take,
   read, act, close with `reply` or `pickup`, or `release --note` one that waits

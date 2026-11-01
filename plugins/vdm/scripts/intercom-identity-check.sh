@@ -41,12 +41,14 @@ _IC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$_IC_DIR/../lib/crystal-path.sh" 2>/dev/null || true
 
-cat >/dev/null 2>&1 || true   # drain the hook payload; nothing in it is needed
+payload="$(cat 2>/dev/null || true)"   # only the session's id is needed from it
 
 if command -v vdm_config_read >/dev/null 2>&1; then
   [ "$(vdm_config_read intercom identity-check true)" = "true" ] || exit 0
 fi
 command -v jq >/dev/null 2>&1 || exit 0
+own_sid="$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null)"
+[ -n "$own_sid" ] || own_sid="${CLAUDE_CODE_SESSION_ID:-}"
 command -v intercom_register >/dev/null 2>&1 || exit 0
 
 case "$PWD" in
@@ -80,18 +82,23 @@ machine="$(_intercom_machine_name)"
 #
 # A focused session with a topic hears of the letters on it
 # (intercom-focused-topic, DL #4): its start line names the topic, says such
-# letters come here, and counts those already waiting.
+# letters come here, and counts those already waiting. So does one with answers
+# to letters it wrote: a restart keeps the session's id (intercom-hitl-via-initiator,
+# DL #3), and an answer that came while it was down is named here, not on arrival.
 if intercom_focused; then
   msg="[intercom] 🪪 You are \`${id}\` on \`${machine}\`"
   [ -n "$names" ] && msg="${msg} — aka: ${names}"
   topic="$(intercom_own_topic)"
+  answers="$(_intercom_letters_where "$id" for-session "$own_sid" | grep -c .)"
   if [ -n "$topic" ]; then
     on_topic="$(intercom_topic_letters "$id" "$topic" | grep -c .)"
-    msg="${msg}. 🔇 Focused session on «${topic}»: mail is not shown here, except letters on this topic — they are this session's, and a sender may wake it with one."
+    msg="${msg}. 🔇 Focused session on «${topic}»: mail is not shown here, except letters on this topic and answers to letters this session wrote — they are this session's, and a sender may wake it with one."
     [ "$on_topic" -eq 0 ] || msg="${msg} 📬 ${on_topic} on this topic in the inbox → /vdm:intercom check."
+    [ "$answers" -eq 0 ] || msg="${msg} 📬 ${answers} answer(s) to this session's letters in the inbox → /vdm:intercom check."
     msg="${msg} A letter on it that is not: /vdm:intercom topic <slug> --miss \"<why>\". Read the rest of the inbox only when the user asks."
   else
-    msg="${msg}. 🔇 Focused session: mail is not shown here and no other session wakes this one; read the inbox only when the user asks."
+    msg="${msg}. 🔇 Focused session: mail is not shown here and no other session wakes this one, except with an answer to a letter it wrote; read the rest of the inbox only when the user asks."
+    [ "$answers" -eq 0 ] || msg="${msg} 📬 ${answers} answer(s) to this session's letters in the inbox → /vdm:intercom check."
   fi
   jq -c -n --arg c "$msg" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
   exit 0

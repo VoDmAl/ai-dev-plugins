@@ -28,6 +28,10 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR \
       VDX_FOCUSED VDX_INTERCOM TMUX TMUX_PANE 2>/dev/null || true
 
+# Nor the session it runs from: `send` writes its id into the envelope
+# (intercom-hitl-via-initiator, DL #3), and a commit from `!` carries one.
+unset CLAUDE_CODE_SESSION_ID 2>/dev/null || true
+
 # Nor the machine's git config: git 2.54 runs a hook declared there
 # (`hook.<name>.command`) on every commit, a fixture's included — the case is
 # in tests/gates.test.sh.
@@ -1854,6 +1858,167 @@ trap 'kill "$LIVE_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
 rm -f "$SESS"/tf.json "$SESS"/tq.json "$SESS"/tp.json "$SESS"/tarr*.json "$TMP/vdx.log"
 rm -rf "$TI"
 unset TMUX_STUB_DIR
+
+echo "-- the answer finds the session that wrote the letter (intercom-hitl-via-initiator)"
+# Field case (echelon, 2026-10-30): a focused session sent two briefs and waited
+# for the answers; both `reply` started the intercom session, which took them, and
+# the `pickup` of the session that asked was refused. A reply is addressed to a
+# project; the id of the session that wrote the letter travels in the envelope.
+mkrepo "$TMP/hop-r" "git@example.com:acme/hop-r.git"
+( cd "$TMP/hop-r" && bash "$IC" register --name "hop-r" --describe "answers fixture" >/dev/null 2>&1 )
+RI="$VDM_INTERCOM_ROOT/hop-r"; HI="$VDM_INTERCOM_ROOT/hop-a"
+env VDX_FOCUSED=1 python3 -c 'import time; time.sleep(300)' & RF_PID=$!; disown "$RF_PID" 2>/dev/null || true
+env VDX_INTERCOM=1 python3 -c 'import time; time.sleep(300)' & RM_PID=$!; disown "$RM_PID" 2>/dev/null || true
+trap 'kill "$LIVE_PID" "$RF_PID" "$RM_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
+for _ in 1 2 3 4 5 6 7 8 9 10; do   # until both have exec'd with their environment
+  { [ -r "/proc/$RF_PID/environ" ] || ps -wwE -p "$RF_PID" -o command= 2>/dev/null | grep -q 'VDX_FOCUSED=1'; } \
+    && { [ -r "/proc/$RM_PID/environ" ] || ps -wwE -p "$RM_PID" -o command= 2>/dev/null | grep -q 'VDX_INTERCOM=1'; } && break
+  python3 -c 'import time; time.sleep(0.2)'
+done
+mksession rf.json "$RF_PID" "$TMP/hop-r" hop-r-focus idle "$SOCKS/b.sock"
+mksession rm.json "$RM_PID" "$TMP/hop-r" hop-r-mail  idle "$SOCKS/b.sock"
+rfoc()  { ( cd "$TMP/hop-r" && VDX_FOCUSED=1 CLAUDE_CODE_SESSION_ID=sid-hop-r-focus VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" "$@" 2>&1 ); }
+rmail() { ( cd "$TMP/hop-r" && VDX_INTERCOM=1 CLAUDE_CODE_SESSION_ID=sid-hop-r-mail VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" "$@" 2>&1 ); }
+hopa()  { ( cd "$TMP/hop-a" && CLAUDE_CODE_SESSION_ID=sid-hop-a VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" "$@" 2>&1 ); }
+# rbrief <slug>: the focused session of hop-r writes to hop-a, and hop-a answers.
+rbrief() { rfoc send hop-a "$1" --title "Brief $1" --body "$B/live.md" >/dev/null; }
+ranswer() { hopa reply "$1" --done "done" --ball "nobody — closed"; }
+
+rbrief ra-1
+eq "RED: a letter carries the session that wrote it" "$(grep '^from-session:' "$HI/ra-1.md")" "from-session: sid-hop-r-focus"
+( cd "$TMP/hop-r" && bash "$IC" send hop-a ra-nosid --body "$B/live.md" >/dev/null 2>&1 )
+grep -q '^from-session:' "$HI/ra-nosid.md" && bad "a harness that names no session writes no field" "$(grep '^from-session:' "$HI/ra-nosid.md")" || ok "a harness that names no session writes no field"
+rmail send hop-a ra-mail --body "$B/live.md" >/dev/null
+grep -q '^from-session:' "$HI/ra-mail.md" && bad "an intercom session's letter names no session: the project's intercom session answers for it" "$(grep '^from-session:' "$HI/ra-mail.md")" || ok "an intercom session's letter names no session: the project's intercom session answers for it"
+eq "…it still says it came from an intercom session" "$(grep '^session:' "$HI/ra-mail.md")" "session: mail"
+rfoc send hop-r ra-note --body "$B/live.md" >/dev/null
+grep -q '^from-session:' "$RI/ra-note.md" && bad "a note to the project itself names no session" "$(grep '^from-session:' "$RI/ra-note.md")" || ok "a note to the project itself names no session"
+rm -f "$RI/ra-note.md"
+
+out="$(ranswer ra-1)"
+eq "RED: the answer carries the session it answers" "$(grep '^for-session:' "$RI/ra-1-outcome.md")" "for-session: sid-hop-r-focus"
+eq "…and the session that wrote it, for the way back" "$(grep '^from-session:' "$RI/ra-1-outcome.md")" "from-session: sid-hop-a"
+says "RED: the answer is that session's alone" "$out" "the answer to a letter of the session hop-r-focus of \`hop-r\`"
+says "RED: …it is the one woken, focused or not" "$out" "→ wake one: hop-r-focus"
+eq "…and the only one" "$(printf '%s\n' "$out" | grep -c '→ wake one:')" "1"
+says "…with a pointer that says whose it is" "$out" "The answer to a letter of this session"
+says_not "RED: …not the intercom session, which is woken first otherwise" "$out" "hop-r-mail"
+
+mkdir -p "$TMP/hop-r/.claude"
+printf '{"intercom":{"session":true}}\n' > "$TMP/hop-r/.claude/vdm-plugins.json"
+kill "$RM_PID" 2>/dev/null; rm -f "$SESS/rm.json"
+rbrief ra-2
+out="$( cd "$TMP/hop-a" && PATH="$VX:$PATH" CLAUDE_CODE_SESSION_ID=sid-hop-a VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" reply ra-2 --done "done" --ball "nobody — closed" 2>&1 )"
+says_not "RED: no intercom session is started for it, where one is switched on and none is live" "$out" "start it with your shell tool"
+says "…the session that wrote the letter is woken" "$out" "→ wake one: hop-r-focus"
+
+jq --argjson ms "$(( (NOW_EPOCH - 300) * 1000 ))" '.statusUpdatedAt = $ms' "$SESS/rf.json" > "$TMP/rf.json" && mv "$TMP/rf.json" "$SESS/rf.json"
+rbrief ra-3
+out="$(ranswer ra-3)"
+says "RED: a session the owner may be at is not woken" "$out" "do not wake here: hop-r-focus is idle for 5 min"
+says_not "…nor anybody else in its place" "$out" "→ wake one:"
+jq 'del(.statusUpdatedAt)' "$SESS/rf.json" > "$TMP/rf.json" && mv "$TMP/rf.json" "$SESS/rf.json"
+
+out="$(rmail check)"
+says "RED: check in another session leaves the answer to its session" "$(tl "$out" ra-1-outcome)" "the answer to a letter of the session hop-r-focus, live here — leave it to that session"
+says_not "…offering no take" "$(tl "$out" ra-1-outcome)" "take before work"
+out="$(rmail take ra-1-outcome)"; rc=$?
+eq "RED: take in another session is refused" "$rc" "1"
+says "…naming the live session" "$out" "answers a letter of the session hop-r-focus, live here"
+out="$(rmail pickup ra-1-outcome)"; rc=$?
+eq "…pickup too" "$rc" "1"
+[ -f "$RI/ra-1-outcome.md" ] && ok "…which archives nothing" || bad "…which archives nothing" "archived"
+: > "$TMP/vdx.log"
+out="$( cd "$TMP/hop-r" && PATH="$VX:$PATH" VDX_INTERCOM=1 bash "$IC" close 2>&1 )"; rc=$?
+eq "RED: close does not count it as open" "$rc" "0"
+out="$(rfoc check)"
+says "RED: in the session it answers it is its own" "$(tl "$out" ra-1-outcome)" "the answer to a letter of this session — yours"
+out="$(rfoc take ra-1-outcome)"; rc=$?
+eq "RED: …and that session takes it" "$rc" "0"
+out="$(hopa sent)"
+says "RED: sent wakes that session" "$(printf '%s\n' "$out" | grep -A1 'hop-r/ra-2-outcome' | tail -1)" "the answer to a letter of the session hop-r-focus → wake it with SendMessage"
+
+# The way back: an answer to the answer goes to the session that wrote it.
+rfoc reply ra-1-outcome --done "thanks" --ball "nobody — closed" >/dev/null
+eq "RED: both ways: the answer to the answer carries hop-a's session" "$(grep '^for-session:' "$HI/ra-1-outcome-outcome.md")" "for-session: sid-hop-a"
+mkrepo "$TMP/hop-q" "git@example.com:acme/hop-q.git"
+( cd "$TMP/hop-q" && bash "$IC" register --name "hop-q" --describe "a third party" >/dev/null 2>&1 )
+rfoc send hop-a ra-4 --body "$B/live.md" >/dev/null
+hopa send hop-q ra-relay2 --reply-to hop-a/ra-4 --body "$B/live.md" >/dev/null
+grep -q '^for-session:' "$VDM_INTERCOM_ROOT/hop-q/ra-relay2.md" && bad "a relay to a third party carries no session" "$(grep '^for-session:' "$VDM_INTERCOM_ROOT/hop-q/ra-relay2.md")" || ok "a relay to a third party carries no session"
+hopa send hop-r ra-4-back --reply-to hop-a/ra-4 --body "$B/live.md" >/dev/null
+eq "RED: send --reply-to back to the sender carries it, as reply does" "$(grep '^for-session:' "$RI/ra-4-back.md")" "for-session: sid-hop-r-focus"
+
+# A restart keeps the id: another process and another name are the same holder.
+env VDX_FOCUSED=1 python3 -c 'import time; time.sleep(300)' & RF2_PID=$!; disown "$RF2_PID" 2>/dev/null || true
+trap 'kill "$LIVE_PID" "$RF_PID" "$RM_PID" "$RF2_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
+kill "$RF_PID" 2>/dev/null; rm -f "$SESS/rf.json"
+mksession rf2.json "$RF2_PID" "$TMP/hop-r" hop-r-restarted idle "$SOCKS/b.sock" sid-hop-r-focus
+out="$(rmail check)"
+says "RED: after a restart the same id holds the letter, under its new name" "$(tl "$out" ra-4-back)" "the answer to a letter of the session hop-r-restarted, live here"
+
+# Gone: the letter is ordinary again, no mark to remove.
+kill "$RF2_PID" 2>/dev/null; rm -f "$SESS/rf2.json"
+python3 -c 'import time; time.sleep(0.2)'
+out="$(rmail check)"
+says "RED: once its session is gone the answer is an ordinary letter" "$(tl "$out" ra-4-back)" "a session that is gone — an ordinary letter"
+says "…and take is offered" "$(tl "$out" ra-4-back)" "take before work"
+out="$(rmail take ra-4-back)"; rc=$?
+eq "…and works" "$rc" "0"
+rmail release ra-4-back >/dev/null
+rbrief ra-5
+out="$( cd "$TMP/hop-a" && PATH="$VX:$PATH" CLAUDE_CODE_SESSION_ID=sid-hop-a VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" reply ra-5 --done "done" --ball "nobody — closed" 2>&1 )"
+says "RED: …and send says so" "$out" "the session that wrote the letter this answers is gone — an ordinary letter"
+says "…and goes on as before: the intercom session is started" "$out" "start it with your shell tool"
+
+# On another machine: named from its transcript, like any session elsewhere.
+RPROJ="$HOME/.claude/projects/-hop-r"; mkdir -p "$RPROJ"
+rtranscript() {  # rtranscript <id> <machine> <timestamp>
+  printf '{"hookEvent":"SessionStart","type":"hook_success","content":"[intercom] 🪪 You are `hop-r` on `%s`"}\n{"type":"assistant","timestamp":"%s"}\n' "$2" "$3" > "$RPROJ/$1.jsonl"
+}
+rtranscript sid-far m-other "2026-10-04T10:30:00.000Z"
+printf -- '---\nintercom: v1\nfrom: hop-a\nto: hop-r\ncreated: 2026-10-04T10:40:00Z\nslug: ra-far\nfor-session: sid-far\nstatus: pending\n---\n\n# Far\n' > "$RI/ra-far.md"
+out="$(rmail check)"
+says "RED: an answer for a session on another machine stays that session's" "$(tl "$out" ra-far)" "a session on \`m-other\`, active 30 min ago — not checked from here; leave it to that session"
+out="$(rmail take ra-far)"; rc=$?
+eq "…take is refused" "$rc" "1"
+says "…naming the machine" "$out" "answers a letter of a session on \`m-other\`"
+rtranscript sid-far m-other "2026-10-03T10:30:00.000Z"
+out="$(rmail check)"
+says "RED: quiet past the presence window it counts as gone" "$(tl "$out" ra-far)" "a session that is gone — an ordinary letter"
+rm -f "$RI/ra-far.md" "$RPROJ/sid-far.jsonl"; rmdir "$RPROJ" 2>/dev/null
+
+# Hearing of it, in the session it answers and in the others.
+env VDX_FOCUSED=1 python3 -c 'import time; time.sleep(300)' & RF3_PID=$!; disown "$RF3_PID" 2>/dev/null || true
+trap 'kill "$LIVE_PID" "$RF_PID" "$RM_PID" "$RF2_PID" "$RF3_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
+mksession rf3.json "$RF3_PID" "$TMP/hop-r" hop-r-focus3 idle "$SOCKS/b.sock" sid-rarr-focus
+jq --argjson ms "$(( ($(date -u +%s) - 3600) * 1000 ))" '.startedAt = $ms' "$SESS/rf3.json" > "$TMP/rf3.json" && mv "$TMP/rf3.json" "$SESS/rf3.json"
+jq -n --argjson ms "$(( ($(date -u +%s) - 3600) * 1000 ))" '{pid: 1, sessionId: "rarr-plain", startedAt: $ms}' > "$SESS/rarr.json"
+rfresh() { printf -- '---\nintercom: v1\nfrom: hop-a\nto: hop-r\ncreated: %s\nslug: %s\nfor-session: %s\nstatus: pending\n---\n\n# %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$2" "$1" > "$RI/$1.md"; }
+rfresh ra-arr sid-rarr-focus
+printf -- '---\nintercom: v1\nfrom: hop-a\nto: hop-r\ncreated: %s\nslug: ra-other\nstatus: pending\n---\n\n# ra-other\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$RI/ra-other.md"
+out="$( cd "$TMP/hop-r" && printf '{"session_id":"sid-rarr-focus"}' | VDX_FOCUSED=1 TMPDIR="$TMP/arr-tmp" bash "$REM" 2>&1 )"
+says "RED: a focused session with no topic hears of the answer to its letter" "$out" '`ra-arr` from `hop-a`'
+says "…named as such" "$out" "in answer to this session's letters"
+says_not "…and of nothing else" "$out" "ra-other"
+out="$( cd "$TMP/hop-r" && printf '{"session_id":"sid-rarr-focus"}' | VDX_FOCUSED=1 TMPDIR="$TMP/arr-tmp" bash "$REM" 2>&1 )"
+eq "once, and a focused session hears of nothing else on the next message" "$out" ""
+out="$( cd "$TMP/hop-r" && printf '{"session_id":"rarr-plain"}' | TMPDIR="$TMP/arr-tmp" bash "$REM" 2>&1 )"
+says "an ordinary session hears of an ordinary letter" "$out" '`ra-other` from `hop-a`'
+says_not "RED: …not of the answer to another live session's letter" "$out" "ra-arr"
+
+out="$( cd "$TMP/hop-r" && printf '{"session_id":"sid-rarr-focus"}' | VDX_FOCUSED=1 bash "$HOOK" )"
+says "RED: a focused session's start line counts the answers to its letters" "$out" "📬 1 answer(s) to this session's letters"
+says_not "…and nothing else of the inbox" "$out" "pending message"
+out="$( cd "$TMP/hop-r" && printf '{"session_id":"sid-nobody"}' | VDX_FOCUSED=1 bash "$HOOK" )"
+says "…with none, it says what wakes it" "$out" "except with an answer to a letter it wrote"
+says_not "…and does not call it to the inbox" "$out" "/vdm:intercom check"
+
+kill "$RF3_PID" 2>/dev/null
+trap 'kill "$LIVE_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
+rm -f "$SESS"/rf*.json "$SESS"/rm.json "$SESS"/rarr.json "$TMP/vdx.log"
+rm -rf "$RI" "$VDM_INTERCOM_ROOT/hop-q"
+find "$HI" -maxdepth 2 -name 'ra-*' -delete 2>/dev/null
 
 echo "-- session start, the sender's side"
 out="$( cd "$TMP/hop-a" && printf '{}' | VDM_INTERCOM_TODAY=2026-09-24 bash "$HOOK" )"

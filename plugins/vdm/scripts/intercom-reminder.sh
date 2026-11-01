@@ -57,17 +57,19 @@ command -v intercom_inbox_count >/dev/null 2>&1 || exit 0
 # and none that a session has taken. `intercom.arrival-line: false` turns it off.
 # ---------------------------------------------------------------------------
 
-# _ic_arrivals <identity> <session id> [<own topic>] — one "`<file>` from
-# `<sender>` — <title>" line per letter that arrived during this session and was
-# not named in it yet; each one printed is recorded as named. The session's
+# _ic_arrivals <identity> <session id> [<own topic>] [<focused>] — one "`<file>`
+# from `<sender>` — <title>" line per letter that arrived during this session and
+# was not named in it yet; each one printed is recorded as named. The session's
 # start comes from the harness's own session file; no file, no verdict, nothing
-# printed. Topics (intercom-focused-topic, DL #4): with <own topic> — a focused
-# session — only letters on that topic are named, and one off it is looked at
-# again on the next message, since its topic may be named afterwards (`intercom
-# topic`); in any other session a letter on the topic of a live focused session
-# here is that session's, and is not named.
+# printed. Topics (intercom-focused-topic, DL #4): in a focused session only
+# letters on its topic are named, and one off it is looked at again on the next
+# message, since its topic may be named afterwards (`intercom topic`); in any
+# other session a letter on the topic of a live focused session here is that
+# session's, and is not named. An answer to a letter of this session is named in
+# any session; one to a letter of another session still there is that session's
+# (intercom-hitl-via-initiator, DL #4).
 _ic_arrivals() {
-  local id="$1" sid="$2" own="${3:-}" sdir sfile started seen f base
+  local id="$1" sid="$2" own="${3:-}" focused="${4:-}" sdir sfile started seen f base
   case "$sid" in ''|default) return 0 ;; esac
   command -v jq >/dev/null 2>&1 || return 0
   sdir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"
@@ -91,8 +93,8 @@ _ic_arrivals() {
     fresh+=("$f")
   done < <(intercom_inbox_list "$id")
   [ ${#fresh[@]} -gt 0 ] || return 0
-  local taken created from topic title ts
-  while IFS=$'\037' read -r f taken created from topic title; do
+  local taken created from topic forsid title ts
+  while IFS=$'\037' read -r f taken created from topic forsid title; do
     [ -n "$f" ] || continue
     base="${f##*/}"; base="${base%.md}"
     # Created before the session started (the start line named it), or with
@@ -101,9 +103,20 @@ _ic_arrivals() {
       printf '%s\n' "$base" >> "$seen" 2>/dev/null
       continue
     fi
+    if [ -n "$forsid" ] && [ "$forsid" = "$sid" ]; then
+      printf '%s\n' "$base" >> "$seen" 2>/dev/null
+      printf '`%s` from `%s` — %s\n' "$base" "$from" "${title:-$base}"
+      continue
+    fi
+    if [ -n "$forsid" ]; then
+      case "$(intercom_session_state "$forsid")" in
+        live*|away*) printf '%s\n' "$base" >> "$seen" 2>/dev/null
+                     continue ;;
+      esac
+    fi
     topic="$(_intercom_topic_clean "$topic")"
-    if [ -n "$own" ]; then
-      [ "$topic" = "$own" ] || continue
+    if [ -n "$focused" ]; then
+      [ -n "$own" ] && [ "$topic" = "$own" ] || continue
     elif [ -n "$topic" ]; then
       ts="$(intercom_letter_topic "$f")"
       if [ "${ts%%$'\037'*}" = held ]; then
@@ -117,7 +130,7 @@ _ic_arrivals() {
     function val(line, n) { v = substr(line, n); gsub(/^[ \t]+|[ \t]+$/, "", v); gsub(/^"|"$/, "", v); return v }
     BEGIN {
       for (i = 1; i < ARGC; i++) {
-        f = ARGV[i]; first = 1; infm = 0; taken = created = from = topic = title = ""
+        f = ARGV[i]; first = 1; infm = 0; taken = created = from = topic = forsid = title = ""
         while ((getline line < f) > 0) {
           if (first) { first = 0; infm = (line == "---"); if (infm) continue }
           if (infm && line == "---") { infm = 0; continue }
@@ -126,12 +139,13 @@ _ic_arrivals() {
             if (line ~ /^created:/) created = val(line, 9)
             if (line ~ /^from:/)    from = val(line, 6)
             if (line ~ /^topic:/)   topic = val(line, 7)
+            if (line ~ /^for-session:/) forsid = val(line, 13)
             continue
           }
           if (line ~ /^# /) { title = substr(line, 3); break }
         }
         close(f)
-        if (!first) printf "%s\037%s\037%s\037%s\037%s\037%s\n", f, taken, created, from, topic, title
+        if (!first) printf "%s\037%s\037%s\037%s\037%s\037%s\037%s\n", f, taken, created, from, topic, forsid, title
       }
       exit
     }' "${fresh[@]}")
@@ -149,22 +163,27 @@ case "$count" in ''|*[!0-9]*) count=0 ;; esac
 [ "$count" -gt 0 ] || exit 0
 # A focused session is not called to its inbox (intercom-common.sh → "Focused
 # sessions") — except by a letter on its topic, which a sender may wake it with
-# and so it hears of here (intercom-focused-topic, DL #4).
+# and so it hears of here (intercom-focused-topic, DL #4), and by an answer to a
+# letter of its own (intercom-hitl-via-initiator, DL #4).
 own_topic=""
+focused=""
 if intercom_focused; then
+  [ "$arrival_on" = "true" ] || exit 0
+  focused=1
   own_topic="$(intercom_own_topic)"
-  [ -n "$own_topic" ] && [ "$arrival_on" = "true" ] || exit 0
 fi
 
 sid=$(printf '%s' "$payload" | _vdm_reminder_session_id 2>/dev/null || printf 'default')
 
 if [ "$arrival_on" = "true" ]; then
-  arrived="$(_ic_arrivals "$id" "$sid" "$own_topic")"
+  arrived="$(_ic_arrivals "$id" "$sid" "$own_topic" "$focused")"
   if [ -n "$arrived" ]; then
     n="$(printf '%s\n' "$arrived" | wc -l | tr -d ' ')"
     list="$(printf '%s\n' "$arrived" | sed 's/^/- /')"
     if [ -n "$own_topic" ]; then
-      lead="Arrived on this session's topic «$(_vdm_json_escape "$own_topic")» while the user was in it"
+      lead="Arrived on this session's topic «$(_vdm_json_escape "$own_topic")» or in answer to its letters while the user was in it"
+    elif [ -n "$focused" ]; then
+      lead="Arrived in answer to this session's letters while the user was in it"
     else
       lead="Arrived while the user was in this session"
     fi
@@ -173,8 +192,8 @@ if [ "$arrival_on" = "true" ]; then
     exit 0
   fi
 fi
-# A focused session hears of nothing but its topic.
-[ -z "$own_topic" ] || exit 0
+# A focused session hears of nothing but its topic and the answers to its letters.
+[ -z "$focused" ] || exit 0
 
 # ---------------------------------------------------------------------------
 # The general reminder — OFF BY DEFAULT (opt-in): read enabled with default

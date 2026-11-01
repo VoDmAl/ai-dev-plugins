@@ -414,7 +414,7 @@ cmd_check() {
   fi
   _ic_print_unclaimed "$id" "   "
   printf '📬 intercom: %s pending message(s) for `%s`\n   inbox: %s\n\n' "$n" "$id" "$(intercom_inbox_dir "$id")"
-  local f from created slug title prev taken deferred tstate ttopic tname trest
+  local f from created slug title prev taken deferred tstate ttopic tname trest fstate fa fb fc
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     from="$(intercom_fm_field "$f" from)"
@@ -439,6 +439,14 @@ cmd_check() {
       held) printf '    on the topic «%s» of the focused session %s, live here — leave it to that session\n' "$ttopic" "$tname" ;;
       free) printf '    topic «%s» — no live focused session here is on it: an ordinary letter\n' "$ttopic" ;;
     esac
+    # By the session it answers (intercom-hitl-via-initiator, DL #4).
+    IFS=$'\037' read -r fstate fa fb fc <<<"$(intercom_letter_for "$f")"
+    case "$fstate" in
+      self) printf '    the answer to a letter of this session — yours\n' ;;
+      live) printf '    the answer to a letter of the session %s, live here — leave it to that session\n' "$fa" ;;
+      away) printf '    the answer to a letter of a session on `%s`, active %s ago — not checked from here; leave it to that session\n' "$fa" "$(_intercom_ago "$fb")" ;;
+      gone) printf '    the answer to a letter of a session that is gone — an ordinary letter\n' ;;
+    esac
     if [ -n "$taken" ]; then
       # Checked against the sessions live here: a mark outlives its session
       # (intercom-taken-by-gone-session, DL #3).
@@ -451,7 +459,7 @@ cmd_check() {
       esac
     elif [ -n "$deferred" ]; then
       printf '    when the wait is over: /vdm:intercom take %s\n' "$(basename "$f" .md)"
-    elif [ "$tstate" = held ]; then
+    elif [ "$tstate" = held ] || [ "$fstate" = live ] || [ "$fstate" = away ]; then
       :
     else
       # The mark from the other machine arrives about a minute after it is set,
@@ -852,8 +860,20 @@ cmd_send() {
   # on is then dropped entirely: an envelope field claiming an empty chain is a
   # claim, and the envelope is the machine-readable truth.
   # A letter written in an intercom session says so: the chain limit counts these.
-  local session_line=""
-  intercom_mail_session && session_line="session: mail"
+  # Which session wrote it, and which session it answers (intercom-hitl-via-initiator,
+  # DL #3). An intercom session's letter is answered by the project's intercom
+  # session, whichever that is by then; a note to the project itself by nobody.
+  # Only a letter back to the sender carries the id: a relay goes to a third party.
+  local session_line="" for_session=""
+  if intercom_mail_session; then
+    session_line="session: mail"
+  elif [ "$canon" != "$from" ] && [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+    session_line="from-session: $CLAUDE_CODE_SESSION_ID"
+  fi
+  if [ -n "$reply_path" ] && [ "$(intercom_fm_field "$reply_path" from)" = "$canon" ]; then
+    for_session="$(intercom_fm_field "$reply_path" from-session)"
+  fi
+  [ -z "$for_session" ] || session_line="${session_line:+$session_line$'\n'}for-session: $for_session"
   local topic_line=""
   [ -z "$topic" ] || topic_line="topic: \"$topic\""
 
@@ -957,6 +977,30 @@ cmd_send() {
   # body, or the recipient reads a placeholder.
   # One session is woken, the one where the owner typed last (wake-one-machine
   # DL #3); `intercom_wake_choice` says which, or that it lives elsewhere.
+  #
+  # An answer to a letter of a session that is still there is that session's
+  # (intercom-hitl-via-initiator, DL #4): it alone is woken, by the rule of any
+  # session the owner may sit at, and no intercom session is started for it.
+  if [ -n "$for_session" ]; then
+    local fstate fa fb fc fengaged
+    IFS=$'\037' read -r fstate fa fb fc <<<"$(intercom_session_state "$for_session")"
+    case "$fstate" in
+      live)
+        printf '    ↩ the answer to a letter of the session %s of `%s` — the letter is that session'"'"'s alone.\n' "$fa" "$canon"
+        if fengaged="$(_intercom_engaged "$fb" "$fc")"; then
+          printf '       → do not wake here: %s is %s — you are likely at it; the letter reaches it as one line with your next message there.\n' "$fa" "$fengaged"
+        else
+          _ic_wake_lines "$fa" "the session that wrote the letter this answers" "$slug" "$from" "$title" reply "$body_set"
+        fi
+        return 0 ;;
+      away)
+        printf '    ↩ the answer to a letter of a session of `%s` on `%s`, active %s ago — the letter is that session'"'"'s;\n' "$canon" "$fa" "$(_intercom_ago "$fb")"
+        printf '       it cannot be woken from here: the letter reaches it as one line with the next message there, or at its next `check`.\n'
+        return 0 ;;
+      gone)
+        printf '    ↩ the session that wrote the letter this answers is gone — an ordinary letter.\n' ;;
+    esac
+  fi
   local rows live wlive start choice verdict wname wstatus why wmode
   rows="$(_intercom_session_rows "$canon")"
   live="$(intercom_live_sessions "$canon" "$rows")"
@@ -1075,12 +1119,15 @@ _ic_wake_lines() {
 # session it says what to do: the inbox is that session's work, and there are
 # no steps of the user's in it to come first (intercom-session-wake, DL #4).
 # Into a focused session (mode `topic`) it names the topic: that is why the
-# session hears of this letter at all (intercom-focused-topic, DL #4).
+# session hears of this letter at all (intercom-focused-topic, DL #4). An answer
+# (mode `reply`) says whose it is, for the same reason.
 _ic_pointer() {
   if [ "$4" = mail ]; then
     printf '📬 intercom: `%s` from `%s` — %s. You are the intercom session: take it and handle it — /vdm:intercom check' "$1" "$2" "$3"
   elif [ "$4" = topic ]; then
     printf '📬 intercom: `%s` from `%s` — %s. On your topic «%s»: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first' "$1" "$2" "$3" "$5"
+  elif [ "$4" = reply ]; then
+    printf '📬 intercom: `%s` from `%s` — %s. The answer to a letter of this session: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first' "$1" "$2" "$3"
   else
     printf '📬 intercom: `%s` from `%s` — %s. Read: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first' "$1" "$2" "$3"
   fi
@@ -1100,7 +1147,7 @@ cmd_sent() {
   n="$(printf '%s\n' "$list" | wc -l | tr -d ' ')"
   printf '📤 intercom: %s letter(s) from `%s` not picked up yet (oldest first):\n\n' "$n" "$id"
   local age inbox slug title file live lines choice start verdict wname wstatus why wmode taken seen="" cache="" piled="" seen_pile=""
-  local ts tstate ttopic hname hstatus hsid hupd engaged
+  local ts tstate ttopic hname hstatus hsid hupd engaged fstate fa fb fc
   while IFS=$'\t' read -r age inbox slug title file; do
     [ -n "$inbox" ] || continue
     printf '  • %sd  %s/%s — %s\n' "$age" "$inbox" "$slug" "$title"
@@ -1117,6 +1164,22 @@ cmd_sent() {
                    continue ;;
       esac
     fi
+    # The answer to a letter of a session still there: that session's, as in
+    # `send` (intercom-hitl-via-initiator, DL #4). One that is gone: ordinary.
+    IFS=$'\037' read -r fstate fa fb fc <<<"$(intercom_letter_for "$file")"
+    case "$fstate" in
+      live)
+        if engaged="$(_intercom_engaged "$fb" "$fc")"; then
+          printf '      the answer to a letter of the session %s — do not wake here: it is %s\n' "$fa" "$engaged"
+        else
+          printf '      the answer to a letter of the session %s → wake it with SendMessage: %s\n' \
+            "$fa" "$(_ic_pointer "$slug" "$id" "$title" reply)"
+        fi
+        continue ;;
+      away)
+        printf '      the answer to a letter of a session on `%s`, active %s ago — it cannot be woken from here\n' "$fa" "$(_intercom_ago "$fb")"
+        continue ;;
+    esac
     # On the topic of a live focused session here: that session alone is
     # woken, and no intercom session is started (intercom-focused-topic, DL #4).
     ts="$(intercom_letter_topic "$file")"
@@ -1220,6 +1283,9 @@ cmd_close() {
     # Released with a note: handled for now, it waits for something outside
     # the inbox, and the note says what.
     [ -z "$(intercom_fm_field "$f" deferred)" ] || continue
+    # The answer to a letter of a session still there: that session's, not open
+    # here (intercom-hitl-via-initiator, DL #4).
+    case "$(intercom_letter_for "$f")" in live*|away*) continue ;; esac
     # On the topic of a live focused session here: that session's, not open
     # here (intercom-focused-topic, DL #4).
     ts="$(intercom_letter_topic "$f")"
@@ -1663,11 +1729,17 @@ _ic_reply_hint() {
 # that is not live (intercom-taken-by-gone-session, DL #3).
 #
 # A letter on the topic of a live focused session here is that session's the
-# same way, though no mark says so (intercom-focused-topic, DL #4).
+# same way, though no mark says so (intercom-focused-topic, DL #4), and so is the
+# answer to a letter of a session still there (intercom-hitl-via-initiator, DL #4).
 _ic_refuse_if_taken() {
-  local mark ts tstate ttopic tname trest
+  local mark ts tstate ttopic tname trest fstate fa fb fc
   mark="$(intercom_taken_elsewhere "$2")"
   if [ -z "$mark" ]; then
+    IFS=$'\037' read -r fstate fa fb fc <<<"$(intercom_letter_for "$2")"
+    case "$fstate" in
+      live) _ic_die "$1: '$3' answers a letter of the session $fa, live here — the letter is that session's. Past it only on the owner's word: intercom $1 $3 --force" ;;
+      away) _ic_die "$1: '$3' answers a letter of a session on \`$fa\`, active $(_intercom_ago "$fb") ago — the letter is that session's. If that session is over: intercom $1 $3 --force" ;;
+    esac
     ts="$(intercom_letter_topic "$2")"
     [ "${ts%%$'\037'*}" = held ] || return 0
     IFS=$'\037' read -r tstate ttopic tname trest <<<"$ts"
