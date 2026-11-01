@@ -2,7 +2,7 @@
 title: "intercom: мяч из забранного письма держится, пока не записан в дом проекта"
 slug: held-ball-after-pickup
 description: "Пункт «<я> — …» из забранного письма не теряется после pickup"
-status: in-progress
+status: done
 session-type: other
 created: 2026-10-28
 last-updated: 2026-11-01
@@ -56,10 +56,10 @@ last-updated: 2026-11-01
   такой проход по `_done/` на старте сессии; как читать дом у проекта с `comms` (pending) и у штаба (треки).
 - **Пункт 3** относится к vdm-comms (`pending`, `→ отдать:`), не к intercom — вынесен в кристалл
   `pending-hand-over-on-close` (DL #3).
-- **Реализовано 2026-11-01 (vdm 2.69.0, к коммиту).** Набор intercom 742/0. Против копии `HEAD` падают 7 проверок
+- **Выпущено 2026-11-01: vdm 2.69.0, коммит `e9e57a3`; итог штабу ушёл.** Набор intercom 742/0. Против копии `HEAD` падают 7 проверок
   секции; четыре проверки «назван больше не» проходят и там — старый код не называет ничего, — поэтому без пометки RED
   их держат мутанты (текст в доме, `ball-home`, ушедший итог, slug в кристалле, окно). На архиве этого репозитория:
-  0.65 с, один мяч — правило кода 4 в `send` (vdm 2.60.1), живёт в коде; закрыть `ball-home` после выпуска.
+  0.65 с, один мяч — правило кода 4 в `send` (vdm 2.60.1), живёт в коде; закрыт `ball-home` 2026-11-01.
 
 ## Decision Log
 
@@ -112,7 +112,7 @@ last-updated: 2026-11-01
 - [x] Решить про пункты 1–2: `pickup` вызывает проверку своего мяча, как `reply`; строка старта сравнивает `_done/` с
       открытыми пунктами дома или пишет запись в стор; как читать дом проекта с `comms` — 2026-11-01, DL #2: `pickup` и строка старта; `ball-home`; vdm 2.69.0
 - [x] Решить про пункт 3: отдать в vdm-comms (`pending`, `→ отдать:`) — отдельным пунктом или своим кристаллом — 2026-11-01, DL #3: кристалл [[pending-hand-over-on-close/workitem|pending-hand-over-on-close]] в `ready`
-- [ ] Outcome to штабу (`hq`): `intercom reply held-ball-after-pickup --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"`
+- [x] Outcome to штабу (`hq`): `intercom reply held-ball-after-pickup --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"` — 2026-11-01, письмо `held-ball-after-pickup-outcome` в ящике штаба (`hq`); сессия штаба разбужена
 
 ## References
 
