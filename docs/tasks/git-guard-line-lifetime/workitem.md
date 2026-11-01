@@ -2,7 +2,7 @@
 title: "git-guard: строка коммита живёт, пока её не запустят или не заменят, — и умирая, говорит почему"
 slug: git-guard-line-lifetime
 description: "Хранить строки git-guard вне чистки ОС и называть причину смерти строки"
-status: in-progress
+status: done
 session-type: short-bug
 created: 2026-10-31
 last-updated: 2026-10-31
@@ -36,9 +36,8 @@ last-updated: 2026-10-31
   «истекла», записи и заглушки старше 30 дней удаляются, пустые каталоги сессий тоже.
 - **`--pending` и хук знают потерянную строку** (DL #4): служебные файлы без файла сообщения и без записи — строка потеряна;
   хук говорит подготовить новую, а не повторять мёртвый вызов.
-- **Код написан 2026-10-31, vdm-git 2.26.0, не закоммичен.** Наборы без коммитов зелёные, мутанты роняют каждый
-  свою проверку (новый `tests/git-guard-line-lifetime.test.sh`, reminder, check). `tests/git-guard-prepare.test.sh`
-  и `tests/fffd.test.sh` коммитят в фикстурах — их прогоняет пре-коммит владельца, не ассистент.
+- **Выпущено 2026-10-31: vdm-git 2.26.0, коммит `700db7d`, push в тот же день.** Все наборы пре-коммита зелёные
+  (главный 259/0), мутанты нового набора роняют каждый свою проверку. Итог отправителю ушёл, мяч ничей.
 
 ## Decision Log
 
@@ -132,16 +131,17 @@ scratchpad не класть. Владелец дефекта — Claude Code, �
       «удалён вне git-guard» (DL #2) — 2026-10-31
 - [x] Уборка старше 30 дней в чужих scope (DL #3) — 2026-10-31
 - [x] `--pending` и хук: потерянная строка (DL #4) — 2026-10-31
-- [ ] Тесты: `git-guard-prepare.test.sh`, `git-guard-prepare-check.test.sh`, `git-guard-reminder.test.sh`; какие из
+- [x] Тесты: `git-guard-prepare.test.sh`, `git-guard-prepare-check.test.sh`, `git-guard-reminder.test.sh`; какие из
       них коммитят — проверить до запуска; коммитящие запускает владелец — без коммитов зелёные (новый набор 31/0,
       reminder 22/0, check 29/0, мутанты); `git-guard-prepare.test.sh` и `fffd.test.sh` коммитят — их прогонит
       пре-коммит владельца. Первый его прогон (31.10) остановил коммит на двух местах, оба — мои: строка
       `GIT_CONFIG_GLOBAL` в новом наборе не совпала дословно с той, которую ищет `gates-harness-isolation`, и проверка
       «скрипт заменённой строки удалён» ждала поведения до DL #2 — теперь проверяется заглушка. Остальное: fffd
-      30/0, главный набор 256/1
+      30/0, главный набор 256/1. Второй прогон — всё зелёное, главный набор 259/0, коммит `700db7d`
 - [x] Скилл guard, README, бамп vdm-git (MINOR), `PROJECT_CHANGELOG.md`, `docs/model/suite.md` — 2026-10-31
-- [ ] Outcome to the sender (агент проекта владельца): intercom reply git-guard-line-void-after-tmpdir-cleanup --done "<что сделано,
-      версия vdm-git>" --link <url> --ball "<чей мяч>"
+- [x] Outcome to the sender (агент проекта владельца): intercom reply git-guard-line-void-after-tmpdir-cleanup --done "<что сделано,
+      версия vdm-git>" --link <url> --ball "<чей мяч>" — 2026-10-31, `git-guard-line-void-after-tmpdir-cleanup-outcome`;
+      мяч ничей, закрыто
 - [x] см. Sidetrack #1 — scratchpad харнесса: решить, нужен ли отзыв в Claude Code, или закрыть как не наш —
       2026-10-31, черновик отзыва в Claude Code поставлен в очередь (уходит только с одобрения владельца)
 

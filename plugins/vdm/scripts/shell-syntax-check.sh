@@ -36,6 +36,19 @@
 # that enables extglob is parsed with `-O extglob`. A file that uses the syntax
 # without enabling it is still reported: it fails at run time too.
 #
+# A name that eats a byte. bash 3.2 — /bin/sh and /bin/bash on macOS — under a
+# UTF-8 locale reads the first byte of a multibyte character as part of a
+# variable's name: "«$t»" substitutes an empty `t\xC2` and leaves a lone byte.
+# The file parses, `bash -n` is silent, and under LC_ALL=C the output is right,
+# so a run by hand does not show it; a hook meets the user's locale. Field case
+# (this repo, 2026-10-30): eighteen such places in one session, caught only by a
+# suite's `set -u` (docs/tasks/shell-var-before-non-ascii). So every `$name`
+# that sh or bash will expand and that touches a byte above 0x7F is reported,
+# and blocks like a parse error: the fix — `${name}` — is right everywhere, a
+# false positive included. Not where nothing expands: single quotes, comments,
+# a `\$`, the body of a heredoc whose delimiter is quoted. zsh reads these
+# forms right and is not checked (it breaks on letters only — DL #4 there).
+#
 # Configuration: `.claude/vdm-plugins.json` → `shell-syntax.enabled` (default
 # true). Fail-closed where it matters (lib/gate-guard.sh): a hook payload that
 # could not be read, about a file that looks like shell, is reported as NOT
@@ -189,6 +202,119 @@ EOF
   return "$rc"
 }
 
+# names_before_nonascii <file> — "<line>\t<name>" for every `$name` sh or bash
+# would expand that is written against a byte above 0x7F. Bytes, not
+# characters: LC_ALL=C, and BSD grep has neither -P nor \x — hence awk. The
+# scanner follows quotes across lines (a single-quoted awk program spans many),
+# comments, `$'…'`, and heredocs: a quoted delimiter (`'EOF'`, `"EOF"`, `\EOF`)
+# leaves its body literal, an unquoted one expands it, quotes and all.
+names_before_nonascii() {
+  LC_ALL=C awk '
+    function hit(name) { printf "%d\t%s\n", NR, name }
+    # dollar(s, i) — at a "$" in s: report a name against a high byte; return
+    # the index of the last character consumed.
+    function dollar(s, i,    j, n) {
+      n = length(s); j = i + 1
+      if (substr(s, j, 1) !~ /[A-Za-z_]/) return i
+      while (j <= n && substr(s, j, 1) ~ /[A-Za-z0-9_]/) j++
+      if (j <= n && substr(s, j, 1) > "~") hit(substr(s, i + 1, j - i - 1))
+      return j - 1
+    }
+    # heredoc_op(s, i) — at "<<": queue the heredoc; return the last index used.
+    function heredoc_op(s, i,    j, n, tab, q, w, c) {
+      n = length(s); j = i + 2; tab = 0; q = 0; w = ""
+      if (substr(s, j, 1) == "-") { tab = 1; j++ }
+      while (j <= n && substr(s, j, 1) ~ /[ \t]/) j++
+      while (j <= n) {
+        c = substr(s, j, 1)
+        if (c ~ /[ \t;&|<>()]/) break
+        if (c == "\047" || c == "\"") { q = 1; j++; while (j <= n && substr(s, j, 1) != c) { w = w substr(s, j, 1); j++ } j++; continue }
+        if (c == "\\") { q = 1; j++; c = substr(s, j, 1) }
+        w = w c; j++
+      }
+      if (w != "") { nq++; qd[nq] = w; qq[nq] = q; qt[nq] = tab }
+      return j - 1
+    }
+    function scan(s,    i, n, c, p) {
+      n = length(s)
+      for (i = 1; i <= n; i++) {
+        c = substr(s, i, 1)
+        if (sq) {
+          if (ansi && c == "\\") { i++; continue }
+          if (c == "\047") { sq = 0; ansi = 0 }
+          continue
+        }
+        if (c == "\\") { i++; continue }
+        if (c == "\"") { dq = !dq; continue }
+        if (c == "$") {
+          if (!dq && substr(s, i + 1, 1) == "\047") { sq = 1; ansi = 1; i++; continue }
+          i = dollar(s, i); continue
+        }
+        if (dq) continue
+        if (c == "\047") { sq = 1; continue }
+        p = (i == 1) ? " " : substr(s, i - 1, 1)
+        if (c == "#" && p ~ /[ \t;&|(]/) return
+        # A here-string, `<<<`, is no heredoc: all three go at once, or the
+        # second and third would read as `<<` and open one that never closes.
+        if (c == "<" && substr(s, i, 3) == "<<<") { i += 2; continue }
+        if (c == "<" && substr(s, i, 2) == "<<") { i = heredoc_op(s, i + 0); continue }
+      }
+    }
+    function scan_body(s,    i, n, c) {
+      n = length(s)
+      for (i = 1; i <= n; i++) {
+        c = substr(s, i, 1)
+        if (c == "\\") { i++; continue }
+        if (c == "$") i = dollar(s, i)
+      }
+    }
+    BEGIN { sq = 0; dq = 0; ansi = 0; nq = 0; cur = 0 }
+    {
+      if (cur) {
+        t = $0
+        if (qt[cur]) sub(/^\t+/, "", t)
+        if (t == qd[cur]) { cur = (cur < nq) ? cur + 1 : 0; if (!cur) nq = 0; next }
+        if (!qq[cur]) scan_body($0)
+        next
+      }
+      scan($0)
+      if (nq && !sq && !dq) cur = 1
+    }
+  ' "$1" 2>/dev/null
+}
+
+# names_check <label> <file> — the report of names_before_nonascii for a file sh
+# or bash will run; returns 1 when there is anything to report.
+names_check() {
+  local label="$1" f="$2" declared found line name
+  [ -f "$f" ] || return 0
+  declared=$(shell_of "$label" "$(first_line "$f")")
+  case "${declared##*/}" in
+    sh|bash) ;;
+    *) return 0 ;;
+  esac
+  found=$(names_before_nonascii "$f")
+  [ -n "$found" ] || return 0
+  while IFS="$(printf '\t')" read -r line name; do
+    [ -n "$line" ] || continue
+    printf '%s:%s: `$%s` touches a non-ASCII character — write `${%s}`.\n' "$label" "$line" "$name" "$name"
+  done <<EOF
+$found
+EOF
+  printf '    bash 3.2 (/bin/sh and /bin/bash on macOS) under a UTF-8 locale reads the first\n'
+  printf '    byte of that character as part of the name and substitutes nothing; braces end the name.\n'
+  return 1
+}
+
+# file_check <label> <file> — both checks, every diagnostic printed; 1 when
+# either reports.
+file_check() {
+  local rc=0
+  parse_check "$1" "$2" || rc=1
+  names_check "$1" "$2" || rc=1
+  return "$rc"
+}
+
 # --- --hook: PostToolUse payload on stdin -------------------------------------
 if [ "$mode" = "hook" ]; then
   payload=$(cat 2>/dev/null || true)
@@ -228,15 +354,16 @@ if [ "$mode" = "hook" ]; then
   [ -n "$file_path" ] || exit 0
   [ -f "$file_path" ] || exit 0
 
-  if diag=$(parse_check "$file_path" "$file_path"); then
+  if diag=$(file_check "$file_path" "$file_path"); then
     exit 0
   fi
   {
     printf '\n[shell-syntax] %s\n' "$diag"
     cat <<'EOF'
 
-A shell file that does not parse fails on every run — and inside a hook it
-fails without a word. Fix it before this turn ends. Re-check by hand with:
+A shell file that does not parse, or substitutes nothing where it names a
+variable, fails on every run — and inside a hook it fails without a word. Fix
+it before this turn ends. Re-check by hand with:
   "${CLAUDE_PLUGIN_ROOT}/scripts/shell-syntax-check.sh" <file>
 EOF
   } >&2
@@ -273,7 +400,7 @@ if [ "$mode" = "staged" ]; then
     n=$((n + 1))
     rel="$f"
     case "$rel" in -*) rel="./$rel" ;; esac
-    if ! diag=$(cd "$tmp" && parse_check "$f" "$rel"); then
+    if ! diag=$(cd "$tmp" && file_check "$f" "$rel"); then
       rc=1
       report="${report}${diag}
 "
@@ -282,11 +409,12 @@ if [ "$mode" = "staged" ]; then
 
   if [ "$rc" -eq 0 ]; then
     if [ "$n" -gt 0 ]; then
-      echo "shell-syntax: ✓ ${n} staged shell file(s) parse under the interpreter they declare"
+      echo "shell-syntax: ✓ ${n} staged shell file(s) parse under the interpreter they declare, every name whole"
     fi
   else
     printf '%s' "$report" >&2
-    printf '\nshell-syntax: 🚨 a staged shell file does not parse under the interpreter it declares.\n' >&2
+    printf '\nshell-syntax: 🚨 a staged shell file fails the check above: it does not parse under the\n' >&2
+    printf '  interpreter it declares, or names a variable against a non-ASCII character.\n' >&2
     printf '  This gate reads the STAGED content, so fix the file AND re-stage it.\n' >&2
     printf '  Re-check by hand: bash "%s" <file>\n' "$SELF" >&2
   fi
@@ -298,6 +426,6 @@ fi
 rc=0
 for f in "${files[@]}"; do
   case "$f" in -*) f="./$f" ;; esac
-  parse_check "$f" "$f" || rc=1
+  file_check "$f" "$f" || rc=1
 done
 exit "$rc"

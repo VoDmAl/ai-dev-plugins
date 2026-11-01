@@ -43,7 +43,7 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CHECK="$REPO_ROOT/plugins/vdm/scripts/shell-syntax-check.sh"
+CHECK="${SHELL_SYNTAX_CHECK:-$REPO_ROOT/plugins/vdm/scripts/shell-syntax-check.sh}"
 
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); printf '  ✓ %s\n' "$1"; }
@@ -208,6 +208,99 @@ ERR=$(cd "$FX" && printf '{"tool_name":"Write","tool_input":{"file_path":"%s/not
         | bash "$CHECK" --hook 2>&1 >/dev/null); RC=$?
 expect_exit "GREEN: a truncated payload about markdown ⇒ exit 0" 0 "$RC"
 expect_silent "…silently" "$ERR"
+
+echo "== \$name against a non-ASCII character (shell-var-before-non-ascii) =="
+# bash 3.2 — /bin/sh and /bin/bash on macOS — reads the first byte of a
+# multibyte character as part of a variable's name under a UTF-8 locale:
+# "«$t»" substitutes an empty `t\xC2`, and a lone 0xBB is left behind. The file
+# parses, `bash -n` is silent, and under LC_ALL=C the output is right, so a run
+# by hand does not show it; a hook meets the user's locale. Field case
+# (2026-10-30, this repo): eighteen such places in one session, caught only by
+# a suite's `set -u`. The fix is mechanical everywhere — `${t}` — so a finding
+# blocks, like a parse error.
+putq() { mkdir -p "$(dirname "$FX/$1")"; cat > "$FX/$1"; }   # putq <relpath> — content from stdin, as is
+putq na-quote.sh <<'X'
+#!/bin/bash
+t=abc
+echo "«$t»"
+X
+hook Write na-quote.sh
+expect_exit "RED: \"«\$t»\" in a bash script ⇒ exit 2" 2 "$RC"
+expect_says "…names the file and the line" "$ERR" "na-quote.sh:3"
+expect_says "…and the variable" "$ERR" '$t'
+expect_says "…and the fix" "$ERR" '${t}'
+putq na-dash.sh <<'X'
+#!/bin/sh
+t=abc
+printf '%s\n' "$t—x"
+X
+hook Write na-dash.sh
+expect_exit "RED: \"\$t—x\" in an sh script ⇒ exit 2" 2 "$RC"
+putq na-heredoc.sh <<'X'
+#!/bin/bash
+t=abc
+cat <<EOF
+«$t»
+EOF
+X
+hook Write na-heredoc.sh
+expect_exit "RED: an unquoted heredoc expands, and is checked ⇒ exit 2" 2 "$RC"
+expect_says "…at its line" "$ERR" "na-heredoc.sh:4"
+putq na-lib.sh <<'X'
+t=abc; echo "$t…"
+X
+hook Write na-lib.sh
+expect_exit "RED: a sourced lib (.sh, no shebang) is bash's ⇒ exit 2" 2 "$RC"
+putq na-herestring.sh <<'X'
+#!/bin/bash
+t=abc
+read -r x <<<"$(printf '%s' "$t")"
+echo "«$t»"
+X
+hook Write na-herestring.sh
+expect_exit "RED: a here-string opens no heredoc — a finding below it is still found ⇒ exit 2" 2 "$RC"
+expect_says "…at its line" "$ERR" "na-herestring.sh:4"
+putq na-ok.sh <<'X'
+#!/bin/bash
+t=abc
+echo '«$t»'
+# a comment: «$t»
+echo hi # trailing: «$t»
+echo "«${t}»" "\$t»" "$t" «
+awk '
+  { print "«$t»" }
+' /dev/null
+cat <<'EOF'
+«$t»
+EOF
+cat <<"EOF"
+«$t»
+EOF
+cat <<\EOF
+«$t»
+EOF
+cat <<-EOF
+	«${t}»
+	EOF
+echo "after the heredocs: ${t}»"
+X
+hook Write na-ok.sh
+expect_exit "GREEN: single quotes, comments, \${t}, \\\$t, quoted heredocs ⇒ exit 0" 0 "$RC"
+expect_silent "…silently" "$ERR"
+putq na-zsh.zsh <<'X'
+t=abc
+echo "«$t» $t—x"
+X
+hook Write na-zsh.zsh
+expect_exit "GREEN: zsh reads «\$t» and \$t—x right — not its rule ⇒ exit 0" 0 "$RC"
+OUT=$(cd "$FX" && bash "$CHECK" na-quote.sh na-ok.sh 2>&1); RC=$?
+expect_exit "RED: file mode ⇒ exit 1" 1 "$RC"
+expect_says "…naming the file" "$OUT" "na-quote.sh:3"
+( cd "$FX" && git add na-quote.sh na-ok.sh )
+OUT=$(cd "$FX" && bash "$CHECK" --staged 2>&1); RC=$?
+expect_exit "RED: the staged blob ⇒ exit 1" 1 "$RC"
+expect_says "…naming the file" "$OUT" "na-quote.sh:3"
+( cd "$FX" && git rm -q --cached na-quote.sh na-ok.sh )
 
 echo "== file mode: the same verdicts, exit 1 =="
 OUT=$(cd "$FX" && bash "$CHECK" ok.sh broken.sh notes.md 2>&1); RC=$?
