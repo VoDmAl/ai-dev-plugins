@@ -1133,14 +1133,15 @@ cmd_sent() {
       free)
         printf '      topic «%s» — no live focused session here is on it: an ordinary letter\n' "${ts#free$'\037'}" ;;
     esac
-    # A recipient that keeps letters 3+ days, has a checkout here and no mail
-    # session switched on: named once, in a line after the list (see
-    # intercom_backlog).
+    # A recipient whose mail piles up past the threshold, with a checkout here
+    # and no intercom session switched on, and no "no" from the owner since:
+    # named once, in a line after the list (see intercom_mail_candidate).
     if [ "$age" -ge "$INTERCOM_BACKLOG_DAYS" ]; then
       case "|$seen_pile|" in
         *"|$inbox|"*) ;;
         *) seen_pile="${seen_pile}|$inbox"
-           if [ -n "$(intercom_checkouts "$inbox" | head -n 1)" ] && ! intercom_mail_switched_on "$inbox"; then
+           if [ -n "$(intercom_checkouts "$inbox" | head -n 1)" ] && ! intercom_mail_switched_on "$inbox" \
+              && [ -n "$(intercom_mail_candidate "$inbox")" ]; then
              piled="${piled:+$piled, }\`$inbox\`"
            fi ;;
       esac
@@ -1479,6 +1480,60 @@ cmd_topic_misses() {
     printf '  went past its topic (topic-missed):\n'
     printf '%s\n' "$report" | awk -F '\t' '$1 == "missed" { printf "    • %s — %s\n", $2, $3 }'
   fi
+}
+
+# `mail-candidates [--json]` — the projects on this machine whose mail piles up
+# with no intercom session switched on, and no "no" from the owner since
+# (intercom-mail-candidates). The machine view an HQ's hook reads to put the
+# question to the owner where they work (DL #2): this repository shows no other
+# project anything by itself. `mail-candidates decline <agent> [--undo]` records
+# the owner's no — asked again only once mail piles up anew (DL #3).
+cmd_mail_candidates() {
+  local json=0
+  if [ "${1:-}" = "decline" ]; then
+    shift
+    local who="${1:-}" undo="" canon rc
+    [ -n "$who" ] || _ic_die "mail-candidates decline: name the agent. Usage: intercom mail-candidates decline <agent> [--undo]"
+    [ "${2:-}" != "--undo" ] || undo="--undo"
+    canon="$(intercom_resolve_target "$who")"; rc=$?
+    [ "$rc" -eq 0 ] || _ic_die "mail-candidates decline: \"$who\" does not resolve to exactly one registered agent (intercom directory)."
+    intercom_mail_decline "$canon" $undo || exit 1
+    if [ -n "$undo" ]; then
+      printf '📨 intercom: the owner'"'"'s no for `%s` is taken back — it is a candidate again whenever its mail is past the threshold.\n' "$canon"
+    else
+      printf '📨 intercom: the owner'"'"'s no for `%s` is recorded (%s) — not asked again until mail piles up anew there.\n' "$canon" "$(intercom_mail_declined "$canon")"
+    fi
+    return 0
+  fi
+  case "${1:-}" in
+    --json) json=1 ;;
+    "") ;;
+    *) _ic_die "mail-candidates: unknown argument '$1'. Usage: intercom mail-candidates [--json] | intercom mail-candidates decline <agent> [--undo]" ;;
+  esac
+  local list
+  list="$(intercom_mail_candidates)"
+  if [ "$json" -eq 1 ]; then
+    command -v jq >/dev/null 2>&1 || _ic_die "mail-candidates --json needs jq."
+    printf '%s\n' "$list" | jq -R -s --argjson min "$INTERCOM_BACKLOG_MIN" --argjson days "$INTERCOM_BACKLOG_DAYS" '
+      { threshold: { letters: $min, oldest_days: $days },
+        candidates: [ split("\n")[] | select(length > 0) | split("\t") |
+          { identity: .[0], letters: (.[1] | tonumber), oldest_days: (.[2] | tonumber), checkout: .[3],
+            enable: "\"intercom\": {\"session\": true} in .claude/vdm-plugins.json of the checkout, its own commit",
+            decline: ("intercom mail-candidates decline " + .[0]) } ] }'
+    return 0
+  fi
+  if [ -z "$list" ]; then
+    printf '📨 intercom: no project on this machine keeps mail past the threshold (%s letters from others, the oldest %s+ days) without an intercom session.\n' \
+      "$INTERCOM_BACKLOG_MIN" "$INTERCOM_BACKLOG_DAYS"
+    return 0
+  fi
+  printf '📨 intercom: projects on this machine whose mail piles up with no intercom session (%s+ letters from others, the oldest %s+ days):\n' \
+    "$INTERCOM_BACKLOG_MIN" "$INTERCOM_BACKLOG_DAYS"
+  printf '%s\n' "$list" | while IFS="$(printf '\t')" read -r id n days co; do
+    printf '  • %s — %s letters, the oldest %sd — %s\n' "$id" "$n" "$days" "$co"
+  done
+  printf '   Switched on by the project'"'"'s own commit: "intercom": {"session": true} in its .claude/vdm-plugins.json.\n'
+  printf '   The owner says no: intercom mail-candidates decline <agent> — asked again only when mail piles up anew.\n'
 }
 
 cmd_claim() {
@@ -1988,6 +2043,7 @@ case "$sub" in
   topics)                     cmd_topics "$@" ;;
   topic)                      cmd_topic "$@" ;;
   topic-misses)               cmd_topic_misses "$@" ;;
+  mail-candidates)            cmd_mail_candidates "$@" ;;
   ""|-h|--help|help)
     cat <<'HELP'
 intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
@@ -2046,7 +2102,10 @@ intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
                                         handing it on); --miss "<why>": give back a letter off your
                                         topic; --missed "<topic>" "<why>": a letter that went past it
   intercom topic-misses [--since DATE]  the misses recorded in the store, for the review
+  intercom mail-candidates [--json]     projects here whose mail piles up with no intercom session — the
+                                        view an HQ's hook reads; `decline <agent> [--undo]` records the
+                                        owner's no until mail piles up anew
 HELP
     ;;
-  *) _ic_die "unknown subcommand '$sub' (try: identity|whoami|store|register|names|describe|unregister|directory|resolve|check|send|claim|take|pickup|reply|sent|chain|close|topics|topic|topic-misses)" ;;
+  *) _ic_die "unknown subcommand '$sub' (try: identity|whoami|store|register|names|describe|unregister|directory|resolve|check|send|claim|take|pickup|reply|sent|chain|close|topics|topic|topic-misses|mail-candidates)" ;;
 esac

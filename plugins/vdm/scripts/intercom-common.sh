@@ -214,13 +214,22 @@ INTERCOM_BACKLOG_MIN=5
 INTERCOM_BACKLOG_DAYS=3
 
 # intercom_backlog <identity> — "<letters>\t<oldest, in days>" for the letters
-# from other agents lying in that inbox; nothing when there are none. A note
-# the project left for itself is not mail (intercom-session-wake, DL #12).
+# from other agents lying in that inbox that wait for a session; nothing when
+# there are none. A note the project left for itself is not mail
+# (intercom-session-wake, DL #12). Not counted either (intercom-mail-candidates,
+# DL #4): a letter released with a note — handled, it waits for someone else's
+# move — and one taken by a session that is live here or by a session of another
+# machine — in work. A letter whose session is gone waits like an untaken one.
 intercom_backlog() {
-  local id="$1" f files=()
+  local id="$1" f files=() age taken n=0 oldest=0
   while IFS= read -r f; do [ -n "$f" ] && files+=("$f"); done < <(intercom_inbox_list "$id")
   [ ${#files[@]} -gt 0 ] || return 0
-  awk -v me="$id" -v today="$(_intercom_today)" '
+  while IFS="$(printf '\t')" read -r age taken; do
+    [ -n "$age" ] || continue
+    if [ "$taken" != "-" ] && [ "$(intercom_mark_state "$taken")" != gone ]; then continue; fi
+    n=$((n + 1))
+    [ "$age" -le "$oldest" ] || oldest="$age"
+  done < <(awk -v me="$id" -v today="$(_intercom_today)" '
     function days(s,   y, m, d, era, yoe, doy) {
       if (s !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/) return -1
       y = substr(s, 1, 4) + 0; m = substr(s, 6, 2) + 0; d = substr(s, 9, 2) + 0
@@ -231,23 +240,103 @@ intercom_backlog() {
     }
     function strip(v) { gsub(/^[ \t]+|[ \t]+$/, "", v); gsub(/^"|"$/, "", v); return v }
     BEGIN {
-      t = days(today); n = 0; oldest = 0
+      t = days(today)
       for (i = 1; i < ARGC; i++) {
-        f = ARGV[i]; from = ""; created = ""; infm = 0; first = 1
+        f = ARGV[i]; from = ""; created = ""; taken = ""; deferred = ""; infm = 0; first = 1
         while ((getline line < f) > 0) {
           if (first) { first = 0; infm = (line == "---"); if (!infm) break; continue }
           if (line == "---") break
-          if (line ~ /^from:/)    from = strip(substr(line, 6))
-          if (line ~ /^created:/) created = strip(substr(line, 9))
+          if (line ~ /^from:/)     from = strip(substr(line, 6))
+          if (line ~ /^created:/)  created = strip(substr(line, 9))
+          if (line ~ /^taken:/)    taken = strip(substr(line, 7))
+          if (line ~ /^deferred:/) deferred = strip(substr(line, 10))
         }
         close(f)
-        if (from == "" || from == me) continue
-        n++
-        c = days(created)
-        if (c >= 0 && t >= 0 && t - c > oldest) oldest = t - c
+        if (from == "" || from == me || deferred != "") continue
+        c = days(created); age = (c >= 0 && t >= 0 && t > c) ? t - c : 0
+        printf "%d\t%s\n", age, (taken == "" ? "-" : taken)
       }
-      if (n > 0) printf "%d\t%d\n", n, oldest
-    }' "${files[@]}"
+    }' "${files[@]}")
+  [ "$n" -eq 0 ] || printf '%s\t%s\n' "$n" "$oldest"
+}
+
+# Where mail piles up with no intercom session (intercom-mail-candidates). The
+# owner, 2026-10-28 (through echelon): the option must come up as soon as a
+# project not switched on crosses into "now it needs one" — and an answer given
+# holds until it crosses again. The owner's "no" is a field of the agent's
+# registry entry, `mail-declined: <YYYY-MM-DD>`, written by one command from
+# wherever the owner answered (DL #2, #3); the registry is intercom's own and
+# shared by the machines, so no project has to commit anything for it.
+
+# intercom_mail_declined <identity> — the date the owner last said no, or nothing.
+intercom_mail_declined() { intercom_registry_get "$1" '.["mail-declined"] // empty'; }
+
+# intercom_mail_decline <identity> [--undo] — record the owner's "no" with today's
+# date, or with --undo take it back. Needs jq, like every registry write.
+intercom_mail_decline() {
+  local id="$1" rf tmp prog
+  command -v jq >/dev/null 2>&1 || { printf 'intercom: recording a refusal needs jq.\n' >&2; return 1; }
+  rf="$(intercom_registry_file "$id")"
+  [ -f "$rf" ] || { printf 'intercom: ✗ no registered agent `%s` (intercom directory lists them).\n' "$id" >&2; return 1; }
+  if [ "${2:-}" = "--undo" ]; then prog='del(.["mail-declined"])'; else prog='.["mail-declined"] = $d'; fi
+  tmp="$(mktemp 2>/dev/null)" || return 1
+  if jq --arg d "$(_intercom_today)" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$prog | .updated = \$now" "$rf" > "$tmp" 2>/dev/null; then
+    mv "$tmp" "$rf" 2>/dev/null || { rm -f "$tmp"; return 1; }
+  else
+    rm -f "$tmp"; return 1
+  fi
+}
+
+# intercom_mail_candidate <identity> — "<letters>\t<oldest, in days>" when that
+# inbox is past the threshold and no "no" was said since its oldest letter came;
+# nothing otherwise. The crossing is new when the oldest counted letter is
+# younger than the refusal (DL #3): everything waiting now came after the "no".
+# Whether a checkout is here and the key is on, the callers ask themselves.
+intercom_mail_candidate() {
+  local backlog n days declined dage
+  backlog="$(intercom_backlog "$1")"
+  [ -n "$backlog" ] || return 0
+  n="${backlog%%$'\t'*}"; days="${backlog#*$'\t'}"
+  [ "$n" -ge "$INTERCOM_BACKLOG_MIN" ] && [ "$days" -ge "$INTERCOM_BACKLOG_DAYS" ] || return 0
+  declined="$(intercom_mail_declined "$1")"
+  if [ -n "$declined" ]; then
+    dage="$(_intercom_days_between "$declined" "$(_intercom_today)")"
+    [ -z "$dage" ] || [ "$days" -lt "$dage" ] || return 0
+  fi
+  printf '%s\t%s\n' "$n" "$days"
+}
+
+# _intercom_days_between <YYYY-MM-DD> <YYYY-MM-DD> — whole days from the first to
+# the second, or nothing when either is not a date.
+_intercom_days_between() {
+  awk -v a="$1" -v b="$2" '
+    function days(s,   y, m, d, era, yoe, doy) {
+      if (s !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/) return -1
+      y = substr(s, 1, 4) + 0; m = substr(s, 6, 2) + 0; d = substr(s, 9, 2) + 0
+      y -= (m <= 2)
+      era = int(y / 400); yoe = y - era * 400
+      doy = int((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5) + d - 1
+      return era * 146097 + yoe * 365 + int(yoe / 4) - int(yoe / 100) + doy
+    }
+    BEGIN { x = days(a); y = days(b); if (x >= 0 && y >= 0) print y - x }'
+}
+
+# intercom_mail_candidates — "<identity>\t<letters>\t<oldest days>\t<checkout>"
+# for every registered agent with a working checkout on this machine, no intercom
+# session switched on, and a candidate inbox (above). The machine view the HQ's
+# hook reads (DL #2); this repository shows no other project anything itself.
+intercom_mail_candidates() {
+  local rf id checkout cand
+  while IFS= read -r rf; do
+    id="${rf##*/}"; id="${id%.json}"
+    [ -n "$id" ] || continue
+    checkout="$(intercom_checkouts "$id" | head -n 1)"
+    [ -n "$checkout" ] || continue
+    cand="$(intercom_mail_candidate "$id")"
+    [ -n "$cand" ] || continue
+    intercom_mail_switched_on "$id" && continue
+    printf '%s\t%s\t%s\n' "$id" "$cand" "$checkout"
+  done < <(_intercom_registry_files)
 }
 
 # intercom_mail_switched_on <identity> — some working checkout of it here has

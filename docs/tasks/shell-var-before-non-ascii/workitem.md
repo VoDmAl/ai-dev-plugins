@@ -2,10 +2,10 @@
 title: "shell-syntax: `$имя` вплотную к не-ASCII под bash 3.2"
 slug: shell-var-before-non-ascii
 description: "Научить shell-syntax-check называть `$имя` перед не-ASCII байтом в sh/bash-файлах"
-status: in-progress
+status: done
 session-type: other
 created: 2026-10-29
-last-updated: 2026-10-31
+last-updated: 2026-11-01
 ---
 
 # shell-syntax: `$имя` вплотную к не-ASCII под bash 3.2
@@ -37,7 +37,7 @@ bash 3.2 — `/bin/sh` и `/bin/bash` на macOS — под UTF-8-локалью
 - Шаблон брифа: `\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]`, вне одинарных кавычек и комментариев. Из
   замера добавляются ещё два исключения — heredoc с кавычками у ограничителя и `\$` — и одно
   включение: heredoc без кавычек (DL #2).
-- **Реализовано 2026-10-31, не выпущено** (DL #4, #5): `names_check` в `shell-syntax-check.sh` на всех трёх
+- **Выпущено: vdm 2.67.0, коммит `5449af5`, push 2026-10-31; итог vdx ушёл** (DL #4, #5): `names_check` в `shell-syntax-check.sh` на всех трёх
   поверхностях, блокирует; только файлы sh/bash; сканер — awk по байтам. Тест — 61/0, мутанты роняют каждый свою
   проверку; дерево — 0 находок, и ни один файл сканер не заканчивает внутри кавычки или heredoc.
 
@@ -167,12 +167,13 @@ bash 4+ не проверялся: ни `/opt/homebrew/bin/bash`, ни `/usr/loc
       сравнение по байтам (`LC_ALL=C`; в BSD grep нет `-P` и `\x`), только файлы, которые встретит
       sh или bash, подсказка «пиши `${имя}`»
 - [x] Прогнать по дереву репозитория (ожидается 0, DL #2) и `--staged`
-- [ ] README (строки PostToolUse и pre-commit про shell-syntax), MINOR-бамп vdm в `plugin.json` и
+- [x] README (строки PostToolUse и pre-commit про shell-syntax), MINOR-бамп vdm в `plugin.json` и
       `marketplace.json`, запись в `PROJECT_CHANGELOG.md`; `distill-scan.sh --drift` для `docs/model/suite.md`
 - [x] Sidetrack #1: решить, входит ли zsh с буквами в правило, — DL-запись или отдельный кристалл
 - [x] Sidetrack #2: проверить bash 5 на другой машине или писать подсказку без утверждения о нём
 - [x] Sidetrack #3: охват правила — и `tests/*.sh`; полевой случай 30.10 — в красный тест как форма `"«$T1»"`
-- [ ] Outcome to `vdx`: `intercom reply sh-var-before-non-ascii --done "<правило в shell-syntax-check, версия vdm>" --ball "nobody — closed"`
+- [x] Outcome to `vdx`: `intercom reply sh-var-before-non-ascii --done "<правило в shell-syntax-check, версия vdm>" --ball "nobody — closed"` —
+      2026-11-01, `vdx/sh-var-before-non-ascii-outcome`; сессия vdx-d3 разбужена указателем
 
 ## References
 

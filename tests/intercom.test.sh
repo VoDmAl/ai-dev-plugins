@@ -1879,7 +1879,12 @@ mkrepo "$TMP/pile" "git@example.com:acme/pile.git"
 ( cd "$TMP/pile" && bash "$IC" register --name "pile" --describe "a project whose mail piles up" >/dev/null 2>&1 )
 for s in pl-1 pl-2 pl-3 pl-4; do ( cd "$TMP/hop-a" && bash "$IC" send pile "$s" --body "$B/live.md" >/dev/null 2>&1 ); done
 ( cd "$TMP/pile" && bash "$IC" send pile pl-note --body "$B/live.md" >/dev/null 2>&1 )
-later="$(date -u -v+9d +%Y-%m-%d 2>/dev/null || date -u -d '+9 days' +%Y-%m-%d)"
+# Dates from the letters themselves, not from the clock a second time: a suite
+# that crossed midnight UTC between sending and `date -u` aged the oldest letter
+# 10 days where 9 were asserted (intercom-mail-candidates, Sidetrack #2).
+d0="$(sed -n 's/^created: \([0-9-]*\)T.*/\1/p' "$VDM_INTERCOM_ROOT/pile/pl-1.md")"
+dplus() { date -j -v+"$1"d -f %Y-%m-%d "$d0" +%Y-%m-%d 2>/dev/null || date -u -d "$d0 +$1 days" +%Y-%m-%d; }
+later="$(dplus 9)"
 startline() { ( cd "$TMP/pile" && printf '{}' | VDM_INTERCOM_TODAY="$1" bash "$HOOK" ); }
 says_not "four letters from others and a note to itself — no offer yet" "$(startline "$later")" "📨"
 ( cd "$TMP/hop-a" && bash "$IC" send pile pl-5 --body "$B/live.md" >/dev/null 2>&1 )
@@ -1889,13 +1894,50 @@ says "…with the key and what it costs" "$out" '{\"session\": true}'
 says_not "RED: …and the key it names has no mail in it" "$out" "mail-session"
 says "…in the project's own settings" "$out" ".claude/vdm-plugins.json, and costs a whole agent session"
 says "…and whose word it is" "$out" "offer it to the user"
-says_not "five, but all younger than three days — no offer" "$(startline "$(date -u +%Y-%m-%d)")" "📨"
+says_not "five, but all younger than three days — no offer" "$(startline "$d0")" "📨"
 says_not "a focused session is not offered it" "$( cd "$TMP/pile" && printf '{}' | VDX_FOCUSED=1 VDM_INTERCOM_TODAY="$later" bash "$HOOK" )" "📨"
 out="$( cd "$TMP/hop-a" && VDM_INTERCOM_TODAY="$later" bash "$IC" sent 2>&1 )"
 says "RED: the sender's sent names the recipient with no intercom session" "$(printf '%s\n' "$out" | grep '📨')" "\`pile\`"
 eq "…in one line after the list, each recipient once" "$(printf '%s\n' "$out" | grep -c '📨'):$(printf '%s\n' "$out" | grep '📨' | grep -o '`pile`' | wc -l | tr -d ' ')" "1:1"
+
+# The machine view an HQ's hook reads (intercom-mail-candidates, DL #2).
+cands() { ( cd "$TMP/hop-a" && VDM_INTERCOM_TODAY="$later" bash "$IC" mail-candidates "$@" 2>&1 ); }
+says "RED: mail-candidates names the project, its count and its oldest" "$(cands)" "pile — 5 letters, the oldest 9d"
+cj="$(cands --json)"
+printf '%s' "$cj" | jq -e '.candidates[] | select(.identity == "pile") | (.letters == 5 and .oldest_days == 9 and (.checkout | length > 0))' >/dev/null 2>&1 \
+  && ok "RED: …and the same as JSON, with the checkout" || bad "RED: …and the same as JSON, with the checkout" "$cj"
+printf '%s' "$cj" | jq -e '.threshold.letters == 5 and .threshold.oldest_days == 3' >/dev/null 2>&1 \
+  && ok "…with the threshold, one copy of it" || bad "…with the threshold, one copy of it" "$cj"
+
+# What the threshold counts (DL #4): a letter released with a note is handled;
+# one taken by a session of another machine is in work.
+( cd "$TMP/pile" && bash "$IC" release pl-5 --note "waits for a deploy" >/dev/null 2>&1 )
+says_not "RED: a letter released with a note is not counted — four, no offer" "$(startline "$later")" "📨"
+( cd "$TMP/pile" && bash "$IC" take pl-5 >/dev/null 2>&1 && bash "$IC" release pl-5 >/dev/null 2>&1 )
+awk 'NR == 1 { print; print "taken: m-other/pile-7 2026-10-04T10:00:00Z"; next } { print }' \
+  "$VDM_INTERCOM_ROOT/pile/pl-4.md" > "$TMP/pl4" && mv "$TMP/pl4" "$VDM_INTERCOM_ROOT/pile/pl-4.md"
+says_not "RED: a letter taken by a session of another machine is not counted either" "$(startline "$later")" "📨"
+sed -i.bak '/^taken: /d' "$VDM_INTERCOM_ROOT/pile/pl-4.md" && rm -f "$VDM_INTERCOM_ROOT/pile/pl-4.md.bak"
+says "…untaken again, the five are offered again" "$(startline "$later")" "📨 5 letters"
+
+# The owner's no holds until mail piles up anew (DL #3).
+out="$( cd "$TMP/hop-a" && VDM_INTERCOM_TODAY="$d0" bash "$IC" mail-candidates decline pile 2>&1 )"; rc=$?
+eq "the owner's no is recorded from anywhere" "$rc" "0"
+eq "…in the registry entry, dated" "$(jq -r '.["mail-declined"] // ""' "$VDM_INTERCOM_ROOT/_registry/pile.json")" "$d0"
+says_not "RED: after a no, the start line asks no more" "$(startline "$later")" "📨"
+says_not "RED: …nor does sent" "$( cd "$TMP/hop-a" && VDM_INTERCOM_TODAY="$later" bash "$IC" sent 2>&1 | grep '📨' || echo none )" "\`pile\`"
+says_not "RED: …nor the machine view" "$(cands)" "pile —"
+for f in "$VDM_INTERCOM_ROOT"/pile/pl-*.md; do
+  sed -i.bak "s/^created: .*/created: $(dplus 1)T00:00:00Z/" "$f" && rm -f "$f.bak"
+done
+says "RED: mail that piled up after the no is asked about again" "$(startline "$later")" "📨 5 letters"
+says "…and listed again" "$(cands)" "pile — 5 letters, the oldest 8d"
+( cd "$TMP/hop-a" && bash "$IC" mail-candidates decline pile --undo >/dev/null 2>&1 )
+eq "--undo takes the no back" "$(jq -r '.["mail-declined"] // "none"' "$VDM_INTERCOM_ROOT/_registry/pile.json")" "none"
+
 mkdir -p "$TMP/pile/.claude"; printf '{"intercom":{"session":true}}\n' > "$TMP/pile/.claude/vdm-plugins.json"
 says_not "the key switched on — the start line offers nothing" "$(startline "$later")" "📨"
+says_not "…nor the machine view" "$(cands)" "pile —"
 says_not "…nor does sent" "$( cd "$TMP/hop-a" && VDM_INTERCOM_TODAY="$later" bash "$IC" sent 2>&1 | grep '📨' || echo none )" "\`pile\`"
 rm -rf "$TMP/pile" "$VDM_INTERCOM_ROOT/pile" "$VDM_INTERCOM_ROOT/_registry/pile.json"
 

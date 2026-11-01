@@ -363,6 +363,7 @@ re-derive its logic:
 | `pickup <slug> [--grow] [--force]` | Archive a message to `_done/` (or, with `--grow`, hand it to `/vdm:crystal-grow` — the letter stays in the inbox, marked taken). Refuses a letter taken by another session unless `--force`. When the sender has a live session on this machine, prints the receipt to send it (§ Delivery is not receipt). For a brief whose outcome has not gone back yet it prints the `reply` that closes it; with `--grow` it prints that as a Next action for the crystal (§ Closing a brief with its outcome). |
 | `reply <letter> (--done "<what>" [--link <url>]… --ball "<who — what ⏰ date>" \| --body FILE) [--title T] [--slug S] [--force]` | Close a letter **you received** with its outcome. It goes to the letter's sender as a `reply-to` link; recipient and link come from the envelope. Works on a letter in the inbox (archived in the same step; refused while another session has it taken, unless `--force`) or in `_done/`. `--done` and `--ball` repeat; `--ball` is required — "nobody — closed" is an answer (§ Closing a brief with its outcome). |
 | `sent` (aka `outbox`) | Every letter **you** wrote that still lies unpicked in someone's inbox, oldest first, with its age and whether the recipient has a live session to wake now — or an intercom session to start (§ Intercom sessions). |
+| `mail-candidates [--json]` · `mail-candidates decline <agent> [--undo]` | The projects on this machine whose mail piles up past the threshold with no intercom session switched on and no standing no from the owner — the view an HQ's hook reads; `decline` records the owner's no in the agent's registry entry until mail piles up anew (§ Intercom sessions). |
 | `close` | In an intercom session, once its inbox is handled: run `vdx ai --close --waiting <n>`, n being the letters it took and left for the user. Refused outside an intercom session and while a letter nobody took is in the inbox (§ Intercom sessions). |
 | `topics [<agent>]` | The topics of that agent's live focused sessions on this machine — this repository's without an argument, this session included (§ A focused session's topic). |
 | `topic <letter> "<topic>"` · `topic <letter> --miss "<why>"` · `topic <letter> --missed "<topic>" "<why>"` | Name a letter's topic afterwards (its sender, or its recipient handing it on); give back a letter off your topic; record a letter on a topic that went past. Each prints whom the letter goes to now and the wake for it (§ A focused session's topic). |
@@ -877,7 +878,18 @@ anything the user reads is "intercom session" ("сессия intercom").
   says so (`📨`): offer the intercom session to the user once, in one line; the key
   is the project's own commit. The sender's `sent` names such recipients in one
   line after the list. A note to oneself is not counted, nor is a recipient
-  with no working checkout here. One case where the
+  with no working checkout here, nor a letter released with a note or taken by a
+  session that is live here or runs on another machine — those are handled or
+  in work; one whose session is gone counts. **The owner's answer holds**
+  (2026-10-28): `intercom.sh mail-candidates decline <agent>` records a no in
+  the agent's registry entry, dated, and neither line asks again until the
+  mail piles up anew — until the oldest counted letter is younger than the no
+  (`--undo` takes it back). **An HQ asks across projects**:
+  `intercom.sh mail-candidates [--json]` lists the projects on this machine past
+  the threshold with no key and no standing no — identity, count, the oldest,
+  the checkout, what switches it on, the decline command. This repository shows
+  no other project anything at the start of a session; the HQ's hook reads that
+  view and puts the question to the owner where they work. One case where the
   start does not happen: a checkout Claude Code does not trust yet on this
   machine (a new folder, or one that moved). From vdx 0.39 nothing starts
   there: the command exits 4 and prints the one to run at a terminal. Hand that

@@ -189,14 +189,14 @@ if intercom_mail_session; then
 fi
 
 # Mail piling up here, with no intercom session switched on: offered once per
-# session start, to be put to the user in a line (see intercom_backlog).
+# session start, to be put to the user in a line — unless the owner said no
+# since the oldest of those letters came (see intercom_mail_candidate).
 if ! intercom_mail_session; then
-  backlog="$(intercom_backlog "$id" 2>/dev/null)"
+  backlog="$(intercom_mail_candidate "$id" 2>/dev/null)"
   b_n="${backlog%%$'\t'*}"; b_days="${backlog#*$'\t'}"
-  if [ -n "$backlog" ] && [ "$b_n" -ge "$INTERCOM_BACKLOG_MIN" ] && [ "$b_days" -ge "$INTERCOM_BACKLOG_DAYS" ] \
-     && ! intercom_mail_switched_on "$id"; then
+  if [ -n "$backlog" ] && ! intercom_mail_switched_on "$id"; then
     msg="${msg}
-📨 ${b_n} letters from other agents wait in this inbox, the oldest ${b_days}d. An intercom session — a separate agent session that takes letters as they come — would answer them without waiting for a session here: offer it to the user once, in one line. It is switched on by this project's own commit, \`\"intercom\": {\"session\": true}\` in .claude/vdm-plugins.json, and costs a whole agent session per project and machine."
+📨 ${b_n} letters from other agents wait in this inbox, the oldest ${b_days}d. An intercom session — a separate agent session that takes letters as they come — would answer them without waiting for a session here: offer it to the user once, in one line. It is switched on by this project's own commit, \`\"intercom\": {\"session\": true}\` in .claude/vdm-plugins.json, and costs a whole agent session per project and machine. The user says no: \`intercom mail-candidates decline ${id}\` — asked again only when mail piles up anew."
   fi
 fi
 
