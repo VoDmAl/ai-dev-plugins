@@ -133,6 +133,12 @@ says_not_w() { case "$2" in *"$3"*) bad "$1" "output should not mention: $3" ;; 
 other="$(remind_as "$L" sess-other)"
 says "another session's line is not this one's: the usual reminder" "$other" "[git-guard]"
 says_not_w "…with nothing about a waiting line" "$other" "still waiting"
+# A line whose message file someone deleted is not silence: it is named lost,
+# with what to do (docs/tasks/git-guard-line-lifetime, DL #4).
+rm -f "$HOME/.local/state/vdm-git/sess-w/"*.txt
+lost="$(remind_as "$L" sess-w)"
+says "RED: a line whose message file went outside git-guard is named lost" "$lost" "is lost: its message file was deleted outside git-guard"
+says "…with what to do: prepare again, no --supersede" "$lost" "no --supersede needed"
 printf '{"git-guard":{"mode":"silent"}}\n' > "$L/.claude/vdm-plugins.json"
 silent "silent stays silent, a waiting line or not" "$(remind_as "$L" sess-w)"
 

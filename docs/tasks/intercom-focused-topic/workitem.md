@@ -2,10 +2,10 @@
 title: "intercom: письма по теме focused-сессии — к ней, остальным — нет"
 slug: intercom-focused-topic
 description: "Будить focused-сессию письмами по её теме и считать промахи маршрута"
-status: in-progress
+status: dormant
 session-type: prd-prep
 created: 2026-10-27
-last-updated: 2026-10-30
+last-updated: 2026-10-31
 ---
 
 # intercom: письма по теме focused-сессии — к ней, остальным — нет
@@ -60,7 +60,8 @@ focused-сессии называет тему — она попадёт в тр
   - сессия intercom, `take` и побудка не трогают письмо живого держателя темы (DL #4).
 - **vdx получил промежуточный ответ** `focused-topic-letters-outcome` (2026-10-30); его мяч — не менять имя опции и
   строку темы без письма. Бриф `focused-topic-letters` в архиве.
-- **Осталось после коммита:** итоги vdx и echelon, срок разбора промахов — выпуск + 14 дней (Next actions).
+- **Выпущено 2026-10-31** (push `d0b65b9`); итоги vdx и echelon ушли. Остался разбор промахов с vdx
+  (due: 2026-11-14 в Next actions).
 
 ## Decision Log
 
@@ -210,14 +211,18 @@ intercom такое письмо открытым не считает, а `send`
       что нужно от vdx») — 2026-10-30, `focused-topic-letters-outcome`: DL #2–#5, оба slug названы; мяч vdx — не
       менять `@vdx_topic` и строку темы без письма. Бриф `focused-topic-letters` в архиве, окончательный итог — пунктом
       ниже, со своим slug
-- [ ] Outcome to `vdx` — окончательный, после выпуска: intercom reply focused-topic-letters --slug
+- [x] Outcome to `vdx` — окончательный, после выпуска: intercom reply focused-topic-letters --slug
       focused-topic-letters-result --done "<как устроено, версия vdm>" --ball "vdx — разбор промахов ⏰ <дата
       выпуска + 14 дней>". Бриф уже в архиве (`take --force` сделан 2026-10-30, промежуточный итог ушёл), поэтому
-      slug свой. Назвать в тексте и `focused-topic-shipped`
-- [ ] Разбор промахов вместе с vdx через две недели после выпуска — срок поставить в день выпуска
-- [ ] Outcome to `echelon`: intercom reply focused-own-by-subject --done "<как мерило легло в
+      slug свой. Назвать в тексте и `focused-topic-shipped` — 2026-10-31, `vdx/focused-topic-letters-result`: выпуск
+      2.66.0 (`d0b65b9`, push 31.10), отличия от промежуточного, счёт; мяч vdx — не менять `@vdx_topic` без письма.
+      Не будили: последний ход владельца в vdx был на m3, письмо ждёт ту сессию
+- [ ] Разбор промахов вместе с vdx: прислать vdx выдачу `intercom topic-misses --since 2026-10-31` и разобрать её
+      вместе — выпуск 2.66.0 был 2026-10-31, срок обещан vdx в `focused-topic-letters-result` (due: 2026-11-14)
+- [x] Outcome to `echelon`: intercom reply focused-own-by-subject --done "<как мерило легло в
       устройство>" --ball "echelon — передать штабу; его запись памяти о focused-режиме становится
-      указателем". Письмо в архиве `_done/`
+      указателем". Письмо в архиве `_done/` — 2026-10-31, `echelon/focused-own-by-subject-outcome`; сессия intercom
+      echelon запущена (`vdx ai --intercom --detach`)
 
 ### Pending sidetracks
 

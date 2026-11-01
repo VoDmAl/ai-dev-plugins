@@ -55,6 +55,9 @@ TMP=$(cd "$TMP" && pwd -P)
 trap 'rm -rf "$TMP"' EXIT
 export HOME="$TMP/home"; mkdir -p "$HOME"
 export TMPDIR="$TMP/tmpdir"; mkdir -p "$TMPDIR"
+# The helper keeps its files in the state directory (git-guard-line-lifetime,
+# DL #1); pointed at TMPDIR here, so sidecars() below lists them.
+export GIT_GUARD_STATE_DIR="$TMPDIR"
 export GIT_GUARD_SHORT_DIR="$TMP/short"
 export GIT_GUARD_SYNC_CHECK=off
 export CLAUDE_CODE_SESSION_ID=check-session
@@ -86,6 +89,7 @@ line=$(out_of "$out")
 msgfile=$(printf '%s' "$line" | sed -n "s/^\[ -f '\([^']*\)'.*/\1/p")
 [ -f "$msgfile" ] && ok "…and its message file is there" || bad "…and its message file is there" "$line"
 before=$(sidecars)
+says "the canary: the listing sees the waiting line's files" "$before" ".txt"
 
 out=$(run "$R" --check)
 eq "RED: --check while the line waits → exit 0, not the waiting refusal" "0" "$(rc_of "$out")"

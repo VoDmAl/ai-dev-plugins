@@ -62,6 +62,9 @@ expect_not_says() { [ -n "$2" ] || { bad "$1" "output is empty — absence prove
 TMP=$(mktemp -d 2>/dev/null || mktemp -d -t fffd)
 cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT
+# The helper's files go to the user's state directory unless told otherwise;
+# each fixture below points it at its own tmp/, and this catches anything else.
+export GIT_GUARD_STATE_DIR="$TMP/state" GIT_GUARD_SHORT_DIR="$TMP/short"
 
 new_repo() {
   local d="$TMP/$1"
@@ -91,7 +94,7 @@ echo "== git-guard-prepare: the surface with no installation step =="
 # --supersede, or the U+FFFD verdicts would be about a waiting line instead.
 
 d=$(new_repo prep); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'чистый текст\n' > clean.md
 git add clean.md
 out=$("$PREP" "[*] clean" 2>&1); rc=$?
@@ -162,7 +165,7 @@ echo "== binary files and renames (field report 2026-09-23) =="
 binary_blob() { printf '%%PDF-1.7\n\000\001\002 stream \xef\xbf\xbd data \000\n'; }
 
 d=$(new_repo binprep); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 binary_blob > flows.pdf
 git add flows.pdf
 out=$("$PREP" "[*] attach the flows" 2>&1); rc=$?
@@ -212,7 +215,7 @@ expect_says "RED (pre-commit): …under its new name" "$out" "new.md"
 # top-relative paths from the caller's cwd. Run from a subdirectory, `sub/x.md`
 # became `sub/sub/x.md`, no file was found, and both checks passed in silence.
 d=$(new_repo subdir); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 mkdir -p sub
 corrupt_text > sub/broken.md
 git add sub/broken.md

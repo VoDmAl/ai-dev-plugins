@@ -122,7 +122,7 @@ When the assistant has finished work that warrants a commit — implementation d
 
        git-guard-prepare "[+] Add foo helper"
 
-   It writes the message to a per-prep file under `${TMPDIR:-/tmp}` and prints a single-line `git commit -F <path> -- <paths>` command on stdout, opening with a check that its message file still exists (`[ -f <path> ] || { echo …; false; } &&`) and then, in the pathspec forms, a check that the listed paths still match the index (`{ git --no-pager … diff --stat --exit-code -- <paths> >&2 || …; } &&`). Capture it and hand it off **verbatim** — the explicit pathspec is the point (see [Why the pathspec](#why-the-pathspec-is-not-optional)), the first check is what stops a dead line before any hook runs (see [A line that is still waiting](#a-line-that-is-still-waiting)), and the second stops an edit nobody staged (see [A file someone else staged](#a-file-someone-else-staged-is-not-yours-to-edit)).
+   It writes the message to a per-prep file under `${XDG_STATE_HOME:-~/.local/state}/vdm-git` (see [Where the files live](#where-the-files-live)) and prints a single-line `git commit -F <path> -- <paths>` command on stdout, opening with a check that its message file still exists (`[ -f <path> ] || { echo …; false; } &&`) and then, in the pathspec forms, a check that the listed paths still match the index (`{ git --no-pager … diff --stat --exit-code -- <paths> >&2 || …; } &&`). Capture it and hand it off **verbatim** — the explicit pathspec is the point (see [Why the pathspec](#why-the-pathspec-is-not-optional)), the first check is what stops a dead line before any hook runs (see [A line that is still waiting](#a-line-that-is-still-waiting)), and the second stops an edit nobody staged (see [A file someone else staged](#a-file-someone-else-staged-is-not-yours-to-edit)).
 
    For a multi-line message (subject + body), pipe via `-`:
 
@@ -140,9 +140,9 @@ When the assistant has finished work that warrants a commit — implementation d
    - **the commit message itself** as a quoted preview, so the user can review it without opening the file;
    - the one-line command from step 3, **as inline code** (single backticks) on its own line — never inside a fenced code block, never inside a heredoc.
 
-   Write the full path verbatim — never abbreviate it with `…` or `/var/folders/<hash>/T/...` in your narration. On macOS the temp path is long (`/var/folders/<id>/T/vdm-git-<uid>/<session>/<repo>-<branch>-commit-<token>.txt`) and that is fine; the user copies the command line, they don't retype it.
+   Write the full path verbatim — never abbreviate it with `…` or `~/.local/state/...` in your narration. The path is long (`/Users/<you>/.local/state/vdm-git/<session>/<repo>-<branch>-commit-<token>.txt`) and that is fine; the user copies the command line, they don't retype it.
 
-5. **While it waits, end every turn with its short call.** Besides the line, the helper keeps the same commit as a short call, `sh /tmp/vdm-git-<uid>/<token>.sh` (see [The short call](#the-short-call)). Hand off the full line first. On every later turn until the user runs it, end the turn with the short call, as inline code on its own line. The reminder names it at the start of each such turn, and `git-guard-prepare --pending` prints it.
+5. **While it waits, end every turn with its short call.** Besides the line, the helper keeps the same commit as a short call, `sh ~/.local/state/vdm-git/sh/<token>.sh` (see [The short call](#the-short-call)). Hand off the full line first. On every later turn until the user runs it, end the turn with the short call, as inline code on its own line. The reminder names it at the start of each such turn, and `git-guard-prepare --pending` prints it.
 
    Example:
 
@@ -154,7 +154,7 @@ When the assistant has finished work that warrants a commit — implementation d
    > Message:
    > > [+] Add token expiry handling
    >
-   > `git commit -F /tmp/product-feat-auth-commit-1757520411-48213.txt -- 'src/auth.ts' 'tests/auth.test.ts'`
+   > `git commit -F /home/me/.local/state/vdm-git/product-feat-auth-commit-1757520411-48213.txt -- 'src/auth.ts' 'tests/auth.test.ts'`
 
 5. **Do not execute the commit yourself.** The user runs the command (or aborts) — the gate is theirs.
 
@@ -376,7 +376,7 @@ What this asks of you:
   anything is what produces two lines side by side in the first place.
 
 **The unit is a session, not the branch.** Trios live under
-`${TMPDIR}/vdm-git-<uid>/<session>/` when the harness names its session
+`<state>/<session>/` when the harness names its session
 (`CLAUDE_CODE_SESSION_ID`), so two sessions on one repo and branch never touch
 each other's lines. Until vdm-git 2.15.0 the unit was the branch. Field report
 (`executor`, 2026-09-12, three sessions on trunk as a standing practice):
@@ -437,7 +437,7 @@ then gave a new task, and when the line was due it lay hundreds of lines up. The
 owner: past a hundred lines or so, pack it into a short call, and repeat that.
 
 So every prep also writes the line into a script named by the prep's own token,
-`/tmp/vdm-git-<uid>/<token>.sh`, whose call is `sh <that script>`. The prep does
+`<state>/sh/<token>.sh`, whose call is `sh <that script>`. The prep does
 not print the call: its stderr stays silent after a clean prep, because that
 silence is how the detector says the previous commit matched. The script holds
 the same line, with the message-file check and the path list inside. It changes into the directory the paths are named from, so the call
@@ -451,17 +451,41 @@ Left behind, it would still stop at its first line.
   the turn with it. `git-guard-prepare --pending` prints the call (exit 0), or
   the subject alone when the line has no script (exit 3), or nothing when no
   line waits (exit 1).
-- The script lives in `/tmp`, not `$TMPDIR`: on macOS the latter is a long
-  `/var/folders/…` path, and a short call is the point. `/tmp` is shared, so the
-  directory must be the user's own — a real directory, not a symlink, owned by
-  them, writable by nobody else — and the script the user's own regular file.
-  The writer checks that before writing and the reader before naming a call: a
-  directory found there later may have been made by someone else, with a script
-  under a guessed token. Failing it, no short call exists and the full line
-  stands. `GIT_GUARD_SHORT_DIR` moves it (tests).
+- The script lives in `<state>/sh/` (see [Where the files live](#where-the-files-live)).
+  The directory must be the user's own — a real directory, not a symlink, owned
+  by them, writable by nobody else — and the script the user's own regular file.
+  The writer checks that before writing and the reader before naming a call: the
+  check dates from `/tmp`, where a directory found later may have been made by
+  someone else, and stays for `GIT_GUARD_SHORT_DIR`, which moves it (tests).
+  Failing it, no short call exists and the full line stands.
 - **The script removes itself when it ends, whatever the outcome** (the owner,
   23.10). Run once, it cannot run again; a commit that failed needs a new line
   with `--supersede`, as the full line does.
+
+### Where the files live
+
+Until vdm-git 2.26 the trios sat under `$TMPDIR` and the short calls under
+`/tmp`. macOS cleans both by itself — files nobody touched for three days.
+Field report (a project's agent, 2026-10-31): the owner held a line for five
+days, waiting for something of their own; overnight the short call was gone,
+and the full line said "void", which reads as "replaced". A line that waits is
+state, so the files live in `${XDG_STATE_HOME:-~/.local/state}/vdm-git` (mode
+700; `GIT_GUARD_STATE_DIR` moves it): not `.git` and not `~/.claude`, which the
+owner's machines sync, and not a cache, which anything may clean.
+
+- **What the OS cleaned, the helper cleans.** At every prep, another session's
+  line unused for 30 days is retired as expired (`GIT_GUARD_EXPIRE_DAYS`), and
+  records of a line's death that old go. Your own session's lines are not
+  touched: a prep replaces them.
+- **A line that dies says why.** Whatever the helper deletes leaves a one-line
+  record beside it, and a stub in place of the short call prints the same line:
+  replaced by a newer line, already committed as `<sha>`, untraceable after a
+  rewrite of history, expired. A dead line with no record had its message file
+  deleted outside git-guard, and says that.
+- **A lost line is named.** When a line's record is there and its message file
+  is not, `--pending` exits 4 with the reason and the reminder says to prepare
+  the line again — no `--supersede` needed — and to tell the user the earlier
+  one is void.
 
 ### Amending
 
@@ -502,7 +526,8 @@ If `git-guard-prepare` is not on the PATH (older install / alternate harness), r
     repo=$(basename "$(git rev-parse --show-toplevel)")
     branch=$(git symbolic-ref --short HEAD 2>/dev/null \
       | sed -e 's|[^A-Za-z0-9_-]|-|g' -e 's|-\{2,\}|-|g' -e 's|^-||' -e 's|-$||')
-    base="${TMPDIR:-/tmp}/${repo}-${branch:-detached}-commit"
+    state="${XDG_STATE_HOME:-$HOME/.local/state}/vdm-git"; mkdir -p -m 700 "$state"
+    base="$state/${repo}-${branch:-detached}-commit"
     rm -f "$base"*.txt "$base"*.paths      # any earlier line is superseded — kill it
     path="${base}-$(date +%s)-$$.txt"      # a name that is never issued twice
 

@@ -502,7 +502,7 @@ def build_block_message(op_name, reason, command):
         lines.append('       git-guard-prepare "<subject>"')
         lines.append("")
         lines.append(
-            "     It writes a per-prep message file under ${TMPDIR:-/tmp} and"
+            "     It writes a per-prep message file under ~/.local/state/vdm-git and"
         )
         lines.append(
             "     prints a single-line `git commit -F <path> -- <paths>`"

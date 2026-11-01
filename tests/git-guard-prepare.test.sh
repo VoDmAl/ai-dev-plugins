@@ -90,8 +90,11 @@ expect_eq() {
 TMP=$(mktemp -d 2>/dev/null || mktemp -d -t ggprep)
 cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT
-# The short call's scripts go to /tmp by default; a suite keeps them in its own.
-export GIT_GUARD_SHORT_DIR="$TMP/short"
+# The helper keeps its files in the user's state directory
+# (~/.local/state/vdm-git); a suite keeps them in its own. Each fixture points
+# the state directory at its own tmp/ beside TMPDIR, and this default catches a
+# prep run before any fixture does.
+export GIT_GUARD_SHORT_DIR="$TMP/short" GIT_GUARD_STATE_DIR="$TMP/state"
 
 # Fresh repo with one base commit. Each test gets its own so state cannot leak.
 new_repo() {
@@ -116,7 +119,7 @@ run_emitted() { eval "$1"; }
 printf '\n=== path list ===\n'
 
 d=$(new_repo basic); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'a\n' > a.txt; printf 'b\n' > b.txt
 git add a.txt b.txt
 out=$("$PREP" "[*] two files" 2>&1); rc=$?
@@ -128,7 +131,7 @@ expect_says "names b.txt" "$out" "'b.txt'"
 printf '\n=== the defect from the brief: a parallel session stages its own ===\n'
 
 d=$(new_repo parallel); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'mine\n' > mine.txt
 git add mine.txt
 cmd=$("$PREP" "[*] mine only")
@@ -145,14 +148,14 @@ expect_eq "foreign file still staged afterwards" "theirs.txt" "$(git diff --cach
 printf '\n=== refusals ===\n'
 
 d=$(new_repo empty); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 out=$("$PREP" "[*] nothing" 2>&1); rc=$?
 expect_exit "empty index → exit 1" 1 "$rc"
 expect_says "empty index names the fix" "$out" "git add"
 expect_not_says "empty index emits no command" "$out" "git commit -F"
 
 d=$(new_repo diverge); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'staged\n' > a.txt
 git add a.txt
 printf 'worktree\n' > a.txt      # edited after `git add`
@@ -179,7 +182,7 @@ expect_not_says "scoped emit omits b.txt" "$out" "'b.txt'"
 printf '\n=== explicit subset ===\n'
 
 d=$(new_repo subset); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'a\n' > a.txt; printf 'b\n' > b.txt
 git add a.txt b.txt
 cmd=$("$PREP" "[*] subset" -- a.txt)
@@ -201,7 +204,7 @@ printf '\n=== renames (the trap the brief got backwards) ===\n'
 # leaves the old path in the tree. --no-renames is what prevents it.
 
 d=$(new_repo rename); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'x\n' > old.txt
 git add old.txt
 git commit -qm "add old.txt"
@@ -220,7 +223,7 @@ expect_eq "new path present in the commit tree" "x" "$(git show HEAD:new.txt)"
 printf '\n=== deletions ===\n'
 
 d=$(new_repo delete); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'x\n' > gone.txt
 git add gone.txt
 git commit -qm "add gone.txt"
@@ -243,7 +246,7 @@ printf '\n=== nested paths ===\n'
 # doing its job.
 
 d=$(new_repo nested); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 mkdir -p sub/deeper
 printf 'x\n' > sub/a.sh
 printf 'y\n' > sub/deeper/b.sh
@@ -263,7 +266,7 @@ done
 # A sibling left unnamed must survive untouched — the scoping property, checked
 # where it is least obvious: inside a directory the commit does create.
 d=$(new_repo nested_sibling); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 mkdir -p sub
 printf 'x\n' > sub/named.sh
 printf 'y\n' > sub/unnamed.sh
@@ -280,7 +283,7 @@ printf '\n=== path quoting ===\n'
 # through the shell. `-z` is what keeps git from C-quoting the first class.
 
 d=$(new_repo quoting); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'x\n' > 'кириллица.md'
 printf 'x\n' > 'с пробелом.md'
 printf 'x\n' > "it's.md"
@@ -299,7 +302,7 @@ done
 printf '\n=== long lists switch to --pathspec-from-file ===\n'
 
 d=$(new_repo longlist); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 i=1; while [ $i -le 25 ]; do printf '%s\n' "$i" > "f$i.txt"; i=$((i+1)); done
 git add .
 cmd=$("$PREP" "[*] many")
@@ -311,7 +314,7 @@ expect_eq "all 25 paths committed" "25" "$(git show --name-only --format= HEAD |
 # Under the threshold the inline form must be kept — the companion file is an
 # escape hatch for unreadable lines, not the default.
 d=$(new_repo shortlist); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'a\n' > a.txt
 git add a.txt
 cmd=$("$PREP" "[*] few")
@@ -334,7 +337,7 @@ printf '\n=== superseding a prepared line ===\n'
 msg_path() { printf '%s' "$1" | sed -e "s/.*git commit -F '//" -e "s/'.*$//"; }
 
 d=$(new_repo supersede); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'a\n' > a.txt
 git add a.txt
 stale=$("$PREP" "[*] first wording")
@@ -354,15 +357,23 @@ fi
 out=$(run_emitted "$stale" 2>&1); rc=$?
 expect_exit "the superseded line refuses to run" 1 "$rc"
 expect_says "…and says it is void" "$out" "this line is void"
+expect_says "RED: …and why: replaced by a newer line (git-guard-line-lifetime, DL #2)" "$out" "replaced by a newer line"
 expect_eq "the superseded line commits nothing" "base" "$(git log -1 --format=%s)"
 run_emitted "$fresh" >/dev/null 2>&1
 expect_eq "the current line commits the corrected message" "[*] corrected wording" "$(git log -1 --format=%s)"
+# The next prep sweeps the committed line away, and leaves its reason behind.
+printf 'c\n' > c.txt; git add c.txt
+"$PREP" "[*] next" >/dev/null 2>&1
+out=$(run_emitted "$fresh" 2>&1); rc=$?
+expect_exit "a line run once and swept refuses to run again" 1 "$rc"
+expect_says "RED: …saying it was already committed, and as what" "$out" "already committed as $(git rev-parse --short=7 HEAD)"
+expect_eq "…and commits nothing" "[*] corrected wording" "$(git log -1 --format=%s)"
 
 # Deleting is not enough on its own: a freed name can be handed out again, and
 # then an older scrollback line is silently re-pointed at a newer message. So a
 # path is never issued twice, not even after its prep was properly consumed.
 d=$(new_repo no_reuse); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'a\n' > a.txt; git add a.txt
 c1=$("$PREP" "[*] one")
 run_emitted "$c1" >/dev/null 2>&1
@@ -378,7 +389,7 @@ fi
 # in one session's TMPDIR is what the previous scheme left behind, and every one
 # of them was a runnable command.
 d=$(new_repo one_trio); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 i=1
 while [ $i -le 4 ]; do
   printf '%s\n' "$i" > "f$i.txt"; git add "f$i.txt"
@@ -401,7 +412,7 @@ fi
 # accumulated, and they go without comment: HEAD moved past them long ago, so
 # there is nothing to report — only litter to clear.
 d=$(new_repo legacy); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 br=$(git symbolic-ref --quiet --short HEAD)
 legacy="$TMPDIR/$(basename "$d")-${br}-commit"
 printf 'stale message\n' > "$legacy.txt"
@@ -421,7 +432,7 @@ expect_silent "sweeping an already-audited leftover says nothing" "$out"
 d="$TMP/unborn"; rm -rf "$d"; mkdir -p "$d/tmp"
 cd "$d" || exit 1
 git init -q .; git config user.email t@t; git config user.name t
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'a\n' > a.txt; git add a.txt
 "$PREP" "[*] one" > /dev/null 2>&1
 out=$("$PREP" --supersede "[*] two" 2>&1 >/dev/null)
@@ -437,7 +448,7 @@ printf '\n=== a dead line stops before the hooks ===\n'
 # hook DOES run for it, so "the hook did not run" is not a hook that never could.
 
 d=$(new_repo dead_before_hooks); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf '#!/bin/sh\necho ran >> "$(git rev-parse --git-dir)/hook-ran"\n' > .git/hooks/pre-commit
 chmod +x .git/hooks/pre-commit
 git config core.hooksPath .git/hooks     # a global hooksPath would bypass the fixture's hook
@@ -473,7 +484,7 @@ printf '\n=== a line still waiting is not replaced without --supersede ===\n'
 # and prevented none. A waiting line usually means the user is not done.
 
 d=$(new_repo waiting); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'a\n' > a.txt; git add a.txt
 first=$("$PREP" "[*] the block")
 printf 'b\n' > b.txt; git add b.txt
@@ -511,7 +522,7 @@ printf '\n=== a path changed after it was staged stops the line ===\n'
 # could commit.
 
 d=$(new_repo drift_run); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf '#!/bin/sh\necho ran >> "$(git rev-parse --git-dir)/hook-ran"\n' > .git/hooks/pre-commit
 chmod +x .git/hooks/pre-commit
 git config core.hooksPath .git/hooks
@@ -536,7 +547,7 @@ expect_eq "…with the staged edit in it" "b
 a neighbour's line" "$(git show HEAD:'b c.txt')"
 
 d=$(new_repo drift_long); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'a\n' > a.txt; printf 'b\n' > b.txt; git add a.txt b.txt
 line=$(GIT_GUARD_PATHSPEC_INLINE_MAX=1 "$PREP" "[*] drift, long")
 expect_says "the long form is in use" "$line" "--pathspec-from-file="
@@ -551,7 +562,7 @@ run_emitted "$line" >/dev/null 2>&1; rc=$?
 expect_exit "staged, the long line commits (control)" 0 "$rc"
 
 d=$(new_repo waiting_flag_after); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'a\n' > a.txt; git add a.txt
 "$PREP" "[*] one" >/dev/null 2>&1
 out=$("$PREP" "[*] two" --supersede 2>&1); rc=$?
@@ -567,7 +578,7 @@ printf '\n=== during a merge: no pathspec, and the index checked when the line r
 # result is a merge commit.
 
 d=$(new_repo merging); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 base_branch=$(git symbolic-ref --short HEAD)
 git checkout -q -b side
 printf 'side\n' > side.txt; git add side.txt; git commit -qm side
@@ -606,7 +617,7 @@ printf '\n=== the short call: the same line, a short name ===\n'
 # from anywhere, and it dies with the prep.
 
 d=$(new_repo short_call); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 mkdir -p sub; printf 'a\n' > sub/a.txt; git add sub/a.txt
 out=$(cd sub && "$PREP" "[*] short" -- a.txt 2>&1 >/dev/null)
 # Not announced at the prep: a clean prep's silent stderr is the detector's
@@ -640,10 +651,16 @@ expect_exit "--pending once it has run → 1" 1 "$rc"
 "$PREP" "[*] b" -- b.txt >/dev/null 2>&1
 old=$("$PREP" --pending 2>/dev/null | head -1); old="${old#sh }"
 "$PREP" --supersede "[*] b, reworded" -- b.txt >/dev/null 2>&1
-if [ -n "$old" ] && [ ! -e "$old" ]; then
-  ok "RED: a superseded line's script is swept with it"
+# The script does not vanish: a stub takes its place that prints why the line
+# died and runs nothing else (git-guard-line-lifetime, DL #2). Read before it
+# is run, so a script still holding the commit is never run here.
+if [ -n "$old" ] && [ -f "$old" ] && ! grep -qE 'git (commit|diff)|^cd ' "$old"; then
+  ok "RED: a superseded line's script no longer runs its commit — a stub took its place"
+  out=$(sh "$old" 2>&1); rc=$?
+  expect_exit "…which fails" 1 "$rc"
+  expect_says "…saying the line was replaced" "$out" "replaced by a newer line"
 else
-  bad "RED: a superseded line's script is swept with it" "[$old]"
+  bad "RED: a superseded line's script no longer runs its commit — a stub took its place" "[$old] $( [ -f "$old" ] && head -3 "$old")"
 fi
 # /tmp is shared: a short call is printed only for a directory and a script
 # that are the user's own — the reader checks, not only the writer.
@@ -669,7 +686,7 @@ printf '\n=== detector: did the commit match what was prepared? ===\n'
 
 # TRUE POSITIVE: a neighbour stages an extra file; the bare form sweeps it in.
 d=$(new_repo detect_extra); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'mine\n' > mine.txt
 git add mine.txt
 "$PREP" "[*] only mine" > /dev/null          # declares: mine.txt
@@ -685,7 +702,7 @@ expect_not_says "detector does not accuse the intended path" "$out" "  mine.txt"
 # TRUE POSITIVE: an empty commit against a non-empty declaration — the exact
 # shape of 32f91ee.
 d=$(new_repo detect_empty); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'x\n' > a.txt
 git add a.txt
 "$PREP" "[*] declares a.txt" > /dev/null
@@ -702,7 +719,7 @@ expect_says "detector names what was expected" "$out" "a.txt"
 # drops out legitimately, so this report has to stay a warning rather than an
 # accusation.
 d=$(new_repo detect_dropped); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'x\n' > a.txt; printf 'y\n' > b.txt
 git add a.txt b.txt
 "$PREP" "[*] declares both" > /dev/null      # declares: a.txt, b.txt
@@ -716,7 +733,7 @@ expect_not_says "non-empty commit is not called empty" "$out" "EMPTY COMMIT"
 
 # FALSE POSITIVE 1: the commit matches the declaration exactly ⇒ silence.
 d=$(new_repo detect_clean); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'x\n' > a.txt; printf 'y\n' > b.txt
 git add a.txt b.txt
 cmd=$("$PREP" "[*] clean")
@@ -731,7 +748,7 @@ expect_silent "exact match ⇒ detector silent" "$out"
 # "consumed", so a neighbour's commit swept the earlier line away in silence and
 # nobody was told it was void.
 d=$(new_repo detect_unrelated); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'x\n' > a.txt
 git add a.txt
 "$PREP" "[*] declares a.txt" > /dev/null
@@ -746,7 +763,7 @@ expect_says "unrelated commit ⇒ the earlier, never-run line is still declared 
 # can no longer be matched to anything in history, and that is silence — not an
 # accusation, and not a claim that the line never ran.
 d=$(new_repo detect_amend); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'x\n' > a.txt; git add a.txt
 cmd=$("$PREP" "[*] amended later")
 run_emitted "$cmd" >/dev/null 2>&1
@@ -763,7 +780,7 @@ expect_silent "amended commit ⇒ detector silent" "$out"
 # required here, so this asserts the absence of the accusation rather than
 # silence.
 d=$(new_repo detect_pending); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'x\n' > a.txt
 git add a.txt
 "$PREP" "[*] pending" > /dev/null
@@ -779,7 +796,7 @@ expect_says "unconsumed prep ⇒ the earlier line is declared void" "$out" "neve
 # files under it and one beside it, correctly; the next prep called the four
 # SWEPT IN and the directory NOT COMMITTED.
 d=$(new_repo detect_dir); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 mkdir -p docs/task
 printf 'a\n' > docs/task/a.md; printf 'b\n' > docs/task/b.md; printf 'm\n' > mcp.yaml
 git add docs/task mcp.yaml
@@ -793,7 +810,7 @@ expect_not_says "RED: …files under the directory are not SWEPT IN" "$out" "SWE
 expect_not_says "RED: …and the directory is not NOT COMMITTED" "$out" "NOT COMMITTED"
 # …while a file outside the directory, staged by a neighbour, still is.
 d=$(new_repo detect_dir_extra); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 mkdir -p docs/task
 printf 'a\n' > docs/task/a.md; git add docs/task
 "$PREP" "[*] a directory" -- docs/task > /dev/null 2>&1
@@ -807,7 +824,7 @@ expect_not_says "…and the files under it are not" "$out" "docs/task/a.md"
 # The audit must run ONCE. A record left behind would re-accuse the same commit
 # on every later prep, which is how a real signal becomes background noise.
 d=$(new_repo detect_once); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'mine\n' > mine.txt
 git add mine.txt
 "$PREP" "[*] once" > /dev/null
@@ -823,7 +840,7 @@ expect_not_says "second prep does not repeat the SWEPT IN label" "$out2" "SWEPT 
 
 # Standalone mode, for a post-commit hook or a by-hand check.
 d=$(new_repo detect_standalone); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'mine\n' > mine.txt
 git add mine.txt
 "$PREP" "[*] standalone" > /dev/null
@@ -836,7 +853,7 @@ expect_says "--verify-last reports the swept-in path" "$out" "theirs.txt"
 # Paths with spaces and non-ASCII must survive the round trip through the
 # sidecar and be reported readably, not as octal escapes.
 d=$(new_repo detect_quoting); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 mkdir -p sub
 printf 'x\n' > "sub/имя с пробелом.txt"
 git add "sub/имя с пробелом.txt"
@@ -859,7 +876,7 @@ as_a() { CLAUDE_CODE_SESSION_ID=sess-A "$@"; }
 as_b() { CLAUDE_CODE_SESSION_ID=sess-B "$@"; }
 
 d=$(new_repo two_sessions); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'a\n' > a.txt; git add a.txt
 line_a=$(as_a "$PREP" "[*] from A")
 printf 'b\n' > b.txt; git add b.txt
@@ -878,7 +895,7 @@ expect_eq "… and only this session's path" "a.txt" "$(git show --name-only --f
 # Scoping must not cost the half of the contract it was not aimed at: within
 # one session, superseding still kills the earlier line, loudly.
 d=$(new_repo same_session); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'a\n' > a.txt; git add a.txt
 first=$(as_a "$PREP" "[*] first")
 out=$(as_a "$PREP" --supersede "[*] second" 2>&1 >/dev/null)
@@ -892,7 +909,7 @@ expect_says "within one session the earlier line is still declared void" "$out" 
 # A neighbour COMMITTING (not preparing) moves HEAD. That says nothing about our
 # line, which is still unrun — and the next prep of ours has to say so.
 d=$(new_repo neighbour_commit); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'a\n' > a.txt; git add a.txt
 first=$(as_a "$PREP" "[*] ours" -- a.txt)
 printf 'b\n' > b.txt; git add b.txt
@@ -904,7 +921,7 @@ expect_says "a neighbour's commit does not hide that our line never ran" "$out" 
 # prep at H0, neighbour commits H1, ours becomes H2 on top of H1. Comparing
 # against "HEAD's parent == the prep's HEAD" lost exactly this case.
 d=$(new_repo neighbour_between); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'mine\n' > mine.txt; git add mine.txt
 as_a "$PREP" "[*] only mine" > /dev/null          # declares: mine.txt
 printf 'b\n' > b.txt; git add b.txt
@@ -920,7 +937,7 @@ expect_not_says "… and the neighbour's own path is not blamed on us" "$out" " 
 # … and stays silent when our commit is clean. The neighbour's commit is not
 # ours and must not be audited against our intent.
 d=$(new_repo neighbour_clean); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'a\n' > a.txt; git add a.txt
 line=$(as_a "$PREP" "[*] ours" -- a.txt)
 printf 'b\n' > b.txt; git add b.txt
@@ -933,7 +950,7 @@ expect_silent "our clean commit on top of a neighbour's ⇒ silent" "$out"
 # A human at a terminal, or a harness that exports no session id, keeps the
 # per-branch scope. Neither scope reaches into the other.
 d=$(new_repo scopes_apart); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'a\n' > a.txt; printf 'b\n' > b.txt; git add a.txt b.txt
 line_s=$(as_a "$PREP" "[*] session" -- a.txt)
 out=$("$PREP" "[*] terminal" -- b.txt 2>&1 >/dev/null)
@@ -954,7 +971,7 @@ fi
 # The one-trio invariant holds inside a session's scope exactly as it does in
 # the per-branch one — and the trio lands in that scope, not beside it.
 d=$(new_repo session_one_trio); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 i=1
 while [ $i -le 4 ]; do
   printf '%s\n' "$i" > "f$i.txt"; git add "f$i.txt"
@@ -969,7 +986,7 @@ expect_eq "… and it lives in the session's own directory" "1" \
 # The session id comes from the environment and ends up in a path. Whatever it
 # contains, the files stay under TMPDIR.
 d=$(new_repo hostile_session); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'a\n' > a.txt; git add a.txt
 line=$(CLAUDE_CODE_SESSION_ID='../../x y' "$PREP" "[*] odd id")
 case "$(msg_path "$line")" in
@@ -985,7 +1002,7 @@ printf '\n=== --verify-last says which of three things happened ===\n'
 # other outcomes are stated on stdout, so `>/dev/null` still quiets a hook.
 
 d=$(new_repo verify_outcomes); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 out=$(as_a "$PREP" --verify-last 2>/dev/null)
 expect_says "nothing on record ⇒ says there is nothing to verify" "$out" "nothing to verify"
 printf 'a\n' > a.txt; git add a.txt
@@ -1030,7 +1047,7 @@ printf '\n=== Syncthing conflict copies inside .git ===\n'
 nothing_prepared() { [ -z "$(find "$1/tmp" -name '*-commit-*' 2>/dev/null)" ]; }
 
 d=$(new_repo syncref); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 br=$(git symbolic-ref --short HEAD)
 printf 'x\n' > lost.txt; git add lost.txt; git commit -qm "the lost one"
 lost=$(git rev-parse HEAD)
@@ -1047,7 +1064,7 @@ expect_says "…which is not in the branch" "$out" "not in $br"
 expect_says "…and how to bring it back before a new commit lands on top" "$out" "cherry-pick"
 
 d=$(new_repo syncrefin); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 br=$(git symbolic-ref --short HEAD)
 git rev-parse HEAD > ".git/refs/heads/$br.sync-conflict-20260930-100000-N223K43"
 printf 'c\n' > c.txt; git add c.txt
@@ -1057,7 +1074,7 @@ expect_says "…and says the commit is in the branch" "$out" "in $br"
 expect_not_says "…without calling it lost" "$out" "not in $br"
 
 d=$(new_repo syncindex); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 cp .git/index ".git/index.sync-conflict-20260930-120918-N223K43"
 printf 'c\n' > c.txt; git add c.txt
 out=$("$PREP" "[*] on top" 2>&1); rc=$?
@@ -1071,7 +1088,7 @@ expect_exit "the copy removed → the prep works as before" 0 "$rc"
 expect_says "…and emits the command" "$out" "git commit -F"
 
 d=$(new_repo syncobj); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 mkdir -p .git/objects/aa && : > ".git/objects/aa/bb.sync-conflict-20260930-100000-N223K43"
 printf 'c\n' > c.txt; git add c.txt
 out=$("$PREP" "[*] on top" 2>&1); rc=$?
@@ -1082,7 +1099,7 @@ br=$(git symbolic-ref --short HEAD)
 git worktree add -q -b side "$TMP/syncwt-side" 2>/dev/null
 git rev-parse HEAD > ".git/refs/heads/$br.sync-conflict-20260930-100000-N223K43"
 cd "$TMP/syncwt-side" || exit 1
-mkdir -p tmp; export TMPDIR="$TMP/syncwt-side/tmp"
+mkdir -p tmp; export TMPDIR="$TMP/syncwt-side/tmp" GIT_GUARD_STATE_DIR="$TMP/syncwt-side/tmp"
 printf 'c\n' > c.txt; git add c.txt
 out=$("$PREP" "[*] on top" 2>&1); rc=$?
 expect_exit "from a linked worktree, a copy in the common .git is seen too" 1 "$rc"
@@ -1096,7 +1113,7 @@ printf '\n=== A branch ref that arrived before its commit ===\n'
 missing=c31f4703c31f4703c31f4703c31f4703c31f4703
 
 d=$(new_repo synclag); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 br=$(git symbolic-ref --short HEAD)
 git rev-parse HEAD > ".git/refs/heads/$br.sync-conflict-20261001-184527-N223K43"
 printf '%s\n' "$missing" > ".git/refs/heads/$br"
@@ -1115,7 +1132,7 @@ expect_exit "RED: no copy at all — still refused, no commit line on a parent t
 expect_not_says "…the line is not handed out" "$out" "git commit -F"
 
 d=$(new_repo synclagother); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 git rev-parse HEAD > ".git/refs/heads/other.sync-conflict-20261001-184527-N223K43"
 printf '%s\n' "$missing" > ".git/refs/heads/other"
 printf 'c\n' > c.txt; git add c.txt
@@ -1133,7 +1150,7 @@ printf '\n=== git rm --cached: a pathspec commit puts the file back ===\n'
 # still there. The worktree check did not see it: `git diff` lists no file the
 # index no longer holds.
 d=$(new_repo untrack); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 mkdir -p cfg; printf 'one\n' > cfg/app.json
 git add cfg/app.json; git commit -qm "track cfg"
 printf 'cfg/\n' > .gitignore; printf 'two\n' > cfg/app.json   # changed on disk too, as in the field
@@ -1153,7 +1170,7 @@ expect_eq "…and .gitignore is committed with it" "cfg/" "$(git show HEAD:.giti
 # Something else is staged: a pathspec commit would put the file back, a
 # whole-index commit would take the other path. Neither — refuse.
 d=$(new_repo untrack_other); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'one\n' > app.json; git add app.json; git commit -qm "track app"
 git rm -q --cached app.json
 printf 'theirs\n' > theirs.txt; git add theirs.txt
@@ -1165,7 +1182,7 @@ expect_not_says "…and prints no command" "$out" "git commit -F"
 
 # A prep with no explicit list IS the whole index.
 d=$(new_repo untrack_snapshot); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'one\n' > app.json; git add app.json; git commit -qm "track app"
 git rm -q --cached app.json
 out=$("$PREP" "[*] untrack snapshot" 2>/dev/null); rc=$?
@@ -1174,7 +1191,7 @@ expect_not_says "RED: …no pathspec" "$out" " -- "
 
 # A plain `git rm` — the file gone from disk — keeps the pathspec form.
 d=$(new_repo rm_plain); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'one\n' > gone.txt; git add gone.txt; git commit -qm "track gone"
 git rm -q gone.txt
 out=$("$PREP" "[*] remove gone" -- gone.txt 2>/dev/null)
@@ -1183,7 +1200,7 @@ expect_says "a deletion whose file is gone keeps the pathspec" "$out" " -- 'gone
 # The detector: an untracking the commit did not record. Here the file is
 # staged back between prep and commit — the commit carries it as a change.
 d=$(new_repo untrack_verify); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'one\n' > app.json; git add app.json; git commit -qm "track app"
 printf 'two\n' > app.json; git rm -q --cached app.json
 "$PREP" "[*] untrack verify" >/dev/null 2>&1
@@ -1199,7 +1216,7 @@ printf '\n=== a line run late takes the paths from disk as they are THEN ===\n'
 # same files with its own work; the late line committed that work under its own
 # message. The names matched, so the name check called it clean.
 d=$(new_repo late_line); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'mine\n' > a.txt; git add a.txt
 cmd=$("$PREP" "[*] mine" 2>/dev/null)
 printf 'other\n' > b.txt; git add b.txt; git commit -qm "neighbour" -- b.txt   # HEAD moves
@@ -1212,7 +1229,7 @@ expect_says "…and that HEAD moved between prep and the run" "$out" "prepared o
 
 # A neighbour's commit on other paths is ordinary: our content is what we staged.
 d=$(new_repo late_line_clean); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'mine\n' > a.txt; git add a.txt
 cmd=$("$PREP" "[*] mine" 2>/dev/null)
 printf 'other\n' > b.txt; git add b.txt; git commit -qm "neighbour" -- b.txt
@@ -1223,7 +1240,7 @@ expect_not_says "a neighbour's commit on other paths is not a change of ours" "$
 # Content rewritten with HEAD unchanged is what a formatting pre-commit hook
 # does: not reported, or every commit in such a project would carry a warning.
 d=$(new_repo late_line_samehead); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'mine\n' > a.txt; git add a.txt
 cmd=$("$PREP" "[*] mine" 2>/dev/null)
 printf 'reformatted\n' > a.txt; git add a.txt
@@ -1236,7 +1253,7 @@ printf '\n=== the subject has a ceiling ===\n'
 # 90 here, against a CLAUDE.md that says "<= 80". A ceiling in words did not
 # hold; the helper holds a number. No commit is needed for any of this.
 d=$(new_repo subject_max); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 printf 'x\n' > a.txt; git add a.txt
 s72=$(printf 'a%.0s' $(seq 1 72)); s73=$(printf 'a%.0s' $(seq 1 73)); scyr=$(printf 'ж%.0s' $(seq 1 70))
 out=$("$PREP" "$s72" -- a.txt 2>&1); rc=$?
@@ -1263,7 +1280,7 @@ printf '\n=== documents this commit may leave behind ===\n'
 # 94 turns and the stale one went unread. The helper names the pair at the one
 # moment a fix still joins the commit — and never refuses over it.
 d=$(new_repo docs_pairs); cd "$d" || exit 1
-export TMPDIR="$d/tmp"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 mkdir -p src docs
 printf 'cfg = load(old_option=True)\n' > src/app.py
 printf '# Setup\nThe app reads `old_option`.\n' > docs/setup.md
@@ -1308,7 +1325,7 @@ STUB
 chmod +x "$stub"
 
 d=$(new_repo sync-incoming); cd "$d" || exit 1
-export TMPDIR="$d/tmp" STUB_LOG="$d/stub.log"
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp" STUB_LOG="$d/stub.log"
 printf 'x\n' > x.md; git add x.md
 out=$(GIT_GUARD_SYNC_CHECK="$stub" STUB_RC=1 "$PREP" "[*] x" 2>&1); rc=$?
 expect_exit "RED: Syncthing still bringing a file of the commit → nothing prepared" 1 "$rc"

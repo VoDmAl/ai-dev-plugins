@@ -68,9 +68,10 @@
 #   <msg>` with no paths — and only when the index holds nothing but this prep's
 #   paths; otherwise it refuses. The detector then checks the untracking landed.
 #
-#   <scope> is ${TMPDIR:-/tmp}/vdm-git-<uid>/<session> when the harness names its
-#   session (CLAUDE_CODE_SESSION_ID), and ${TMPDIR:-/tmp} itself otherwise — a
-#   human at a terminal, or a harness that exports no session id.
+#   <scope> is <state>/<session> when the harness names its session
+#   (CLAUDE_CODE_SESSION_ID), and <state> itself otherwise — a human at a
+#   terminal, or a harness that exports no session id. <state> is
+#   ${XDG_STATE_HOME:-~/.local/state}/vdm-git — see "Where the files live".
 #
 #   `<token>` is minted per prep and never reused, and every prep first DELETES
 #   the trio of any earlier prep in the same scope for the same repo and branch.
@@ -191,11 +192,37 @@
 #   is named by the prep's token, so it is as unique as the message file, and
 #   rm_trio retires it with the rest. `--pending` prints the call of the line
 #   still waiting; the reminder asks it on every prompt and tells the assistant
-#   to end the turn with it. /tmp rather than TMPDIR (a long path on macOS).
-#   /tmp is shared, so writer and reader both ask short_dir_ok, and the reader
+#   to end the turn with it. The scripts sit in <state>/sh (see "Where the files
+#   live"); writer and reader both ask short_dir_ok, and the reader
 #   also wants the script to be the user's own regular file; failing that there
 #   is no short call, and the line works without one. The script removes itself
 #   when it ends, whatever the outcome (the owner, 23.10).
+#
+# Where the files live
+#   Until vdm-git 2.26 the scope sat under ${TMPDIR:-/tmp} and the short calls
+#   under /tmp. macOS cleans both by itself: dirhelper removes what nobody
+#   touched in TMPDIR for three days, and `periodic daily` does the same in
+#   /tmp. Field case (a project's agent, 2026-10-31): a line the owner held for
+#   five days, waiting for something of their own, died overnight — the short
+#   call was gone, and the full line said "void", which reads as "replaced".
+#   A line that waits is state, not a temporary file, so the files live where
+#   state lives: ${XDG_STATE_HOME:-~/.local/state}/vdm-git, mode 700. Not
+#   `.git` and not ~/.claude: on the owner's machines both are synced between
+#   machines. Not ~/.cache: anything may clean a cache.
+#   (docs/tasks/git-guard-line-lifetime, DL #1)
+#
+#   What the OS used to clean, the helper cleans now: at every prep, a line of
+#   ANOTHER scope unused for GIT_GUARD_EXPIRE_DAYS days is retired as expired,
+#   and records of a line's death older than that go (DL #3).
+#
+# A line that dies says why
+#   Whatever the helper deletes, it leaves `<stem>.gone` behind — one line:
+#   replaced, already committed, untraceable, expired — and puts a stub in
+#   place of the short call's script that prints the same line. The full line
+#   prints that file when its message file is missing; with neither there, the
+#   message file was deleted outside git-guard, and the line says that
+#   (DL #2). `--pending` and the reminder name such a lost line: its record
+#   (`.meta`) is there and its message file is not (DL #4).
 #
 # Exit codes:
 #   0 success
@@ -206,6 +233,7 @@
 # @see plugins/vdm-git/skills/guard/SKILL.md
 # @see docs/tasks/git-guard-explicit-file-list/workitem.md — DL #4, #5, #6
 # @see docs/tasks/git-guard-prepare-churn/workitem.md — DL #3, #4
+# @see docs/tasks/git-guard-line-lifetime/workitem.md — DL #1–#4
 
 set -eu
 
@@ -213,10 +241,15 @@ set -eu
 # and awkward to paste, so switch to --pathspec-from-file.
 PATHSPEC_INLINE_MAX=${GIT_GUARD_PATHSPEC_INLINE_MAX:-20}
 
-# Where the short call's script lives — see "The short call" in the header.
-# /tmp, not TMPDIR: on macOS TMPDIR is a long /var/folders/… path, and a short
-# call is the whole point. One directory per user, closed to the others.
-SHORT_DIR=${GIT_GUARD_SHORT_DIR:-/tmp/vdm-git-$UID}
+# Where every prep's files live — see "Where the files live" in the header.
+# The short call's scripts sit in a directory of their own beside the scopes.
+STATE_DIR=${GIT_GUARD_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/vdm-git}
+STATE_DIR=${STATE_DIR%/}
+SHORT_DIR=${GIT_GUARD_SHORT_DIR:-$STATE_DIR/sh}
+
+# A line of another scope unused this long is retired as expired. Chosen, not
+# measured: the one field case waited five days (DL #3).
+EXPIRE_DAYS=${GIT_GUARD_EXPIRE_DAYS:-30}
 
 # Single-quote for the shell; a literal single quote inside a path closes the
 # quote, escapes itself, and reopens — the POSIX way.
@@ -237,9 +270,10 @@ short_script() { printf '%s/%s.sh' "$SHORT_DIR" "${1##*-commit-}"; }
 
 # short_dir_ok <dir> — the directory is this user's own: a real directory, not
 # a symlink, owned by the user, writable by nobody else. Asked by the writer
-# AND the reader: /tmp is shared, and a directory found there later — after a
-# clean-up, say — may have been made by someone else, with a script planted
-# under a guessed token. A short call is only ever printed for a script that
+# AND the reader. It dates from /tmp, which is shared: a directory found there
+# later — after a clean-up, say — may have been made by someone else, with a
+# script planted under a guessed token. It stays for GIT_GUARD_SHORT_DIR, which
+# may point anywhere. A short call is only ever printed for a script that
 # passes this and is itself the user's own regular file.
 short_dir_ok() {
   local perm
@@ -248,30 +282,74 @@ short_dir_ok() {
   [ "${perm:5:1}" = - ] && [ "${perm:8:1}" = - ]
 }
 
-# rm_trio <stem> — retire one prep completely.
+# rm_trio <stem> [<why>] — retire one prep completely.
 #
 # All three go together or none do. Removing only `.meta` (which is all the
 # audit needs) leaves `.txt` on disk, and a message file on disk is a command
 # line that still runs — the whole defect this file now guards against. The
 # short call's script goes too; left behind it would only fail at its first
 # line, but nothing should be left that looks runnable.
-rm_trio() { rm -f "$1.txt" "$1.paths" "$1.meta" "$1.dels" "$1.blobs" "$(short_script "$1")"; }
+#
+# With <why>, the death is recorded: `<stem>.gone` holds the line the dead full
+# line prints, and a stub in the script's place prints it for the short call
+# (see "A line that dies says why" in the header). The stub runs nothing else.
+rm_trio() {
+  local s why_line
+  s=$(short_script "$1")
+  rm -f "$1.txt" "$1.paths" "$1.meta" "$1.dels" "$1.blobs" "$s"
+  [ -n "${2:-}" ] || return 0
+  why_line="git-guard: this line is void — $2; ask for a new one"
+  printf '%s\n' "$why_line" > "$1.gone" 2>/dev/null || true
+  if short_dir_ok "${s%/*}"; then
+    printf '#!/bin/sh\necho %s >&2\nexit 1\n' "$(shell_quote "$why_line")" > "$s" 2>/dev/null || true
+  fi
+}
 
-# session_scope <tmpdir> — the directory this caller's trios live in.
+# housekeep <own scope> — the cleaning the OS did while the files lived in its
+# temporary directories (DL #3). Another scope's line unused for EXPIRE_DAYS is
+# retired with its reason; records of a death, a prep that died mid-write and a
+# short call no line owns any more go once they are that old; so do empty
+# scopes. The caller's own scope keeps every live line: its prep replaces them.
+housekeep() {
+  local own="$1" f stem tok
+  [ -d "$STATE_DIR" ] || return 0
+  while IFS= read -r f; do
+    stem="${f%.meta}"
+    [ "${stem%/*}" = "$own" ] && continue
+    rm_trio "$stem" "expired: unused for $EXPIRE_DAYS days"
+  done < <(find "$STATE_DIR" -maxdepth 2 -type f -name '*-commit-*.meta' -mtime +"$EXPIRE_DAYS" 2>/dev/null)
+  while IFS= read -r f; do
+    case "$f" in *.meta) continue ;; esac
+    stem="${f%.*}"
+    [ -f "$stem.meta" ] && continue
+    rm -f "$f"
+  done < <(find "$STATE_DIR" -maxdepth 2 -type f -name '*-commit-*' -mtime +"$EXPIRE_DAYS" 2>/dev/null)
+  if short_dir_ok "$SHORT_DIR"; then
+    while IFS= read -r f; do
+      tok="${f##*/}"; tok="${tok%.sh}"
+      [ -n "$(find "$STATE_DIR" -maxdepth 2 -type f -name "*-commit-$tok.txt" 2>/dev/null | head -n 1)" ] && continue
+      rm -f "$f"
+    done < <(find "$SHORT_DIR" -maxdepth 1 -type f -name '*.sh' -mtime +"$EXPIRE_DAYS" 2>/dev/null)
+  fi
+  # Not the caller's own scope: it was made empty a moment ago, for this prep.
+  find "$STATE_DIR" -mindepth 1 -maxdepth 1 -type d -empty ! -path "$SHORT_DIR" ! -path "$own" -delete 2>/dev/null || true
+}
+
+# session_scope — the directory this caller's trios live in.
 #
 # The id is sanitised the way the branch is: it comes from the environment and
-# ends up in a path, so nothing in it may climb out of TMPDIR. The uid keeps
-# users apart on a shared /tmp, where a directory made by one user cannot be
-# written by another.
+# ends up in a path, so nothing in it may climb out of the state directory.
+# That directory is the user's own (mode 700), so no uid level is needed, as it
+# was on a shared /tmp.
 session_scope() {
-  local tmpdir="$1" session
+  local session
   session=$(printf '%s' "${CLAUDE_CODE_SESSION_ID:-}" \
     | sed -e 's|[^A-Za-z0-9_-]|-|g' -e 's|-\{2,\}|-|g' -e 's|^-||' -e 's|-$||' \
     | cut -c1-64)
   if [ -n "$session" ]; then
-    printf '%s/vdm-git-%s/%s' "$tmpdir" "$(id -u)" "$session"
+    printf '%s/%s' "$STATE_DIR" "$session"
   else
-    printf '%s' "$tmpdir"
+    printf '%s' "$STATE_DIR"
   fi
 }
 
@@ -332,8 +410,12 @@ sweep_superseded() {
   for f in "$dir/$base"*.txt; do
     [ -f "$f" ] || continue
     stem="${f%.txt}"
-    [ "$(prep_state "$stem" "$head")" = pending ] && pending=$((pending + 1))
-    rm_trio "$stem"
+    if [ "$(prep_state "$stem" "$head")" = pending ]; then
+      pending=$((pending + 1))
+      rm_trio "$stem" "replaced by a newer line, prepared $(date '+%Y-%m-%d %H:%M')"
+    else
+      rm_trio "$stem" "retired by a later prep: its commit cannot be traced (history rewritten, or its record incomplete)"
+    fi
   done
 
   # Leftover from the pre-token scheme, which kept one shared sentinel per base.
@@ -369,8 +451,25 @@ waiting_line() {
   return 0
 }
 
+# lost_line <dir> <base> — a prep in this scope whose record is there and whose
+# message file is not, and nothing of the helper's says it died: its file was
+# deleted outside git-guard (DL #4). "<epoch>\t<stem>", or nothing.
+lost_line() {
+  local dir="$1" base="$2" f stem tok epoch
+  for f in "$dir/$base"*.meta; do
+    [ -f "$f" ] || continue
+    stem="${f%.meta}"
+    [ -f "$stem.txt" ] || [ -f "$stem.gone" ] && continue
+    tok="${stem##*/}"; tok="${tok#"$base"-}"; epoch="${tok%%-*}"
+    case "$epoch" in ''|*[!0-9]*) epoch="" ;; esac
+    printf '%s\t%s\n' "$epoch" "$stem"
+    return 0
+  done
+  return 0
+}
+
 # short_call <stem> — the short call of that prep, `sh <script>`, or nothing
-# when it has no script (prepared before short calls, or /tmp was not ours).
+# when it has no script (prepared before short calls, or its directory was not ours).
 short_call() {
   local s
   s=$(short_script "$1")
@@ -402,7 +501,7 @@ mint_stem() {
   local root="${tmpdir}/${base}-$(date +%s)-$$"
   local stem="$root" n=2
   while [ -e "$stem.txt" ] || [ -e "$stem.paths" ] || [ -e "$stem.meta" ] \
-        || [ -e "$(short_script "$stem")" ]; do
+        || [ -e "$stem.gone" ] || [ -e "$(short_script "$stem")" ]; do
     stem="${root}-${n}"
     n=$((n + 1))
   done
@@ -458,12 +557,18 @@ verify_last() {
         else
           verify_dirty=$((verify_dirty + 1))
         fi
-        rm_trio "$stem" ;;
+        rm_trio "$stem" "already committed as ${sha:0:7}" ;;
       *)
         # Amend, rebase onto something else, reset, a half-written record — not
         # this detector's business. Drop the record so it is not re-examined.
+        # A record whose message file is gone is a line deleted outside
+        # git-guard, and its record says so from now on (DL #4).
         verify_unknown=$((verify_unknown + 1))
-        rm_trio "$stem" ;;
+        if [ -f "$stem.txt" ]; then
+          rm_trio "$stem" "retired: its commit cannot be traced (history rewritten: amend, rebase or reset)"
+        else
+          rm_trio "$stem" "its message file was deleted outside git-guard"
+        fi ;;
     esac
   done
   return 0
@@ -591,11 +696,13 @@ Usage: git-guard-prepare "<commit message>" [-- <path>...]
        git-guard-prepare --pending
        git-guard-prepare --check ["<commit message>"] [-- <path>...]
 
-Writes the message to a per-prep file under ${TMPDIR:-/tmp} and prints a
-single-line `git commit -F <path> -- <paths>` command for the user to run.
-The same commit is kept as a short call, `sh /tmp/vdm-git-<uid>/<token>.sh`;
---pending prints the call of the line still waiting
-(exit 0), its subject alone when it has no script (exit 3), or nothing (exit 1).
+Writes the message to a per-prep file under ${XDG_STATE_HOME:-~/.local/state}/vdm-git
+(GIT_GUARD_STATE_DIR overrides) and prints a single-line
+`git commit -F <path> -- <paths>` command for the user to run. The same commit
+is kept as a short call, `sh <state>/sh/<token>.sh`; --pending prints the call
+of the line still waiting (exit 0), its subject alone when it has no script
+(exit 3), why it is lost when its message file was deleted outside git-guard
+(exit 4), or nothing (exit 1).
 
 While a prepared line has not been run, preparing again refuses and deletes
 nothing: the user may not be done. With --supersede the earlier line's message
@@ -605,7 +712,9 @@ branch; without a session id, the repo and branch. A neighbouring session's
 line is never touched.
 
 The line opens with a check that its message file still exists, so a
-superseded or already-run line stops there, before any git hook runs.
+superseded or already-run line stops there, before any git hook runs, and
+says why it died. Another session's line unused for 30 days is retired as
+expired (GIT_GUARD_EXPIRE_DAYS).
 
 Paths come from the explicit `--` list when given, otherwise from a snapshot
 of the index at prep time. Exits 1 if the index is empty, or if the working
@@ -637,8 +746,10 @@ fi
 # --pending: the line of this scope still waiting to be run, for handing it off
 # again without remembering it. Exit 0 and two lines on stdout — its short call,
 # then its subject and when it was prepared; exit 3 and the second line alone
-# when it has no short call; exit 1, silent, when no line waits. The reminder
-# asks it on every prompt — see "The short call" in the header.
+# when it has no short call; exit 4 and one line when the line is lost — its
+# message file deleted outside git-guard (DL #4); exit 1, silent, when no line
+# waits. The reminder asks it on every prompt — see "The short call" in the
+# header.
 if [ "$1" = "--pending" ]; then
   pd_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
   [ -n "$pd_root" ] || exit 1
@@ -647,10 +758,15 @@ if [ "$1" = "--pending" ]; then
   pd_branch=$(printf '%s' "$pd_branch" \
     | sed -e 's|[^A-Za-z0-9_-]|-|g' -e 's|-\{2,\}|-|g' -e 's|^-||' -e 's|-$||')
   [ -n "$pd_branch" ] || pd_branch=detached
-  pd_tmp="${TMPDIR:-/tmp}"; pd_tmp="${pd_tmp%/}"
-  waiting=$(waiting_line "$(session_scope "$pd_tmp")" "$(basename "$pd_root")-${pd_branch}-commit" \
-              "$(git rev-parse --verify -q HEAD 2>/dev/null || true)")
-  [ -n "$waiting" ] || exit 1
+  pd_scope=$(session_scope)
+  pd_base="$(basename "$pd_root")-${pd_branch}-commit"
+  waiting=$(waiting_line "$pd_scope" "$pd_base" "$(git rev-parse --verify -q HEAD 2>/dev/null || true)")
+  if [ -z "$waiting" ]; then
+    lost=$(lost_line "$pd_scope" "$pd_base")
+    [ -n "$lost" ] || exit 1
+    printf 'its message file was deleted outside git-guard%s\n' "$(when_said "${lost%%$'\t'*}")"
+    exit 4
+  fi
   pd_epoch="${waiting%%$'\t'*}"; pd_rest="${waiting#*$'\t'}"
   pd_stem="${pd_rest%%$'\t'*}"; pd_subject="${pd_rest#*$'\t'}"
   pd_short=$(short_call "$pd_stem")
@@ -670,8 +786,7 @@ if [ "$1" = "--verify-last" ]; then
   vr_branch=$(printf '%s' "$vr_branch" \
     | sed -e 's|[^A-Za-z0-9_-]|-|g' -e 's|-\{2,\}|-|g' -e 's|^-||' -e 's|-$||')
   [ -z "$vr_branch" ] && vr_branch=detached
-  vr_tmp="${TMPDIR:-/tmp}"; vr_tmp="${vr_tmp%/}"
-  verify_last "$(session_scope "$vr_tmp")" "$(basename "$vr_root")-${vr_branch}-commit"
+  verify_last "$(session_scope)" "$(basename "$vr_root")-${vr_branch}-commit"
 
   # Asked for by name, so every outcome is stated — silence would read the same
   # whether the commit matched, whether nothing of ours was there to check, and
@@ -922,8 +1037,7 @@ fi
 # off nothing new" whatever the index looks like now. See the header.
 check_subject="" check_stem=""
 if [ "$supersede" -eq 0 ]; then
-  wl_tmp="${TMPDIR:-/tmp}"; wl_tmp="${wl_tmp%/}"
-  waiting=$(waiting_line "$(session_scope "$wl_tmp")" "${repo_name}-${branch_safe}-commit" \
+  waiting=$(waiting_line "$(session_scope)" "${repo_name}-${branch_safe}-commit" \
               "$(git rev-parse --verify -q HEAD 2>/dev/null || true)")
   if [ -n "$waiting" ] && [ "$check" -eq 1 ]; then
     # A look: the waiting line is what to look at, not a reason to refuse.
@@ -1336,10 +1450,8 @@ fi
 
 # ------------------------------------------------------------- write files
 
-tmpdir="${TMPDIR:-/tmp}"
-tmpdir="${tmpdir%/}"
-scope=$(session_scope "$tmpdir")
-if ! mkdir -p "$scope" 2>/dev/null; then
+scope=$(session_scope)
+if ! { mkdir -p -m 700 "$STATE_DIR" && mkdir -p -m 700 "$scope"; } 2>/dev/null; then
   echo "git-guard-prepare: cannot create $scope" >&2
   exit 1
 fi
@@ -1360,6 +1472,7 @@ verify_last "$scope" "$base" || true
 # Then clear the field. Anything the audit left behind belongs to a prep this
 # one supersedes, and a superseded message file is a runnable command line.
 sweep_superseded "$scope" "$base" "$head_sha"
+housekeep "$scope"
 
 stem=$(mint_stem "$scope" "$base")
 path="${stem}.txt"
@@ -1374,12 +1487,15 @@ mv -f "$tmpfile" "$path"
 # ------------------------------------------------------------------- emit
 
 msg_q=$(shell_quote "$path")
+gone_q=$(shell_quote "${stem}.gone")
 
 # Every form opens with a check that its own message file is still there. A
 # void line is one whose file was deleted, so the check is exact; and it runs
 # before git, whose pre-commit hook would otherwise run first — see "A dead line
-# fails before the hooks" in the header.
-void_check="[ -f $msg_q ] || { echo 'git-guard: this line is void; ask for a new one' >&2; false; } &&"
+# fails before the hooks" in the header. A dead line prints why it died, from
+# the record the helper left; with no record, the file went outside git-guard
+# (see "A line that dies says why").
+void_check="[ -f $msg_q ] || { { cat $gone_q 2>/dev/null || echo 'git-guard: this line is void — its message file was deleted outside git-guard; ask for a new one'; } >&2; false; } &&"
 
 # The pathspec forms then repeat, at run time, the refusal this prep made on the
 # same paths: index and worktree must agree, or the commit takes an edit nobody
