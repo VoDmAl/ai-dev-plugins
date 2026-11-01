@@ -138,6 +138,19 @@ if [ -z "$missing" ]; then
   if [ "$pending" -gt 0 ] && ! intercom_mail_session; then
     msg="${msg} 📬 ${pending} pending message(s) in your inbox → /vdm:intercom check."
   fi
+  # Balls left here by letters picked up lately and written nowhere at home
+  # (held-ball-after-pickup, DL #2): named until a crystal or a pending file says
+  # them, or the letter says where they live. Not in an intercom session: the
+  # owner's sessions keep the project's open items.
+  if ! intercom_mail_session; then
+    held="$(intercom_held_balls "$id" 2>/dev/null)"
+    if [ -n "$held" ]; then
+      msg="${msg}
+↪ Balls you hold from letters picked up in the last ${INTERCOM_HELD_BALL_DAYS} days, written in no crystal or pending file here:
+$(printf '%s\n' "$held" | awk -F '\t' '{ printf "  - [ ] %s (from %s)\n", $2, $1 }')
+Write each where this project keeps its open items (/vdm:crystal-bud) before other work, or say where it lives: \`intercom ball-home <letter> \"<where>\"\`."
+    fi
+  fi
   msg="${msg} Directory of agents: /vdm:intercom directory · send a brief: /vdm:intercom send <name> <slug>."
 else
   reach="\`${id}\`"

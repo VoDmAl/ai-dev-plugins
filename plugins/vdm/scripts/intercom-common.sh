@@ -2223,6 +2223,205 @@ _intercom_fm_put() {
   return 1
 }
 
+# ---------------------------------------------------------------------------
+# Balls held from picked-up letters (docs/tasks/held-ball-after-pickup, DL #2).
+# An outcome often leaves the ball with its recipient: `- [ ] <recipient> — <what>
+# ⏰ <date>`. `pickup` moves the letter to `_done/`, and the next session knows of
+# the ball only if it was written where the project keeps its open items. Field
+# case (HQ, 2026-10-27): of 19 picked-up letters with the ball on the HQ, two had
+# no item at home; an answer the executor needed for its next step reached it only
+# when the owner asked. The pair is already on disk — the letter and the home —
+# so nothing is recorded: a ball is named while no line of the home mentions it,
+# and stops being named once one does, open or closed.
+# ---------------------------------------------------------------------------
+# VDM_INTERCOM_HELD_DAYS narrows it for tests: a file's ctime cannot be set back.
+INTERCOM_HELD_BALL_DAYS="${VDM_INTERCOM_HELD_DAYS:-14}"
+
+# intercom_outcome_sent <me> <sender> <slug> [<mine>] — a letter from <me> that
+# names <slug> lies in <sender>'s inbox or archive: the brief's outcome went back.
+# <mine> is a file listing <me>'s letters there, one path per line, when the
+# caller asks for many slugs of one sender (see _intercom_mine_in).
+intercom_outcome_sent() {
+  local me="$1" sender="$2" slug="$3" mine="${4:-}" re
+  re="$(printf '%s' "$slug" | sed 's/\./\\./g')"
+  re="(^|[^A-Za-z0-9._-])${re}([^A-Za-z0-9._-]|\$)"
+  if [ -z "$mine" ]; then
+    mine="$(mktemp 2>/dev/null)" || return 1
+    _intercom_mine_in "$me" "$sender" > "$mine"
+    tr '\n' '\0' < "$mine" | xargs -0 grep -lE -- "$re" 2>/dev/null | grep -q .
+    local rc=$?
+    rm -f "$mine"
+    return "$rc"
+  fi
+  tr '\n' '\0' < "$mine" | xargs -0 grep -lE -- "$re" 2>/dev/null | grep -q .
+}
+
+# _intercom_mine_in <me> <sender> — the letters from <me> in <sender>'s inbox and
+# archive, one path per line. One grep over that store, however many slugs follow.
+_intercom_mine_in() {
+  local dir
+  dir="$(intercom_inbox_dir "$2")"
+  [ -d "$dir" ] || return 0
+  grep -lxF -- "from: $1" "$dir"/*.md "$dir"/_done/*.md 2>/dev/null
+}
+
+# _intercom_home_lines — the text a ball may be written in: every crystal here,
+# whatever its status (a ball done and ticked is not owed again), whole — its
+# References name the letters it holds — and every file `comms.pending-paths`
+# declares.
+_intercom_home_lines() {
+  local lib="$_INTERCOM_LIB_DIR/../lib/crystal-path.sh" top cfg
+  if [ -f "$lib" ]; then
+    ( . "$lib" 2>/dev/null || exit 0
+      find_workitems 2>/dev/null | tr '\n' '\0' | xargs -0 cat 2>/dev/null )
+  fi
+  top="$(git rev-parse --show-toplevel 2>/dev/null)" || top="$PWD"
+  if [ -d "$top/.claude" ]; then cfg="$top/.claude/vdm-plugins.json"; else cfg="$top/.qwen/vdm-plugins.json"; fi
+  [ -f "$cfg" ] && command -v jq >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1 || return 0
+  jq -r '(.comms["pending-paths"] // [])[]' "$cfg" 2>/dev/null \
+    | python3 -I -c 'import glob, os, sys
+top = sys.argv[1]
+for g in sys.stdin.read().split("\n"):
+    if g:
+        for f in sorted(glob.glob(os.path.join(top, g), recursive=True)):
+            if os.path.isfile(f):
+                try: sys.stdout.write(open(f, encoding="utf-8", errors="replace").read() + "\n")
+                except OSError: pass' "$top" 2>/dev/null
+}
+
+# _intercom_my_names <identity> — every name the directory knows that agent by,
+# folded, one per line: an item's <who> may be any of them.
+_intercom_my_names() {
+  printf '%s\n' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]'
+  intercom_registry_get "$1" "$_INTERCOM_JQ_FOLD"' [(.names // [])[], (.aliases // [])[]] | .[] | fold'
+}
+
+# _intercom_own_items <names> <letter>… — one awk pass over the letters:
+# "<file>\t<from>\t<reply-to>\t<what>" for every open item whose <who> folds
+# into one of <names>, in letters whose envelope does not say where their balls
+# live (`ball-home:`). The fold is the directory's own: ASCII lower case, runs of
+# blanks and underscores to one dash, no edge dashes. An item reads
+# "<who> — <what>" (an en dash or a hyphen between spaces also does).
+_intercom_own_items() {
+  local names="$1"; shift
+  [ $# -gt 0 ] || return 0
+  _IC_NAMES="$names" LC_ALL=C awk '
+    function fold(s) { s = tolower(s); gsub(/[ \t_]+/, "-", s); sub(/^-+/, "", s); sub(/-+$/, "", s); return s }
+    function strip(v) { gsub(/^[ \t]+|[ \t]+$/, "", v); gsub(/^"|"$/, "", v); return v }
+    BEGIN {
+      n = split(ENVIRON["_IC_NAMES"], a, "\n"); for (i = 1; i <= n; i++) if (a[i] != "") mine[a[i]] = 1
+      for (i = 1; i < ARGC; i++) {
+        f = ARGV[i]; from = ""; rto = ""; home = 0; infm = 0; first = 1; c = 0
+        while ((getline line < f) > 0) {
+          if (first) { first = 0; if (line == "---") { infm = 1; continue } }
+          if (infm) {
+            if (line == "---") { infm = 0; continue }
+            if (line ~ /^from:/) from = strip(substr(line, 6))
+            if (line ~ /^reply-to:/) rto = strip(substr(line, 10))
+            if (line ~ /^ball-home:/) home = 1
+            continue
+          }
+          if (line !~ /^- \[ \] /) continue
+          item = substr(line, 7)
+          if ((k = index(item, " \342\200\224 ")) || (k = index(item, " \342\200\223 "))) { who = substr(item, 1, k - 1); what = substr(item, k + 5) }
+          else if (k = index(item, " - ")) { who = substr(item, 1, k - 1); what = substr(item, k + 3) }
+          else continue
+          if (fold(who) in mine) { c++; w[c] = what }
+        }
+        close(f)
+        if (!home) for (j = 1; j <= c; j++) printf "%s\t%s\t%s\t%s\n", f, from, (rto == "" ? "-" : rto), w[j]
+        delete w
+      }
+      exit
+    }' "$@"
+}
+
+# _intercom_balls_left <identity> <home file> <names> <letter>… — "<file>\t<what>"
+# for every ball the agent holds in those letters that the home does not hold.
+# A letter's balls are held when the home names the letter by its slug — a
+# crystal grown from it, or one that cites it — or, for a brief, when its outcome
+# went back: measured on this repository's archive 2026-11-01, text alone named
+# twelve balls, nearly all of briefs long closed by outcomes or held by crystals
+# in their own words. Otherwise an item counts as held when the home has its text;
+# the date after ⏰ is not matched, so an item rewritten with another date counts.
+# The dear checks run only for a letter with a ball left.
+_intercom_balls_left() {
+  local id="$1" home="$2" names="$3"; shift 3
+  local f from rto what slug cur="" curfrom="" currto="" left="" cache mine
+  cache="$(mktemp -d 2>/dev/null)" || return 0
+  _ic_flush_letter() {
+    [ -n "$cur" ] && [ -n "$left" ] || return 0
+    slug="$(basename "$cur" .md)"
+    if [ -n "$curfrom" ] && [ "$curfrom" != "$id" ] && [ "$currto" = "-" ]; then
+      # One listing of this agent's letters per sender, however many briefs.
+      mine="$cache/$(printf '%s' "$curfrom" | tr -c 'A-Za-z0-9._-' '_')"
+      [ -f "$mine" ] || _intercom_mine_in "$id" "$curfrom" > "$mine"
+      intercom_outcome_sent "$id" "$curfrom" "$slug" "$mine" && return 0
+    fi
+    printf '%s' "$left"
+  }
+  # The home is held in memory by one awk, and every item and every letter's slug
+  # is looked up there: a grep over the 1.3 MB per item and per letter was most of
+  # the cost (2026-11-01). A slug counts only as a whole name, not inside another.
+  while IFS="$(printf '\t')" read -r f from rto what; do
+    if [ "$f" != "$cur" ]; then _ic_flush_letter; cur="$f"; curfrom="$from"; currto="$rto"; left=""; fi
+    left="${left}${f}"$'\t'"${what}"$'\n'
+  done < <(_intercom_own_items "$names" "$@" | LC_ALL=C awk -v homef="$home" '
+    function word(s, w,   p, off, b, a) {
+      off = 0
+      while ((p = index(substr(s, off + 1), w)) > 0) {
+        p += off
+        b = (p == 1) ? "" : substr(s, p - 1, 1); a = substr(s, p + length(w), 1)
+        if (b !~ /[A-Za-z0-9._-]/ && a !~ /[A-Za-z0-9._-]/) return 1
+        off = p
+      }
+      return 0
+    }
+    BEGIN { RS = "\001"; if ((getline home < homef) <= 0) home = ""; close(homef); RS = "\n"; FS = "\t" }
+    {
+      f = $1; n = split(f, parts, "/"); slug = parts[n]; sub(/\.md$/, "", slug)
+      if (!(f in seen)) { seen[f] = 1; held[f] = word(home, slug) }
+      if (held[f]) next
+      core = $4; sub(/[ \t]*\342\217\260.*$/, "", core); if (core == "") core = $4
+      if (index(home, core)) next
+      print
+    }')
+  _ic_flush_letter
+  rm -rf "$cache"
+}
+
+# intercom_letter_balls <letter> <identity> <home file> <names> — the balls of
+# one letter left to write down, as "<what>" lines (pickup, at the moment of the act).
+intercom_letter_balls() {
+  _intercom_balls_left "$2" "$3" "$4" "$1" | cut -f2-
+}
+
+# intercom_held_balls <identity> — "<letter ref>\t<what>" for every ball of that
+# agent in a letter it picked up in the last INTERCOM_HELD_BALL_DAYS days (the
+# file's ctime: the move into `_done/` sets it) that is written nowhere at home.
+# The window keeps a session start from growing with the archive.
+intercom_held_balls() {
+  local id="$1" dir f files=() home names root
+  dir="$(intercom_inbox_dir "$id")/_done"
+  [ -d "$dir" ] || return 0
+  while IFS= read -r f; do [ -n "$f" ] && files+=("$f"); done < <(
+    find "$dir" -maxdepth 1 -type f -name '*.md' -ctime -"$INTERCOM_HELD_BALL_DAYS" 2>/dev/null)
+  [ ${#files[@]} -gt 0 ] || return 0
+  # The home is read once, into a file every letter is matched against, and
+  # matched by bytes (LC_ALL=C: an exact substring is the same either way): piped
+  # as a string per letter it cost 13 s of 15 on this repository's archive, and
+  # a UTF-8 grep per item most of the rest (1.3 MB of crystals; 2026-11-01).
+  home="$(mktemp 2>/dev/null)" || return 0
+  _intercom_home_lines > "$home"
+  names="$(_intercom_my_names "$id")"
+  root="$(intercom_store_root)"
+  _intercom_balls_left "$id" "$home" "$names" "${files[@]}" | while IFS="$(printf '\t')" read -r f what; do
+    [ -n "$f" ] || continue
+    f="${f#"$root"/}"; printf '%s/%s\t%s\n' "${f%%/*}" "$(basename "$f" .md)" "$what"
+  done
+  rm -f "$home"
+}
+
 # _intercom_today — today's date, YYYY-MM-DD (UTC). VDM_INTERCOM_TODAY pins it
 # for tests, the same way the comms tools pin theirs.
 _intercom_today() {

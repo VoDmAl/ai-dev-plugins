@@ -1536,6 +1536,24 @@ cmd_mail_candidates() {
   printf '   The owner says no: intercom mail-candidates decline <agent> — asked again only when mail piles up anew.\n'
 }
 
+# `ball-home <letter> "<where>"` — the balls a picked-up letter left here live
+# somewhere the session-start check does not read (an HQ's tracks, another
+# project's file): say where, in the letter's own envelope, and it is named no
+# more (held-ball-after-pickup, DL #2).
+cmd_ball_home() {
+  local ref="${1:-}" where="${2:-}" id f
+  [ -n "$ref" ] && [ -n "$(printf '%s' "$where" | tr -d '[:space:]')" ] && [ $# -eq 2 ] \
+    || _ic_die "ball-home: Usage: intercom ball-home <letter> \"<where its balls live>\""
+  id="$(intercom_identity)"
+  ref="${ref#"$id"/}"; ref="${ref%.md}"
+  f="$(intercom_inbox_dir "$id")/_done/$ref.md"
+  [ -f "$f" ] || f="$(intercom_inbox_dir "$id")/$ref.md"
+  [ -f "$f" ] || _ic_die "ball-home: no letter '$ref' in your inbox or its archive."
+  _intercom_fm_put "$f" ball-home "$(_intercom_topic_clean "$where") ($(_intercom_today))" \
+    || _ic_die "ball-home: could not write into $f"
+  printf '↪ intercom: %s — its balls live in %s; the session-start check names them no more.\n' "$ref" "$(_intercom_topic_clean "$where")"
+}
+
 cmd_claim() {
   local inbox="" force=0
   inbox="${1:-}"; [ $# -gt 0 ] && shift
@@ -1631,18 +1649,7 @@ _ic_archive() {
 # `reply-to:` holds one: measured 2026-09-29, 22 of the 60 briefs no `reply-to:`
 # pointed at had been answered that way. The slug must stand alone, so
 # `ask-one` is not found inside `ask-one-extra`.
-_ic_outcome_sent() {
-  local me="$1" sender="$2" slug="$3" dir re f
-  dir="$(intercom_inbox_dir "$sender")"
-  [ -d "$dir" ] || return 1
-  re="$(printf '%s' "$slug" | sed 's/\./\\./g')"
-  re="(^|[^A-Za-z0-9._-])${re}([^A-Za-z0-9._-]|\$)"
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    [ "$(intercom_fm_field "$f" from)" = "$me" ] && return 0
-  done < <(grep -lE "$re" "$dir"/*.md "$dir"/_done/*.md 2>/dev/null)
-  return 1
-}
+_ic_outcome_sent() { intercom_outcome_sent "$@"; }
 
 # The command that closes a brief, printed wherever intercom sees a brief being
 # taken without it.
@@ -1778,6 +1785,23 @@ cmd_pickup() {
   local dest
   dest="$(_ic_archive "$msg")" || exit 1
   printf '✅ intercom: archived → %s\n' "$dest"
+
+  # A ball this letter leaves here, written nowhere at home yet, is named at the
+  # moment of the act (held-ball-after-pickup, DL #2), as `reply` does for an
+  # outcome it sends. Later sessions see it at their start until it is written.
+  if [ -n "$sender" ] && [ "$sender" != "$id" ] && grep -q '^- \[ \] ' "$dest" 2>/dev/null; then
+    local balls
+    local hf
+    hf="$(mktemp 2>/dev/null)" && _intercom_home_lines > "$hf"
+    balls="$(intercom_letter_balls "$dest" "$id" "${hf:-/dev/null}" "$(_intercom_my_names "$id")")"
+    rm -f "${hf:-}"
+    if [ -n "$balls" ]; then
+      printf '↪ intercom: your ball in this letter — written in no crystal or pending file here:\n'
+      printf '%s\n' "$balls" | sed 's/^/    - [ ] /'
+      printf '   Write it where this project keeps its open items now (/vdm:crystal-bud); one that lives elsewhere:\n'
+      printf '   intercom ball-home %s "<where it lives>"\n' "$(basename "$dest" .md)"
+    fi
+  fi
 
   # A note to yourself is read against the clock. It is written for "the next
   # session", and the next session may open four minutes later: on 2026-10-21 a
@@ -2044,6 +2068,7 @@ case "$sub" in
   topic)                      cmd_topic "$@" ;;
   topic-misses)               cmd_topic_misses "$@" ;;
   mail-candidates)            cmd_mail_candidates "$@" ;;
+  ball-home)                  cmd_ball_home "$@" ;;
   ""|-h|--help|help)
     cat <<'HELP'
 intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
@@ -2105,7 +2130,9 @@ intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
   intercom mail-candidates [--json]     projects here whose mail piles up with no intercom session — the
                                         view an HQ's hook reads; `decline <agent> [--undo]` records the
                                         owner's no until mail piles up anew
+  intercom ball-home <letter> "<where>" the balls a picked-up letter left here live elsewhere: named no more
+                                        at session start
 HELP
     ;;
-  *) _ic_die "unknown subcommand '$sub' (try: identity|whoami|store|register|names|describe|unregister|directory|resolve|check|send|claim|take|pickup|reply|sent|chain|close|topics|topic|topic-misses|mail-candidates)" ;;
+  *) _ic_die "unknown subcommand '$sub' (try: identity|whoami|store|register|names|describe|unregister|directory|resolve|check|send|claim|take|pickup|reply|sent|chain|close|topics|topic|topic-misses|mail-candidates|ball-home)" ;;
 esac

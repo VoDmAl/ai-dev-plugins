@@ -1941,6 +1941,59 @@ says_not "…nor the machine view" "$(cands)" "pile —"
 says_not "…nor does sent" "$( cd "$TMP/hop-a" && VDM_INTERCOM_TODAY="$later" bash "$IC" sent 2>&1 | grep '📨' || echo none )" "\`pile\`"
 rm -rf "$TMP/pile" "$VDM_INTERCOM_ROOT/pile" "$VDM_INTERCOM_ROOT/_registry/pile.json"
 
+echo "-- a ball from a picked-up letter is named until it is written down (held-ball-after-pickup)"
+# HQ, 2026-10-27: an outcome left the ball with its recipient, `pickup` moved the
+# letter to `_done/`, and the next session knew nothing of it — of 19 such
+# letters two had no item at home. The pair is on disk: the letter and the
+# project's home (its crystals, its pending files). A ball is named at pickup and
+# at session start while the home does not hold it, and stops by itself once it does.
+# The "named no more" checks pass on code that names nothing; each is held by a
+# mutant that drops its one guard (2026-11-01), not by a RED label.
+mkrepo "$TMP/hold" "git@example.com:acme/hold.git"
+( cd "$TMP/hold" && bash "$IC" register --name "hold" --name "the holder" --describe "a project that holds balls" >/dev/null 2>&1 )
+mkdir -p "$TMP/hold/docs/tasks/demo"
+printf -- '---\ntitle: demo\nslug: demo\nstatus: in-progress\n---\n\n## Next actions\n\n- [ ] something unrelated\n' > "$TMP/hold/docs/tasks/demo/workitem.md"
+HI="$VDM_INTERCOM_ROOT/hold"
+hl() {  # hl <slug> <reply-to or -> <body lines…> — a letter from hop-a in hold's inbox
+  local slug="$1" rt="$2"; shift 2
+  mkdir -p "$HI"
+  { printf -- '---\nintercom: v1\nfrom: hop-a\nto: hold\ncreated: 2026-10-30T10:00:00Z\nslug: %s\n' "$slug"
+    [ "$rt" = "-" ] || printf 'reply-to: %s\n' "$rt"
+    printf 'status: pending\n---\n\n# %s\n\n' "$slug"
+    printf '%s\n' "$@"; } > "$HI/$slug.md"
+}
+hl hb-out hop-a/ask-x "## Ball" "- [ ] hold — send the keys to the test host ⏰ 2026-11-10" "- [ ] hop-a — review it"
+out="$( cd "$TMP/hold" && bash "$IC" pickup hb-out 2>&1 )"
+says "RED: pickup names the ball this letter leaves here" "$out" "your ball in this letter — written in no crystal or pending file here"
+says "…the item itself" "$out" "- [ ] send the keys to the test host ⏰ 2026-11-10"
+says_not "…not another agent's ball" "$out" "review it"
+hstart() { ( cd "$TMP/hold" && printf '{}' | "$@" bash "$HOOK" ); }
+out="$(hstart env)"
+says "RED: the next session's start names it too" "$out" "send the keys to the test host ⏰ 2026-11-10 (from hold/hb-out)"
+says "…with what to do" "$out" "intercom ball-home"
+printf -- '- [ ] send the keys to the test host (due: 2026-11-12)\n' >> "$TMP/hold/docs/tasks/demo/workitem.md"
+says_not "written into a crystal — with another date — it is named no more" "$(hstart env)" "send the keys"
+sed -i.bak 's/^- \[ \] send the keys/- [x] send the keys/' "$TMP/hold/docs/tasks/demo/workitem.md" && rm -f "$TMP/hold/docs/tasks/demo/workitem.md.bak"
+says_not "…nor once it is done and ticked" "$(hstart env)" "send the keys"
+hl hb-alias hop-a/ask-y "- [ ] the holder — rotate the token"
+( cd "$TMP/hold" && bash "$IC" pickup hb-alias >/dev/null 2>&1 )
+says "RED: a ball addressed by another of the agent's names is its ball" "$(hstart env)" "rotate the token"
+says_not "…but outside the window (here: 0 days) nothing is read" "$(hstart env VDM_INTERCOM_HELD_DAYS=0)" "rotate the token"
+( cd "$TMP/hold" && bash "$IC" ball-home hb-alias "the HQ's track on tokens" >/dev/null 2>&1 )
+says_not "ball-home: it lives elsewhere, said in the letter — named no more" "$(hstart env)" "rotate the token"
+says "…written into the letter's envelope" "$(grep '^ball-home:' "$HI/_done/hb-alias.md")" "the HQ's track on tokens"
+hl hb-brief - "- [ ] hold — decide on 1–3"
+( cd "$TMP/hold" && bash "$IC" pickup hb-brief >/dev/null 2>&1 )
+says "a brief's ball is named while its outcome has not gone back" "$(hstart env)" "decide on 1–3"
+( cd "$TMP/hold" && bash "$IC" reply hb-brief --done "decided" --ball "nobody — closed" >/dev/null 2>&1 )
+says_not "…and no more once it has" "$(hstart env)" "decide on 1–3"
+hl hb-grown hop-a/ask-z "- [ ] hold — migrate the cache"
+( cd "$TMP/hold" && bash "$IC" pickup hb-grown >/dev/null 2>&1 )
+printf -- '\n## References\n\n- grown from hb-grown\n' >> "$TMP/hold/docs/tasks/demo/workitem.md"
+says_not "a crystal that names the letter holds its balls" "$(hstart env)" "migrate the cache"
+says_not "an intercom session is not told: the owner's sessions keep the open items" "$(hstart env VDX_INTERCOM=1)" "Balls you hold"
+rm -rf "$TMP/hold" "$HI" "$VDM_INTERCOM_ROOT/_registry/hold.json" "$VDM_INTERCOM_ROOT/hop-a/hb-brief-outcome.md"
+
 echo ""
 echo "== reply: a brief is closed with its outcome, not with a receipt =="
 # Field case (product, 2026-09-29): a brief's item was closed by a comment in a

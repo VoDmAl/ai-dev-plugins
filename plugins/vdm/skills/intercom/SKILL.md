@@ -364,6 +364,7 @@ re-derive its logic:
 | `reply <letter> (--done "<what>" [--link <url>]… --ball "<who — what ⏰ date>" \| --body FILE) [--title T] [--slug S] [--force]` | Close a letter **you received** with its outcome. It goes to the letter's sender as a `reply-to` link; recipient and link come from the envelope. Works on a letter in the inbox (archived in the same step; refused while another session has it taken, unless `--force`) or in `_done/`. `--done` and `--ball` repeat; `--ball` is required — "nobody — closed" is an answer (§ Closing a brief with its outcome). |
 | `sent` (aka `outbox`) | Every letter **you** wrote that still lies unpicked in someone's inbox, oldest first, with its age and whether the recipient has a live session to wake now — or an intercom session to start (§ Intercom sessions). |
 | `mail-candidates [--json]` · `mail-candidates decline <agent> [--undo]` | The projects on this machine whose mail piles up past the threshold with no intercom session switched on and no standing no from the owner — the view an HQ's hook reads; `decline` records the owner's no in the agent's registry entry until mail piles up anew (§ Intercom sessions). |
+| `ball-home <letter> "<where>"` | The balls a picked-up letter left with you live somewhere the session-start check does not read: written into the letter's envelope (`ball-home:`), and they are named no more (§ Closing a brief with its outcome). |
 | `close` | In an intercom session, once its inbox is handled: run `vdx ai --close --waiting <n>`, n being the letters it took and left for the user. Refused outside an intercom session and while a letter nobody took is in the inbox (§ Intercom sessions). |
 | `topics [<agent>]` | The topics of that agent's live focused sessions on this machine — this repository's without an argument, this session included (§ A focused session's topic). |
 | `topic <letter> "<topic>"` · `topic <letter> --miss "<why>"` · `topic <letter> --missed "<topic>" "<why>"` | Name a letter's topic afterwards (its sender, or its recipient handing it on); give back a letter off your topic; record a letter on a topic that went past. Each prints whom the letter goes to now and the wake for it (§ A focused session's topic). |
@@ -648,6 +649,19 @@ Where intercom sees a brief taken without its outcome, it says so:
   it. The letter goes to the sender's store and nothing in your repository
   reminds you. Field case (2026-10-23): a promise made in a reply was found
   undone two weeks later, when the fault it was about came back.
+- **A ball a letter leaves with you** — an item `<you> — <what>` in a letter
+  you pick up — is named the same way: `pickup` prints it, and the start line
+  of each later session lists it ("Balls you hold…") while your home does not
+  hold it. The home is every crystal here, whatever its status, and the files
+  `comms.pending-paths` declares. A ball counts as held when the home has the
+  item's text (the date after ⏰ does not matter), when it names the letter by
+  its slug — a crystal grown from it or citing it — or, for a brief, when its
+  outcome went back. Only letters picked up in the last 14 days are read. A
+  ball that lives somewhere this does not read (an HQ's track, another
+  project's file): `ball-home <letter> "<where>"` says so in the letter's own
+  envelope, and it is named no more. Field case (HQ, 2026-10-27): of 19
+  picked-up letters with the ball on the HQ, two had no item at home; an answer
+  another agent needed for its next step reached it only when the owner asked.
 
 `reply` answers **your own inbox** only. Continuing someone else's letter is a
 relay: `send <to> <slug> --reply-to <ref>` (§ The relay form). A letter whose
