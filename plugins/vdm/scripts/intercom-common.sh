@@ -2301,17 +2301,28 @@ intercom_letter_for() {
 # from `human`). A choice in a question dialog carries no `turnOrigin` (134 such
 # records in 400 transcripts, 2026-11-01), a `!` command is not a word, and
 # another session's message comes from `peer`.
+#
+# The mark alone does not make a turn typed: the summary a compaction writes has
+# it too (40 of 6993 records in 600 transcripts, 2026-11-01), and that text is the
+# model's. So is `isMeta`, and `isSidechain` is not this conversation: the same
+# three retro-corpus.py leaves out. A security review caught it in 2.71.0.
+#
+# All this catches mistakes and a word retold. Letters and transcripts are plain
+# files of one user, so it does not stop an agent set on forging both.
 # ---------------------------------------------------------------------------
 
-# _intercom_human_turns <transcript> — the turns the human typed there, one per
-# line, whitespace collapsed. A line that is not JSON yet (being written) is
-# skipped. The grep decides nothing: it spares jq the rest of a long transcript.
+# _intercom_human_turns <transcript> [<after>] — the turns the human typed there,
+# one per line, whitespace collapsed; with <after> (a `created:` time) only those
+# later than it. A line that is not JSON yet (being written) is skipped. The grep
+# decides nothing: it spares jq the rest of a long transcript.
 _intercom_human_turns() {
-  grep -F '"human"' "$1" 2>/dev/null | jq -Rr '
+  grep -F '"human"' "$1" 2>/dev/null | jq -Rr --arg after "${2:-}" '
     def text: if type == "string" then .
               elif type == "array" then (map(select(type == "object" and .type == "text") | .text // "") | join(" "))
               else "" end;
     (fromjson? // {}) |
+    select((.isCompactSummary | not) and (.isMeta | not) and (.isSidechain | not)) |
+    select($after == "" or (((.attachment.timestamp? // .timestamp) // "") > $after)) |
     (if .type == "user" and .turnOrigin == "human" then (.message.content | text)
      elif .type == "attachment" and .attachment.type == "queued_command"
           and .attachment.origin.kind == "human" and ((.attachment.commandMode // "prompt") == "prompt")
@@ -2321,10 +2332,19 @@ _intercom_human_turns() {
     | gsub("\\s+"; " ")' 2>/dev/null
 }
 
-# intercom_word_said <sessionId> <word> — 0: the word stands whole in a turn the
-# human typed in that session; 1: it does not; 2: no transcript of it here. Exact
-# after one cleaning: stricter than the access layer's norm, so what passes here
-# passes there.
+# _intercom_has_word <word> — stdin holds a line where <word> stands with no
+# letter or digit against either end: «да» is not found in «когда». The regex is
+# jq's, as awk and grep here count bytes. An error finds nothing.
+_intercom_has_word() {
+  jq -Rne --arg w "$1" '
+    ($w | gsub("(?<c>[\\\\.^$|?*+()\\[\\]{}])"; "\\\(.c)")) as $re
+    | any(inputs; test("(^|[^\\p{L}\\p{N}_])" + $re + "($|[^\\p{L}\\p{N}_])"))' >/dev/null 2>&1
+}
+
+# intercom_word_said <sessionId> <word> [<after>] — 0: the word stands in a turn
+# the human typed in that session, later than <after> when given; 1: it does not;
+# 2: no transcript of it here. Exact after one cleaning, so nothing retold passes;
+# the access layer's own minimum length is its own (DL #5).
 intercom_word_said() {
   local word tf found=2
   case "$1" in ''|*[!A-Za-z0-9_-]*) return 2 ;; esac
@@ -2333,7 +2353,7 @@ intercom_word_said() {
   for tf in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"/*/"$1".jsonl; do
     [ -f "$tf" ] || continue
     found=1
-    _intercom_human_turns "$tf" | grep -qF -- "$word" && return 0
+    _intercom_human_turns "$tf" "${3:-}" | _intercom_has_word "$word" && return 0
   done
   return "$found"
 }

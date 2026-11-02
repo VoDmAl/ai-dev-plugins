@@ -363,7 +363,7 @@ re-derive its logic:
 | `pickup <slug> [--grow] [--force]` | Archive a message to `_done/` (or, with `--grow`, hand it to `/vdm:crystal-grow` — the letter stays in the inbox, marked taken). Refuses a letter taken by another session unless `--force`. When the sender has a live session on this machine, prints the receipt to send it (§ Delivery is not receipt). For a brief whose outcome has not gone back yet it prints the `reply` that closes it; with `--grow` it prints that as a Next action for the crystal (§ Closing a brief with its outcome). |
 | `reply <letter> (--done "<what>" [--link <url>]… --ball "<who — what ⏰ date>" \| --body FILE) [--title T] [--slug S] [--force]` | Close a letter **you received** with its outcome. It goes to the letter's sender as a `reply-to` link; recipient and link come from the envelope. Works on a letter in the inbox (archived in the same step; refused while another session has it taken, unless `--force`) or in `_done/`. `--done` and `--ball` repeat; `--ball` is required — "nobody — closed" is an answer (§ Closing a brief with its outcome). |
 | `ask <letter> --question "<q>" [--option "<o>"]… [--slug S] [--force]` | A question for the user on a letter you received: it goes to the session that wrote that letter, and your letter is released with a note of what it waits for. Exit 3 and the way to the list at HQ when there is no such session (§ A question for the user goes through the session that asked). |
-| `answer <question letter> --word "<their words>" [--slug S] [--force]` | The user's word back to whoever asked, with the session and machine it was said on. Refused (exit 2, nothing sent) unless the words stand whole in what the user typed in this session. The question is archived in the same step. |
+| `answer <question letter> --word "<their words>" [--slug S] [--force]` | The user's word back to whoever asked, with the session and machine it was said on. Refused (exit 2, nothing sent) unless the words stand as whole words in what the user typed in this session after the question came. The question is archived in the same step. |
 | `sent` (aka `outbox`) | Every letter **you** wrote that still lies unpicked in someone's inbox, oldest first, with its age and whether the recipient has a live session to wake now — or an intercom session to start (§ Intercom sessions). |
 | `mail-candidates [--json]` · `mail-candidates decline <agent> [--undo]` | The projects on this machine whose mail piles up past the threshold with no intercom session switched on and no standing no from the owner — the view an HQ's hook reads; `decline` records the owner's no in the agent's registry entry until mail piles up anew (§ Intercom sessions). |
 | `ball-home <letter> "<where>"` | The balls a picked-up letter left with you live somewhere the session-start check does not read: written into the letter's envelope (`ball-home:`), and they are named no more (§ Closing a brief with its outcome). |
@@ -895,15 +895,21 @@ the letter came from a session they may have just been in.
   A question dialog does not do: a choice there leaves no turn the user typed,
   and only that counts as their word, here and at the access layer.
 - **The answer:** `answer <question letter> --word "<their words, verbatim>"`.
-  It compares the words with what the user typed in this session and sends
-  nothing unless they stand whole in one message: spaces are collapsed, nothing
-  else is forgiven. The letter carries `owner-word:`, `owner-session:` (the id the
+  It compares the words with what the user typed in this session after the question
+  came, and sends nothing unless they stand in one message as whole words: spaces
+  are collapsed, nothing else is forgiven. A compaction's summary is the model's
+  text and does not count, though the transcript marks it as the human's. The letter carries `owner-word:`, `owner-session:` (the id the
   access layer takes as `owner_session`) and `owner-machine:`. A session where the
   user answered is not an intercom session, so this link ends a chain between
   intercom sessions.
 - **On receipt `check` compares the word again** with that session's transcript,
-  which travels between the machines: found, `NOT` found (do not act on it as the
-  user's word), or not on this machine yet (not checked). The field alone is a claim.
+  which travels between the machines, and binds it to the question the letter
+  continues: only `🗣 … found` means the word is there, after the question, in the
+  session the question went to. Every `⚠` — not found, no question behind the letter,
+  another session (right only if the first was gone), transcript not here yet — means
+  do not act on it as the user's word yet. The field alone is a claim. All this
+  catches mistakes and a word retold; letters and transcripts are plain files of one
+  user, so it does not stop an agent set on forging both.
 - **A question whose session went** is put by the next session the user works in:
   `check` and its start line say so. In an intercom session `check` sends it to
   the list at HQ, and the letter is archived with `pickup`.
