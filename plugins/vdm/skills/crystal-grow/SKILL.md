@@ -256,8 +256,9 @@ discipline runs *continuously* while a crystal is active, not only at
 grow/cut moments. Two complementary hooks remind the assistant:
 
 - `crystal-hydrate.sh` at **SessionStart** — surfaces the active workitem(s)
-  with the source-of-truth reminder, and names dormant crystals holding a
-  promise past due: a pause does not move a date.
+  with the source-of-truth reminder, and names crystals not in work — parked in
+  the pre-work tier or paused — holding a promise past due: a pause does not move
+  a date.
 - `crystal-capture-reminder.sh` at **UserPromptSubmit** — fires when source
   edits accumulate without workitem.md being touched (smart mode default;
   per-session throttle).

@@ -47,24 +47,28 @@ if [ -n "$all_items" ]; then
   non_canon_count=${non_canon_count:-0}
 fi
 
-# Dormant crystals holding a promise past due. The singleton invariant sends a
-# crystal to dormant, and a pause is the state in which a date is easiest to
+# Crystals not in work holding a promise past due. The singleton invariant sends
+# a crystal to dormant, and a pause is the state in which a date is easiest to
 # miss: on one machine 14 of the 22 crystals with promises past due were dormant,
 # in nine projects, and the start named none of them (late-grow Sidetrack #1,
-# 2026-10-25). One line, slugs and counts; the dates themselves are in
-# /vdm:crystal-cave. One pass over the whole list, silent at zero.
-dormant_due=""
+# 2026-10-25). The same goes for parking before work starts, where crystal-grow's
+# Mode B sends it: 10 crystals of 319 stood in ready, draft or blocked with a date
+# past due, and an HQ had to swap active and dormant to keep a topic in sight
+# (crystal-wake Sidetrack #26, 2026-11-02). One line, slug, status and count; the
+# dates themselves are in /vdm:crystal-cave. One pass over the whole list, a
+# process more only per crystal past due, silent at zero.
+parked_due=""
 if [ -n "$all_items" ] && command -v due_counts_batch >/dev/null 2>&1; then
-  dormant=$(printf '%s\n' "$all_items" | filter_status "dormant")
-  if [ -n "$dormant" ]; then
-    while IFS=$'\t' read -r f od _; do
-      [ "${od:-0}" -gt 0 ] 2>/dev/null || continue
-      dormant_due="${dormant_due:+${dormant_due}, }$(extract_slug "$f") (${od})"
-    done < <(printf '%s\n' "$dormant" | due_counts_batch | sort)
-  fi
+  _load_status_aliases
+  while IFS=$'\t' read -r f od _; do
+    [ "${od:-0}" -gt 0 ] 2>/dev/null || continue
+    parked_status="$(_apply_status_alias "$(extract_frontmatter_field "$f" status)")"
+    case "$(derive_status_tier "$parked_status")" in pre-work|paused) ;; *) continue ;; esac
+    parked_due="${parked_due:+${parked_due}, }$(extract_slug "$f") (${parked_status}, ${od})"
+  done < <(printf '%s\n' "$all_items" | due_counts_batch | sort)
 fi
 
-[ -z "$active" ] && [ "$non_canon_count" -eq 0 ] && [ -z "$dormant_due" ] && exit 0
+[ -z "$active" ] && [ "$non_canon_count" -eq 0 ] && [ -z "$parked_due" ] && exit 0
 
 singleton_mode=$(derive_singleton_mode 2>/dev/null || printf 'global')
 roots_count=$(resolve_crystal_roots | grep -c '.' 2>/dev/null || echo 0)
@@ -177,8 +181,8 @@ if [ -n "$waits" ]; then
   waits="\\nWaiting for an event — nothing watches it. Check the event first, before the step behind it:\\n${waits}"
 fi
 body="${body}${waits}"
-if [ -n "$dormant_due" ]; then
-  body="${body}${body:+\\n}⏰ Dormant, with promises past due — a pause does not move a date: ${dormant_due//\"/\\\"}. /vdm:crystal-cave shows the dates.\\n"
+if [ -n "$parked_due" ]; then
+  body="${body}${body:+\\n}⏰ Not in work, with promises past due — a pause does not move a date: ${parked_due//\"/\\\"}. /vdm:crystal-cave shows the dates.\\n"
 fi
 
 # Audit line — always last if non-canonical present.

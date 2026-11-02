@@ -85,7 +85,7 @@ crystal "$Q" calm in-progress '- [ ] something to do, whenever: it is not a mark
 out="$(hydrate "$Q")"
 says "the crystal is listed as before" "$out" "calm: 1 open"
 says_not "…and nothing is said about waiting" "$out" "Waiting for an event"
-says_not "…nor about dormant crystals, when none is past due" "$out" "Dormant"
+says_not "…nor about crystals not in work, when none is past due" "$out" "Not in work"
 
 # Field count (late-grow Sidetrack #1, 2026-10-25): 22 crystals on one machine
 # held promises past due; 14 of them were dormant, in nine projects, and the
@@ -100,8 +100,8 @@ crystal "$D" parked dormant '- [ ] answer the vendor (due: 2020-01-02)
 crystal "$D" later dormant '- [ ] nothing due yet (due: 2999-01-01)'
 crystal "$D" closed done '- [x] done long ago (due: 2020-01-01)'
 out="$(hydrate "$D")"
-says "RED: the dormant crystal and its overdue count" "$out" "parked (2)"
-says "…under a line that says what the pause hides" "$out" "Dormant, with promises past due"
+says "RED: the dormant crystal, its status and its overdue count" "$out" "parked (dormant, 2)"
+says "RED: …under a line that says what the pause hides" "$out" "Not in work, with promises past due"
 says_not "a dormant crystal with nothing past due is not named" "$out" "later ("
 says_not "…nor a closed one" "$out" "closed ("
 says "the active crystal is listed as before" "$out" "now: 1 open"
@@ -115,7 +115,55 @@ echo "== …also when no crystal is active =="
 N="$TMP/noactive"; mkdir -p "$N"; git -C "$N" init -q
 crystal "$N" asleep dormant '- [ ] renew the certificate (due: 2020-05-06)'
 out="$(hydrate "$N")"
-says "RED: the start is not silent then" "$out" "asleep (1)"
+says "RED: the start is not silent then" "$out" "asleep (dormant, 1)"
+
+# An HQ, 2026-10-28: a crystal parked in `ready` by crystal-grow's Mode B, all four
+# items due at a meeting, and nothing would say so; the agent swapped active and
+# dormant to keep the topic in sight. Measured 2026-11-02: 10 crystals of 319 stood
+# in ready, draft or blocked with a date past due. Named with what it is.
+echo "== a date past due is named in every status not in work =="
+W="$TMP/parkedall"; mkdir -p "$W"; git -C "$W" init -q
+crystal "$W" here in-progress '- [ ] the work (due: 2020-01-01)'
+crystal "$W" aidea idea '- [ ] an idea (due: 2020-01-01)'
+crystal "$W" adraft draft '- [ ] a draft (due: 2020-01-01)'
+crystal "$W" aready ready '- [ ] parked by Mode B (due: 2020-01-01)
+- [ ] for the same meeting (due: 2020-01-01)'
+crystal "$W" ablocked blocked '- [ ] waits on someone (due: 2020-01-01)'
+crystal "$W" alater ready '- [ ] not yet (due: 2999-01-01)'
+crystal "$W" aclosed done '- [ ] left open (due: 2020-01-01)'
+crystal "$W" acut cancelled '- [ ] dropped (due: 2020-01-01)'
+crystal "$W" aodd whatever '- [ ] no such status (due: 2020-01-01)'
+mkdir -p "$W/docs/tasks/nostatus"
+printf -- '- [ ] an artefact, not a workitem (due: 2020-01-01)\n' > "$W/docs/tasks/nostatus/workitem.md"
+git -C "$W" add -- docs/tasks/nostatus/workitem.md
+out="$(hydrate "$W")"
+says "RED: ready, the one an HQ lost, with its count" "$out" "aready (ready, 2)"
+says "RED: draft" "$out" "adraft (draft, 1)"
+says "RED: idea" "$out" "aidea (idea, 1)"
+says "RED: blocked" "$out" "ablocked (blocked, 1)"
+says_not "a date not yet past is not named" "$out" "alater ("
+says_not "the active crystal is not named here: its own line counts it" "$out" "here (in-progress"
+says_not "…nor a terminal one" "$out" "aclosed ("
+says_not "…nor a cancelled one" "$out" "acut ("
+says_not "…nor a status the audit line is for" "$out" "aodd ("
+says_not "…nor a file with no status: it is no workitem" "$out" "nostatus ("
+if printf '%s' "$out" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; then
+  ok "…in valid hook JSON"
+else
+  bad "…in valid hook JSON" "${out:0:200}"
+fi
+
+R2="$TMP/parkedonly"; mkdir -p "$R2"; git -C "$R2" init -q
+crystal "$R2" onlyready ready '- [ ] parked (due: 2020-01-01)'
+out="$(hydrate "$R2")"
+says "RED: nothing active, one in ready past due: the start is not silent" "$out" "onlyready (ready, 1)"
+
+# A project's own word for a status means what it maps to, here as everywhere.
+AL="$TMP/aliased"; mkdir -p "$AL/.claude"; git -C "$AL" init -q
+printf '{"crystal":{"status-aliases":{"queued":"ready"}}}\n' > "$AL/.claude/vdm-plugins.json"
+crystal "$AL" mapped queued '- [ ] parked under an alias (due: 2020-01-01)'
+out="$(hydrate "$AL")"
+says "RED: a status alias is read as what it maps to" "$out" "mapped (ready, 1)"
 
 echo "== the path to Read is the file's own =="
 # A project whose crystals live in tasks/, with no crystal.path set, was told to
