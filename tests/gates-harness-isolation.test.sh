@@ -61,7 +61,7 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION \
       GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
       GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR \
-      VDX_FOCUSED VDX_INTERCOM 2>/dev/null || true
+      VDX_FOCUSED VDX_INTERCOM CLAUDE_CODE_SESSION_ID 2>/dev/null || true
 
 # Nor the machine's git config: git 2.54 runs a hook declared there
 # (`hook.<name>.command`) on every commit, a fixture's included — the case is
@@ -216,12 +216,14 @@ printf '\nevery test harness carries the scrub, not just the ones a gate runs to
 # owner's `!` commit from that session hands it to every suite, and the hooks
 # under test answer as in a focused session. Measured 2026-10-20: 23 cases of
 # tests/intercom.test.sh red in a focused session, green outside it. A case that
-# wants the mode sets it on its own command.
+# wants the mode sets it on its own command. The session's id goes the same way:
+# `intercom send` writes it into the envelope, and one case went red in the hook
+# and green in a run that had unset it by hand (2026-11-01).
 SESSION_VARS="GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY
   GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE GIT_PREFIX
   GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL
   GIT_AUTHOR_DATE GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR
-  VDX_FOCUSED VDX_INTERCOM"
+  VDX_FOCUSED VDX_INTERCOM CLAUDE_CODE_SESSION_ID"
 
 # scrub_missing <file> — the session names the file's scrub does not unset, or
 # "the whole block" when it has none. The block is the statement that opens with
