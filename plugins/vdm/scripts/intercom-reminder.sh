@@ -93,10 +93,13 @@ _ic_arrivals() {
     fresh+=("$f")
   done < <(intercom_inbox_list "$id")
   [ ${#fresh[@]} -gt 0 ] || return 0
-  local taken created from topic forsid title ts
-  while IFS=$'\037' read -r f taken created from topic forsid title; do
+  local taken created from topic forsid ask title ts mark
+  while IFS=$'\037' read -r f taken created from topic forsid ask title; do
     [ -n "$f" ] || continue
     base="${f##*/}"; base="${base%.md}"
+    # A question for the owner opens its line with ❓: the caller says of it what
+    # it says of no other letter.
+    mark=""; [ -z "$ask" ] || mark="❓ "
     # Created before the session started (the start line named it), or with
     # no time to tell: never named.
     if [ -n "$taken" ] || [ -z "$created" ] || [ "$created" \< "$started" ]; then
@@ -105,7 +108,7 @@ _ic_arrivals() {
     fi
     if [ -n "$forsid" ] && [ "$forsid" = "$sid" ]; then
       printf '%s\n' "$base" >> "$seen" 2>/dev/null
-      printf '`%s` from `%s` — %s\n' "$base" "$from" "${title:-$base}"
+      printf '%s`%s` from `%s` — %s\n' "$mark" "$base" "$from" "${title:-$base}"
       continue
     fi
     if [ -n "$forsid" ]; then
@@ -125,12 +128,12 @@ _ic_arrivals() {
       fi
     fi
     printf '%s\n' "$base" >> "$seen" 2>/dev/null
-    printf '`%s` from `%s` — %s\n' "$base" "$from" "${title:-$base}"
+    printf '%s`%s` from `%s` — %s\n' "$mark" "$base" "$from" "${title:-$base}"
   done < <(awk '
     function val(line, n) { v = substr(line, n); gsub(/^[ \t]+|[ \t]+$/, "", v); gsub(/^"|"$/, "", v); return v }
     BEGIN {
       for (i = 1; i < ARGC; i++) {
-        f = ARGV[i]; first = 1; infm = 0; taken = created = from = topic = forsid = title = ""
+        f = ARGV[i]; first = 1; infm = 0; taken = created = from = topic = forsid = ask = title = ""
         while ((getline line < f) > 0) {
           if (first) { first = 0; infm = (line == "---"); if (infm) continue }
           if (infm && line == "---") { infm = 0; continue }
@@ -140,12 +143,13 @@ _ic_arrivals() {
             if (line ~ /^from:/)    from = val(line, 6)
             if (line ~ /^topic:/)   topic = val(line, 7)
             if (line ~ /^for-session:/) forsid = val(line, 13)
+            if (line ~ /^ask:/)     ask = val(line, 5)
             continue
           }
           if (line ~ /^# /) { title = substr(line, 3); break }
         }
         close(f)
-        if (!first) printf "%s\037%s\037%s\037%s\037%s\037%s\037%s\n", f, taken, created, from, topic, forsid, title
+        if (!first) printf "%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\n", f, taken, created, from, topic, forsid, ask, title
       }
       exit
     }' "${fresh[@]}")
@@ -187,7 +191,17 @@ if [ "$arrival_on" = "true" ]; then
     else
       lead="Arrived while the user was in this session"
     fi
-    msg="[intercom] 📬 ${lead} — not urgent, and no turn of its own:\n$(_vdm_json_escape "$list")\nAnswer the user's message first. At the end, one line that it waits (/vdm:intercom check); retell nothing else — the user's open steps are still on their screen."
+    # A question for the owner is not mail that waits behind their steps: another
+    # agent holds a letter open on it, and this message is the moment they are here.
+    questions="$(printf '%s\n' "$list" | grep -F -- '- ❓')"
+    letters="$(printf '%s\n' "$list" | grep -vF -- '- ❓')"
+    msg=""
+    if [ -n "$letters" ]; then
+      msg="[intercom] 📬 ${lead} — not urgent, and no turn of its own:\n$(_vdm_json_escape "$letters")\nAnswer the user's message first. At the end, one line that it waits (/vdm:intercom check); retell nothing else — the user's open steps are still on their screen."
+    fi
+    if [ -n "$questions" ]; then
+      msg="${msg:+${msg}\n}[intercom] ❓ A question for the user on a letter of this session, and another agent waits on it:\n$(_vdm_json_escape "$questions")\nAnswer the user's message, then in this same turn read it (/vdm:intercom check) and put it to them as written, in a plain message, options too: a question dialog does not do, only what they type counts as their word. Their answer goes back with /vdm:intercom answer <slug> --word \\\"<their words, verbatim>\\\"."
+    fi
     _vdm_reminder_emit intercom 1 "📬 intercom: ${n} arrived during this session → /vdm:intercom check" "$msg"
     exit 0
   fi

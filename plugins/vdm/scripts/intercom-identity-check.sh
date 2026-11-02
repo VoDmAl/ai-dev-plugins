@@ -90,6 +90,8 @@ if intercom_focused; then
   [ -n "$names" ] && msg="${msg} — aka: ${names}"
   topic="$(intercom_own_topic)"
   answers="$(_intercom_letters_where "$id" for-session "$own_sid" | grep -c .)"
+  questions="$(intercom_questions_here "$id" "$own_sid" | grep -c .)"
+  answers=$((answers - questions))
   if [ -n "$topic" ]; then
     on_topic="$(intercom_topic_letters "$id" "$topic" | grep -c .)"
     msg="${msg}. 🔇 Focused session on «${topic}»: mail is not shown here, except letters on this topic and answers to letters this session wrote — they are this session's, and a sender may wake it with one."
@@ -100,6 +102,7 @@ if intercom_focused; then
     msg="${msg}. 🔇 Focused session: mail is not shown here and no other session wakes this one, except with an answer to a letter it wrote; read the rest of the inbox only when the user asks."
     [ "$answers" -eq 0 ] || msg="${msg} 📬 ${answers} answer(s) to this session's letters in the inbox → /vdm:intercom check."
   fi
+  [ "$questions" -eq 0 ] || msg="${msg} ❓ ${questions} question(s) for the user on this session's letters → /vdm:intercom check, and put them to the user first: another agent waits on them."
   jq -c -n --arg c "$msg" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
   exit 0
 fi
@@ -144,6 +147,9 @@ if [ -z "$missing" ]; then
   msg="${msg}. Other agents address you by any of these."
   if [ "$pending" -gt 0 ] && ! intercom_mail_session; then
     msg="${msg} 📬 ${pending} pending message(s) in your inbox → /vdm:intercom check."
+    # A question whose session is gone or is this one: the user is here (DL #5).
+    questions="$(intercom_questions_here "$id" "$own_sid" | grep -c .)"
+    [ "$questions" -eq 0 ] || msg="${msg} ❓ ${questions} of them: question(s) for the user — put them first: another agent waits on them."
   fi
   # Balls left here by letters picked up lately and written nowhere at home
   # (held-ball-after-pickup, DL #2): named until a crystal or a pending file says
@@ -202,7 +208,7 @@ if intercom_mail_session; then
   msg="${msg}
 📮 Intercom session of \`${id}\`: the inbox is your work, not a reminder — nobody sits at this session, and the wakes for this project come here. ${inbox_now} Now and at every wake: /vdm:intercom check, then each letter in turn — take it, read it, act, and close it: reply for a brief, pickup for a note; one that waits for something outside the inbox goes back with release --note \"<what it waits for>\".
   • Here you answer, check and do small things. Work that changes the code is left for the owner's main session as a crystal (/vdm:crystal-grow, or /vdm:crystal-bud on an active one): the working tree is shared with it, and an edit here rides into its commit.
-  • A question for the owner is not asked in this pane — nobody reads it. Put one line on their list at HQ (the access layer's \`hq <project root> --obligations\` names it; the access layer: /vdm:intercom role access-layer) and take the next letter; do not wait for the answer.
+  • A question for the owner is not asked in this pane — nobody reads it. On a letter: /vdm:intercom ask <slug> --question \"<as the owner should read it>\" [--option \"<option>\"] puts it to the session that wrote the letter, and the letter waits with a note. When ask refuses, or the question is on no letter: Put one line on their list at HQ (the access layer's \`hq <project root> --obligations\` names it; the access layer: /vdm:intercom role access-layer). Either way take the next letter; do not wait for the answer.
   • A chain of letters between intercom sessions stops after ${INTERCOM_CHAIN_LIMIT} links in a row; send refuses the next one, and it goes to the owner the same way.
   • A letter from \`${id}\` itself is a note for the owner's next session, not mail: leave it untaken.
   • Inbox handled: say what was done, then end this session with /vdm:intercom close — it refuses while a letter nobody took is in the inbox, and runs \`vdx ai --close --waiting <n>\`, n being the letters you took and left for the owner. Your turn ends on its result."

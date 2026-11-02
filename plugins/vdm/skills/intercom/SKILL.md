@@ -362,6 +362,8 @@ re-derive its logic:
 | `release <slug> [--note "<what it waits for>"] [--force]` | The reverse of `take` (§ Receiving). Drops this session's mark; with `--note`, writes `deferred: <time> <note>` in its place, which `check` shows beside the letter and `close` counts as handled. Refuses a letter taken by another session unless `--force`, and an empty note. |
 | `pickup <slug> [--grow] [--force]` | Archive a message to `_done/` (or, with `--grow`, hand it to `/vdm:crystal-grow` — the letter stays in the inbox, marked taken). Refuses a letter taken by another session unless `--force`. When the sender has a live session on this machine, prints the receipt to send it (§ Delivery is not receipt). For a brief whose outcome has not gone back yet it prints the `reply` that closes it; with `--grow` it prints that as a Next action for the crystal (§ Closing a brief with its outcome). |
 | `reply <letter> (--done "<what>" [--link <url>]… --ball "<who — what ⏰ date>" \| --body FILE) [--title T] [--slug S] [--force]` | Close a letter **you received** with its outcome. It goes to the letter's sender as a `reply-to` link; recipient and link come from the envelope. Works on a letter in the inbox (archived in the same step; refused while another session has it taken, unless `--force`) or in `_done/`. `--done` and `--ball` repeat; `--ball` is required — "nobody — closed" is an answer (§ Closing a brief with its outcome). |
+| `ask <letter> --question "<q>" [--option "<o>"]… [--slug S] [--force]` | A question for the user on a letter you received: it goes to the session that wrote that letter, and your letter is released with a note of what it waits for. Exit 3 and the way to the list at HQ when there is no such session (§ A question for the user goes through the session that asked). |
+| `answer <question letter> --word "<their words>" [--slug S] [--force]` | The user's word back to whoever asked, with the session and machine it was said on. Refused (exit 2, nothing sent) unless the words stand whole in what the user typed in this session. The question is archived in the same step. |
 | `sent` (aka `outbox`) | Every letter **you** wrote that still lies unpicked in someone's inbox, oldest first, with its age and whether the recipient has a live session to wake now — or an intercom session to start (§ Intercom sessions). |
 | `mail-candidates [--json]` · `mail-candidates decline <agent> [--undo]` | The projects on this machine whose mail piles up past the threshold with no intercom session switched on and no standing no from the owner — the view an HQ's hook reads; `decline` records the owner's no in the agent's registry entry until mail piles up anew (§ Intercom sessions). |
 | `ball-home <letter> "<where>"` | The balls a picked-up letter left with you live somewhere the session-start check does not read: written into the letter's envelope (`ball-home:`), and they are named no more (§ Closing a brief with its outcome). |
@@ -554,8 +556,10 @@ pending messages:
      `Outcome to <sender>` line. `reply` reads the recipient from the letter's
      envelope, so the name in that checkbox is only a label.
 
-**The user's pending steps come first.** Mail that arrives mid-session — a
-wake, the opt-in reminder, a receipt — is almost never urgent, and the user may
+**The user's pending steps come first.** One exception: a question for the user
+on a letter of this session is put to them in the same turn (§ A question for
+the user goes through the session that asked). Other mail that arrives
+mid-session — a wake, the opt-in reminder, a receipt — is almost never urgent, and the user may
 be in the middle of steps you handed them: a commit to run, a push, a decision
 to make. Then, in that turn:
 
@@ -866,6 +870,44 @@ there.
   topic or without; the start line of a focused session counts such answers;
   `check` marks each as its own.
 
+### A question for the user goes through the session that asked
+
+The user (2026-10-28, through echelon): an intercom session mostly handles what
+needs them, and nothing stops it asking through the session that started the
+exchange. A line on their list at HQ reaches them at the next sheet, hours later;
+the letter came from a session they may have just been in.
+
+- **On the receiving side:** `ask <letter> --question "<as the user should read
+  it>" [--option "<option>"]…`. The question goes back as a letter marked
+  `ask: owner`, addressed to the session that wrote your letter (§ An answer goes
+  to the session that asked), and your letter is released with a note of what it
+  waits for, so `close` counts it as handled. Take your next letter; do not wait.
+  When the answer comes, `take` the letter again and go on with it.
+- **`ask` decides the route.** With no session to ask through — the letter was
+  written in an intercom session, names no session, or its session is gone — it
+  sends nothing, exits 3 and names the way to the user's list at HQ. A question
+  on no letter goes to that list as well.
+- **In the session that wrote the letter:** the arrival line says it apart from
+  mail. This is the exception to § Receiving's "the user's pending steps come
+  first": another agent holds a letter open on it, and the user's message is the
+  moment they are here. Answer their message, then in the same turn read the
+  question and put it to them **as written, options too, in a plain message**.
+  A question dialog does not do: a choice there leaves no turn the user typed,
+  and only that counts as their word, here and at the access layer.
+- **The answer:** `answer <question letter> --word "<their words, verbatim>"`.
+  It compares the words with what the user typed in this session and sends
+  nothing unless they stand whole in one message: spaces are collapsed, nothing
+  else is forgiven. The letter carries `owner-word:`, `owner-session:` (the id the
+  access layer takes as `owner_session`) and `owner-machine:`. A session where the
+  user answered is not an intercom session, so this link ends a chain between
+  intercom sessions.
+- **On receipt `check` compares the word again** with that session's transcript,
+  which travels between the machines: found, `NOT` found (do not act on it as the
+  user's word), or not on this machine yet (not checked). The field alone is a claim.
+- **A question whose session went** is put by the next session the user works in:
+  `check` and its start line say so. In an intercom session `check` sends it to
+  the list at HQ, and the letter is archived with `pickup`.
+
 ### Intercom sessions — the inbox is their work
 
 A session started with `vdx ai --intercom` carries `VDX_INTERCOM=1` (the name is
@@ -896,9 +938,11 @@ anything the user reads is "intercom session" ("сессия intercom").
   main session as a crystal (`/vdm:crystal-grow`, or `/vdm:crystal-bud` on an
   active one): the two sessions share one working tree, and an edit here rides
   into the other's commit. A question for the user is not asked in its pane,
-  which nobody reads: one line goes to the user's list at HQ (the access
-  layer's `hq <project root> --obligations` names it), and the session takes
-  the next letter without waiting for the answer.
+  which nobody reads. On a letter it goes to the session that wrote the letter
+  (§ A question for the user goes through the session that asked); with no such
+  session, or on no letter, one line goes to the user's list at HQ (the access
+  layer's `hq <project root> --obligations` names it). Either way the session
+  takes the next letter without waiting for the answer.
 - **A chain between intercom sessions stops.** A letter written in an intercom session
   carries `session: mail` in its envelope. When an intercom session continues a
   chain (`send --reply-to`, `reply`) whose last 3 links all carry it, the

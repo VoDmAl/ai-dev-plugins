@@ -2256,6 +2256,8 @@ _intercom_sid_row() {
 # A conversation open on both machines shares one id: live here wins.
 intercom_session_state() {
   local sid="$1" row tf mm m mode ts e mins
+  # The id comes from a letter, and it names files below: only what an id looks like.
+  case "$sid" in ''|*[!A-Za-z0-9_-]*) printf 'gone'; return 0 ;; esac
   if [ "$sid" = "${CLAUDE_CODE_SESSION_ID:-}" ]; then printf 'self'; return 0; fi
   row="$(_intercom_sid_row "$sid")"
   if [ -n "$row" ]; then printf 'live\037%s' "$row"; return 0; fi
@@ -2283,6 +2285,71 @@ intercom_letter_for() {
   sid="$(intercom_fm_field "$1" for-session)"
   [ -n "$sid" ] || return 0
   intercom_session_state "$sid"
+}
+
+# ---------------------------------------------------------------------------
+# A question for the owner, through the session that wrote the letter
+# (docs/tasks/intercom-hitl-via-initiator, DL #5). The owner, 2026-10-28: an
+# intercom session mostly handles what needs them, and nothing stops it asking
+# through the session that started the exchange, where they have just been;
+# a line on their list at HQ reaches them hours later.
+#
+# The answer is checked where it is written and again where it is read: a word
+# retold is an agent's claim. What counts is what the access layer's own check
+# counts, or a word taken here would be refused there: a turn the human typed
+# (`turnOrigin: human`), or typed in the middle of a turn (a `queued_command`
+# from `human`). A choice in a question dialog carries no `turnOrigin` (134 such
+# records in 400 transcripts, 2026-11-01), a `!` command is not a word, and
+# another session's message comes from `peer`.
+# ---------------------------------------------------------------------------
+
+# _intercom_human_turns <transcript> — the turns the human typed there, one per
+# line, whitespace collapsed. A line that is not JSON yet (being written) is
+# skipped. The grep decides nothing: it spares jq the rest of a long transcript.
+_intercom_human_turns() {
+  grep -F '"human"' "$1" 2>/dev/null | jq -Rr '
+    def text: if type == "string" then .
+              elif type == "array" then (map(select(type == "object" and .type == "text") | .text // "") | join(" "))
+              else "" end;
+    (fromjson? // {}) |
+    (if .type == "user" and .turnOrigin == "human" then (.message.content | text)
+     elif .type == "attachment" and .attachment.type == "queued_command"
+          and .attachment.origin.kind == "human" and ((.attachment.commandMode // "prompt") == "prompt")
+       then (.attachment.prompt | text)
+     else "" end)
+    | select(test("^\\s*<(bash-|command-|local-command)") | not)
+    | gsub("\\s+"; " ")' 2>/dev/null
+}
+
+# intercom_word_said <sessionId> <word> — 0: the word stands whole in a turn the
+# human typed in that session; 1: it does not; 2: no transcript of it here. Exact
+# after one cleaning: stricter than the access layer's norm, so what passes here
+# passes there.
+intercom_word_said() {
+  local word tf found=2
+  case "$1" in ''|*[!A-Za-z0-9_-]*) return 2 ;; esac
+  word="$(_intercom_topic_clean "$2")"
+  [ -n "$word" ] || return 1
+  for tf in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"/*/"$1".jsonl; do
+    [ -f "$tf" ] || continue
+    found=1
+    _intercom_human_turns "$tf" | grep -qF -- "$word" && return 0
+  done
+  return "$found"
+}
+
+# intercom_questions_here <identity> <sessionId> — the questions for the owner in
+# that inbox this session is the one to put, one path per line: addressed to it,
+# or, in a session that is not focused, addressed to a session that is gone.
+intercom_questions_here() {
+  local f fs
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    fs="$(intercom_fm_field "$f" for-session)"
+    if [ -n "$fs" ] && [ "$fs" = "$2" ]; then printf '%s\n' "$f"; continue; fi
+    intercom_focused && continue
+    [ "$(intercom_session_state "$fs")" != gone ] || printf '%s\n' "$f"
+  done < <(_intercom_letters_where "$1" ask owner)
 }
 
 # _intercom_fm_put <letter> <key> <value> [append] — write one envelope key:

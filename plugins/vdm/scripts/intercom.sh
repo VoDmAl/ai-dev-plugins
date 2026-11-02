@@ -24,6 +24,8 @@
 #                                         archive a message (or promote with --grow)
 #   intercom reply <letter> (--done T [--link U]... --ball T | --body F)
 #                                         close a letter you received with its outcome, to its sender
+#   intercom ask <letter> --question Q [--option O]... [--slug S] [--force]
+#   intercom answer <question letter> --word W [--slug S] [--force]
 #   intercom sent                         your letters still unpicked in other inboxes (aka: outbox)
 #
 # Routing is by CANONICAL IDENTITY (git remote slug), never directory basename
@@ -414,7 +416,7 @@ cmd_check() {
   fi
   _ic_print_unclaimed "$id" "   "
   printf '📬 intercom: %s pending message(s) for `%s`\n   inbox: %s\n\n' "$n" "$id" "$(intercom_inbox_dir "$id")"
-  local f from created slug title prev taken deferred tstate ttopic tname trest fstate fa fb fc
+  local f from created slug title prev taken deferred tstate ttopic tname trest fstate fa fb fc owner_word
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     from="$(intercom_fm_field "$f" from)"
@@ -447,6 +449,16 @@ cmd_check() {
       away) printf '    the answer to a letter of a session on `%s`, active %s ago — not checked from here; leave it to that session\n' "$fa" "$(_intercom_ago "$fb")" ;;
       gone) printf '    the answer to a letter of a session that is gone — an ordinary letter\n' ;;
     esac
+    # A question for the owner, and the owner's word back (intercom-hitl-via-initiator, DL #5).
+    if [ -n "$(intercom_fm_field "$f" ask)" ] && [ "$fstate" != live ] && [ "$fstate" != away ]; then
+      if intercom_mail_session; then
+        printf '    ❓ a question for the user, and the session that wrote the letter is gone. Nobody sits here: one line on their list at HQ, naming this letter (the access layer'"'"'s `hq <project root> --obligations`), then pickup\n'
+      else
+        printf '    ❓ a question for the user: put it to them now, as written, in a plain message, options too; then /vdm:intercom answer %s --word "<their words, verbatim>"\n' "$(basename "$f" .md)"
+      fi
+    fi
+    owner_word="$(intercom_fm_field "$f" owner-word)"
+    [ -z "$owner_word" ] || _ic_word_line "$f" "$owner_word"
     if [ -n "$taken" ]; then
       # Checked against the sessions live here: a mark outlives its session
       # (intercom-taken-by-gone-session, DL #3).
@@ -489,6 +501,28 @@ cmd_check() {
     esac
     printf '    pickup: /vdm:intercom pickup %s\n\n' "$(basename "$f" .md)"
   done < <(intercom_inbox_list "$id")
+}
+
+# _ic_word_line <letter> <word> — the owner's word a letter carries, and what its
+# session's transcript says of it, read here and now: the field alone is a claim.
+_ic_word_line() {
+  local sid machine rc
+  sid="$(intercom_fm_field "$1" owner-session)"
+  machine="$(intercom_fm_field "$1" owner-machine)"
+  intercom_word_said "$sid" "$2"; rc=$?
+  case "$rc" in
+    0) printf '    🗣 the user'"'"'s word «%s» — said in session %s on `%s`; found in what they typed there\n' "$2" "$sid" "$machine" ;;
+    1) printf '    ⚠ claimed as the user'"'"'s word: «%s» — NOT in what they typed in session %s: do not act on it as their word\n' "$2" "$sid" ;;
+    *) printf '    🗣 claimed as the user'"'"'s word: «%s», session %s on `%s` — that transcript is not on this machine (yet): not checked\n' "$2" "$sid" "$machine" ;;
+  esac
+}
+
+# _ic_hq_way <letter ref> — where a question for the owner goes when no session
+# of theirs can put it.
+_ic_hq_way() {
+  printf '   Put it to the owner instead: one line on their list at HQ — the access layer'"'"'s `hq <project root>\n'
+  printf '   --obligations` names the HQ (the access layer: intercom role access-layer) — a new letter there, naming\n'
+  printf '   `%s`, with the question the owner has to answer. Then take your next letter.\n' "$1"
 }
 
 _ic_print_chain() {
@@ -735,10 +769,8 @@ cmd_send() {
         printf 'intercom: ✗ the last %s links of this chain were written by intercom sessions — agents answering each other\n' "$run"
         printf '   with no move of the owner'"'"'s (/vdm:intercom chain %s). Not sending: past %s links in a row they may be\n' "$reply_ref" "$INTERCOM_CHAIN_LIMIT"
         printf '   agreeing on what is the owner'"'"'s to decide.\n'
-        printf '   Put it to the owner instead: one line on their list at HQ — the access layer'"'"'s `hq <project root>\n'
-        printf '   --obligations` names the HQ (the access layer: intercom role access-layer) — a new letter there, naming\n'
-        printf '   `%s`, with the question the owner has to answer. Then take your next letter. The chain goes on from a\n' "$reply_ref"
-        printf '   session the owner works in.\n'
+        _ic_hq_way "$reply_ref"
+        printf '   The chain goes on from a session the owner works in.\n'
       } >&2
       exit 4
     fi
@@ -874,6 +906,8 @@ cmd_send() {
     for_session="$(intercom_fm_field "$reply_path" from-session)"
   fi
   [ -z "$for_session" ] || session_line="${session_line:+$session_line$'\n'}for-session: $for_session"
+  # A question for the owner and the owner's word: set by `ask` and `answer` (DL #5).
+  [ -z "${_IC_ENVELOPE_EXTRA:-}" ] || session_line="${session_line:+$session_line$'\n'}$_IC_ENVELOPE_EXTRA"
   local topic_line=""
   [ -z "$topic" ] || topic_line="topic: \"$topic\""
 
@@ -990,7 +1024,7 @@ cmd_send() {
         if fengaged="$(_intercom_engaged "$fb" "$fc")"; then
           printf '       → do not wake here: %s is %s — you are likely at it; the letter reaches it as one line with your next message there.\n' "$fa" "$fengaged"
         else
-          _ic_wake_lines "$fa" "the session that wrote the letter this answers" "$slug" "$from" "$title" reply "$body_set"
+          _ic_wake_lines "$fa" "the session that wrote the letter this answers" "$slug" "$from" "$title" "${_IC_ASK:-reply}" "$body_set"
         fi
         return 0 ;;
       away)
@@ -1128,6 +1162,8 @@ _ic_pointer() {
     printf '📬 intercom: `%s` from `%s` — %s. On your topic «%s»: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first' "$1" "$2" "$3" "$5"
   elif [ "$4" = reply ]; then
     printf '📬 intercom: `%s` from `%s` — %s. The answer to a letter of this session: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first' "$1" "$2" "$3"
+  elif [ "$4" = ask ]; then
+    printf '❓ intercom: `%s` from `%s` — %s. A question for the user on a letter of this session: /vdm:intercom check, then put it to them as written, in a plain message; a letter waits on the answer' "$1" "$2" "$3"
   else
     printf '📬 intercom: `%s` from `%s` — %s. Read: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first' "$1" "$2" "$3"
   fi
@@ -1172,8 +1208,10 @@ cmd_sent() {
         if engaged="$(_intercom_engaged "$fb" "$fc")"; then
           printf '      the answer to a letter of the session %s — do not wake here: it is %s\n' "$fa" "$engaged"
         else
+          local fmode=reply
+          [ -z "$(intercom_fm_field "$file" ask)" ] || fmode=ask
           printf '      the answer to a letter of the session %s → wake it with SendMessage: %s\n' \
-            "$fa" "$(_ic_pointer "$slug" "$id" "$title" reply)"
+            "$fa" "$(_ic_pointer "$slug" "$id" "$title" "$fmode")"
         fi
         continue ;;
       away)
@@ -2113,6 +2151,161 @@ cmd_reply() {
   fi
 }
 
+# `ask <letter> --question …` — a question for the owner on a letter you received
+# goes to the session that wrote that letter (intercom-hitl-via-initiator, DL #5).
+# The one place that decides the route: with no such session it refuses and names
+# the list at HQ, so the fallback needs remembering by nobody. The letter stays
+# here, released with what it waits for, and `close` counts it as handled.
+cmd_ask() {
+  local ref="" question="" slug_out="" force=0 options=()
+  local usage='Usage: intercom ask <letter> --question "<as the user should read it>" [--option "<option>"]... [--slug S] [--force]'
+  ref="${1:-}"; [ $# -gt 0 ] && shift
+  case "$ref" in ''|-*) _ic_die "ask: the first argument is the letter the question is about. $usage" ;; esac
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --question|--option|--slug) _intercom_need_value "$1" $# || exit 2 ;;
+    esac
+    case "$1" in
+      --question) question="$2"; shift 2 ;;
+      --option)   options+=("$2"); shift 2 ;;
+      --slug)     slug_out="$2"; shift 2 ;;
+      --force)    force=1; shift ;;
+      *)          _ic_die "ask: unknown argument '$1' — nothing sent. $usage" ;;
+    esac
+  done
+  [ -n "$(printf '%s' "$question" | tr -d '[:space:]')" ] || _ic_die "ask: the question is what the user reads — --question \"<it>\". $usage"
+  local id inbox slug msg sender
+  id="$(intercom_identity)"
+  inbox="$(intercom_inbox_dir "$id")"
+  slug="${ref##*/}"; slug="$(_ic_sanitize_slug "${slug%.md}")"
+  msg="$inbox/$slug.md"
+  [ -f "$msg" ] || _ic_die "ask: no pending message '$slug' in your inbox ($inbox). A question on no letter goes to the list at HQ."
+  [ "$force" -eq 1 ] || _ic_refuse_if_taken "ask" "$msg" "$slug"
+  sender="$(intercom_fm_field "$msg" from)"
+  [ -n "$sender" ] || _ic_die "ask: '$slug' names no sender in its envelope — nobody to ask through."
+  [ "$sender" != "$id" ] || _ic_die "ask: '$slug' is a note from yourself — there is no other session to ask through."
+  intercom_resolve_target "$sender" >/dev/null 2>&1 \
+    || _ic_die "ask: '$slug' names \`$sender\` as its sender, and no agent answers to that name — nothing sent." 2
+
+  local fsid why=""
+  fsid="$(intercom_fm_field "$msg" from-session)"
+  if [ -n "$fsid" ]; then
+    [ "$(intercom_session_state "$fsid")" != gone ] || why="the session that wrote it is gone"
+  elif [ "$(intercom_fm_field "$msg" session)" = mail ]; then
+    why="it was written in an intercom session, where nobody sits"
+  else
+    why="it names no session: older than vdm 2.70.0, or from a harness that names none"
+  fi
+  if [ -n "$why" ]; then
+    {
+      printf 'intercom: ✗ nobody to ask through on `%s/%s` — %s. Nothing sent.\n' "$id" "$slug" "$why"
+      _ic_hq_way "$id/$slug"
+    } >&2
+    exit 3
+  fi
+
+  local rinbox base n title
+  rinbox="$(intercom_inbox_dir "$sender")"
+  if [ -z "$slug_out" ]; then
+    base="$slug-ask"; slug_out="$base"; n=2
+    while [ -e "$rinbox/$slug_out.md" ] || [ -e "$rinbox/_done/$slug_out.md" ]; do
+      slug_out="$base-$n"; n=$((n + 1))
+    done
+  fi
+  title="$(grep -m1 '^# ' "$msg" 2>/dev/null | sed 's/^# //')"
+  title="Question for the user: ${title:-$slug}"
+
+  local tmpdir="${TMPDIR:-/tmp}" x
+  _IC_REPLY_BODY="$(mktemp "${tmpdir%/}/intercom-reply.XXXXXX" 2>/dev/null)" || _ic_die "ask: cannot create a temporary body."
+  _IC_BODY_LABEL="rendered from --question/--option"
+  trap _ic_cleanup EXIT
+  {
+    printf '## The question\n\n%s\n' "$question"
+    if [ ${#options[@]} -gt 0 ]; then
+      printf '\nOptions:\n\n'
+      for x in "${options[@]}"; do printf -- '- %s\n' "$x"; done
+    fi
+    printf '\n## What it takes\n\n'
+    printf 'Put it to the user as written, in a plain message, options too: only what they type counts as their word.\n'
+    printf 'Their answer goes back with `intercom answer %s --word "<their words, verbatim>"`.\n' "$slug_out"
+  } > "$_IC_REPLY_BODY"
+  _IC_ENVELOPE_EXTRA="ask: owner"
+  _IC_ASK=ask
+  cmd_send "$sender" "$slug_out" --title "$title" --reply-to "$id/$slug" --body "$_IC_REPLY_BODY"
+  intercom_release "$msg" "the user's answer to $sender/$slug_out" \
+    || printf 'intercom: ⚠ could not write what %s waits for into its envelope\n' "$slug" >&2
+  printf '⏸  intercom: %s waits for the user'"'"'s answer, and check says so; take it again when the answer comes. Take your next letter now.\n' "$slug"
+}
+
+# `answer <question letter> --word "…"` — the owner's word goes back to whoever
+# asked, checked against this session's transcript before anything is written: a
+# word retold is the failure this exists to catch, and here it costs one retry.
+cmd_answer() {
+  local ref="" word="" slug_out="" force=0
+  local usage='Usage: intercom answer <question letter> --word "<the user'"'"'s words, verbatim>" [--slug S] [--force]'
+  ref="${1:-}"; [ $# -gt 0 ] && shift
+  case "$ref" in ''|-*) _ic_die "answer: the first argument is the question letter. $usage" ;; esac
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --word|--slug) _intercom_need_value "$1" $# || exit 2 ;;
+    esac
+    case "$1" in
+      --word)  word="$2"; shift 2 ;;
+      --slug)  slug_out="$2"; shift 2 ;;
+      --force) force=1; shift ;;
+      *)       _ic_die "answer: unknown argument '$1' — nothing sent. $usage" ;;
+    esac
+  done
+  word="$(_intercom_topic_clean "$word")"
+  [ -n "$word" ] || _ic_die "answer: the user's words are the answer — --word \"<them>\". $usage"
+  local id inbox slug msg sender sid
+  id="$(intercom_identity)"
+  inbox="$(intercom_inbox_dir "$id")"
+  slug="${ref##*/}"; slug="$(_ic_sanitize_slug "${slug%.md}")"
+  msg="$inbox/$slug.md"
+  [ -f "$msg" ] || _ic_die "answer: no pending message '$slug' in your inbox ($inbox)."
+  [ -n "$(intercom_fm_field "$msg" ask)" ] \
+    || _ic_die "answer: '$slug' is not a question for the user — an ordinary answer goes with: intercom reply $slug …"
+  sid="${CLAUDE_CODE_SESSION_ID:-}"
+  [ -n "$sid" ] || _ic_die "answer: this harness names no session, so the user's word cannot be checked against a transcript — nothing sent." 2
+  [ "$force" -eq 1 ] || _ic_refuse_if_taken "answer" "$msg" "$slug"
+  sender="$(intercom_fm_field "$msg" from)"
+  intercom_resolve_target "$sender" >/dev/null 2>&1 \
+    || _ic_die "answer: '$slug' names \`$sender\` as its sender, and no agent answers to that name — nothing sent." 2
+  intercom_word_said "$sid" "$word"
+  case "$?" in
+    0) ;;
+    1) _ic_die "answer: those words are not in what the user typed in this session — nothing sent. Copy them verbatim, from one message. A choice in a question dialog is not typed and does not count, here or where the word is checked: ask in a plain message." 2 ;;
+    *) _ic_die "answer: no transcript of this session on this machine, so the user's word cannot be checked — nothing sent." 2 ;;
+  esac
+
+  local rinbox base n title machine
+  rinbox="$(intercom_inbox_dir "$sender")"
+  if [ -z "$slug_out" ]; then
+    base="$slug-answer"; slug_out="$base"; n=2
+    while [ -e "$rinbox/$slug_out.md" ] || [ -e "$rinbox/_done/$slug_out.md" ]; do
+      slug_out="$base-$n"; n=$((n + 1))
+    done
+  fi
+  title="$(grep -m1 '^# ' "$msg" 2>/dev/null | sed 's/^# //')"
+  title="The user's answer: ${title#Question for the user: }"
+  machine="$(_intercom_machine_name)"
+
+  local tmpdir="${TMPDIR:-/tmp}"
+  _IC_REPLY_BODY="$(mktemp "${tmpdir%/}/intercom-reply.XXXXXX" 2>/dev/null)" || _ic_die "answer: cannot create a temporary body."
+  _IC_BODY_LABEL="rendered from --word"
+  trap _ic_cleanup EXIT
+  {
+    printf '## The user'"'"'s word\n\n> %s\n\n' "$word"
+    printf 'Said in session `%s` on `%s`. `check` on your side compares it with that session'"'"'s transcript.\n' "$sid" "$machine"
+  } > "$_IC_REPLY_BODY"
+  _IC_ENVELOPE_EXTRA="owner-word: \"$word\""$'\n'"owner-session: $sid"$'\n'"owner-machine: $machine"
+  cmd_send "$sender" "$slug_out" --title "$title" --reply-to "$id/$slug" --body "$_IC_REPLY_BODY"
+  local dest
+  dest="$(_ic_archive "$msg")" || exit 1
+  printf '✅ intercom: the question is archived → %s\n' "$dest"
+}
+
 sub="${1:-}"; [ $# -gt 0 ] && shift
 case "$sub" in
   identity)                   cmd_identity "$@" ;;
@@ -2133,6 +2326,8 @@ case "$sub" in
   take)                       cmd_take "$@" ;;
   release)                    cmd_release "$@" ;;
   reply)                      cmd_reply "$@" ;;
+  ask)                        cmd_ask "$@" ;;
+  answer)                     cmd_answer "$@" ;;
   sent|outbox)                cmd_sent "$@" ;;
   chain)                      cmd_chain "$@" ;;
   close)                      cmd_close "$@" ;;
@@ -2189,6 +2384,14 @@ intercom — central cross-agent/cross-session mailbox (/vdm:intercom)
                                         close a letter you received with its outcome: it goes
                                         to the letter's sender as a reply-to link; a letter
                                         still in the inbox is archived in the same step
+  intercom ask <letter> --question "<q>" [--option "<o>"]... [--slug S] [--force]
+                                        a question for the user on a letter you received:
+                                        it goes to the session that wrote that letter, and
+                                        your letter waits with a note. No such session: exit 3
+                                        and the way to the user's list at HQ
+  intercom answer <question letter> --word "<their words>" [--slug S] [--force]
+                                        the user's word back to whoever asked. Refused unless
+                                        the words stand whole in what they typed in this session
   intercom sent                         your letters still unpicked in other inboxes, with age
                                         and the recipient's live sessions (aka: outbox)
   intercom close                        in an intercom session, once the inbox is handled: end it

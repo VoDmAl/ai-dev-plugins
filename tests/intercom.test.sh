@@ -2020,6 +2020,192 @@ rm -f "$SESS"/rf*.json "$SESS"/rm.json "$SESS"/rarr.json "$TMP/vdx.log"
 rm -rf "$RI" "$VDM_INTERCOM_ROOT/hop-q"
 find "$HI" -maxdepth 2 -name 'ra-*' -delete 2>/dev/null
 
+echo "-- a question for the owner goes through the session that wrote the letter (intercom-hitl-via-initiator)"
+# The owner, 2026-10-28: nothing stops an intercom session asking through the
+# session that started the exchange; a line on their list at HQ reaches them hours
+# later. `ask` decides the route, and the answer is checked against the transcript
+# of the session it was said in — by the same rule the access layer applies.
+RI="$VDM_INTERCOM_ROOT/hop-r"; QI="$VDM_INTERCOM_ROOT/hop-q"; mkdir -p "$RI" "$QI"
+env VDX_FOCUSED=1 python3 -c 'import time; time.sleep(300)' & QF_PID=$!; disown "$QF_PID" 2>/dev/null || true
+trap 'kill "$LIVE_PID" "$QF_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  { [ -r "/proc/$QF_PID/environ" ] || ps -wwE -p "$QF_PID" -o command= 2>/dev/null | grep -q 'VDX_FOCUSED=1'; } && break
+  python3 -c 'import time; time.sleep(0.2)'
+done
+mksession qf.json "$QF_PID" "$TMP/hop-r" hop-r-qf idle "$SOCKS/b.sock" sid-qf
+jq --argjson ms "$(( ($(date -u +%s) - 3600) * 1000 ))" '.startedAt = $ms' "$SESS/qf.json" > "$TMP/qf.json" && mv "$TMP/qf.json" "$SESS/qf.json"
+qfoc()  { ( cd "$TMP/hop-r" && VDX_FOCUSED=1 CLAUDE_CODE_SESSION_ID=sid-qf VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" "$@" 2>&1 ); }
+qmail() { ( cd "$TMP/hop-q" && VDX_INTERCOM=1 CLAUDE_CODE_SESSION_ID=sid-qm VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" "$@" 2>&1 ); }
+qother() { ( cd "$TMP/hop-r" && CLAUDE_CODE_SESSION_ID=sid-qother VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" "$@" 2>&1 ); }
+qbrief() { qfoc send hop-q "$1" --title "Brief $1" --body "$B/live.md" >/dev/null; }
+QPROJ="$HOME/.claude/projects/-q"; mkdir -p "$QPROJ"
+# What counts is what the access layer's check counts, in the form the harness writes.
+cat > "$QPROJ/sid-qf.jsonl" <<'JSONL'
+{"type":"user","turnOrigin":"human","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"вариант б, оставляем как есть"}}
+{"type":"user","turnOrigin":"human","timestamp":"2026-10-04T10:01:00.000Z","message":{"content":[{"type":"text","text":"и   ещё\nслово \"в кавычках\" & знак"}]}}
+{"type":"attachment","timestamp":"2026-10-04T10:02:00.000Z","attachment":{"type":"queued_command","origin":{"kind":"human"},"commandMode":"prompt","prompt":"сказано посреди хода"}}
+{"type":"attachment","timestamp":"2026-10-04T10:03:00.000Z","attachment":{"type":"queued_command","origin":{"kind":"peer"},"prompt":"письмо другой сессии"}}
+{"type":"attachment","timestamp":"2026-10-04T10:03:30.000Z","attachment":{"type":"queued_command","origin":{"kind":"human"},"commandMode":"bash","prompt":"команда посреди хода"}}
+{"type":"user","turnOrigin":"peer","timestamp":"2026-10-04T10:04:00.000Z","message":{"content":"сказала другая сессия"}}
+{"type":"user","turnOrigin":"human","timestamp":"2026-10-04T10:05:00.000Z","message":{"content":"<bash-input>команда в строке</bash-input>"}}
+{"type":"user","userType":"external","timestamp":"2026-10-04T10:06:00.000Z","toolUseResult":{"answers":{"q":"выбор в диалоге"}},"message":{"content":[{"type":"tool_result","content":"выбор в диалоге"}]}}
+{"type":"assistant","timestamp":"2026-10-04T10:07:00.000Z","message":{"content":[{"type":"text","text":"сказал ассистент, human"}]}}
+{"type":"user","turnOrigin":"peer","sender":"human","timestamp":"2026-10-04T10:08:00.000Z","message":{"content":"другая сессия с меткой"}}
+{"type":"attachment","timestamp":"2026-10-04T10:09:00.000Z","attachment":{"type":"queued_command","origin":{"kind":"peer","sender":"human"},"prompt":"письмо с меткой"}}
+not json yet, "human"
+JSONL
+
+qbrief q-1
+( cd "$TMP/hop-q" && VDX_INTERCOM=1 CLAUDE_CODE_SESSION_ID=sid-qm bash "$IC" take q-1 >/dev/null 2>&1 )
+out="$(qmail ask q-1 --question "Какой вариант?" --option "а" --option "б")"; rc=$?
+eq "RED: ask goes to the session that wrote the letter" "$rc" "0"
+QL="$RI/q-1-ask.md"
+eq "RED: …marked as a question for the owner" "$(grep '^ask:' "$QL")" "ask: owner"
+eq "…for that session" "$(grep '^for-session:' "$QL")" "for-session: sid-qf"
+eq "…continuing the letter" "$(grep '^reply-to:' "$QL")" "reply-to: hop-q/q-1"
+says "…the question as written" "$(cat "$QL")" "Какой вариант?"
+says "…its options" "$(cat "$QL")" "- б"
+says "…and how the answer goes back" "$(cat "$QL")" 'intercom answer q-1-ask --word'
+says "RED: that session is the one woken" "$out" "→ wake one: hop-r-qf"
+says "RED: …told it is a question for the user" "$out" "A question for the user on a letter of this session"
+says "RED: the letter waits, and says for what" "$(grep '^deferred:' "$QI/q-1.md")" "the user's answer to hop-r/q-1-ask"
+grep -q '^taken:' "$QI/q-1.md" && bad "…this session's mark goes" "$(grep '^taken:' "$QI/q-1.md")" || ok "…this session's mark goes"
+: > "$TMP/vdx.log"
+out="$( cd "$TMP/hop-q" && PATH="$VX:$PATH" VDX_INTERCOM=1 bash "$IC" close 2>&1 )"; rc=$?
+eq "close goes through" "$rc" "0"
+eq "RED: …counting the letter as handled, not as left for the owner" "$(cat "$TMP/vdx.log")" "ai --close --waiting 0"
+out="$(qmail ask q-1 --question "Ещё один?")"
+[ -f "$RI/q-1-ask-2.md" ] && ok "a second question has a name of its own" || bad "a second question has a name of its own" "$out"
+rm -f "$RI/q-1-ask-2.md"
+out="$(qmail ask q-1 --question "   ")"; rc=$?
+eq "an empty question is refused" "$rc" "1"
+out="$(qmail ask q-1 --question "x" --bogus)"; rc=$?
+eq "an unknown flag is refused" "$rc" "1"
+says "…nothing sent" "$out" "nothing sent"
+[ ! -f "$RI/q-1-ask-2.md" ] && ok "…and nothing is" || bad "…and nothing is" "the letter is there"
+
+# The other side: asked in the session the owner sits at.
+out="$(qfoc check)"
+says "RED: check there says to put it to the user" "$(tl "$out" q-1-ask)" "❓ a question for the user: put it to them now, as written, in a plain message"
+says "…and how to answer" "$(printf '%s\n' "$out" | grep -A4 '/q-1-ask.md')" "/vdm:intercom answer q-1-ask --word"
+out="$(qother check)"
+says "RED: another session leaves it" "$(tl "$out" q-1-ask)" "leave it to that session"
+says_not "…asking nothing" "$(tl "$out" q-1-ask)" "❓"
+out="$(qother answer q-1-ask --word "вариант б")"; rc=$?
+eq "another session does not answer it" "$rc" "1"
+says "RED: …because it is that session's" "$out" "answers a letter of the session hop-r-qf"
+
+for w in "другой вариант" "письмо другой сессии" "сказала другая сессия" "команда в строке" "команда посреди хода" "выбор в диалоге" "сказал ассистент" "другая сессия с меткой" "письмо с меткой"; do
+  out="$(qfoc answer q-1-ask --word "$w")"; rc=$?
+  eq "RED: not the user's typed word — «${w}»" "$rc" "2"
+done
+says "…the refusal says what to do" "$out" "Copy them verbatim, from one message"
+says "…and why a dialog does not do" "$out" "A choice in a question dialog is not typed"
+[ -f "$QL" ] && ok "…the question stays" || bad "…the question stays" "archived"
+[ ! -f "$QI/q-1-ask-answer.md" ] && ok "…and nothing is sent" || bad "…and nothing is sent" "sent"
+out="$( cd "$TMP/hop-r" && VDX_FOCUSED=1 bash "$IC" answer q-1-ask --word "вариант б" 2>&1 )"; rc=$?
+eq "RED: a harness that names no session cannot answer" "$rc" "2"
+says "…and says so" "$out" "cannot be checked against a transcript"
+out="$(qfoc answer q-note --word "вариант б" 2>&1)"; rc=$?
+eq "a letter that is not there" "$rc" "1"
+qfoc send hop-q q-plain --body "$B/live.md" >/dev/null
+out="$(qmail answer q-plain --word "вариант б")"; rc=$?
+eq "answer is for a question" "$rc" "1"
+says "RED: …an ordinary letter goes with reply" "$out" "not a question for the user"
+
+out="$(qfoc answer q-1-ask --word "  вариант   б ")"; rc=$?
+eq "RED: the user's words, whole in a turn they typed, go back" "$rc" "0"
+QA="$QI/q-1-ask-answer.md"
+eq "RED: …the word in the envelope" "$(grep '^owner-word:' "$QA")" 'owner-word: "вариант б"'
+eq "RED: …the session it was said in" "$(grep '^owner-session:' "$QA")" "owner-session: sid-qf"
+eq "RED: …and the machine" "$(grep '^owner-machine:' "$QA")" "owner-machine: $machine"
+eq "…continuing the question" "$(grep '^reply-to:' "$QA")" "reply-to: hop-r/q-1-ask"
+eq "RED: …a link from the owner's session breaks a chain of intercom sessions" "$(grep -c '^session:' "$QA" 2>/dev/null)" "0"
+says "…and in the body" "$(cat "$QA")" "> вариант б"
+[ -f "$RI/_done/q-1-ask.md" ] && ok "RED: the question is archived" || bad "RED: the question is archived" "still in the inbox"
+qbrief q-2; qmail ask q-2 --question "Второй?" >/dev/null
+out="$(qfoc answer q-2-ask --word "сказано посреди хода")"; rc=$?
+eq "RED: a turn typed in the middle of a turn counts" "$rc" "0"
+qbrief q-3; qmail ask q-3 --question "Третий?" >/dev/null
+out="$(qfoc answer q-3-ask --word 'и ещё слово "в кавычках" & знак')"; rc=$?
+eq "RED: a turn in parts, spaces collapsed, quotes and all" "$rc" "0"
+eq "…written as said" "$(grep '^owner-word:' "$QI/q-3-ask-answer.md")" 'owner-word: "и ещё слово "в кавычках" & знак"'
+
+out="$(qmail check)"
+says "RED: check at the receiver finds the word in that transcript" "$(printf '%s\n' "$out" | grep -A3 '/q-1-ask-answer.md')" "🗣 the user's word «вариант б» — said in session sid-qf on \`$machine\`; found in what they typed there"
+says "…quotes and all" "$(printf '%s\n' "$out" | grep -A3 '/q-3-ask-answer.md')" "found in what they typed there"
+sed 's/^owner-word: .*/owner-word: "вариант в"/' "$QA" > "$TMP/qa" && cp "$TMP/qa" "$QA"
+out="$(qmail check)"
+says "RED: a word that is not there is said to be not there" "$(printf '%s\n' "$out" | grep -A3 '/q-1-ask-answer.md')" "⚠ claimed as the user's word: «вариант в» — NOT in what they typed in session sid-qf"
+sed 's/^owner-session: .*/owner-session: sid-elsewhere/' "$QA" > "$TMP/qa" && cp "$TMP/qa" "$QA"
+out="$(qmail check)"
+says "RED: a transcript not here is no verdict" "$(printf '%s\n' "$out" | grep -A3 '/q-1-ask-answer.md')" "that transcript is not on this machine (yet): not checked"
+
+# Nobody to ask through: the question does not go, and the way to HQ is named.
+( cd "$TMP/hop-r" && VDX_INTERCOM=1 CLAUDE_CODE_SESSION_ID=sid-qrm bash "$IC" send hop-q q-frommail --body "$B/live.md" >/dev/null 2>&1 )
+out="$(qmail ask q-frommail --question "Кому?")"; rc=$?
+eq "RED: a letter from an intercom session has nobody to ask through" "$rc" "3"
+says "…said so" "$out" "written in an intercom session"
+says "RED: …the way to the owner's list is named" "$out" "one line on their list at HQ"
+says "…and the letter it is about" "$out" "hop-q/q-frommail"
+[ ! -f "$RI/q-frommail-ask.md" ] && ok "…nothing sent" || bad "…nothing sent" "sent"
+grep -q '^deferred:' "$QI/q-frommail.md" && bad "…and the letter does not claim to wait" "$(grep '^deferred:' "$QI/q-frommail.md")" || ok "…and the letter does not claim to wait"
+( cd "$TMP/hop-r" && env -u CLAUDE_CODE_SESSION_ID bash "$IC" send hop-q q-old --body "$B/live.md" >/dev/null 2>&1 )
+out="$(qmail ask q-old --question "Кому?")"; rc=$?
+eq "RED: nor a letter that names no session" "$rc" "3"
+says "…said so" "$out" "it names no session"
+( cd "$TMP/hop-r" && CLAUDE_CODE_SESSION_ID=sid-gone bash "$IC" send hop-q q-gone --body "$B/live.md" >/dev/null 2>&1 )
+out="$(qmail ask q-gone --question "Кому?")"; rc=$?
+eq "RED: nor a session that is gone" "$rc" "3"
+says "…said so" "$out" "the session that wrote it is gone"
+printf '{"hookEvent":"SessionStart","type":"hook_success","content":"[intercom] 🪪 You are `hop-r` on `m-other`"}\n{"type":"assistant","timestamp":"2026-10-04T10:50:00.000Z"}\n' > "$QPROJ/sid-far.jsonl"
+( cd "$TMP/hop-r" && CLAUDE_CODE_SESSION_ID=sid-far bash "$IC" send hop-q q-far --body "$B/live.md" >/dev/null 2>&1 )
+out="$(qmail ask q-far --question "Там?")"; rc=$?
+eq "RED: a session on another machine is asked" "$rc" "0"
+says "…it cannot be woken from here" "$out" "it cannot be woken from here"
+
+# The id comes from a letter and names files: what is not an id names nothing.
+printf '{"hookEvent":"SessionStart","type":"hook_success","content":"[intercom] 🪪 You are `hop-r` on `m-other`"}\n{"type":"assistant","timestamp":"2026-10-04T10:50:00.000Z"}\n' > "$HOME/.claude/projects/q-evil.jsonl"
+printf -- '---\nintercom: v1\nfrom: hop-r\nto: hop-q\ncreated: 2026-10-04T10:40:00Z\nslug: q-path\nfor-session: ../q-evil\nstatus: pending\n---\n\n# Path\n' > "$QI/q-path.md"
+out="$(qmail check)"
+says "RED: an id with a path in it reaches no file" "$(printf '%s\n' "$out" | grep -A2 '/q-path.md')" "a session that is gone — an ordinary letter"
+rm -f "$HOME/.claude/projects/q-evil.jsonl" "$QI/q-path.md"
+
+# A question whose session went: the owner may be in another session, and an
+# intercom session still cannot ask it.
+printf -- '---\nintercom: v1\nfrom: hop-q\nto: hop-r\ncreated: %s\nslug: q-orphan\nreply-to: hop-q/q-gone\nsession: mail\nfor-session: sid-gone\nask: owner\nstatus: pending\n---\n\n# Question for the user: orphan\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$RI/q-orphan.md"
+out="$(qother check)"
+says "RED: in a session the owner works in it is asked there" "$(printf '%s\n' "$out" | grep -A3 '/q-orphan.md')" "❓ a question for the user: put it to them now"
+out="$( cd "$TMP/hop-r" && VDX_INTERCOM=1 CLAUDE_CODE_SESSION_ID=sid-qrm bash "$IC" check 2>&1 )"
+says "RED: in an intercom session it goes to the owner's list" "$(printf '%s\n' "$out" | grep -A3 '/q-orphan.md')" "Nobody sits here: one line on their list at HQ"
+
+# Hearing of it: this message is the moment the owner is here.
+printf -- '---\nintercom: v1\nfrom: hop-q\nto: hop-r\ncreated: %s\nslug: q-arr\nfor-session: sid-qf\nask: owner\nstatus: pending\n---\n\n# Question for the user: arrives\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$RI/q-arr.md"
+printf -- '---\nintercom: v1\nfrom: hop-q\nto: hop-r\ncreated: %s\nslug: q-arr2\nfor-session: sid-qf\nstatus: pending\n---\n\n# An answer\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$RI/q-arr2.md"
+out="$( cd "$TMP/hop-r" && printf '{"session_id":"sid-qf"}' | VDX_FOCUSED=1 TMPDIR="$TMP/arr-tmp" bash "$REM" 2>&1 )"
+printf '%s' "$out" | jq -e .hookSpecificOutput.additionalContext >/dev/null 2>&1 && ok "the arrival line is valid JSON" || bad "the arrival line is valid JSON" "$out"
+ctx="$(printf '%s' "$out" | jq -r .hookSpecificOutput.additionalContext 2>/dev/null)"
+says "RED: the question is named as one" "$ctx" '❓ `q-arr` from `hop-q`'
+says "RED: …to be put in this same turn" "$ctx" "in this same turn"
+says "…in a plain message" "$ctx" "a question dialog does not do"
+says "…with how to answer" "$ctx" '/vdm:intercom answer <slug> --word "<their words, verbatim>"'
+says "an answer beside it stays a line that waits" "$ctx" '- `q-arr2` from `hop-q`'
+says "…not urgent" "$ctx" "not urgent"
+
+out="$( cd "$TMP/hop-r" && printf '{"session_id":"sid-qf"}' | VDX_FOCUSED=1 VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$HOOK" )"
+says "RED: a focused session's start line puts the questions first" "$out" "❓ 1 question(s) for the user on this session's letters"
+says "…and counts the answers apart" "$out" "📬 1 answer(s)"
+out="$( cd "$TMP/hop-r" && printf '{"session_id":"sid-qother"}' | VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$HOOK" )"
+says "RED: an ordinary session names only the question whose session is gone" "$out" "❓ 1 of them: question(s) for the user"
+out="$( cd "$TMP/hop-r" && printf '{"session_id":"sid-qrm"}' | VDX_INTERCOM=1 bash "$HOOK" )"
+says "RED: an intercom session is told of ask" "$out" "/vdm:intercom ask <slug> --question"
+says "…and still of the list at HQ" "$out" "Put one line on their list at HQ"
+
+kill "$QF_PID" 2>/dev/null
+trap 'kill "$LIVE_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
+rm -f "$SESS"/qf.json "$TMP/vdx.log"
+rm -rf "$RI" "$QI" "$QPROJ" "$TMP/hop-r/.claude"
+
 echo "-- session start, the sender's side"
 out="$( cd "$TMP/hop-a" && printf '{}' | VDM_INTERCOM_TODAY=2026-09-24 bash "$HOOK" )"
 says "session start counts letters unpicked for 3+ days" "$out" "1 of your letters lie unpicked for 3+ days"
