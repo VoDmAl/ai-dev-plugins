@@ -92,7 +92,8 @@ echo "== the mode of this session decides who goes quiet =="
 mksess hq "$HQ" "$R"
 eq "RED: an ordinary session goes quiet" "$(quiet_in "$R")" quiet
 eq "RED: an HQ session gets everything" "$(VDX_HQ=1 quiet_in "$R")" loud
-eq "…a focused one keeps its own rules" "$(VDX_FOCUSED=1 quiet_in "$R")" loud
+eq "RED: a focused one too (DL #6)" "$(VDX_FOCUSED=1 quiet_in "$R")" quiet
+eq "…started focused and with the HQ flag, it is a focused one" "$(VDX_FOCUSED=1 VDX_HQ=1 quiet_in "$R")" quiet
 eq "…and an intercom one" "$(VDX_INTERCOM=1 quiet_in "$R")" loud
 
 echo "== not of this project =="
@@ -138,6 +139,7 @@ eq "alive: quiet" "$(quiet_in "$R")" quiet
 kill "$SHORT" 2>/dev/null
 for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$SHORT" 2>/dev/null || break; python3 -c 'import time; time.sleep(0.2)'; done
 eq "RED: closed: the very next question says so, with nothing to clean up" "$(quiet_in "$R")" loud
+eq "RED: …a focused session too: with no HQ session it is the only reader left" "$(VDX_FOCUSED=1 quiet_in "$R")" loud
 
 echo "== it fails open =="
 FARM="$TMP/farm"; mkdir -p "$FARM"

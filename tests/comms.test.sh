@@ -1330,13 +1330,15 @@ printf -- '- [ ] Петров — прислать акт (due: %s)\n' "$PAST" >
 pending_check() { ( cd "$PX" && CLAUDE_CONFIG_DIR="$HQCFG" CLAUDE_PROJECT_DIR="$PX" COMMS_TODAY="$TODAY" bash "$P/scripts/comms-pending-check.sh" </dev/null 2>&1 ); }
 expect_says "without an HQ session: what is behind" "$(index_check)" "generated artefact(s) are behind"
 expect_says "…and what is overdue" "$(pending_check)" "[comms] pending:"
+OUT=$(export VDX_FOCUSED=1; pending_check); expect_says "RED: a focused session without one hears it: it may be the only reader (DL #6)" "$OUT" "[comms] pending:"
 hq_session fx.json "$FX"; hq_session px.json "$PX"
 expect_silent "RED: with one, nothing about what is behind" "$(index_check)"
 expect_silent "RED: …nothing about what is overdue" "$(pending_check)"
 OUT=$(export VDX_HQ=1; index_check); expect_says "RED: the HQ session hears what is behind" "$OUT" "generated artefact(s) are behind"
 OUT=$(export VDX_HQ=1; pending_check); expect_says "RED: …and what is overdue" "$OUT" "[comms] pending:"
 OUT=$(export VDX_INTERCOM=1; pending_check); expect_says "an intercom session, as before" "$OUT" "[comms] pending:"
-OUT=$(export VDX_FOCUSED=1; pending_check); expect_says "a focused session, as before (DL #3)" "$OUT" "[comms] pending:"
+OUT=$(export VDX_FOCUSED=1; pending_check); expect_silent "RED: a focused session with one does not (DL #6)" "$OUT"
+OUT=$(export VDX_FOCUSED=1; index_check); expect_silent "RED: …nor what is behind" "$OUT"
 kill "$HQ_PID" 2>/dev/null
 for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$HQ_PID" 2>/dev/null || break; python3 -c 'import time; time.sleep(0.2)'; done
 expect_says "RED: closed, the ordinary session hears it again" "$(pending_check)" "[comms] pending:"

@@ -207,6 +207,8 @@ says_all() {  # the three signals, each with what names it
 }
 out="$(CLAUDE_PROJECT_DIR="$H" hydrate "$H")"
 says_all "without an HQ session" "$out"
+out="$(VDX_FOCUSED=1 CLAUDE_PROJECT_DIR="$H" hydrate "$H")"
+says_all "RED: a focused session without one: it may be the only reader (DL #6)" "$out"
 hq_session hq.json "$H"
 out="$(CLAUDE_PROJECT_DIR="$H" hydrate "$H")"
 says "RED: with one, the active crystal is still listed" "$out" "busywork: 2 open"
@@ -220,7 +222,9 @@ says_all "RED: the HQ session itself" "$out"
 out="$(VDX_INTERCOM=1 CLAUDE_PROJECT_DIR="$H" hydrate "$H")"
 says_all "an intercom session" "$out"
 out="$(VDX_FOCUSED=1 CLAUDE_PROJECT_DIR="$H" hydrate "$H")"
-says_all "a focused session, as before (hq-session-quiet, DL #3)" "$out"
+says "RED: a focused session with one: still listed (DL #6)" "$out" "busywork: 2 open"
+says_not "RED: …and nothing waits for an event" "$out" "Waiting for an event"
+says_not "RED: …nothing past due" "$out" "⏰"
 H2="$TMP/hqother"; mkdir -p "$H2"; git -C "$H2" init -q
 crystal "$H2" elsewhere in-progress $'- [ ] wait — when: something'
 out="$(CLAUDE_PROJECT_DIR="$H2" hydrate "$H2")"

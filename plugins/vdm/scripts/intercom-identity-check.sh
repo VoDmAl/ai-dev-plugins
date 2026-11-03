@@ -91,7 +91,7 @@ machine="$(_intercom_machine_name)"
 # are that session's, and the wakes go there. An answer to a letter of its own
 # stays its own.
 hq_quiet=""
-if command -v vdm_hq_quiet >/dev/null 2>&1 && vdm_hq_quiet; then hq_quiet=1; fi
+if ! intercom_focused && command -v vdm_hq_quiet >/dev/null 2>&1 && vdm_hq_quiet; then hq_quiet=1; fi
 if intercom_focused || [ -n "$hq_quiet" ]; then
   msg="[intercom] 🪪 You are \`${id}\` on \`${machine}\`"
   [ -n "$names" ] && msg="${msg} — aka: ${names}"

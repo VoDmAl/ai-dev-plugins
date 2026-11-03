@@ -38,9 +38,10 @@ fi
 
 cat >/dev/null 2>&1 || true
 
-# An ordinary session with a live HQ session of its project on this machine is a
-# working one (hq-session-quiet, DL #2): what waits for an event and what is past
-# due are that session's to see, and the active crystals are still listed here.
+# An ordinary or focused session with a live HQ session of its project on this
+# machine is a working one (hq-session-quiet, DL #2, #6): what waits for an event and
+# what is past due are that session's to see, and the active crystals are still
+# listed here.
 hq_quiet=""
 if command -v vdm_hq_quiet >/dev/null 2>&1 && vdm_hq_quiet; then hq_quiet=1; fi
 

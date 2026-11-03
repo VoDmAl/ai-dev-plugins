@@ -258,9 +258,9 @@ grow/cut moments. Two complementary hooks remind the assistant:
 - `crystal-hydrate.sh` at **SessionStart** — surfaces the active workitem(s)
   with the source-of-truth reminder, and names crystals not in work — parked in
   the pre-work tier or paused — holding a promise past due: a pause does not move
-  a date. An ordinary session with a live HQ session of its project on this machine
-  gets only the list; what waits and what is past due go to that session
-  (/vdm:intercom → HQ sessions).
+  a date. An ordinary or focused session with a live HQ session of its project on
+  this machine gets only the list; what waits and what is past due go to that
+  session (/vdm:intercom → HQ sessions).
 - `crystal-capture-reminder.sh` at **UserPromptSubmit** — fires when source
   edits accumulate without workitem.md being touched (smart mode default;
   per-session throttle).
@@ -543,7 +543,7 @@ the generated `find` expression); use a glob instead of quoting.
 сессии отдельной строкой, с просьбой сначала проверить событие (wrap-skill
 DL #15). Шаг, который трудно отменить, стоит за проверкой. Срок и условие
 совместимы: `when: ответ подрядчика (due: 2026-11-01)`. При живой HQ-сессии
-проекта на этой машине эти строки получает она, а не обычная сессия.
+проекта на этой машине эти строки получает она, а не обычная и не focused.
 
 **Сломанный срок — нарушение, отсутствующий — нет.** `(due: 22-07-2026)`,
 `(due: скоро)` или `[due:: скоро]` выглядят проекцией и невидимы детектору;

@@ -3,9 +3,11 @@
 #
 # The owner, 2026-11-03: the sheet, tracking and what comes from outside go into
 # a session of their own, `vdx ai --hq`, and while it lives the project's ordinary
-# session is a working one — those signals neither fill its context nor pull the
-# thread away. A hook that prints such a signal asks `vdm_hq_quiet` first; what
-# keeps a session safe stays: the rules, the guards, the list of active crystals.
+# and focused sessions are working ones — those signals neither fill their context
+# nor pull the thread away. A hook that prints such a signal asks `vdm_hq_quiet`
+# first; what keeps a session safe stays: the rules, the guards, the list of active
+# crystals. Only while it lives: with none, a session that works in focused alone
+# is the only reader those signals have.
 #
 # Asked at every hook, with nothing stored: an HQ session may start or close in
 # the middle of a working one, and a mark in a file could outlive it. The flag is
@@ -22,18 +24,19 @@
 # costs one line.
 #
 # Mirrored in every plugin that carries it: scripts/check-lib-sync.sh holds the
-# copies equal. @see docs/tasks/hq-session-quiet/workitem.md — DL #1, #2
+# copies equal. @see docs/tasks/hq-session-quiet/workitem.md — DL #1, #2, #6
 
 # The variable is vdx's to name; this is the one line that knows it.
 VDM_HQ_ENV=VDX_HQ
 
-# vdm_hq_quiet — this is an ordinary session, and a live HQ session of its project
-# runs on this machine. A focused session and an intercom session keep their own
-# rules, and an HQ session gets everything.
+# vdm_hq_quiet — this is an ordinary or a focused session, and a live HQ session of
+# its project runs on this machine. An intercom session keeps its own rules and an HQ
+# session gets everything; started with either flag and focused, it is a focused one.
 vdm_hq_quiet() {
-  [ "${VDX_FOCUSED:-}" = 1 ] && return 1
-  [ "${VDX_INTERCOM:-}" = 1 ] && return 1
-  [ "${!VDM_HQ_ENV:-}" = 1 ] && return 1
+  if [ "${VDX_FOCUSED:-}" != 1 ]; then
+    [ "${VDX_INTERCOM:-}" = 1 ] && return 1
+    [ "${!VDM_HQ_ENV:-}" = 1 ] && return 1
+  fi
   vdm_hq_live
 }
 

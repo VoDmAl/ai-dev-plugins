@@ -936,8 +936,13 @@ the user's word sends either one to the other's work.
   is quiet on its hooks.** No `[comms]` lines, no inbox count, no 📤, ↪, 📨, 📂 or
   📥, no ⏳ or ⏰ of crystals, no line about lessons to lift; the arrival line names
   only answers to its own letters. Its start line says who it is and why (🔕). The
-  rules, the guards and the list of active crystals stay. A focused session keeps
-  what it had and an intercom session too: this changes only the ordinary one.
+  rules, the guards and the list of active crystals stay. An intercom session keeps
+  what it had.
+- **A focused session loses `[comms]`, ⏳ and ⏰ too, while the HQ session lives.**
+  The rest of its rules were already those of § Focused sessions, and its own start
+  line and topic stay. With no HQ session it gets them back: a user working in focused
+  alone has no other reader for them. So it is not told at start of a date past due
+  even in the crystal it works on; `/vdm:crystal-cave` shows that.
 - **Asked at every hook, with nothing stored:** an HQ session may start or close in
   the middle of a working one. A letter not named while it lived is named on the
   first message after it closes.

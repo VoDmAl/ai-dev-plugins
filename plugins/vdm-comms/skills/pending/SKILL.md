@@ -235,9 +235,9 @@ week, was written and never sent, or was held without a transcript (when that
 window is on) — and nothing at all otherwise. A dated item
 becomes overdue by the calendar turning, not by anyone writing a file, so there
 is no tool call to hang it on; session start is the only moment available and
-also the right one. An ordinary session with a live HQ session of its project on
-this machine (`VDX_HQ=1`, `vdx ai --hq`) gets none of this, nor the line about
-artefacts behind the meetings: they are that session's to see.
+also the right one. An ordinary or focused session with a live HQ session of its
+project on this machine (`VDX_HQ=1`, `vdx ai --hq`) gets none of this, nor the line
+about artefacts behind the meetings: they are that session's to see.
 
 **The counts say whose they are**, owners named as in `--owner`, the most
 first, three of them and the rest summed:
