@@ -1107,13 +1107,21 @@ cmd_send() {
   elif [ -n "$live" ]; then
     [ -z "$start" ] || printf '    %s.\n' "$(_ic_novdx_line "$canon" "$start")"
     # A letter to this project's own inbox is a note for its next session, not
-    # mail: its intercom session is not woken for it (intercom-session-wake, DL #12).
+    # mail: its intercom session is not woken for it (intercom-session-wake, DL #12),
+    # and while an HQ session lives nobody is: that one takes no notes, and the
+    # ordinary ones are not woken (hq-session-quiet, DL #4).
     wlive="$live"
-    [ "$canon" != "$from" ] || wlive="$(printf '%s\n' "$live" | awk -F '\t' 'NF && $4 != "mail"')"
+    if [ "$canon" = "$from" ]; then
+      if [ "${!VDM_HQ_ENV:-}" = 1 ] || printf '%s\n' "$live" | awk -F '\t' '$4 == "hq" { f = 1 } END { exit !f }'; then
+        wlive=""
+      else
+        wlive="$(printf '%s\n' "$live" | awk -F '\t' 'NF && $4 != "mail"')"
+      fi
+    fi
     if [ -n "$wlive" ]; then
       choice="$(intercom_wake_choice "$canon" "$wlive")"
     else
-      choice=$'wait\037\037\037a letter to your own project is a note for its next session, not mail for its intercom session'
+      choice=$'wait\037\037\037a letter to your own project is a note for its next session, not mail for its intercom or HQ session'
     fi
     IFS=$'\037' read -r verdict wname wstatus why wmode <<<"$choice"
     if [ "$verdict" = "wake" ]; then
@@ -1145,9 +1153,9 @@ _ic_novdx_line() {
   fi
 }
 
-# "name (status), name (status, mail)" from intercom_live_sessions lines.
+# "name (status), name (status, mail), name (status, hq)" from intercom_live_sessions lines.
 _ic_live_list() {
-  printf '%s\n' "$1" | awk -F '\t' '{ printf "%s%s (%s%s)", (NR > 1 ? ", " : ""), $1, $2, ($4 == "mail" ? ", mail" : "") }'
+  printf '%s\n' "$1" | awk -F '\t' '{ printf "%s%s (%s%s)", (NR > 1 ? ", " : ""), $1, $2, ($4 == "mail" ? ", mail" : ($4 == "hq" ? ", hq" : "")) }'
 }
 
 # _ic_wake_lines <name> <why> <slug> <from> <title> <mode> <body set> [<topic>]

@@ -33,6 +33,12 @@ fi
 
 command -v python3 >/dev/null 2>&1 || exit 0
 
+# An ordinary session with a live HQ session of its project on this machine is a
+# working one: what is behind is that session's to see (hq-session-quiet, DL #2).
+# shellcheck disable=SC1091
+. "$SELF_DIR/../lib/hq-session.sh" 2>/dev/null || true
+if command -v vdm_hq_quiet >/dev/null 2>&1 && vdm_hq_quiet; then exit 0; fi
+
 root="${CLAUDE_PROJECT_DIR:-}"
 if [ -z "$root" ]; then
   root=$(git rev-parse --show-toplevel 2>/dev/null) || root=$(pwd)

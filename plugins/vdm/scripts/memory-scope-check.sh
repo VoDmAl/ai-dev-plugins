@@ -21,6 +21,11 @@ command -v python3 >/dev/null 2>&1 || exit 0
 # A focused session (VDX_FOCUSED=1) works on its own task: lifting lessons to an
 # HQ is work for another session (@see intercom-common.sh → "Focused sessions").
 [ "${VDX_FOCUSED:-}" = 1 ] && exit 0
+# So does an ordinary session while a live HQ session of its project is there
+# (hq-session-quiet, DL #2): lifting lessons is that session's.
+# shellcheck disable=SC1091
+. "$SELF_DIR/../lib/hq-session.sh" 2>/dev/null || true
+if command -v vdm_hq_quiet >/dev/null 2>&1 && vdm_hq_quiet; then exit 0; fi
 root="${CLAUDE_PROJECT_DIR:-}"
 [ -n "$root" ] || root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 python3 "$SELF_DIR/memory-scope.py" check "$root" 2>/dev/null

@@ -26,7 +26,7 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION \
       GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
       GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR \
-      VDX_FOCUSED VDX_INTERCOM CLAUDE_CODE_SESSION_ID TMUX TMUX_PANE 2>/dev/null || true
+      VDX_FOCUSED VDX_INTERCOM VDX_HQ CLAUDE_CODE_SESSION_ID TMUX TMUX_PANE 2>/dev/null || true
 
 # Nor the machine's git config: git 2.54 runs a hook declared there
 # (`hook.<name>.command`) on every commit, a fixture's included — the case is
@@ -2665,6 +2665,104 @@ says "RED: check offers the copy's pickup by its file name" "$out" "pickup clash
 says "…and says what the copy is" "$out" "a second letter that got the name \`clash\` on another machine"
 ( cd "$TMP/hop-b" && bash "$IC" pickup clash.sync-conflict-20261009-114036-abcdefg >/dev/null 2>&1 ); rc=$?
 [ "$rc" -eq 0 ] && [ ! -e "$C" ] && ok "…and that pickup archives it" || bad "…and that pickup archives it" "rc=$rc"
+
+echo ""
+echo "== a live HQ session: the ordinary sessions are quiet, the wakes go there (hq-session-quiet, DL #2, #4) =="
+# Sleepers of its own: the suite's LIVE_PID may be past its 300 s by here, and macOS
+# hides a platform binary's environment (`sleep`), so python.
+rm -f "$SESS"/*.json; rm -rf "${PROJ:?}"/*
+hq_sleeper() {  # hq_sleeper [VAR=1] — a process with that environment, in HQ_SLEEPER
+  env "$@" python3 -c 'import time; time.sleep(300)' & HQ_SLEEPER=$!; disown "$HQ_SLEEPER" 2>/dev/null || true
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    { [ -r "/proc/$HQ_SLEEPER/environ" ] || ps -wwE -p "$HQ_SLEEPER" -o command= 2>/dev/null | grep -q 'time.sleep'; } && break
+    python3 -c 'import time; time.sleep(0.2)'
+  done
+}
+hq_sleeper VDX_HQ=1; HQS_PID="$HQ_SLEEPER"
+hq_sleeper; HQW_PID="$HQ_SLEEPER"
+hq_sleeper VDX_INTERCOM=1; HQM_PID="$HQ_SLEEPER"
+trap 'kill "$LIVE_PID" "$HQS_PID" "$HQW_PID" "$HQM_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
+mksock "$SOCKS/hq1.sock"; mksock "$SOCKS/hq2.sock"; mksock "$SOCKS/hq3.sock"
+# The physical path: the harness writes that, and this suite's TMP is not one
+# (18 of 18 live session files and 26 of 26 transcript directories, 2026-11-03).
+HOPB="$(cd "$TMP/hop-b" && pwd -P)"
+mksession hq-work.json "$HQW_PID" "$HOPB" hop-b-work idle "$SOCKS/hq1.sock" sid-work
+mksession hq-hq.json   "$HQS_PID" "$HOPB" hop-b-hq   idle "$SOCKS/hq2.sock" sid-hq
+stamp hq-work.json idle 60; stamp hq-hq.json idle 60
+
+out="$(wake_out hq-wake)"
+says "RED: the live list marks it" "$out" "hop-b-hq (idle, hq)"
+says "…and only it" "$out" "hop-b-work (idle)"
+says "RED: an HQ session idle for 60 min is the one woken" "$out" "→ wake one: hop-b-hq"
+says "…and the line says why" "$out" "the HQ session of \`hop-b\`"
+says_not "RED: the ordinary session is not" "$out" "→ wake one: hop-b-work"
+stamp hq-hq.json idle 5
+out="$(wake_out hq-fresh)"
+says "RED: idle for 5 min — the owner may be at it, the letter waits" "$out" "do not wake here"
+says "…for that session" "$out" "the HQ session of \`hop-b\`, hop-b-hq"
+says_not "RED: …and the ordinary one is not woken instead" "$out" "→ wake one"
+stamp hq-hq.json busy 60
+says "…busy waits the same" "$(wake_out hq-busy)" "do not wake here"
+stamp hq-hq.json idle 60
+turn hq "sid-work" "$TMP/hop-b" "2026-10-04T10:59:00Z"
+out="$(wake_out hq-turn)"
+says "RED: the owner's last turn in an ordinary session does not take the wake back" "$out" "→ wake one: hop-b-hq"
+rm -rf "${PROJ:?}"/hq
+mksession hq-mail.json "$HQM_PID" "$HOPB" hop-b-mail idle "$SOCKS/hq3.sock" sid-mail
+out="$(wake_out hq-mail)"
+says "RED: a live intercom session still comes first" "$out" "→ wake one: hop-b-mail"
+rm -f "$SESS/hq-mail.json"
+
+note_out() { ( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID="$1" VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" send hop-b "$2" --body "$B/live.md" 2>&1 ); }
+out="$(note_out sid-work hq-note)"
+says "RED: a note to the project itself wakes nobody: it is for its next session" "$out" "a letter to your own project is a note"
+says_not "…neither the HQ session" "$out" "→ wake one"
+out="$(VDX_HQ=1 note_out sid-hq hq-note-2)"
+says "RED: nor the ordinary one, when the HQ session writes it" "$out" "a letter to your own project is a note"
+says_not "…which it would wake by the turn before" "$out" "→ wake one"
+
+( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-work bash "$IC" send hop-a hq-ask --body "$B/live.md" >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-a" && CLAUDE_CODE_SESSION_ID=self-sid VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" reply hq-ask --done "done" --ball "nobody — closed" 2>&1 )"
+says "RED: an answer to a letter of the ordinary session stays its own" "$out" "the answer to a letter of the session hop-b-work"
+says "…and wakes it" "$out" "→ wake one: hop-b-work"
+
+start_of() { ( cd "$TMP/hop-b" && printf '{"session_id":"%s"}' "$1" | CLAUDE_CODE_SESSION_ID="$1" bash "$HOOK" 2>&1 ); }
+out="$(start_of sid-work)"
+says "RED: the ordinary session's start line says why it is quiet" "$out" "🔕 A live HQ session of this project"
+says "…who it is, with the machine a sender on the other one reads" "$out" "You are \`hop-b\` on \`$machine\`"
+says_not "RED: …no count of letters" "$out" "pending message"
+says_not "…nothing it wrote that lies unread" "$out" "📤"
+says "RED: an answer to its own letter is still named" "$out" "1 answer(s) to this session's letters"
+out="$(VDX_HQ=1 start_of sid-hq)"
+says "RED: the HQ session gets the count" "$out" "pending message"
+says_not "…and no such line" "$out" "🔕"
+out="$(VDX_FOCUSED=1 start_of sid-f)"
+says "a focused session keeps its own line" "$out" "🔇 Focused session"
+says_not "…not this one" "$out" "🔕"
+out="$(VDX_INTERCOM=1 start_of sid-m)"
+says "an intercom session keeps its own" "$out" "📮 Intercom session"
+says_not "…not this one" "$out" "🔕"
+
+STARTED_MS=$(( $(python3 -c 'import calendar,time; print(calendar.timegm(time.strptime("2026-10-04T10:00:00Z","%Y-%m-%dT%H:%M:%SZ")))') * 1000 ))
+jq --argjson ms "$STARTED_MS" '.startedAt = $ms' "$SESS/hq-work.json" > "$SESS/hq-work.tmp" && mv "$SESS/hq-work.tmp" "$SESS/hq-work.json"
+mkdir -p "$TMP/hq-tmp"
+hq_arrive() { ( cd "$TMP/hop-b" && printf '{"session_id":"sid-work"}' | CLAUDE_CODE_SESSION_ID=sid-work TMPDIR="$TMP/hq-tmp" bash "$REM" 2>&1 ); }
+out="$(hq_arrive)"
+says "RED: the arrival line names an answer to its own letter" "$out" "Arrived in answer to this session's letters"
+says "…that one" "$out" "hq-ask-outcome"
+says_not "RED: …no letter that is the HQ session's to read" "$out" "hq-wake"
+
+kill "$HQS_PID" 2>/dev/null
+for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$HQS_PID" 2>/dev/null || break; python3 -c 'import time; time.sleep(0.2)'; done
+out="$(hq_arrive)"
+says "RED: the HQ session closed: a letter it left unread reaches the ordinary one on the next message" "$out" "hq-wake"
+out="$(start_of sid-work)"
+says "RED: …and the next start line counts again" "$out" "pending message"
+says_not "…no longer quiet" "$out" "🔕"
+says "RED: …and the next letter wakes the ordinary session" "$(wake_out hq-gone)" "→ wake one: hop-b-work"
+kill "$HQW_PID" "$HQM_PID" 2>/dev/null
+rm -f "$SESS"/hq-*.json
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

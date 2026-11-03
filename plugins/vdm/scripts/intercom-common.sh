@@ -27,6 +27,8 @@ _INTERCOM_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # intercom.identity override. Sourced best-effort; guarded at every call site.
 # shellcheck disable=SC1091
 . "$_INTERCOM_LIB_DIR/../lib/config-read.sh" 2>/dev/null || true
+# shellcheck disable=SC1091
+. "$_INTERCOM_LIB_DIR/../lib/hq-session.sh" 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 # Store root resolution (DL #3): env → global config → namespaced default.
@@ -1382,17 +1384,17 @@ INTERCOM_MAIL_ENV=VDX_INTERCOM
 intercom_mail_session() { [ "${!INTERCOM_MAIL_ENV:-}" = 1 ] && ! intercom_focused; }
 
 # _intercom_pid_mode <pid> — the mode that live process was started in:
-# `focused`, `mail`, or `plain`. One read of its environment: Linux exposes it in
-# /proc, macOS shows it to `ps -E` for the owner's own processes.
+# `focused`, `mail`, `hq`, or `plain`. One read of its environment: Linux exposes it
+# in /proc, macOS shows it to `ps -E` for the owner's own processes.
 _intercom_pid_mode() {
-  local awk_mode='
-    { for (i = 1; i <= NF; i++) { if ($i == "VDX_FOCUSED=1") f = 1; if ($i == mail "=1") m = 1 } }
-    END { print (f ? "focused" : (m ? "mail" : "plain")) }'
+  local hq_env="${VDM_HQ_ENV:-VDX_HQ}" awk_mode='
+    { for (i = 1; i <= NF; i++) { if ($i == "VDX_FOCUSED=1") f = 1; if ($i == mail "=1") m = 1; if ($i == hq "=1") h = 1 } }
+    END { print (f ? "focused" : (m ? "mail" : (h ? "hq" : "plain"))) }'
   if [ -r "/proc/$1/environ" ]; then
-    LC_ALL=C tr '\0' ' ' < "/proc/$1/environ" 2>/dev/null | awk -v mail="$INTERCOM_MAIL_ENV" "$awk_mode"
+    LC_ALL=C tr '\0' ' ' < "/proc/$1/environ" 2>/dev/null | awk -v mail="$INTERCOM_MAIL_ENV" -v hq="$hq_env" "$awk_mode"
     return
   fi
-  ps -wwE -p "$1" -o command= 2>/dev/null | awk -v mail="$INTERCOM_MAIL_ENV" "$awk_mode"
+  ps -wwE -p "$1" -o command= 2>/dev/null | awk -v mail="$INTERCOM_MAIL_ENV" -v hq="$hq_env" "$awk_mode"
 }
 
 # A chain of letters between intercom sessions stops after this many links in a
@@ -1854,6 +1856,26 @@ intercom_wake_choice() {
   if [ -n "$mail" ]; then
     printf 'wake\037%s\037%s\037the intercom session of `%s` — nobody sits at it, so it is woken at once\037mail\n' \
       "$mail" "$mail_status" "$id"
+    return 0
+  fi
+  # A live HQ session comes next (hq-session-quiet, DL #4): while it lives the
+  # ordinary sessions of the project are working ones and are not woken at all,
+  # wherever the owner typed last. The owner sits at it, so it goes by the rule of
+  # such a session: engaged, the letter waits for it and no other is woken instead.
+  local hq="" hq_status="" hq_upd="" hq_best=-1 hq_engaged
+  while IFS=$'\t' read -r name status sid mode upd; do
+    [ "$mode" = hq ] || continue
+    case "$upd" in ''|*[!0-9]*) u=0 ;; *) u="$upd" ;; esac
+    if [ "$u" -gt "$hq_best" ]; then hq="$name"; hq_status="$status"; hq_upd="$upd"; hq_best="$u"; fi
+  done <<<"$live"
+  if [ -n "$hq" ]; then
+    if hq_engaged="$(_intercom_engaged "$hq_status" "$hq_upd")"; then
+      printf 'wait\037\037\037the HQ session of `%s`, %s, is %s — the owner is likely at it; the letter reaches it as one line with their next message there\n' \
+        "$id" "$hq" "$hq_engaged"
+      return 0
+    fi
+    printf 'wake\037%s\037%s\037the HQ session of `%s` — its ordinary sessions are quiet while it lives\037plain\n' \
+      "$hq" "$hq_status" "$id"
     return 0
   fi
   turns="$(intercom_owner_turns "$id")"

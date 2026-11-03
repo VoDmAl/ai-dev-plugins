@@ -914,6 +914,47 @@ the letter came from a session they may have just been in.
   `check` and its start line say so. In an intercom session `check` sends it to
   the list at HQ, and the letter is archived with `pickup`.
 
+### HQ sessions — the sheet and what comes from outside
+
+The user (2026-11-03): the sheet, tracking and what comes from outside go into a
+session of their own, and the project's ordinary session is then a working one, so
+those signals neither fill its context nor pull the thread away. A session started
+with `vdx ai --hq` carries `VDX_HQ=1` (the name is vdx's), read from the process
+like the two others. That makes four kinds:
+
+| Session | Its work | Who sits at it |
+|---------|----------|----------------|
+| ordinary | the work at hand | the user |
+| focused | one topic | the user |
+| HQ | the sheet and what comes from outside | the user |
+| intercom | what other agents want | nobody |
+
+HQ and intercom are two sessions, and the line between them is a route, not a ban:
+the user's word sends either one to the other's work.
+
+- **While an HQ session of the project lives on this machine, an ordinary session
+  is quiet on its hooks.** No `[comms]` lines, no inbox count, no 📤, ↪, 📨, 📂 or
+  📥, no ⏳ or ⏰ of crystals, no line about lessons to lift; the arrival line names
+  only answers to its own letters. Its start line says who it is and why (🔕). The
+  rules, the guards and the list of active crystals stay. A focused session keeps
+  what it had and an intercom session too: this changes only the ordinary one.
+- **Asked at every hook, with nothing stored:** an HQ session may start or close in
+  the middle of a working one. A letter not named while it lived is named on the
+  first message after it closes.
+- **Wakes.** An intercom session comes first, and starting one where it is switched
+  on, as ever. Otherwise the live HQ session is the one woken, by the rule of a
+  session the user may sit at: not while it is busy, waiting, or idle under 15
+  minutes, and then the letter waits for it. The ordinary sessions are not woken at
+  all, wherever the user typed last. A letter on a focused session's topic and an
+  answer to a letter of a session still there go as before. The live list marks it
+  `(idle, hq)`.
+- **A note to its own project wakes nobody** while an HQ session lives: it is for
+  that project's next session, and the HQ session should not archive it.
+- **It gets everything an ordinary session got**, and no start line of its own: the
+  access layer names its role.
+- **This machine and this project only.** A session on the user's other machine does
+  not quiet this one, and a worktree beside the checkout is not yet the same project.
+
 ### Intercom sessions — the inbox is their work
 
 A session started with `vdx ai --intercom` carries `VDX_INTERCOM=1` (the name is

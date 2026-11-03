@@ -20,6 +20,8 @@ set -u
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/config-read.sh" 2>/dev/null || true
 # shellcheck disable=SC1091
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/crystal-path.sh" 2>/dev/null || exit 0
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/hq-session.sh" 2>/dev/null || true
 
 if command -v vdm_is_enabled >/dev/null 2>&1; then
   vdm_is_enabled "crystal" || exit 0
@@ -35,6 +37,12 @@ fi
 fi
 
 cat >/dev/null 2>&1 || true
+
+# An ordinary session with a live HQ session of its project on this machine is a
+# working one (hq-session-quiet, DL #2): what waits for an event and what is past
+# due are that session's to see, and the active crystals are still listed here.
+hq_quiet=""
+if command -v vdm_hq_quiet >/dev/null 2>&1 && vdm_hq_quiet; then hq_quiet=1; fi
 
 all_items=$(find_workitems)
 active=""
@@ -58,7 +66,7 @@ fi
 # dates themselves are in /vdm:crystal-cave. One pass over the whole list, a
 # process more only per crystal past due, silent at zero.
 parked_due=""
-if [ -n "$all_items" ] && command -v due_counts_batch >/dev/null 2>&1; then
+if [ -z "$hq_quiet" ] && [ -n "$all_items" ] && command -v due_counts_batch >/dev/null 2>&1; then
   _load_status_aliases
   while IFS=$'\t' read -r f od _; do
     [ "${od:-0}" -gt 0 ] 2>/dev/null || continue
@@ -143,7 +151,8 @@ if [ -n "$active" ]; then
       # notice — the failure it answers to is a checklist that reads as current
       # for six weeks (checkbox-decay-signal, field report from executor).
       # Silent at zero: the marker is optional, so most crystals show nothing.
-      od=$(count_overdue "$f")
+      od=0
+      [ -n "$hq_quiet" ] || od=$(count_overdue "$f")
       ref="${f#"$top"/}"
       if [ "${od:-0}" -gt 0 ]; then
         body="${body}  - ${slug}: ${n} open, ⏰${od} ПРОСРОЧЕНО  (Read ${ref})\\n"
@@ -154,6 +163,7 @@ if [ -n "$active" ]; then
   else
     # Multi-root: group-by-root via format_active_summary
     summary=$(printf '%s\n' "$active" | format_active_summary)
+    [ -z "$hq_quiet" ] || summary=$(printf '%s\n' "$summary" | sed -E 's/⏰[0-9]+//g')
     # summary is already multi-line "  - root: items..."; convert to \n-escaped
     body=$(printf '%s\n' "$summary" | awk '{ printf "%s\\n", $0 }')
   fi
@@ -166,7 +176,7 @@ fi
 # the session checks the event before anything behind it. Active crystals
 # only, like the list above.
 waits=""
-if [ -n "$active" ] && command -v _unchecked_lines >/dev/null 2>&1; then
+if [ -z "$hq_quiet" ] && [ -n "$active" ] && command -v _unchecked_lines >/dev/null 2>&1; then
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     slug=$(extract_slug "$f")

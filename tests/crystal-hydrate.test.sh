@@ -21,7 +21,7 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION \
       GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
       GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR \
-      VDX_FOCUSED VDX_INTERCOM CLAUDE_CODE_SESSION_ID 2>/dev/null || true
+      VDX_FOCUSED VDX_INTERCOM VDX_HQ CLAUDE_CODE_SESSION_ID 2>/dev/null || true
 
 # Nor the machine's git config: a global excludesFile would hide files the
 # fixture means to show, and git 2.54 runs a hook declared there on commands of
@@ -181,6 +181,65 @@ S="$TMP/silent"; mkdir -p "$S"; git -C "$S" init -q
 crystal "$S" resting dormant '- [ ] some day (due: 2999-01-01)'
 eq_silent=$(hydrate "$S")
 if [ -z "$eq_silent" ]; then ok "silence"; else bad "silence" "${eq_silent:0:200}"; fi
+
+echo "== a live HQ session of the project: the waits go there, the list stays (hq-session-quiet, DL #2) =="
+# A python sleeper: macOS hides a platform binary's environment (`sleep`).
+SOCKS="$(mktemp -d /tmp/hqsock.XXXXXX)"
+env VDX_HQ=1 python3 -c 'import time; time.sleep(300)' & HQ_PID=$!; disown "$HQ_PID" 2>/dev/null || true
+trap 'kill "$HQ_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  { [ -r "/proc/$HQ_PID/environ" ] || ps -wwE -p "$HQ_PID" -o command= 2>/dev/null | grep -q 'VDX_HQ=1'; } && break
+  python3 -c 'import time; time.sleep(0.2)'
+done
+python3 -c 'import socket,sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$SOCKS/hq.sock"
+hq_session() {  # hq_session <file> <cwd> — the live HQ session, as the harness writes it
+  mkdir -p "$HOME/.claude/sessions"
+  jq -n --argjson pid "$HQ_PID" --arg cwd "$2" --arg sock "$SOCKS/hq.sock" \
+    '{pid:$pid, sessionId:"sid-hq", cwd:$cwd, messagingSocketPath:$sock}' > "$HOME/.claude/sessions/$1"
+}
+H="$TMP/hqproj"; mkdir -p "$H"; git -C "$H" init -q
+crystal "$H" busywork in-progress $'- [ ] delete the sites — when: all 30 files arrived\n- [ ] answer the agent (due: 2020-01-01)'
+crystal "$H" parkedwork dormant '- [ ] an old promise (due: 2020-01-01)'
+says_all() {  # the three signals, each with what names it
+  says "$1: what waits for an event" "$2" "Waiting for an event"
+  says "$1: past due in the list" "$2" "ПРОСРОЧЕНО"
+  says "$1: past due out of work" "$2" "Not in work"
+}
+out="$(CLAUDE_PROJECT_DIR="$H" hydrate "$H")"
+says_all "without an HQ session" "$out"
+hq_session hq.json "$H"
+out="$(CLAUDE_PROJECT_DIR="$H" hydrate "$H")"
+says "RED: with one, the active crystal is still listed" "$out" "busywork: 2 open"
+says_not "RED: …and nothing waits for an event" "$out" "Waiting for an event"
+says_not "RED: …nothing past due in the list" "$out" "ПРОСРОЧЕНО"
+says_not "RED: …nothing past due out of work" "$out" "Not in work"
+says_not "…not even as a mark" "$out" "⏰"
+printf '%s' "$out" | jq -e . >/dev/null 2>&1 && ok "…valid hook JSON" || bad "…valid hook JSON" "$out"
+out="$(VDX_HQ=1 CLAUDE_PROJECT_DIR="$H" hydrate "$H")"
+says_all "RED: the HQ session itself" "$out"
+out="$(VDX_INTERCOM=1 CLAUDE_PROJECT_DIR="$H" hydrate "$H")"
+says_all "an intercom session" "$out"
+out="$(VDX_FOCUSED=1 CLAUDE_PROJECT_DIR="$H" hydrate "$H")"
+says_all "a focused session, as before (hq-session-quiet, DL #3)" "$out"
+H2="$TMP/hqother"; mkdir -p "$H2"; git -C "$H2" init -q
+crystal "$H2" elsewhere in-progress $'- [ ] wait — when: something'
+out="$(CLAUDE_PROJECT_DIR="$H2" hydrate "$H2")"
+says "RED: another project's session stays as it was" "$out" "Waiting for an event"
+M="$TMP/hqmulti"; mkdir -p "$M/a/tasks/one" "$M/b/tasks/two"; git -C "$M" init -q
+printf -- '---\nslug: one\nstatus: in-progress\n---\n\n- [ ] late (due: 2020-01-01)\n' > "$M/a/tasks/one/workitem.md"
+printf -- '---\nslug: two\nstatus: in-progress\n---\n\n- [ ] open\n' > "$M/b/tasks/two/workitem.md"
+git -C "$M" add -- a b
+out="$(CLAUDE_PROJECT_DIR="$M" hydrate "$M")"
+says "several roots, no HQ session: past due in the summary" "$out" "⏰1"
+hq_session hqm.json "$M"
+out="$(CLAUDE_PROJECT_DIR="$M" hydrate "$M")"
+says "RED: several roots, with one: still listed" "$out" "a: one (1)"
+says_not "RED: …without the mark" "$out" "⏰"
+kill "$HQ_PID" 2>/dev/null
+for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$HQ_PID" 2>/dev/null || break; python3 -c 'import time; time.sleep(0.2)'; done
+out="$(CLAUDE_PROJECT_DIR="$H" hydrate "$H")"
+says_all "RED: closed, the session file left behind" "$out"
+rm -rf "$HOME/.claude/sessions"
 
 printf '\ncrystal-hydrate: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

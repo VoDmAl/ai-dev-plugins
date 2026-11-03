@@ -168,13 +168,19 @@ case "$count" in ''|*[!0-9]*) count=0 ;; esac
 # A focused session is not called to its inbox (intercom-common.sh → "Focused
 # sessions") — except by a letter on its topic, which a sender may wake it with
 # and so it hears of here (intercom-focused-topic, DL #4), and by an answer to a
-# letter of its own (intercom-hitl-via-initiator, DL #4).
+# letter of its own (intercom-hitl-via-initiator, DL #4). An ordinary session with
+# a live HQ session of its project here hears the same (hq-session-quiet, DL #2):
+# asked at every message, since that session may start or close at any time, and a
+# letter not named while it lived is named on the first message after it closes.
 own_topic=""
 focused=""
 if intercom_focused; then
   [ "$arrival_on" = "true" ] || exit 0
   focused=1
   own_topic="$(intercom_own_topic)"
+elif command -v vdm_hq_quiet >/dev/null 2>&1 && vdm_hq_quiet; then
+  [ "$arrival_on" = "true" ] || exit 0
+  focused=1
 fi
 
 sid=$(printf '%s' "$payload" | _vdm_reminder_session_id 2>/dev/null || printf 'default')

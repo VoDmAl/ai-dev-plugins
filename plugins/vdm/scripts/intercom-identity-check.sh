@@ -85,7 +85,14 @@ machine="$(_intercom_machine_name)"
 # letters come here, and counts those already waiting. So does one with answers
 # to letters it wrote: a restart keeps the session's id (intercom-hitl-via-initiator,
 # DL #3), and an answer that came while it was down is named here, not on arrival.
-if intercom_focused; then
+#
+# An ordinary session with a live HQ session of its project on this machine says
+# the same and no more (hq-session-quiet, DL #2): the inbox and everything below
+# are that session's, and the wakes go there. An answer to a letter of its own
+# stays its own.
+hq_quiet=""
+if command -v vdm_hq_quiet >/dev/null 2>&1 && vdm_hq_quiet; then hq_quiet=1; fi
+if intercom_focused || [ -n "$hq_quiet" ]; then
   msg="[intercom] 🪪 You are \`${id}\` on \`${machine}\`"
   [ -n "$names" ] && msg="${msg} — aka: ${names}"
   topic="$(intercom_own_topic)"
@@ -98,6 +105,9 @@ if intercom_focused; then
     [ "$on_topic" -eq 0 ] || msg="${msg} 📬 ${on_topic} on this topic in the inbox → /vdm:intercom check."
     [ "$answers" -eq 0 ] || msg="${msg} 📬 ${answers} answer(s) to this session's letters in the inbox → /vdm:intercom check."
     msg="${msg} A letter on it that is not: /vdm:intercom topic <slug> --miss \"<why>\". Read the rest of the inbox only when the user asks."
+  elif [ -n "$hq_quiet" ]; then
+    msg="${msg}. 🔕 A live HQ session of this project on this machine takes the sheet and what comes from outside: mail is not shown here and no other session wakes this one, except with an answer to a letter it wrote; read the rest of the inbox only when the user asks."
+    [ "$answers" -eq 0 ] || msg="${msg} 📬 ${answers} answer(s) to this session's letters in the inbox → /vdm:intercom check."
   else
     msg="${msg}. 🔇 Focused session: mail is not shown here and no other session wakes this one, except with an answer to a letter it wrote; read the rest of the inbox only when the user asks."
     [ "$answers" -eq 0 ] || msg="${msg} 📬 ${answers} answer(s) to this session's letters in the inbox → /vdm:intercom check."

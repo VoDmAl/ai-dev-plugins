@@ -19,7 +19,7 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION \
       GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
       GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR \
-      VDX_FOCUSED VDX_INTERCOM CLAUDE_CODE_SESSION_ID 2>/dev/null || true
+      VDX_FOCUSED VDX_INTERCOM VDX_HQ CLAUDE_CODE_SESSION_ID 2>/dev/null || true
 
 # Nor the machine's git config: git 2.54 runs a hook declared there
 # (`hook.<name>.command`) on every commit, a fixture's included — the case is
@@ -110,6 +110,26 @@ rec "$PROJ/.claude/memory/local.md" $'name: local\ntype: project\nscope: project
 rec "$PROJ/.claude/memory/empty-shared.md" $'name: empty-shared\ntype: feedback\nscope: hq\nshared:'
 out="$(CLAUDE_PROJECT_DIR="$PROJ" bash "$CHECK" </dev/null)"
 says "RED: three lessons are waiting" "$out" "3 lesson(s) marked hq or conduct"
+# An ordinary session with a live HQ session of the project: lifting lessons is
+# that session's (hq-session-quiet, DL #2). A python sleeper: macOS hides a platform
+# binary's environment (`sleep`).
+HQSOCKS="$(mktemp -d /tmp/hqsock.XXXXXX)"
+env VDX_HQ=1 python3 -c 'import time; time.sleep(300)' & HQ_PID=$!; disown "$HQ_PID" 2>/dev/null || true
+trap 'kill "$HQ_PID" 2>/dev/null; rm -rf "$TMP" "$HQSOCKS"' EXIT
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  { [ -r "/proc/$HQ_PID/environ" ] || ps -wwE -p "$HQ_PID" -o command= 2>/dev/null | grep -q 'VDX_HQ=1'; } && break
+  python3 -c 'import time; time.sleep(0.2)'
+done
+python3 -c 'import socket,sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$HQSOCKS/hq.sock"
+mkdir -p "$HOME/.claude/sessions"
+jq -n --argjson pid "$HQ_PID" --arg cwd "$(cd "$PROJ" && pwd -P)" --arg sock "$HQSOCKS/hq.sock" \
+  '{pid:$pid, sessionId:"sid-hq", cwd:$cwd, messagingSocketPath:$sock}' > "$HOME/.claude/sessions/hq.json"
+silent "RED: an ordinary session with a live HQ session hears none of it" "$(CLAUDE_PROJECT_DIR="$PROJ" bash "$CHECK" </dev/null)"
+says "RED: the HQ session does" "$(VDX_HQ=1 CLAUDE_PROJECT_DIR="$PROJ" bash "$CHECK" </dev/null)" "3 lesson(s) marked hq or conduct"
+kill "$HQ_PID" 2>/dev/null
+for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$HQ_PID" 2>/dev/null || break; python3 -c 'import time; time.sleep(0.2)'; done
+says "RED: closed, the ordinary session hears it again" "$(CLAUDE_PROJECT_DIR="$PROJ" bash "$CHECK" </dev/null)" "3 lesson(s) marked hq or conduct"
+rm -rf "$HOME/.claude/sessions"
 says "…one from the project's memory" "$out" "hq-waits"
 says "…one from the harness's, found by the project's path" "$out" "conduct-waits"
 says "…an empty shared: is not a home" "$out" "empty-shared"

@@ -32,7 +32,7 @@ unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
       GIT_PREFIX GIT_CEILING_DIRECTORIES GIT_INDEX_VERSION \
       GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
       GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_EDITOR \
-      VDX_FOCUSED VDX_INTERCOM CLAUDE_CODE_SESSION_ID 2>/dev/null || true
+      VDX_FOCUSED VDX_INTERCOM VDX_HQ CLAUDE_CODE_SESSION_ID 2>/dev/null || true
 
 # Nor the machine's git config: git 2.54 runs a hook declared there
 # (`hook.<name>.command`) on every commit, a fixture's included — the case is
@@ -1306,6 +1306,41 @@ echo ""
 echo "== session start names what is behind =="
 OUT=$(cd "$FX" && CLAUDE_PROJECT_DIR="$FX" COMMS_TODAY="$TODAY" bash "$INDEXCHECK" </dev/null 2>&1)
 expect_says "RED: the signal lists a stale path, not only a count" "$OUT" "        update "
+
+echo ""
+echo "== an ordinary session with a live HQ session of the project hears neither signal (hq-session-quiet, DL #2) =="
+# A python sleeper: macOS hides a platform binary's environment (`sleep`). This
+# suite's HOME is the real one, so the session files live in a directory of their own.
+HQCFG="$TMP/hqcfg"; mkdir -p "$HQCFG/sessions"
+HQSOCKS="$(mktemp -d /tmp/hqsock.XXXXXX)"
+env VDX_HQ=1 python3 -c 'import time; time.sleep(300)' & HQ_PID=$!; disown "$HQ_PID" 2>/dev/null || true
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  { [ -r "/proc/$HQ_PID/environ" ] || ps -wwE -p "$HQ_PID" -o command= 2>/dev/null | grep -q 'VDX_HQ=1'; } && break
+  python3 -c 'import time; time.sleep(0.2)'
+done
+python3 -c 'import socket,sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$HQSOCKS/hq.sock"
+hq_session() {  # hq_session <file> <cwd> — the live HQ session, as the harness writes it
+  jq -n --argjson pid "$HQ_PID" --arg cwd "$2" --arg sock "$HQSOCKS/hq.sock" \
+    '{pid:$pid, sessionId:"sid-hq", cwd:$cwd, messagingSocketPath:$sock}' > "$HQCFG/sessions/$1"
+}
+index_check() { ( cd "$FX" && CLAUDE_CONFIG_DIR="$HQCFG" CLAUDE_PROJECT_DIR="$FX" COMMS_TODAY="$TODAY" bash "$INDEXCHECK" </dev/null 2>&1 ); }
+PX="$TMP/hqpending"; mkdir -p "$PX/.claude"; PX="$(cd "$PX" && pwd -P)"; git -C "$PX" init -q
+printf '{"comms": {"pending-paths": ["open.md"]}}\n' > "$PX/.claude/vdm-plugins.json"
+printf -- '- [ ] Петров — прислать акт (due: %s)\n' "$PAST" > "$PX/open.md"
+pending_check() { ( cd "$PX" && CLAUDE_CONFIG_DIR="$HQCFG" CLAUDE_PROJECT_DIR="$PX" COMMS_TODAY="$TODAY" bash "$P/scripts/comms-pending-check.sh" </dev/null 2>&1 ); }
+expect_says "without an HQ session: what is behind" "$(index_check)" "generated artefact(s) are behind"
+expect_says "…and what is overdue" "$(pending_check)" "[comms] pending:"
+hq_session fx.json "$FX"; hq_session px.json "$PX"
+expect_silent "RED: with one, nothing about what is behind" "$(index_check)"
+expect_silent "RED: …nothing about what is overdue" "$(pending_check)"
+OUT=$(export VDX_HQ=1; index_check); expect_says "RED: the HQ session hears what is behind" "$OUT" "generated artefact(s) are behind"
+OUT=$(export VDX_HQ=1; pending_check); expect_says "RED: …and what is overdue" "$OUT" "[comms] pending:"
+OUT=$(export VDX_INTERCOM=1; pending_check); expect_says "an intercom session, as before" "$OUT" "[comms] pending:"
+OUT=$(export VDX_FOCUSED=1; pending_check); expect_says "a focused session, as before (DL #3)" "$OUT" "[comms] pending:"
+kill "$HQ_PID" 2>/dev/null
+for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$HQ_PID" 2>/dev/null || break; python3 -c 'import time; time.sleep(0.2)'; done
+expect_says "RED: closed, the ordinary session hears it again" "$(pending_check)" "[comms] pending:"
+rm -rf "$HQSOCKS"
 
 echo ""
 echo "== comms.generate: an artefact the project writes itself is not ours to call stale =="
