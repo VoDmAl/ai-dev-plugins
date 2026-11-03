@@ -1996,6 +1996,73 @@ intercom_taken_elsewhere() {
   printf '%s' "$mark"
 }
 
+# ---------------------------------------------------------------------------
+# A mention gone stale (docs/tasks/intercom-stale-mention). A session tells the
+# owner «the letter X waits for your word», another session takes X a minute later,
+# and the sentence stays the last thing on the screen, read as a question that no
+# longer exists. It was true when said, so no rule of text can help. The pair on
+# disk: the time of a session's last answer in its transcript against the time in
+# the letter's `taken:` mark. An answer before the mark that names the letter has
+# gone stale; one after it means the session has spoken since, so the signal goes
+# out by itself and nothing is stored.
+# ---------------------------------------------------------------------------
+INTERCOM_REPLY_TAIL=400
+
+# intercom_last_reply <transcript> — "<timestamp><TAB><text>" of the session's last
+# answer: every text of its last turn, on one line. A record that only carries a
+# tool's result does not start a turn, and on the owner's message the turn before
+# it is the one on the screen, whether or not that message is in the file yet.
+intercom_last_reply() {
+  [ -f "$1" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  tail -n "$INTERCOM_REPLY_TAIL" "$1" | LC_ALL=C grep -E '"type":"(assistant|user)"' | jq -Rr '
+    fromjson? | select(.isSidechain != true) |
+    if .type == "assistant" then
+      ([(.message.content // [])[]? | select(type == "object" and .type == "text") | .text] | join(" ") | gsub("[\\n\\t]"; " ")) as $t
+      | if $t == "" then empty else "A\t\(.timestamp // "")\t\($t)" end
+    elif .type == "user" and .isMeta != true
+         and ((.message.content | if type == "array" then any(.[]; .type == "tool_result") else false end) | not) then "U"
+    else empty end' 2>/dev/null | awk -F '\t' '
+      $1 == "U" { if (cur != "") { prev = cur; prev_t = cur_t; cur = "" } next }
+      $1 == "A" { cur_t = $2; cur = (cur == "" ? $3 : cur " " $3) }
+      END { if (cur != "") printf "%s\t%s\n", cur_t, cur; else if (prev != "") printf "%s\t%s\n", prev_t, prev }'
+}
+
+# intercom_reply_time <intercom_last_reply line> — its time as a mark writes one.
+intercom_reply_time() {
+  local ts="${1%%$'\t'*}"
+  ts="${ts%%.*}"
+  printf '%s' "${ts%Z}Z"
+}
+
+# intercom_reply_names <text> <slug> — the text names that letter, as a whole word:
+# `hq-session` is not named by `hq-session-quiet`.
+intercom_reply_names() {
+  local esc
+  # `[.` would open a collating element in a bracket expression, so `[` goes last.
+  esc="$(printf '%s' "$2" | sed 's|[].*^$\\[]|\\&|g')"
+  [ -n "$esc" ] || return 1
+  printf '%s' "$1" | LC_ALL=C grep -qE "(^|[^A-Za-z0-9_-])${esc}([^A-Za-z0-9_-]|\$)"
+}
+
+# intercom_stale_sessions <identity> <slug> <time> [<name to skip>] — "<name><US><status>"
+# of every live session of that agent here, other than this one, whose last answer
+# was written before <time> and names <slug>. Not an intercom session: nobody sits
+# at it. A focused one is: the sentence on its screen is its own.
+intercom_stale_sessions() {
+  local id="$1" slug="$2" when="$3" skip="${4:-}" pid name status sid mode upd tf reply
+  while IFS=$'\037' read -r pid name status sid mode upd; do
+    [ -n "$sid" ] && [ "$mode" != mail ] && [ "$name" != "$skip" ] || continue
+    for tf in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"/*/"$sid".jsonl; do
+      [ -f "$tf" ] || continue
+      reply="$(intercom_last_reply "$tf")"
+      [ -n "$reply" ] && [ "$(intercom_reply_time "$reply")" \< "$when" ] || break
+      intercom_reply_names "${reply#*$'\t'}" "$slug" && printf '%s\037%s\n' "$name" "$status"
+      break
+    done
+  done <<<"$(_intercom_session_rows "$id")"
+}
+
 # Nobody removes the mark when its session ends, and read as if its session
 # were alive it held letters for good: `check` said "leave it to that session",
 # `sent` said "in work" (docs/tasks/intercom-taken-by-gone-session, DL #1, #3).

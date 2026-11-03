@@ -155,6 +155,55 @@ _ic_arrivals() {
     }' "${fresh[@]}")
 }
 
+# _ic_stale <identity> <transcript> <session id> — one "`<slug>` — taken by <who>" per
+# letter this session's last answer named before another session took it
+# (docs/tasks/intercom-stale-mention, DL #1). The way for a session engaged at the
+# take, or on the owner's other machine; once it answers, its answer is newer than
+# the mark and this says nothing, with nothing stored. Archived letters too: a letter
+# may be taken and closed before the owner's next message. Their files are read only
+# for the last week, this runs on every message. Costs a transcript's tail only when
+# some letter carries a mark.
+_ic_stale() {
+  local id="$1" t="$2" sid="$3" inbox cand reply when_reply text me="" slug who when f
+  [ -f "$t" ] || return 0
+  inbox="$(intercom_inbox_dir "$id")"
+  [ -d "$inbox" ] || return 0
+  local files=()
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    case "${f##*/}" in *.sync-conflict-*) continue ;; esac
+    files+=("$f")
+  done < <(intercom_inbox_list "$id"; find "$inbox/_done" -maxdepth 1 -name '*.md' -mtime -7 2>/dev/null)
+  [ ${#files[@]} -gt 0 ] || return 0
+  cand="$(awk '
+    BEGIN {
+      for (i = 1; i < ARGC; i++) {
+        f = ARGV[i]; first = 1; infm = 0; slug = taken = ""
+        while ((getline line < f) > 0) {
+          if (first) { first = 0; infm = (line == "---"); if (infm) continue; break }
+          if (line == "---") break
+          if (line ~ /^slug:/)  { slug = substr(line, 6); gsub(/^[ \t"]+|[ \t"]+$/, "", slug) }
+          if (line ~ /^taken:/) { taken = substr(line, 7); gsub(/^[ \t]+|[ \t]+$/, "", taken) }
+        }
+        close(f)
+        if (slug != "" && taken ~ / /) { n = split(taken, p, " "); printf "%s\037%s\037%s\n", slug, p[1], p[n] }
+      }
+      exit
+    }' "${files[@]}")"
+  [ -n "$cand" ] || return 0
+  reply="$(intercom_last_reply "$t")"
+  [ -n "$reply" ] || return 0
+  when_reply="$(intercom_reply_time "$reply")"
+  text="${reply#*$'\t'}"
+  while IFS=$'\037' read -r slug who when; do
+    [ -n "$slug" ] && [ "$when_reply" \< "$when" ] || continue
+    intercom_reply_names "$text" "$slug" || continue
+    [ -n "$me" ] || me="$(CLAUDE_CODE_SESSION_ID="${CLAUDE_CODE_SESSION_ID:-$sid}" _intercom_taker)"
+    [ "$who" != "$me" ] || continue
+    printf '`%s` — taken by %s\n' "$slug" "$who"
+  done <<<"$cand"
+}
+
 arrival_on="$(vdm_config_read intercom arrival-line true)"
 enabled="$(vdm_config_read intercom enabled false)"
 [ "$arrival_on" = "true" ] || [ "$enabled" = "true" ] || exit 0
@@ -163,8 +212,24 @@ id="$(intercom_identity 2>/dev/null)"
 count="$(intercom_inbox_count "$id" 2>/dev/null)"
 case "$count" in ''|*[!0-9]*) count=0 ;; esac
 
+# A mention gone stale is not mail: it is this session's own sentence, so it is said
+# in every session the owner may sit at, focused or quiet, and with an empty inbox.
+stale_msg=""
+if [ "$arrival_on" = "true" ] && ! intercom_mail_session; then
+  stale_tr="$(printf '%s' "$payload" | jq -r '.transcript_path // empty' 2>/dev/null)"
+  stale_sid="$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null)"
+  [ -z "$stale_tr" ] || stale="$(_ic_stale "$id" "$stale_tr" "$stale_sid")"
+  if [ -n "${stale:-}" ]; then
+    stale_msg="[intercom] 🗣 Your last answer named a letter another session has taken since, and it may stand on the user's screen as an open question:\n$(_vdm_json_escape "$(printf '%s\n' "$stale" | sed 's/^/- /')")\nAnswer the user's message, then say in one line that it is no longer theirs. If your answer did not leave it open for them, say nothing."
+  fi
+fi
+_ic_emit_stale() {
+  [ -n "$stale_msg" ] || return 0
+  _vdm_reminder_emit intercom 1 "🗣 intercom: a letter your last answer named has been taken by another session" "$stale_msg"
+}
+
 # Receiver-side condition: only ever fire when the inbox is non-empty.
-[ "$count" -gt 0 ] || exit 0
+[ "$count" -gt 0 ] || { _ic_emit_stale; exit 0; }
 # A focused session is not called to its inbox (intercom-common.sh → "Focused
 # sessions") — except by a letter on its topic, which a sender may wake it with
 # and so it hears of here (intercom-focused-topic, DL #4), and by an answer to a
@@ -208,10 +273,13 @@ if [ "$arrival_on" = "true" ]; then
     if [ -n "$questions" ]; then
       msg="${msg:+${msg}\n}[intercom] ❓ A question for the user on a letter of this session, and another agent waits on it:\n$(_vdm_json_escape "$questions")\nAnswer the user's message, then in this same turn read it (/vdm:intercom check) and put it to them as written, in a plain message, options too: a question dialog does not do, only what they type counts as their word. Their answer goes back with /vdm:intercom answer <slug> --word \\\"<their words, verbatim>\\\"."
     fi
+    msg="${msg}${stale_msg:+\n${stale_msg}}"
     _vdm_reminder_emit intercom 1 "📬 intercom: ${n} arrived during this session → /vdm:intercom check" "$msg"
     exit 0
   fi
 fi
+# Said alone, on a message with no arrivals; the general reminder has the next one.
+[ -z "$stale_msg" ] || { _ic_emit_stale; exit 0; }
 # A focused session hears of nothing but its topic and the answers to its letters.
 [ -z "$focused" ] || exit 0
 

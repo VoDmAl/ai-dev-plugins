@@ -1544,6 +1544,14 @@ cmd_topic() {
     intercom_release "$f" || printf 'intercom: ⚠ could not drop this session'"'"'s mark from %s\n' "$f" >&2
   fi
   _ic_topic_route "$f"
+  # Handed to a live focused session, the letter is that session's now: a sentence
+  # about it elsewhere has gone stale. It carries no mark until that session takes
+  # it, and the `take` then reaches whoever is engaged now.
+  if [ "$mode" = set ]; then
+    local holder
+    holder="$(intercom_topic_holder "$inbox_id" "$value")"
+    [ -z "$holder" ] || _ic_stale_lines "$inbox_id" "$(basename "$f" .md)" "was handed to the focused session on «${value}»" "${holder%%$'\037'*}" idle-only
+  fi
 }
 
 # `topic-misses [--since <YYYY-MM-DD>]` — every miss recorded in the store,
@@ -1833,6 +1841,39 @@ cmd_take() {
   [ "$force" -eq 1 ] || _ic_refuse_if_taken "take" "$msg" "$slug"
   intercom_take "$msg" || _ic_die "take: could not write the mark into $msg"
   printf '✋ intercom: %s taken by %s — work on it, then reply or pickup.\n' "$slug" "$(intercom_fm_field "$msg" taken)"
+  _ic_stale_lines "$id" "$slug" "was taken by $(_intercom_taker)"
+}
+
+# _ic_stale_lines <identity> <slug> <what happened to it> [<name to skip>] [idle-only] —
+# the sessions whose last answer named this letter before now, and the pointer to each
+# (docs/tasks/intercom-stale-mention). Sent whatever its quiet window (DL #2): the
+# window keeps someone else's letter off the owner's screen, and here the sentence is
+# on that screen already. One that is engaged hears through intercom-reminder.sh, once
+# the letter carries a mark; `idle-only` is for a letter that has none yet.
+_ic_stale_lines() {
+  local id="$1" slug="$2" what="$3" skip="${4:-}" idle_only="${5:-}" name status now
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  while IFS=$'\037' read -r name status; do
+    [ -n "$name" ] || continue
+    case "$status" in
+      idle|shell|''|'?')
+        printf '    🗣 the last answer of %s names `%s`, and may stand on the user'"'"'s screen as an open question.\n' "$name" "$slug"
+        printf '       → tell it now with your cross-session message tool (Claude Code: SendMessage), quiet window or not:\n'
+        printf '         🗣 intercom: `%s`, named in your last answer, %s — it is no longer yours. Say so to the user in one line, nothing more.\n' "$slug" "$what" ;;
+      *)
+        [ -z "$idle_only" ] || continue
+        printf '    🗣 the last answer of %s names `%s`. Do not wake it: %s — it hears of this as one line with the next message there.\n' "$name" "$slug" "$status" ;;
+    esac
+  done < <(intercom_stale_sessions "$id" "$slug" "$now" "$skip")
+}
+
+# _ic_mark_before_archive <letter> <identity> <slug> — a letter archived with no
+# `take` before it is taken all the same: the mark says who and when, in the archive
+# too, and that is what a session on the other machine compares its last answer with.
+_ic_mark_before_archive() {
+  [ -z "$(intercom_fm_field "$1" taken)" ] || return 0
+  intercom_take "$1" 2>/dev/null || return 0
+  _ic_stale_lines "$2" "$3" "was taken by $(_intercom_taker)"
 }
 
 # `release <slug> [--note "<what it waits for>"]` — the reverse of take. A
@@ -1902,6 +1943,7 @@ cmd_pickup() {
     # so a session elsewhere does not start on it meanwhile.
     intercom_take "$msg" || printf 'intercom: ⚠ could not mark %s taken\n' "$slug" >&2
     printf '🌱 intercom: promote message → workitem\n'
+    _ic_stale_lines "$id" "$slug" "was taken by $(_intercom_taker)"
     printf '    message: %s   (taken: %s)\n' "$msg" "$(_intercom_taker)"
     printf '    next: run /vdm:crystal-grow %s, seed the workitem from the body above,\n' "$slug"
     # The outcome is owed after the work, and the brief is archived before it
@@ -1915,6 +1957,7 @@ cmd_pickup() {
     return 0
   fi
 
+  _ic_mark_before_archive "$msg" "$id" "$slug"
   local dest
   dest="$(_ic_archive "$msg")" || exit 1
   printf '✅ intercom: archived → %s\n' "$dest"
@@ -2148,6 +2191,7 @@ cmd_reply() {
   # `<id>/<slug>` names both letters, so the brief is archived FIRST: a clash in
   # _done/ gives it a name of its own, and the reply links to that name.
   local reply_ref="$id/$slug"
+  [ "$msg" != "$inbox/$slug.md" ] || _ic_mark_before_archive "$msg" "$id" "$slug"
   if [ "$msg" = "$inbox/$slug.md" ] && [ -e "$inbox/_done/$slug.md" ]; then
     msg="$(_ic_archive "$msg")" || exit 1
     reply_ref="$(intercom_letter_ref "$msg")"

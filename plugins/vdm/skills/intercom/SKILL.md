@@ -514,7 +514,8 @@ pending messages:
    elsewhere alone too, but by then the work is done twice (field case, echelon,
    2026-10-21: two works, six Syncthing conflicts). `--force` takes over from a
    session that is gone; `check`, `sent` and the refusal of `take` name it when
-   that session is of this machine. A note you only archive needs no mark.
+   that session is of this machine. A note you only archive needs no `take`:
+   `pickup` writes the mark on its way to the archive.
    A letter you took that waits for something outside the inbox — another
    agent's move, a deploy, the user's word — goes back with its reason:
    `intercom.sh release <slug> --note "<what it waits for>"`. The mark goes,
@@ -754,6 +755,34 @@ printed by `send`, and nothing is required. Live sessions are read from the harn
 machine, a dead process or a missing socket never counts as live, and your own
 session is never listed.
 
+### A mention gone stale — the session that named a letter hears it was taken
+
+Field case (2026-11-03): one session told the user "I wait for your word on X",
+another took X a minute later, and the sentence stayed the last thing on the user's
+screen, read as a question nobody was asking any more. It was true when said, so no
+rule of text can help.
+
+- **The signal is a comparison, and nothing is stored:** the time of a session's
+  last answer in its transcript against the time in the letter's `taken:` mark. An
+  answer before the mark that names the slug, as a whole word, has gone stale. An
+  answer after it means the session has spoken since, and the signal is out.
+- **`take`, `pickup`, `pickup --grow` and `reply`** print each such session on this
+  machine and the pointer for it: send it in the same turn with your cross-session
+  message tool. `pickup` and `reply` of a letter with no mark write one first.
+- **Idle or `shell`: at once, quiet window or not.** This is the one exception to
+  § Delivery is not receipt → "Not a session the user may be at": the window keeps
+  someone else's letter off the user's screen, and this sentence is on it already,
+  from that session. Any other status is not woken.
+- **The session that hears says so to the user in one line, nothing more.**
+- **Engaged, or on the user's other machine:** one line with the user's next message
+  there, from the arrival hook, which reads the inbox and the last week of the
+  archive. It holds in a focused or a quiet session and with an empty inbox, and
+  `intercom.arrival-line: false` turns it off.
+- **Handed to a live focused session with `topic`:** the pointer goes to the idle ones
+  only; the letter has no mark yet, and that session's `take` reaches the rest.
+- **A focused session hears too:** the sentence is its own. An intercom session does
+  not: nobody sits at it.
+
 ### Focused sessions — deaf to mail
 
 A session started with `vdx ai --focused` carries `VDX_FOCUSED=1` and works on
@@ -764,8 +793,9 @@ where the user had typed last; after the first pointer it went off to read what
 nobody had asked it to.
 
 - **Nobody wakes it** — except with a letter on its topic (§ A focused session's
-  topic) or an answer to a letter it wrote (§ An answer goes to the session that
-  asked). `send`, `sent` and the receipt after `pickup` leave it out
+  topic), an answer to a letter it wrote (§ An answer goes to the session that
+  asked), or a letter its own last answer named and another session took (§ A
+  mention gone stale). `send`, `sent` and the receipt after `pickup` leave it out
   of the live sessions entirely. A turn the user typed into it is passed over,
   and the turn before it decides whom to wake; when the recipient has no other
   live session here, nothing is printed, as for a recipient with none.

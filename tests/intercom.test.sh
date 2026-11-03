@@ -2764,5 +2764,109 @@ says "RED: …and the next letter wakes the ordinary session" "$(wake_out hq-gon
 kill "$HQW_PID" "$HQM_PID" 2>/dev/null
 rm -f "$SESS"/hq-*.json
 
+echo ""
+echo "== a letter taken elsewhere: the session whose last answer named it hears (intercom-stale-mention) =="
+# Field case 2026-11-03: «I wait for your word on X», X taken a minute later, and the
+# sentence stayed on the owner's screen as a question nobody was asking any more.
+rm -f "$SESS"/*.json; rm -rf "${PROJ:?}"/*
+hq_sleeper; SMP_PID="$HQ_SLEEPER"
+hq_sleeper VDX_FOCUSED=1; SMF_PID="$HQ_SLEEPER"
+hq_sleeper VDX_INTERCOM=1; SMM_PID="$HQ_SLEEPER"
+trap 'kill "$LIVE_PID" "$HQS_PID" "$HQW_PID" "$HQM_PID" "$SMP_PID" "$SMF_PID" "$SMM_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
+for s in 1 2 3 4 5; do mksock "$SOCKS/sm$s.sock"; done
+mksession sm-said.json  "$SMP_PID" "$HOPB" hop-b-said  idle "$SOCKS/sm1.sock" sid-said
+mksession sm-taker.json "$SMP_PID" "$HOPB" hop-b-taker idle "$SOCKS/sm2.sock" sid-taker
+mksession sm-other.json "$SMP_PID" "$HOPB" hop-b-other idle "$SOCKS/sm3.sock" sid-other
+answer() {  # answer <sessionId> <timestamp> <text> — one answer in that session's transcript
+  mkdir -p "$PROJ/sm"
+  jq -cn --arg ts "$2" --arg sid "$1" --arg t "$3" \
+    '{type:"assistant", timestamp:$ts, sessionId:$sid, message:{role:"assistant", content:[{type:"text", text:$t}]}}' >> "$PROJ/sm/$1.jsonl"
+}
+sm_letter() { ( cd "$TMP/hop-a" && CLAUDE_CODE_SESSION_ID=self-sid bash "$IC" send hop-b "$1" --body "$B/live.md" >/dev/null 2>&1 ); }
+sm_take()   { ( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-taker VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" take "$1" 2>&1 ); }
+sm_hear()   { ( cd "$TMP/hop-b" && printf '{"session_id":"%s","transcript_path":"%s"}' "$1" "$PROJ/sm/$1.jsonl" | CLAUDE_CODE_SESSION_ID="$1" TMPDIR="$TMP/hq-tmp" bash "$REM" 2>&1 ); }
+
+stamp sm-said.json idle 1
+sm_letter sm-one
+answer sid-said "2026-10-04T10:00:00.123Z" "Жду твоего слова по \`sm-one\`."
+answer sid-other "2026-10-04T10:00:00.123Z" "Про другое."
+out="$(sm_take sm-one)"
+says "RED: take names the session whose last answer named the letter" "$out" "the last answer of hop-b-said names \`sm-one\`"
+says "RED: …and gives the pointer" "$out" "🗣 intercom: \`sm-one\`, named in your last answer, was taken by"
+says "RED: …idle for a minute: the window keeps other letters off that screen, this sentence is on it" "$out" "tell it now"
+says_not "…not a session whose last answer did not" "$out" "hop-b-other"
+sm_letter sm-two
+answer sid-said "2026-10-04T10:01:00Z" "Жду твоего слова по \`sm-two\`."
+mkdir -p "$PROJ/sm"; printf '{"type":"user","timestamp":"2026-10-04T10:02:00Z","message":{"role":"user","content":[{"type":"tool_result","content":"x"}]}}\n' >> "$PROJ/sm/sid-said.jsonl"
+says "RED: a tool's result is no new turn: the answer still stands" "$(sm_take sm-two)" "the last answer of hop-b-said names \`sm-two\`"
+sm_letter sm-turn
+answer sid-said "2026-10-04T10:02:10Z" "Жду твоего слова по \`sm-turn\`."
+printf '{"type":"user","timestamp":"2026-10-04T10:02:20Z","message":{"role":"user","content":[{"type":"tool_result","content":"x"}]}}\n' >> "$PROJ/sm/sid-said.jsonl"
+answer sid-said "2026-10-04T10:02:30Z" "Ещё смотрю."
+says "RED: …and a text after it is the same turn: all of it stands on the screen" "$(sm_take sm-turn)" "the last answer of hop-b-said names \`sm-turn\`"
+sm_letter sm-three
+printf '{"type":"user","timestamp":"2026-10-04T10:03:00Z","turnOrigin":"human","message":{"role":"user","content":"дальше"}}\n' >> "$PROJ/sm/sid-said.jsonl"
+answer sid-said "2026-10-04T10:04:00Z" "Про другое."
+says_not "RED: a later turn that does not name it: nothing stands" "$(sm_take sm-three)" "hop-b-said"
+sm_letter sm-four
+answer sid-said "2026-10-04T10:05:00Z" "См. \`sm-four-long\`, и сессия \`hop-b-other\`."
+says_not "RED: a longer slug does not name this one" "$(sm_take sm-four)" "🗣"
+sm_letter sm-five
+answer sid-said "2099-01-01T00:00:00Z" "Письмо \`sm-five\` уже взяли."
+says_not "RED: an answer after the take is no stale sentence" "$(sm_take sm-five)" "🗣"
+rm -f "$PROJ/sm/sid-said.jsonl"
+mksession sm-foc.json  "$SMF_PID" "$HOPB" hop-b-foc  idle "$SOCKS/sm4.sock" sid-foc
+mksession sm-mail.json "$SMM_PID" "$HOPB" hop-b-mail idle "$SOCKS/sm5.sock" sid-mail
+sm_letter sm-six
+answer sid-foc  "2026-10-04T10:06:00Z" "Жду слова по \`sm-six\`."
+answer sid-mail "2026-10-04T10:06:00Z" "Жду слова по \`sm-six\`."
+out="$(sm_take sm-six)"
+says "RED: a focused session hears: the sentence on its screen is its own" "$out" "the last answer of hop-b-foc"
+says_not "RED: an intercom session does not: nobody sits at it" "$out" "hop-b-mail"
+rm -f "$SESS/sm-foc.json" "$SESS/sm-mail.json" "$PROJ/sm/sid-foc.jsonl" "$PROJ/sm/sid-mail.jsonl"
+
+sm_letter sm-busy
+answer sid-said "2026-10-04T10:07:00Z" "Жду слова по \`sm-busy\`."
+stamp sm-said.json busy 1
+out="$(sm_take sm-busy)"
+says "RED: a busy session is not woken" "$out" "Do not wake it: busy"
+says_not "…no pointer" "$out" "tell it now"
+out="$(sm_hear sid-said)"
+says "RED: it hears with the next message" "$out" "\`sm-busy\` — taken by"
+says "…as its own sentence, in one line" "$out" "say in one line that it is no longer theirs"
+printf '%s' "$out" | jq -e . >/dev/null 2>&1 && ok "…valid hook JSON" || bad "…valid hook JSON" "$out"
+printf '{"type":"user","timestamp":"2026-10-04T10:08:00Z","turnOrigin":"human","message":{"role":"user","content":"ну"}}\n' >> "$PROJ/sm/sid-said.jsonl"
+says "RED: the owner's message already in the file: the answer before it still counts" "$(sm_hear sid-said)" "\`sm-busy\` — taken by"
+answer sid-said "2099-01-01T00:00:00Z" "Письмо \`sm-busy\` взяла другая сессия."
+eq "RED: answered since: nothing more, and nothing stored" "$(sm_hear sid-said)" ""
+stamp sm-said.json idle 60
+
+sm_letter sm-own
+answer sid-taker "2026-10-04T10:09:00Z" "Беру \`sm-own\`."
+sm_take sm-own >/dev/null
+eq "RED: a letter this session took itself is not stale to it" "$(sm_hear sid-taker)" ""
+
+rm -f "$PROJ/sm/sid-said.jsonl"
+sm_letter sm-note
+answer sid-said "2026-10-04T10:10:00Z" "В ящике ждёт \`sm-note\`."
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-taker bash "$IC" pickup sm-note 2>&1 )"
+says "RED: archived with no take: the same sentence goes stale" "$out" "the last answer of hop-b-said names \`sm-note\`"
+says "…and the archive carries who and when" "$(cat "$VDM_INTERCOM_ROOT/hop-b/_done/sm-note.md")" "taken: "
+says "RED: …which a session elsewhere reads, the letter gone from the inbox" "$(sm_hear sid-said)" "\`sm-note\` — taken by"
+sm_letter sm-brief
+answer sid-said "2026-10-04T10:11:00Z" "Жду слова по \`sm-brief\`."
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-taker bash "$IC" reply sm-brief --done "готово" --ball "nobody — closed" 2>&1 )"
+says "RED: closed by reply with no take: the same" "$out" "the last answer of hop-b-said names \`sm-brief\`"
+sm_letter sm-grow
+answer sid-said "2026-10-04T10:12:00Z" "Жду слова по \`sm-grow\`."
+says "RED: …and promoted with pickup --grow" "$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-taker bash "$IC" pickup sm-grow --grow 2>&1 )" "the last answer of hop-b-said names \`sm-grow\`"
+
+mkdir -p "$TMP/hop-b/.claude"
+printf '{"intercom": {"arrival-line": false}}\n' > "$TMP/hop-b/.claude/vdm-plugins.json"
+eq "intercom.arrival-line: false turns it off" "$(sm_hear sid-said)" ""
+rm -rf "$TMP/hop-b/.claude"
+kill "$SMP_PID" "$SMF_PID" "$SMM_PID" 2>/dev/null
+rm -f "$SESS"/sm-*.json
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -50,8 +50,10 @@ relates-to: ["[[intercom-focused-topic/workitem|intercom-focused-topic]]", "[[in
 `intercom-identity-check.sh`, `intercom-reminder.sh` и `memory-scope-check.sh`, а `[comms]` и ⏳⏰ кристаллов получал.
 Старт этой сессии, она focused, принёс две строки ⏳. Владелец решил: при живой HQ focused молчит так же (DL #6).
 
-**vdx.** `--hq` ещё нет: vdx 0.48.0, `vdx ai --help` его не называет, письмо `hq-session-mode` взято им в работу 03.11.
-Вживую ничего не гонялось, только на поддельной сессии в наборе тестов.
+**vdx.** С 0.49.0 `vdx ai --help` называет `--hq` и `VDX_HQ=1`. Вживую ничего не гонялось, только на поддельной сессии в
+наборах тестов. Первый запуск — за владельцем. У HQ-сессии `@vdx_topic` равен `📥 HQ` (её знак, письмо vdx 03.11): тему
+vdm читает только у focused, поэтому на письма по теме это не влияет. `vdx ai --close` в ней отказывает, а `intercom close`
+до него не доходит: он отказывает вне сессии intercom.
 
 ## Decision Log
 
@@ -137,8 +139,8 @@ relates-to: ["[[intercom-focused-topic/workitem|intercom-focused-topic]]", "[[in
 - [ ] Sidetrack #1: worktree как тот же проект — решить вместе с echelon, когда он дойдёт до worktree
 - [ ] Sidetrack #2: строка о сессии на другой машине — по живому прогону
 - [x] Вопрос владельцу: focused при живой HQ-сессии тоже гасить `[comms]`, ⏳, ⏰. Решено: да (DL #6)
-- [ ] Живой прогон на настоящей `vdx ai --hq` — when: vdx прислал итог `hq-session-mode`; check: `vdx ai --help` называет `--hq`
-- [ ] Outcome to `echelon`: intercom reply hq-session-quiet --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
+- [ ] Живой прогон на настоящей `vdx ai --hq`, правки по его итогам — when: владелец запустил `--hq` на пилотном проекте и дал обратную связь; check: `vdx ai --help` называет `--hq` (есть с vdx 0.49.0); сверить заодно наш признак (процесс) с отметкой echelon `hqalive`
+- [x] Итог echelon отправлен 03.11: `hq-session-quiet-outcome`, vdm 2.74.0, vdm-comms 0.41.0
 
 ## References
 
