@@ -531,7 +531,8 @@ And around them:
   letter is kept*).
 - **A letter the owner sent by hand is reconciled with what left.** The owner
   edits in the mail client too, and nobody sees those strikes: once the letter
-  is marked `sent-proof: owner`, find it in Sent (through the access layer where
+  is marked sent by hand — `sent-proof: owner`, or an id the access layer found
+  in the project's mail or chats — find it in Sent (through the access layer where
   it is), make the copy in `comms/` the text that left, and add each difference
   to the log of struck clauses — the last step of `diff`. A promise of the owner's that appears only in the
   sent text goes to their list at HQ. The guard says so at the moment the letter
@@ -590,12 +591,16 @@ And around them:
 - **`sent: <date>` comes with its proof, `sent-proof:`** — what shows the letter
   left: the id from the answer of the tool that sent it (a mail's message_id, a
   chat message's id or link, the `audit` id of a write into a ticket — a link to
-  the comment cannot be checked), or `owner` once the owner said in this
-  conversation that they sent it themselves, or scheduled it in the mail client.
+  the comment cannot be checked). For what the owner sent by hand: the letter's
+  Message-ID from Sent, or the chat message's id or `t.me/c/…` link. Or `owner`
+  once the owner said in this conversation that they sent it themselves, or
+  scheduled it in the mail client — the only way for a letter older than the
+  access layer's window or a direct message outside the project's chats.
   The date is the day of the send or of the owner's word. Neither in hand — it is
   still a draft. Write the two lines together, in one write: a guard refuses a
-  Write or an Edit that makes a letter sent without the field, or with an id the
-  access layer's journal of sends does not have for this project; a shell
+  Write or an Edit that makes a letter sent without the field, with an id the
+  access layer finds neither among its sends nor in the project's mail and chats,
+  or with a real send to nobody in the letter's `to:`; a shell
   command that leaves one so — `sed -i`, a script — is named back right after it
   runs (`/vdm-comms:meetings` → *Outgoing letters*).
 - After a letter with strategic context (in or out), update the track's notes:

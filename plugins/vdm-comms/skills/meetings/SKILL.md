@@ -282,8 +282,10 @@ sent-proof: <id or link from the sending tool's answer>   # or: owner
 ```
 
 The proof is the id or link the sending tool answered with — a mail's
-message_id, a ticket comment's link, a chat message's id — or `owner`, when the
-owner said in the conversation that they sent the letter themselves. A
+message_id, a ticket comment's link, a chat message's id. For what the owner sent
+by hand, it is the letter's Message-ID from Sent, or the chat message's id or
+`t.me/c/…` link. Or it is `owner`, when the owner said in the conversation that
+they sent the letter themselves. A
 project that marks drafts the other way round, `sent: false` from the first
 day, is read the same: every check that asks "is this a draft?" takes both.
 
@@ -292,9 +294,9 @@ makes `*/comms/*-out.md` sent without proof: not sent before (or no file yet),
 `sent:` after, and no `sent-proof:`. It asks at the transition, not of the file.
 A letter already sent is history and is never asked for a proof it was written
 without: of 616 sent letters in three projects, about 520 carry nothing that
-could serve, and nothing can be added now (2026-10-13). The field cannot tell a
-real id from an invented one; what it does is turn an accidental mark into a
-deliberate claim. Until vdm-comms 0.25.0 the guard watched only creation, while
+could serve, and nothing can be added now (2026-10-13). The field alone cannot
+tell a real id from an invented one; what it does is turn an accidental mark into
+a deliberate claim. Until vdm-comms 0.25.0 the guard watched only creation, while
 `sent:` was set by an edit — the one path the skill prescribed was unwatched.
 
 The shell is the other road, and the busier one: on this machine's transcripts,
@@ -302,8 +304,8 @@ September–October 2026, 322 Bash calls wrote `sent:` into a letter (`sed -i`, 
 python `replace`, `cat >` a new file) against 163 Write and Edit. What a command
 will leave on disk is not in its text, so a `PostToolUse` check on Bash
 (`comms-sent-check`) looks after it: every `*/comms/*-out.md` that differs from
-HEAD or is not committed yet, and is sent without `sent-proof:` while HEAD does
-not have it sent, is named back with the same two ways out. It cannot undo the
+HEAD or is not committed yet, and is sent without a `sent-proof:` that holds while
+HEAD does not have it sent, is named back with the same ways out. It cannot undo the
 write; it stops the next step — reporting the letter as sent — while the file is
 there to fix. It looks only after a command that names `comms`, an `-out.md` or
 writes `sent:`; outside a git work tree there is no HEAD, and it says nothing.
@@ -319,7 +321,8 @@ Both hooks ask it when a letter becomes sent with an id, and only 1 refuses: a
 throw out a real send. What the journal keeps with an id: a mail's
 `message_id` (`mail_send`), a chat message's `id` or `link` (`zulip_send`), the
 `audit` id of a write into a ticket or a board (`call_write`), the `id` of what
-a site created (`api_write`). `owner` is the owner's word and is never asked
+a site created (`api_write`), a chat message's `id` or `t.me/c/…` link
+(`tg_send`). `owner` is the owner's word and is never asked
 about. The access layer is found as everywhere in this plugin — the agent whose
 intercom entry declares the role access-layer, `bin/<its identity>` in its
 checkout; with none on the machine, or no answer within ten seconds, the
@@ -327,6 +330,28 @@ presence of the field is what is checked. After a shell command only a letter
 written in the last five minutes is asked about: one question costs about a
 third of a second, and the uncommitted letters of a busy session would be asked
 about again on every command that mentions `comms`.
+
+**What the owner sent by hand can be checked too** (vdm-comms 0.42.0). What the
+journal does not have, the access layer looks for in the project's mail and chats
+as of its last collection: a letter in Sent, a message of the owner's in a chat of
+the project, or, weaker, a reply to a letter it has no record of. Such an id gets
+the note a `sent-proof: owner` gets, since what left is the owner's text. Its line
+on a refusal says what it looked at and as of when. A letter sent moments ago shows
+after the next collection. A letter older than the snapshot's window, and a direct
+message outside the project's chats, never show: for those, `owner`.
+
+**A real id on the wrong letter is refused** (vdm-comms 0.42.0). With a 0 the access
+layer says who the send went to, on a second line, and that is compared with the
+letter's `to:`. It refuses only when every item of `to:` could be read and none is
+among them. An address goes against addresses. A word, the slug of a profile or
+what names one profile, goes against the people of a direct message or, by the
+addresses in the profile, against those of a mail. A handle goes against a handle.
+Anything out of reach is "cannot tell", not a refusal: no `to:`, a group or chat by
+name, a word naming no profile or several, a profile with no address, a letter
+known only by a reply to it, whose line names who answered. One in common is enough,
+because the owner changes recipients in the client; of the 3 real letters that
+could be compared on 2026-11-04 all agreed in full, too few to justify anything
+stricter.
 
 The guard keys off the **path shape**, not a list of track prefixes. The field
 version matched one prefix, and by the time anyone measured it that repository

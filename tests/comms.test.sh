@@ -87,6 +87,15 @@ case "\$3" in
   '<real@mail.example.com>') echo "2026-10-13T10:00:00-04:00 mail_send Re: plan"; exit 0 ;;
   '<invented@mail.example.com>') echo "no send <invented@mail.example.com> from fx in the journal"; exit 1 ;;
   '<garbled@mail.example.com>') echo "Traceback: boom" >&2; exit 5 ;;
+  '<hand@mail.example.com>') printf 'отправлено руками, в Отправленных me@example.com: 2026-11-02 Re: plan\nto: john.doe@example.com, ann.lee@example.com\n'; exit 0 ;;
+  '<replied@mail.example.com>') printf 'самого письма в снимке нет, на него ответили: 2026-11-02 ann.lee@example.com\nto: ann.lee@example.com\n'; exit 0 ;;
+  '<tool@mail.example.com>') printf '2026-11-02T10:00:00-04:00 mail_send Re: plan\nto: john.doe@example.com\n'; exit 0 ;;
+  '1001') printf 'отправлено руками, в чате: 2026-11-02 John\nto: John; people: john-doe\n'; exit 0 ;;
+  '1002') printf '2026-11-02T10:00:00-04:00 tg_send dm:john-doe\npeople: john-doe\n'; exit 0 ;;
+  '1003') printf '2026-11-02T10:00:00-04:00 tg_send dm:@john_doe\nto: @john_doe\n'; exit 0 ;;
+  '1004') printf 'отправлено руками, в чате: 2026-11-02 Alpha team\nto: Alpha team\n'; exit 0 ;;
+  '1005') printf '2026-11-02T10:00:00-04:00 zulip_send dm:105\nto: dm:105\n'; exit 0 ;;
+  '1006') printf '2026-11-02T10:00:00-04:00 call_write jira_add_comment\n'; exit 0 ;;
   *) echo "a kind of id the journal does not keep"; exit 2 ;;
 esac
 STUB
@@ -525,7 +534,7 @@ rm -f "$J"
 printf -- '---\nsent: 2026-10-13\nsent-proof: <invented@mail.example.com>\n---\n\nтекст\n' > "$SX/$SL"
 OUT=$(bash_payload "$FLIP" "$SX" | bash "$SENTCHECK" 2>&1); rc=$?
 expect_exit "RED: after a command, an id the journal does not have ⇒ exit 2" 2 "$rc"
-expect_says "…named, with the journal's line" "$OUT" "not in the access layer's journal: no send <invented@mail.example.com>"
+expect_says "…named, with the journal's line" "$OUT" "the access layer does not confirm: no send <invented@mail.example.com>"
 : > "$STUB_LOG"
 touch -t 202610010000 "$SX/$SL"
 OUT=$(bash_payload "ls t/comms" "$SX" | bash "$SENTCHECK" 2>&1); rc=$?
@@ -535,6 +544,129 @@ printf -- '---\nsent: 2026-10-13\nsent-proof: <real@mail.example.com>\n---\n\nт
 OUT=$(bash_payload "$FLIP" "$SX" | bash "$SENTCHECK" 2>&1); rc=$?
 expect_exit "GREEN: after a command, an id the journal has passes" 0 "$rc"
 expect_silent "…and nothing is said" "$OUT"
+
+echo ""
+echo "== a real id on the wrong letter, and a send the owner made by hand =="
+# Access layer, 2026-11-04 (its commit 0538d95): FOUND says on a second line who the
+# send went to, and what its journal does not have is looked for in the project's
+# mail and chats. Crystal `comms-sent-proof-hand-sent`, DL #2, #3.
+R="$SX/t/comms/2026-11-04-recipients-out.md"
+OWN_HQ="$TMP/echelon-stub/bin/echelon-own-hq"
+cat > "$OWN_HQ" <<STUB
+#!/bin/sh
+[ "\$1" = hq ] && exit 0
+exec "$ECHELON_BIN" "\$@"
+STUB
+chmod +x "$OWN_HQ"
+mkdir -p "$SX/people"
+printf -- '---\ntrust: peer\n---\n# John Doe\n\n**Email**: john.doe@example.com\n' > "$SX/people/john-doe.md"
+printf -- '---\ntrust: peer\n---\n# Jane Roe\n\n**Email**: jane.roe@example.com\n' > "$SX/people/jane-roe.md"
+printf -- '---\ntrust: peer\n---\n# No Mail\n' > "$SX/people/no-mail.md"
+# recipients_try <the letter's `to:` line> <proof> — the write that marks it sent
+recipients_try() {
+  printf -- '---\n%s\ndraft: true\n---\n\nтекст письма\n' "$1" > "$R"
+  OUT=$(edit_payload Edit "$R" "draft: true" "sent: 2026-11-04"$'\n'"sent-proof: $2" | ECHELON_BIN="$OWN_HQ" bash "$GUARD" 2>&1); rc=$?
+}
+recipients_try 'to: jane.roe@example.com' '<hand@mail.example.com>'
+expect_exit "RED: a real id, sent to nobody in the letter's to: ⇒ refused, exit 2" 2 "$rc"
+expect_says "…it says the send went to someone else" "$OUT" "went to someone else"
+expect_says "…what the letter says" "$OUT" "jane.roe@example.com"
+expect_says "…who got it" "$OUT" "john.doe@example.com, ann.lee@example.com"
+expect_says "…and the way out" "$OUT" "sent-proof: owner"
+recipients_try 'to: jane-roe' '<hand@mail.example.com>'
+expect_exit "RED: a slug whose profile holds nobody it went to ⇒ exit 2" 2 "$rc"
+expect_says "…with the same refusal" "$OUT" "went to someone else"
+recipients_try 'to: jane-roe' '1001'
+expect_exit "RED: a slug against the people of a direct message ⇒ exit 2" 2 "$rc"
+recipients_try 'to: "@jane_roe"' '1003'
+expect_exit "RED: a handle against another handle ⇒ exit 2" 2 "$rc"
+recipients_try 'to: [jane.roe@example.com, jane-roe]' '<hand@mail.example.com>'
+expect_exit "RED: a flow list, nobody of it among those it went to ⇒ exit 2" 2 "$rc"
+recipients_try $'to:\n  - jane.roe@example.com' '<tool@mail.example.com>'
+expect_exit "RED: a block list, and a send through the tool, are held the same ⇒ exit 2" 2 "$rc"
+
+recipients_try 'to: john.doe@example.com' '<hand@mail.example.com>'
+expect_exit "GREEN: the address is among those it went to" 0 "$rc"
+recipients_try 'to: John Doe <JOHN.DOE@example.com>' '<hand@mail.example.com>'
+expect_exit "GREEN: a name beside the address, and another case, are the same address" 0 "$rc"
+recipients_try 'to: [jane.roe@example.com, john.doe@example.com]' '<hand@mail.example.com>'
+expect_exit "GREEN: one in common is enough: the owner changes recipients in the client" 0 "$rc"
+recipients_try $'to:\n  - jane-roe\n  - john-doe' '<hand@mail.example.com>'
+expect_exit "GREEN: a block list of slugs, one profile holding an address it went to" 0 "$rc"
+recipients_try 'to: john-doe' '1001'
+expect_exit "GREEN: the slug is among the people of the direct message" 0 "$rc"
+recipients_try 'to: john-doe' '1002'
+expect_exit "GREEN: the slug of a direct message through the tool" 0 "$rc"
+recipients_try 'to: "@john_doe"' '1003'
+expect_exit "GREEN: the same handle" 0 "$rc"
+
+recipients_try 'draft-note: no to here' '<hand@mail.example.com>'
+expect_exit "GREEN: no to: — cannot tell, not refused" 0 "$rc"
+recipients_try 'to: no-mail' '<hand@mail.example.com>'
+expect_exit "GREEN: a profile with no address — cannot tell" 0 "$rc"
+recipients_try 'to: nobody-we-know' '<hand@mail.example.com>'
+expect_exit "GREEN: a word with no profile — cannot tell" 0 "$rc"
+recipients_try 'to: [jane.roe@example.com, nobody-we-know]' '<hand@mail.example.com>'
+expect_exit "GREEN: one item out of reach may be the one who got it — cannot tell" 0 "$rc"
+recipients_try 'to: jane.roe@example.com' '1001'
+expect_exit "GREEN: an address against people — nothing to compare it with" 0 "$rc"
+recipients_try 'to: jane-roe' '1004'
+expect_exit "GREEN: a group by its name — cannot tell" 0 "$rc"
+recipients_try 'to: jane-roe' '1005'
+expect_exit "GREEN: a target of a chat — cannot tell" 0 "$rc"
+recipients_try 'to: jane-roe' '1006'
+expect_exit "GREEN: a ticket write has no second line" 0 "$rc"
+recipients_try 'to: jane.roe@example.com' '<replied@mail.example.com>'
+expect_exit "GREEN: confirmed by a reply: its line names who answered, not who it went to" 0 "$rc"
+printf -- '---\ntrust: peer\n---\n# Jane Roe\n\n**Email**: jane.roe@example.com\n' > "$SX/people/jane-roe-2.md"
+recipients_try 'to: jane.roe' '<hand@mail.example.com>'
+expect_exit "GREEN: a word naming two profiles — cannot tell" 0 "$rc"
+rm -f "$SX/people/jane-roe-2.md"
+printf -- '---\nto: jane-roe\ndraft: true\n---\n\nтекст письма\n' > "$R"
+OUT=$(edit_payload Edit "$R" "draft: true" $'sent: 2026-11-04\nsent-proof: <hand@mail.example.com>' | bash "$GUARD" 2>&1); rc=$?
+expect_exit "GREEN: the access layer cannot say whose people these are — cannot tell" 0 "$rc"
+
+# What left is the owner's text, whatever proof the letter carries (program, 2026-10-18):
+# with a Message-ID in place of `owner`, the moment to say so must not go silent.
+recipients_try 'to: john.doe@example.com' '<hand@mail.example.com>'
+expect_says "RED: sent by hand, an id found in Sent: the copy is reconciled all the same" "$OUT" "make this copy the text that left"
+recipients_try 'to: john-doe' '1001'
+expect_says "…a chat message the owner sent, too" "$OUT" "make this copy the text that left"
+recipients_try 'to: ann.lee@example.com' '<replied@mail.example.com>'
+expect_says "…and a letter known only by a reply to it" "$OUT" "make this copy the text that left"
+recipients_try 'to: john.doe@example.com' '<tool@mail.example.com>'
+expect_silent "GREEN: through the tool, what left is this copy: nothing to reconcile" "$OUT"
+recipients_try 'to: john.doe@example.com' 'owner'
+expect_says "RED: on the owner's word, the id found there takes its place" "$OUT" "Message-ID"
+
+# The refusal no longer sends anyone to wait a minute for a journal: what is not
+# in the mail or the chats yet waits for a collection, or never comes.
+printf -- '---\ndraft: true\n---\n\nтекст письма\n' > "$R"
+OUT=$(edit_payload Edit "$R" "draft: true" $'sent: 2026-11-04\nsent-proof: <invented@mail.example.com>' | bash "$GUARD" 2>&1); rc=$?
+expect_exit "RED: an id nobody has ⇒ exit 2" 2 "$rc"
+expect_says "RED: the access layer's line, first" "$OUT" "no send <invented@mail.example.com> from fx"
+expect_says "RED: a letter the owner sent gives its own id" "$OUT" "the owner sent it by hand"
+expect_says "RED: what is newer than the collection" "$OUT" "next collection"
+expect_says "RED: what stays the owner's word" "$OUT" "older than the window"
+expect_not_says "RED: no minute to wait" "$OUT" "in a minute"
+
+# After a shell command: the same two questions.
+SR="t/comms/2026-11-04-recipients-out.md"
+printf -- '---\nto: jane.roe@example.com\nsent: 2026-11-04\nsent-proof: <hand@mail.example.com>\n---\n\nтекст\n' > "$R"
+OUT=$(bash_payload "sed -i '' 's/^draft: true\$/sent: 2026-11-04/' $SR" "$SX" | ECHELON_BIN="$OWN_HQ" bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "RED: after a command, a real id sent to someone else ⇒ exit 2" 2 "$rc"
+expect_says "…named, with who got it" "$OUT" "john.doe@example.com, ann.lee@example.com"
+expect_says "…and what the letter says" "$OUT" "jane.roe@example.com"
+printf -- '---\nto: john.doe@example.com\nsent: 2026-11-04\nsent-proof: <hand@mail.example.com>\n---\n\nтекст\n' > "$R"
+OUT=$(bash_payload "sed -i '' 's/^draft: true\$/sent: 2026-11-04/' $SR" "$SX" | ECHELON_BIN="$OWN_HQ" bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "GREEN: after a command, sent by hand and to the right person" 0 "$rc"
+expect_says "RED: …and the copy is reconciled" "$OUT" "make this copy the text that left"
+printf -- '---\nto: john.doe@example.com\nsent: 2026-11-04\nsent-proof: <tool@mail.example.com>\n---\n\nтекст\n' > "$R"
+OUT=$(bash_payload "sed -i '' 's/^draft: true\$/sent: 2026-11-04/' $SR" "$SX" | ECHELON_BIN="$OWN_HQ" bash "$SENTCHECK" 2>&1); rc=$?
+expect_exit "GREEN: after a command, through the tool" 0 "$rc"
+expect_silent "…and nothing is said" "$OUT"
+rm -f "$R"
+rm -rf "$SX/people"
 
 echo ""
 echo "== index: generated layer is proposed, never written behind your back =="
