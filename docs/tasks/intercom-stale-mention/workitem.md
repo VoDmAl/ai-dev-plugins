@@ -86,7 +86,7 @@ relates-to: ["[[intercom-session-wake/workitem|intercom-session-wake]]", "[[inte
 - [x] Red-тесты в `tests/intercom.test.sh`: 949 из 949. Мутации: десять стражей, каждый роняет свою проверку; один выжил и получил случай (текст после вызова инструмента — тот же ход)
 - [x] Документы: `intercom/SKILL.md`, README, `PROJECT_CHANGELOG.md`, `suite.md`; версия `vdm` 2.75.0
 - [ ] Живой случай: при следующем запуске focused-сессий фраза опровергнута одной строкой — when: случилось вживую; check: транскрипт сессии, назвавшей письмо
-- [ ] Outcome to `echelon`: intercom reply hq-session-stale-mention --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
+- [x] Итог echelon отправлен 03.11: `hq-session-stale-mention-outcome`, vdm 2.75.0
 
 ## References
 
