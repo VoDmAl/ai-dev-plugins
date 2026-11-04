@@ -1110,12 +1110,15 @@ cmd_send() {
     printf '       One intercom session per project and machine, so a second start does nothing; its first turn is\n'
     printf '       /vdm:intercom check, so no wake follows the start'
     if [ -n "$live" ]; then printf ', and no other session is woken.\n'; else printf '.\n'; fi
-    # vdx, 2026-10-23: in a folder Claude Code has not trusted on this machine
-    # the session stops at the trust prompt. From vdx 0.39 a detached start
-    # there starts nothing: exit 4 and the command to run at a terminal.
-    # Whether it is trusted is the harness's own record, read by vdx, not here.
-    printf '       In a checkout Claude Code does not trust yet nothing starts: exit 4, and vdx prints the command —\n'
-    printf '       hand it to the user, who runs it once at a terminal and answers the trust prompt; the letter waits.\n'
+    # vdx, 2026-11-03: exit 4 is "the start was not confirmed": the agent did not
+    # come up, whatever stopped it, and the text of its pane follows. One such case
+    # has a move of its own (vdx, 2026-10-23): in a folder Claude Code has not
+    # trusted on this machine a detached start starts nothing, and vdx prints the
+    # command to run at a terminal. Whether it is trusted is the harness's own
+    # record, read by vdx, not here.
+    printf '       Exit 4: the agent did not start, whatever stopped it, and vdx prints why; the letter waits.\n'
+    printf '       In a checkout Claude Code does not trust yet it prints a command —\n'
+    printf '       hand it to the user, who runs it once at a terminal and answers the trust prompt.\n'
   elif [ -n "$live" ]; then
     [ -z "$start" ] || printf '    %s.\n' "$(_ic_novdx_line "$canon" "$start")"
     # A letter to this project's own inbox is a note for its next session, not

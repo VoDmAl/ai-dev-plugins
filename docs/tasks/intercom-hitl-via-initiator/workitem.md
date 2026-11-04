@@ -241,8 +241,8 @@ actions просит выбрать.
 - [x] Скилл: SKILL.md → «What stays out of it» и § Receiving; команды `ask` и `answer` (DL #5); тесты в
       `tests/intercom.test.sh`. Маршрут ответа уже в скилле, § An answer goes to the session that asked (2.70.0) —
       2026-11-01, § A question for the user goes through the session that asked, vdm 2.71.0
-- [ ] Справка `send`: исход 4 у `vdx ai --intercom --detach` описан как запрет доверия, а он шире — любой незапуск агента. Мяч
-      из `detached-start-omz-prompt-outcome` (vdx, 2026-11-03); ехать с ближайшим выпуском intercom
+- [x] Справка `send`: исход 4 у `vdx ai --intercom --detach` описан как запрет доверия, а он шире — любой незапуск агента. Мяч
+      из `detached-start-omz-prompt-outcome` (vdx, 2026-11-03); ехать с ближайшим выпуском intercom — 2026-11-04, vdm 2.76.1
 - [x] Первый настоящий прогон маршрута: письмо между двумя живыми сессиями — ответ доходит до сессии-отправителя, вопрос
       задан владельцу в её следующем ходу, слово проходит сверку у получателя. Ответ прогнан 2026-11-03:
       `detached-start-omz-prompt-outcome` от vdx пришёл с `for-session:` этой сессии, побудка SendMessage дошла с указателем

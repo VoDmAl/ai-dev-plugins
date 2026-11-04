@@ -1087,14 +1087,15 @@ anything the user reads is "intercom session" ("сессия intercom").
   the threshold with no key and no standing no — identity, count, the oldest,
   the checkout, what switches it on, the decline command. This repository shows
   no other project anything at the start of a session; the HQ's hook reads that
-  view and puts the question to the owner where they work. One case where the
-  start does not happen: a checkout Claude Code does not trust yet on this
-  machine (a new folder, or one that moved). From vdx 0.39 nothing starts
-  there: the command exits 4 and prints the one to run at a terminal. Hand that
-  command to the user, who runs it once and answers the trust prompt; the
-  letter waits in the inbox meanwhile. An older vdx answers `✓ running`, and
-  the session waits at that prompt with nobody at it. `send` says so beside
-  the start.
+  view and puts the question to the owner where they work. When the start
+  fails, the command exits 4: the agent did not come up, whatever stopped it,
+  and vdx prints the text of its pane; the letter waits in the inbox meanwhile.
+  One such case has a move of its own: a checkout Claude Code does not trust yet
+  on this machine (a new folder, or one that moved). From vdx 0.39 nothing starts
+  there, and the output names the command to run at a terminal. Hand that command
+  to the user, who runs it once and answers the trust prompt. An older vdx answers
+  `✓ running`, and the session waits at that prompt with nobody at it. `send` says
+  so beside the start.
 - **A note to its own project is not its mail.** A letter from the project to
   itself, a note for its next session (`/vdm:wrap`), neither starts nor wakes
   the intercom session. Its start line tells it to leave such a letter untaken: if
