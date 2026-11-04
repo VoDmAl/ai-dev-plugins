@@ -121,6 +121,8 @@ LINT_SUMMARY=$(bash "$SCRIPT_DIR/crystal-lint.sh" --all --summary 2>/dev/null ||
 # the obligations and the due dates are read by the library's own programs, in
 # their batch form.
 ALL_ITEMS=$(find_workitems)
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/crystal-alarms.sh" 2>/dev/null || true
 DUES=$(printf '%s\n' "$ALL_ITEMS" | due_counts_batch)
 
 build_meta() {
@@ -387,6 +389,14 @@ fi
 # scope, which is this repository's recurring failure mode. Reported separately
 # from the count, because the fix is different: not "do the work", but "write
 # the date properly or drop the marker".
+# What was put off to a date and has reached it — the same lines as at the start
+# of a session (lib/crystal-alarms.sh; crystal-wake DL #3, #4).
+if command -v crystal_alarm_text >/dev/null 2>&1; then
+  _load_status_aliases
+  ALARMS=$(printf '%s\n' "$ALL_ITEMS" | crystal_alarm_text)
+  [ -z "$ALARMS" ] || printf '\n%s\n' "$ALARMS"
+fi
+
 MALFORMED=$(printf '%s\n' "$DUES" | awk -F'\t' '{ s += $3 } END { print s + 0 }')
 if [ "${MALFORMED:-0}" -gt 0 ]; then
   printf '\n⚠ Malformed `due:` markers: %d. They look like a deadline and are invisible to the\n' "$MALFORMED"

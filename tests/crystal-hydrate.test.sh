@@ -55,6 +55,13 @@ crystal() {
   git -C "$1" add -- "docs/tasks/$2/workitem.md"
 }
 hydrate() { ( cd "$1" && printf '{}' | bash "$HOOK" 2>/dev/null ); }
+# crystal_fm <repo> <slug> <status> <frontmatter line> <body> — the same, with one field more
+crystal_fm() {
+  mkdir -p "$1/docs/tasks/$2"
+  printf -- '---\ntitle: "%s"\nslug: %s\nstatus: %s\n%s\n---\n\n# %s\n\n## Next actions\n\n%s\n' \
+    "$2" "$2" "$3" "$4" "$2" "$5" > "$1/docs/tasks/$2/workitem.md"
+  git -C "$1" add -- "docs/tasks/$2/workitem.md"
+}
 
 echo "== an item that waits for an event is shown whole =="
 R="$TMP/waits"; mkdir -p "$R"; git -C "$R" init -q
@@ -200,10 +207,12 @@ hq_session() {  # hq_session <file> <cwd> — the live HQ session, as the harnes
 H="$TMP/hqproj"; mkdir -p "$H"; git -C "$H" init -q
 crystal "$H" busywork in-progress $'- [ ] delete the sites — when: all 30 files arrived\n- [ ] answer the agent (due: 2020-01-01)'
 crystal "$H" parkedwork dormant '- [ ] an old promise (due: 2020-01-01)'
-says_all() {  # the three signals, each with what names it
+crystal_fm "$H" alarmwork dormant 'deferred-until: 2020-01-07' '- [ ] come back'
+says_all() {  # the four signals, each with what names it
   says "$1: what waits for an event" "$2" "Waiting for an event"
   says "$1: past due in the list" "$2" "ПРОСРОЧЕНО"
   says "$1: past due out of work" "$2" "Not in work"
+  says "$1: a date put off to" "$2" "deferred until 2020-01-07"
 }
 out="$(CLAUDE_PROJECT_DIR="$H" hydrate "$H")"
 says_all "without an HQ session" "$out"
@@ -215,6 +224,7 @@ says "RED: with one, the active crystal is still listed" "$out" "busywork: 2 ope
 says_not "RED: …and nothing waits for an event" "$out" "Waiting for an event"
 says_not "RED: …nothing past due in the list" "$out" "ПРОСРОЧЕНО"
 says_not "RED: …nothing past due out of work" "$out" "Not in work"
+says_not "RED: …no date put off to" "$out" "deferred until"
 says_not "…not even as a mark" "$out" "⏰"
 printf '%s' "$out" | jq -e . >/dev/null 2>&1 && ok "…valid hook JSON" || bad "…valid hook JSON" "$out"
 out="$(VDX_HQ=1 CLAUDE_PROJECT_DIR="$H" hydrate "$H")"
@@ -244,6 +254,103 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$HQ_PID" 2>/dev/null || break; python
 out="$(CLAUDE_PROJECT_DIR="$H" hydrate "$H")"
 says_all "RED: closed, the session file left behind" "$out"
 rm -rf "$HOME/.claude/sessions"
+
+# Echelon's owner, 2026-09-25: «"v1 переведён в dormant" — может быть нам нужен
+# новый postponed till, чтобы он при старте сессии ПОСЛЕ даты сам подсказывал?»
+# Crystal `crystal-wake`, DL #3: the date lives on the crystal, in `deferred-until:`.
+echo "== a crystal put off to a date rings when the date comes =="
+A="$TMP/alarm"; mkdir -p "$A"; git -C "$A" init -q
+TODAY_ISO="$(date +%Y-%m-%d)"
+crystal_fm "$A" past-dormant dormant 'deferred-until: 2020-01-02' '- [ ] one'
+crystal_fm "$A" past-ready ready 'deferred-until: "2020-01-03"  # quoted, with a note' '- [ ] one'
+crystal_fm "$A" today-blocked blocked "deferred-until: $TODAY_ISO" '- [ ] one'
+crystal_fm "$A" future-dormant dormant 'deferred-until: 2999-01-01' '- [ ] one'
+crystal_fm "$A" past-active in-progress 'deferred-until: 2020-01-04' '- [ ] one'
+crystal_fm "$A" past-done done 'deferred-until: 2020-01-05' '- [x] one'
+crystal_fm "$A" crooked idea 'deferred-until: next spring' '- [ ] one'
+crystal_fm "$A" empty-field draft 'deferred-until:' '- [ ] one'
+out="$(hydrate "$A")"
+says "RED: dormant, past the date: named with its status and the date" "$out" "past-dormant (dormant): deferred until 2020-01-02"
+says "RED: …and what to do" "$out" "bring it back to work, or move the date"
+says "RED: ready too: parking before work is parking" "$out" "past-ready (ready): deferred until 2020-01-03"
+says "RED: the day itself rings, as crystal-cut promises «on/after»" "$out" "today-blocked (blocked): deferred until $TODAY_ISO"
+says_not "GREEN: a date still ahead is silence" "$out" "future-dormant"
+says_not "GREEN: an active crystal: the field does nothing" "$out" "2020-01-04"
+says_not "GREEN: a terminal crystal: the field does nothing" "$out" "2020-01-05"
+says "RED: a date that is not one is named: worse than none" "$out" "crooked: deferred-until: next spring is not a date, this alarm will not ring"
+says_not "GREEN: an empty field says nothing" "$out" "empty-field"
+
+# DL #4: crystal-cut promises that `deferred (deadline: …)` «surfaces again
+# on/after deadline», and no code did. A card is put off at closing as often as
+# not, so a closed crystal is read as well.
+echo "== a sidetrack put off to a date rings when the date comes =="
+C="$TMP/cards"; mkdir -p "$C"; git -C "$C" init -q
+crystal_card() { # crystal_card <repo> <slug> <status> <card status> [extra body]
+  crystal "$1" "$2" "$3" "- [x] done${5:+
+$5}"
+  printf '\n## Sidetracks\n\n### #3. Move to PKCE\n\n**Описание:** x\n\n**Status:** %s\n' "$4" >> "$1/docs/tasks/$2/workitem.md"
+}
+crystal_card "$C" card-dormant dormant 'deferred (deadline: 2020-02-01)'
+crystal_card "$C" card-done done 'deferred (deadline: 2020-02-02)'
+crystal_card "$C" card-guard-form dormant 'deferred (2020-02-03)'
+crystal_card "$C" card-ahead dormant 'deferred (deadline: 2999-02-04)'
+crystal_card "$C" card-nodate dormant 'deferred'
+crystal_card "$C" card-prose dormant 'deferred (after the release)'
+crystal_card "$C" card-crooked dormant 'deferred (deadline: soon)'
+crystal_card "$C" card-open dormant 'open'
+crystal "$C" card-outside dormant '- [ ] one
+
+**Status:** deferred (deadline: 2020-02-05)
+
+```
+**Status:** deferred (deadline: 2020-02-06)
+```'
+crystal "$C" card-nonumber dormant '- [ ] one'
+printf '\n## Sidetracks\n\n### A card with no number\n\n**Status:** deferred (deadline: 2020-02-08)\n' >> "$C/docs/tasks/card-nonumber/workitem.md"
+crystal "$C" card-fence dormant '- [ ] one'
+printf '\n## Sidetracks\n\n```\n### #9. An example\n**Status:** deferred (deadline: 2020-02-07)\n```\n' >> "$C/docs/tasks/card-fence/workitem.md"
+out="$(hydrate "$C")"
+says "RED: a dormant crystal's card: number, title, date" "$out" "card-dormant (dormant): Sidetrack #3 «Move to PKCE» deferred until 2020-02-01"
+says "RED: …and what to do" "$out" "come back to it: a new crystal, or cancelled"
+says "RED: a closed crystal's card too" "$out" "card-done (done): Sidetrack #3"
+says "RED: the form the completion guard prints, deferred (date)" "$out" "deferred until 2020-02-03"
+says "RED: a card with no number keeps its title in place" "$out" "card-nonumber (dormant): Sidetrack #? «A card with no number» deferred until 2020-02-08"
+says_not "GREEN: a date ahead is silence" "$out" "2999-02-04"
+says_not "GREEN: a card with no date does not change" "$out" "card-nodate"
+says_not "GREEN: prose in the brackets claims no date" "$out" "card-prose"
+says "RED: a deadline that is not a date is named" "$out" "card-crooked: Sidetrack #3: deferred (deadline: soon) is not a date, this alarm will not ring"
+says_not "GREEN: an open card rings nothing" "$out" "card-open"
+says_not "GREEN: the line outside the card's section is not a card" "$out" "2020-02-05"
+says_not "GREEN: …nor one in a fence" "$out" "2020-02-06"
+says_not "GREEN: …nor a fenced example inside the section" "$out" "2020-02-07"
+if printf '%s' "$out" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; then
+  ok "RED: nothing active, only alarms: still valid hook JSON"
+else
+  bad "RED: nothing active, only alarms: still valid hook JSON" "${out:0:200}"
+fi
+
+# DL #5: slug and path went into the JSON raw — the class that took reminders.sh
+# down (vdm 2.35.3). The alarm's title and date come from a person's file.
+echo "== whatever a crystal holds, the hook stays valid JSON =="
+J="$TMP/json"; mkdir -p "$J"; git -C "$J" init -q
+crystal "$J" 'odd"name' in-progress '- [ ] x'"$(printf '\t')"'tab — when: a "quoted" event, back\slash'
+crystal_card "$J" odd-card dormant 'deferred (deadline: 2020-03-01)'
+python3 - "$J/docs/tasks/odd-card/workitem.md" <<'PYEOF'
+import sys
+p = sys.argv[1]
+t = open(p, encoding='utf-8').read().replace('### #3. Move to PKCE', '### #3. A "quoted" title, back\\slash')
+open(p, 'w', encoding='utf-8').write(t)
+PYEOF
+crystal_fm "$J" 'odd-field' dormant 'deferred-until: not "a" da\te' '- [ ] one'
+out="$(hydrate "$J")"
+ctx="$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null)"
+if [ -n "$ctx" ]; then ok "RED: a quote and a backslash in a path, an item and a title: valid JSON"
+else bad "RED: a quote and a backslash in a path, an item and a title: valid JSON" "${out:0:300}"; fi
+says "RED: …the path as it stands" "$ctx" 'odd"name: 1 open'
+says "RED: …the item's text as it stands" "$ctx" 'a "quoted" event, back\slash'
+says "RED: …the card's title as it stands" "$ctx" '«A "quoted" title, back\slash»'
+says "RED: …the crooked date as it stands" "$ctx" 'deferred-until: not "a" da\te is not a date'
+says "…and lines stay lines" "$ctx" $'\n'
 
 printf '\ncrystal-hydrate: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -106,7 +106,7 @@ Each unchecked item must be addressed by one of:
 | `[x]` resolved                    | Done within this workitem — flip the checkbox          |
 | `migrated → <slug>`               | Belongs elsewhere — move card to an existing crystal **or a new sibling you grow on the spot**, cross-link both sides |
 | `cancelled (reason: ...)`         | Explicitly dropped — record rationale                  |
-| `deferred (deadline: YYYY-MM-DD)` | Postponed to a date — surfaces again on/after deadline |
+| `deferred (deadline: YYYY-MM-DD)` | Postponed to a date — from that date the session start and `/vdm:crystal-cave` name the card, closed crystal included, until its status changes |
 | `promoted-to-stem (→ <sibling>)`  | Побег outgrew stem — split into sibling crystal        |
 
 For `migrated` / `cancelled` / `deferred` / `promoted-to-stem`: the

@@ -1249,6 +1249,15 @@ singleton invariant was placed on the *active* tier precisely so that pre-work
 items can accumulate without competing (DL #10 in `crystal-multi-root`). Parking
 in `ready` is the taxonomy used as designed.
 
+A crystal parked with a date to come back gets `deferred-until: YYYY-MM-DD` in its
+frontmatter. Before the date it says nothing. From that date the session start
+names it, and `/vdm:crystal-cave` prints the same, until the date or the status
+changes. It holds in any status not in work (`idea`, `draft`, `ready`, `blocked`,
+`dormant`); an active or a terminal crystal ignores it. A value that is not a date
+is named: it reads as an alarm and rings nothing. A promise inside a crystal keeps
+its own `(due:)`; this is for coming back to the crystal itself, which may have no
+dated item at all.
+
 Both modes owe the canonical shape. Mode B is where it is most often skipped —
 parking feels like a note — and a parked workitem is exactly the one that will
 be read cold, months later, by someone who was not there.

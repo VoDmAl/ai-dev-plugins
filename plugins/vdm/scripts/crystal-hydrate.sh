@@ -13,6 +13,11 @@
 #   - off      — no invariant; explicit user override
 # Violation surfaces in the header so the user notices drift rather than
 # silently working on the wrong one.
+#
+# The text is assembled as it reads, with real newlines, and escaped once, at
+# the end. Slugs, paths and items went into the JSON raw here, each caller
+# escaping what it thought of: the class that took reminders.sh down in vdm
+# 2.35.3 (crystal-wake DL #5).
 
 set -u
 
@@ -22,6 +27,10 @@ set -u
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/crystal-path.sh" 2>/dev/null || exit 0
 # shellcheck disable=SC1091
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/hq-session.sh" 2>/dev/null || true
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/crystal-alarms.sh" 2>/dev/null || true
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/reminder-emit.sh" 2>/dev/null || exit 0
 
 if command -v vdm_is_enabled >/dev/null 2>&1; then
   vdm_is_enabled "crystal" || exit 0
@@ -45,6 +54,7 @@ cat >/dev/null 2>&1 || true
 hq_quiet=""
 if command -v vdm_hq_quiet >/dev/null 2>&1 && vdm_hq_quiet; then hq_quiet=1; fi
 
+NL=$'\n'
 all_items=$(find_workitems)
 active=""
 if [ -n "$all_items" ]; then
@@ -77,7 +87,15 @@ if [ -z "$hq_quiet" ] && [ -n "$all_items" ] && command -v due_counts_batch >/de
   done < <(printf '%s\n' "$all_items" | due_counts_batch | sort)
 fi
 
-[ -z "$active" ] && [ "$non_canon_count" -eq 0 ] && [ -z "$parked_due" ] && exit 0
+# A date a crystal or a card was put off to, once it has come (crystal-wake
+# DL #3, #4). lib/crystal-alarms.sh says when, and crystal-cave prints the same.
+alarms=""
+if [ -z "$hq_quiet" ] && [ -n "$all_items" ] && command -v crystal_alarm_text >/dev/null 2>&1; then
+  _load_status_aliases
+  alarms=$(printf '%s\n' "$all_items" | crystal_alarm_text)
+fi
+
+[ -z "$active" ] && [ "$non_canon_count" -eq 0 ] && [ -z "$parked_due" ] && [ -z "$alarms" ] && exit 0
 
 singleton_mode=$(derive_singleton_mode 2>/dev/null || printf 'global')
 roots_count=$(resolve_crystal_roots | grep -c '.' 2>/dev/null || echo 0)
@@ -107,14 +125,14 @@ case "$singleton_mode" in
   global)
     if [ "${active_count:-0}" -gt 1 ]; then
       violation="⚠ Singleton violation: ${active_count} active workitems (should be 1)."
-      violation="${violation}\\nResolve by switching extras to status:dormant — see Decision Log #11 in crystal-design."
+      violation="${violation}${NL}Resolve by switching extras to status:dormant — see Decision Log #11 in crystal-design."
     fi
     ;;
   per-root)
     overflow=$(printf '%s\n' "$active" | _per_root_active_counts | sort | uniq -c | awk '$1 > 1')
     if [ -n "$overflow" ]; then
       violation="⚠ Singleton (per-root) violation: at least one root has multiple active workitems."
-      violation="${violation}\\nResolve by switching extras to status:dormant in those roots."
+      violation="${violation}${NL}Resolve by switching extras to status:dormant in those roots."
     fi
     ;;
   off|*) : ;;
@@ -156,17 +174,16 @@ if [ -n "$active" ]; then
       [ -n "$hq_quiet" ] || od=$(count_overdue "$f")
       ref="${f#"$top"/}"
       if [ "${od:-0}" -gt 0 ]; then
-        body="${body}  - ${slug}: ${n} open, ⏰${od} ПРОСРОЧЕНО  (Read ${ref})\\n"
+        body="${body}  - ${slug}: ${n} open, ⏰${od} ПРОСРОЧЕНО  (Read ${ref})${NL}"
       else
-        body="${body}  - ${slug}: ${n} open  (Read ${ref})\\n"
+        body="${body}  - ${slug}: ${n} open  (Read ${ref})${NL}"
       fi
     done <<<"$active"
   else
     # Multi-root: group-by-root via format_active_summary
     summary=$(printf '%s\n' "$active" | format_active_summary)
     [ -z "$hq_quiet" ] || summary=$(printf '%s\n' "$summary" | sed -E 's/⏰[0-9]+//g')
-    # summary is already multi-line "  - root: items..."; convert to \n-escaped
-    body=$(printf '%s\n' "$summary" | awk '{ printf "%s\\n", $0 }')
+    body="${summary}${NL}"
   fi
 fi
 
@@ -183,34 +200,43 @@ if [ -z "$hq_quiet" ] && [ -n "$active" ] && command -v _unchecked_lines >/dev/n
     slug=$(extract_slug "$f")
     while IFS= read -r w; do
       [ -n "$w" ] || continue
-      w=${w#*"- [ ] "}; w=${w//\\/\\\\}; w=${w//\"/\\\"}; w=${w//$'\t'/ }
-      waits="${waits}  ⏳ ${slug}: ${w}\\n"
+      w=${w#*"- [ ] "}; w=${w//$'\t'/ }
+      waits="${waits}  ⏳ ${slug}: ${w}${NL}"
     done < <(_unchecked_lines "$f" | grep -E '(^|[[:space:]([])when:')
   done <<<"$active"
 fi
 if [ -n "$waits" ]; then
-  waits="\\nWaiting for an event — nothing watches it. Check the event first, before the step behind it:\\n${waits}"
+  waits="${NL}Waiting for an event — nothing watches it. Check the event first, before the step behind it:${NL}${waits}"
 fi
 body="${body}${waits}"
 if [ -n "$parked_due" ]; then
-  body="${body}${body:+\\n}⏰ Not in work, with promises past due — a pause does not move a date: ${parked_due//\"/\\\"}. /vdm:crystal-cave shows the dates.\\n"
+  body="${body}${body:+${NL}}⏰ Not in work, with promises past due — a pause does not move a date: ${parked_due}. /vdm:crystal-cave shows the dates.${NL}"
+fi
+if [ -n "$alarms" ]; then
+  body="${body}${body:+${NL}}${alarms}${NL}"
 fi
 
 # Audit line — always last if non-canonical present.
 audit_line=""
 if [ "$non_canon_count" -gt 0 ]; then
-  audit_line="\\n⚠ Non-canonical statuses: ${non_canon_count} workitems. /vdm:crystal-cave to triage."
+  audit_line="${NL}⚠ Non-canonical statuses: ${non_canon_count} workitems. /vdm:crystal-cave to triage."
 fi
 
 # Assemble. footer: cave hint (only when there's active content to navigate).
 footer=""
 if [ -n "$active" ]; then
-  footer="\\n→ /vdm:crystal-cave for full view (sidetracks + decision log)."
+  footer="${NL}→ /vdm:crystal-cave for full view (sidetracks + decision log)."
 fi
 
-context="${header}\\n${body}${footer}${audit_line}"
-# Trim leading/trailing escaped-newlines for cleanliness.
-context=$(printf '%s' "$context" | sed 's/^\\n//; s/\\n$//')
+context="${header}${NL}${body}${footer}${audit_line}"
+# Trim leading/trailing newlines for cleanliness.
+while [ "${context#"$NL"}" != "$context" ]; do context="${context#"$NL"}"; done
+while [ "${context%"$NL"}" != "$context" ]; do context="${context%"$NL"}"; done
+
+context=$(_vdm_json_escape "$context")
+# Checked before it is printed: a hook that breaks the JSON loses the whole start
+# line, and says nothing about it.
+_vdm_json_text_ok "$context" || context="[crystal] this session-start text could not be made valid JSON: see /vdm:crystal-cave."
 
 printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$context"
 exit 0

@@ -170,6 +170,14 @@ workitem stays untouched (the alias resolves at read time across all
 crystal-* skills and hooks). `skip` defers — the file stays non-canonical
 until next audit. The skill itself never silently rewrites status.
 
+### Put off to a date
+
+What was put off to a date and has reached it, the same lines the session start
+prints: a crystal not in work with `deferred-until:`, a sidetrack card with
+`deferred (deadline: …)` in any status, a closed crystal included. A value that is
+not a date is named too. Silent otherwise. Each line stays until the date or the
+status changes; `lib/crystal-alarms.sh` is the one reader of both forms.
+
 ## Detail mode
 
 `/vdm:crystal-cave <slug>` — full state for one workitem:

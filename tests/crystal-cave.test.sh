@@ -197,6 +197,22 @@ says_not "no past-log footer on a clean tree"  "$OUT_CLEAN" "Past log entries"
 says     "still renders the surviving crystal" "$OUT_CLEAN" "good"
 
 # ---------------------------------------------------------------------------
+printf '\na date put off to, once it has come: the same lines as the session start\n'
+# ---------------------------------------------------------------------------
+# Crystal `crystal-wake`, DL #3, #4. Written out in the hook's own suite, which
+# holds each case; here, that the overview says the same and stays quiet otherwise.
+AL="$TMP/alarms"
+mkdir -p "$AL/docs/tasks/late-one" "$AL/docs/tasks/card-one" "$AL/docs/tasks/ahead"
+( cd "$AL" && git init -q . )
+printf -- '---\ntitle: late\nslug: late-one\nstatus: dormant\nsession-type: research\ncreated: 2026-01-01\nlast-updated: 2026-01-01\ndeferred-until: 2020-01-02\n---\n\n- [ ] x\n' > "$AL/docs/tasks/late-one/workitem.md"
+printf -- '---\ntitle: card\nslug: card-one\nstatus: done\nsession-type: research\ncreated: 2026-01-01\nlast-updated: 2026-01-01\n---\n\n## Sidetracks\n\n### #3. Move to PKCE\n\n**Status:** deferred (deadline: 2020-02-01)\n' > "$AL/docs/tasks/card-one/workitem.md"
+printf -- '---\ntitle: ahead\nslug: ahead\nstatus: dormant\nsession-type: research\ncreated: 2026-01-01\nlast-updated: 2026-01-01\ndeferred-until: 2999-01-02\n---\n\n- [ ] x\n' > "$AL/docs/tasks/ahead/workitem.md"
+( cd "$AL" && git add -A ) >/dev/null 2>&1
+out=$(cd "$AL" && bash "$CAVE" 2>&1)
+says "RED: the crystal past its date" "$out" "late-one (dormant): deferred until 2020-01-02"
+says "RED: the card past its date, in a closed crystal" "$out" "card-one (done): Sidetrack #3 «Move to PKCE» deferred until 2020-02-01"
+says_not "a date ahead is not named" "$out" "deferred until 2999-01-02"
+
 printf '\ncost: counted in launches, not seconds\n'
 # ---------------------------------------------------------------------------
 # The overview read each workitem with processes of its own — four or five
@@ -227,7 +243,7 @@ cost_repo() {
   while [ "$i" -le "$2" ]; do
     root=a; [ $((i % 2)) -eq 0 ] && root=b
     mkdir -p "$d/$root/tasks/w$i"
-    printf -- '---\nslug: w%s\nstatus: ready\nsession-type: research\nlast-updated: 2026-09-01\ndescription: "item %s"\n---\n- [ ] late (due: 2020-01-01)\n- [ ] vague (due: soon)\n' \
+    printf -- '---\nslug: w%s\nstatus: ready\nsession-type: research\nlast-updated: 2026-09-01\ndescription: "item %s"\ndeferred-until: 2999-01-01\n---\n- [ ] late (due: 2020-01-01)\n- [ ] vague (due: soon)\n\n## Sidetracks\n\n### #1. Later\n\n**Status:** deferred (deadline: 2999-01-01)\n' \
       "$i" "$i" > "$d/$root/tasks/w$i/workitem.md"
     i=$((i + 1))
   done

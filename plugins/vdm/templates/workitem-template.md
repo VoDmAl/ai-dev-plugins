@@ -12,6 +12,7 @@ session-type: {{SESSION_TYPE}}
 created: {{TODAY}}
 last-updated: {{TODAY}}
 # superseded-by: <slug>   # required when transitioning to status: superseded
+# deferred-until: <YYYY-MM-DD>   # optional, a crystal not in work: from this date the session start names it
 ---
 
 <!-- CANON IS A FLOOR, NOT A CEILING (crystal-grow DL #4).
