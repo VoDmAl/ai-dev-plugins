@@ -155,7 +155,7 @@ if [ -z "$missing" ]; then
   [ -n "$names" ] && msg="${msg} — aka: ${names}"
   [ -n "$aliases" ] && msg="${msg} (auto-aliases: ${aliases})"
   msg="${msg}. Other agents address you by any of these."
-  if [ "$pending" -gt 0 ] && ! intercom_mail_session; then
+  if [ "$pending" -gt 0 ] && ! intercom_mail_session && ! intercom_hq_session; then
     msg="${msg} 📬 ${pending} pending message(s) in your inbox → /vdm:intercom check."
     # A question whose session is gone or is this one: the user is here (DL #5).
     questions="$(intercom_questions_here "$id" "$own_sid" | grep -c .)"
@@ -222,6 +222,24 @@ if intercom_mail_session; then
   • A chain of letters between intercom sessions stops after ${INTERCOM_CHAIN_LIMIT} links in a row; send refuses the next one, and it goes to the owner the same way.
   • A letter from \`${id}\` itself is a note for the owner's next session, not mail: leave it untaken.
   • Inbox handled: say what was done, then end this session with /vdm:intercom close — it refuses while a letter nobody took is in the inbox, and runs \`vdx ai --close --waiting <n>\`, n being the letters you took and left for the owner. Your turn ends on its result."
+fi
+
+# An HQ session's count is its work, not a reason to call the owner
+# (docs/tasks/hq-session-active): the owner sits at it, unlike at an intercom
+# session, so a question goes to them here. Nothing is said while nothing waits: the
+# access layer names its role, and a letter that comes says this again.
+if intercom_hq_session; then
+  hq_work="$(intercom_hq_work "$id" 2>/dev/null)"
+  case "$hq_work" in ''|*[!0-9]*) hq_work=0 ;; esac
+  if [ "$hq_work" -gt 0 ]; then
+    msg="${msg}
+👑 HQ session of \`${id}\`: letters are your work, not a reminder. ${hq_work} wait now. After the user's message, if there is one: /vdm:intercom check now, then each letter in turn — take it, read it, act, and close it: reply for a brief, pickup for a note.
+  • The user sits here. Ask them only where the answer needs their decision: in this session, in words, with your recommendation, never a command for them to run. \`/vdm:intercom check\` in your answer to them means the work was not done.
+  • A note this project left for its next working session is not yours: \`check\` says which; leave it untaken."
+  fi
+  questions="$(intercom_questions_here "$id" "$own_sid" | grep -c .)"
+  [ "$questions" -eq 0 ] || msg="${msg}
+❓ ${questions} question(s) for the user on letters here — put them first: another agent waits on them."
 fi
 
 # Mail piling up here, with no intercom session switched on: offered once per

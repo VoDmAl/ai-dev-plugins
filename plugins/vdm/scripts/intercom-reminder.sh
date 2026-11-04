@@ -67,9 +67,10 @@ command -v intercom_inbox_count >/dev/null 2>&1 || exit 0
 # other session a letter on the topic of a live focused session here is that
 # session's, and is not named. An answer to a letter of this session is named in
 # any session; one to a letter of another session still there is that session's
-# (intercom-hitl-via-initiator, DL #4).
+# (intercom-hitl-via-initiator, DL #4). <hq>: an HQ session is not told of a note
+# this project left for its next working session (hq-session-active, DL #1).
 _ic_arrivals() {
-  local id="$1" sid="$2" own="${3:-}" focused="${4:-}" sdir sfile started seen f base
+  local id="$1" sid="$2" own="${3:-}" focused="${4:-}" hq="${5:-}" sdir sfile started seen f base
   case "$sid" in ''|default) return 0 ;; esac
   command -v jq >/dev/null 2>&1 || return 0
   sdir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"
@@ -93,8 +94,8 @@ _ic_arrivals() {
     fresh+=("$f")
   done < <(intercom_inbox_list "$id")
   [ ${#fresh[@]} -gt 0 ] || return 0
-  local taken created from topic forsid ask title ts mark
-  while IFS=$'\037' read -r f taken created from topic forsid ask title; do
+  local taken created from topic forsid ask sess title ts mark
+  while IFS=$'\037' read -r f taken created from topic forsid ask sess title; do
     [ -n "$f" ] || continue
     base="${f##*/}"; base="${base%.md}"
     # A question for the owner opens its line with ❓: the caller says of it what
@@ -103,6 +104,10 @@ _ic_arrivals() {
     # Created before the session started (the start line named it), or with
     # no time to tell: never named.
     if [ -n "$taken" ] || [ -z "$created" ] || [ "$created" \< "$started" ]; then
+      printf '%s\n' "$base" >> "$seen" 2>/dev/null
+      continue
+    fi
+    if [ -n "$hq" ] && _intercom_note_fields "$from" "$sess" "$ask" "$id"; then
       printf '%s\n' "$base" >> "$seen" 2>/dev/null
       continue
     fi
@@ -133,7 +138,7 @@ _ic_arrivals() {
     function val(line, n) { v = substr(line, n); gsub(/^[ \t]+|[ \t]+$/, "", v); gsub(/^"|"$/, "", v); return v }
     BEGIN {
       for (i = 1; i < ARGC; i++) {
-        f = ARGV[i]; first = 1; infm = 0; taken = created = from = topic = forsid = ask = title = ""
+        f = ARGV[i]; first = 1; infm = 0; taken = created = from = topic = forsid = ask = sess = title = ""
         while ((getline line < f) > 0) {
           if (first) { first = 0; infm = (line == "---"); if (infm) continue }
           if (infm && line == "---") { infm = 0; continue }
@@ -144,12 +149,13 @@ _ic_arrivals() {
             if (line ~ /^topic:/)   topic = val(line, 7)
             if (line ~ /^for-session:/) forsid = val(line, 13)
             if (line ~ /^ask:/)     ask = val(line, 5)
+            if (line ~ /^session:/) sess = val(line, 9)
             continue
           }
           if (line ~ /^# /) { title = substr(line, 3); break }
         }
         close(f)
-        if (!first) printf "%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\n", f, taken, created, from, topic, forsid, ask, title
+        if (!first) printf "%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\n", f, taken, created, from, topic, forsid, ask, sess, title
       }
       exit
     }' "${fresh[@]}")
@@ -250,8 +256,11 @@ fi
 
 sid=$(printf '%s' "$payload" | _vdm_reminder_session_id 2>/dev/null || printf 'default')
 
+hq=""
+intercom_hq_session && hq=1
+
 if [ "$arrival_on" = "true" ]; then
-  arrived="$(_ic_arrivals "$id" "$sid" "$own_topic" "$focused")"
+  arrived="$(_ic_arrivals "$id" "$sid" "$own_topic" "$focused" "$hq")"
   if [ -n "$arrived" ]; then
     n="$(printf '%s\n' "$arrived" | wc -l | tr -d ' ')"
     list="$(printf '%s\n' "$arrived" | sed 's/^/- /')"
@@ -267,7 +276,11 @@ if [ "$arrival_on" = "true" ]; then
     questions="$(printf '%s\n' "$list" | grep -F -- '- ❓')"
     letters="$(printf '%s\n' "$list" | grep -vF -- '- ❓')"
     msg=""
-    if [ -n "$letters" ]; then
+    # In an HQ session letters are the work (hq-session-active): the session that
+    # was told to name one in a line handed the owner a command and kept the questions.
+    if [ -n "$letters" ] && [ -n "$hq" ]; then
+      msg="[intercom] 📬 ${lead} — letters are this HQ session's work, not a reminder:\n$(_vdm_json_escape "$letters")\nAnswer the user's message first, then in this same turn take each one and handle it (/vdm:intercom check). Ask the user only where the answer needs their decision: in words, with your recommendation, never a command for them to run. /vdm:intercom check in your answer to them means the work was not done."
+    elif [ -n "$letters" ]; then
       msg="[intercom] 📬 ${lead} — not urgent, and no turn of its own:\n$(_vdm_json_escape "$letters")\nAnswer the user's message first. At the end, one line that it waits (/vdm:intercom check); retell nothing else — the user's open steps are still on their screen."
     fi
     if [ -n "$questions" ]; then

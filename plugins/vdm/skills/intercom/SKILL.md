@@ -956,11 +956,24 @@ like the two others. That makes four kinds:
 |---------|----------|----------------|
 | ordinary | the work at hand | the user |
 | focused | one topic | the user |
-| HQ | the sheet and what comes from outside | the user |
+| HQ | the sheet, what comes from outside, and the letters that reach it | the user |
 | intercom | what other agents want | nobody |
 
 HQ and intercom are two sessions, and the line between them is a route, not a ban:
 the user's word sends either one to the other's work.
+
+- **In an HQ session letters are the work, not a reminder.** The user (2026-11-03):
+  it should be more active, and their word is for when an answer needs it. A hook line
+  that said "one line that it waits" made a session hand them `/vdm:intercom check`
+  in place of the two questions its letters held. So: answer the user's message, then
+  in the same turn take each letter and handle it. Ask the user only where the answer
+  needs their decision: in this session, in words, with your recommendation, never a
+  command for them to run. `/vdm:intercom check` in an answer to them means the work
+  was not done. This is the opposite of an intercom session, whose pane nobody reads:
+  here the question goes into the pane, and when `ask` has no session to ask through
+  it says so instead of naming the list at HQ. The start line (👑) counts what waits
+  for this session and says "check now"; with nothing waiting it says nothing, and
+  the access layer names the role.
 
 - **While an HQ session of the project lives on this machine, an ordinary session
   is quiet on its hooks.** No `[comms]` lines, no inbox count, no 📤, ↪, 📨, 📂 or
@@ -977,16 +990,22 @@ the user's word sends either one to the other's work.
   the middle of a working one. A letter not named while it lived is named on the
   first message after it closes.
 - **Wakes.** An intercom session comes first, and starting one where it is switched
-  on, as ever. Otherwise the live HQ session is the one woken, by the rule of a
-  session the user may sit at: not while it is busy, waiting, or idle under 15
-  minutes, and then the letter waits for it. The ordinary sessions are not woken at
-  all, wherever the user typed last. A letter on a focused session's topic and an
-  answer to a letter of a session still there go as before. The live list marks it
-  `(idle, hq)`.
-- **A note to its own project wakes nobody** while an HQ session lives: it is for
-  that project's next session, and the HQ session should not archive it.
-- **It gets everything an ordinary session got**, and no start line of its own: the
-  access layer names its role.
+  on, as ever. Otherwise the live HQ session is the one woken: at once when it is
+  idle, with no 15-minute window, and not while it is busy or waiting on the user,
+  when the letter reaches it as a line with their next message there. The price is
+  named: a letter may start a turn while the user reads its last answer. Its pointer
+  says "take it and handle it now". The ordinary sessions are not woken at all,
+  wherever the user typed last. A letter on a focused session's topic and an answer to
+  a letter of a session still there go as before. The live list marks it `(idle, hq)`.
+- **A note to its own project is not its work.** A letter from this project to itself
+  with no `session: mail` was written with the user at the session, for the next such
+  session (`/vdm:wrap`). It wakes nobody while an HQ session lives, the HQ session's
+  start line does not count it, its arrival line does not name it, and `check` says to
+  leave it and offers no `pickup`: archived there, it never reaches the session it was
+  written for. A letter an intercom session wrote to its own project carries
+  `session: mail`, nobody sat there to ask, so it wakes the HQ session and is its to
+  take; so is any letter carrying `ask`.
+- **It gets everything else an ordinary session got.**
 - **This machine and this project only.** A session on the user's other machine does
   not quiet this one, and a worktree beside the checkout is not yet the same project.
 

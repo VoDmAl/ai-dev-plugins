@@ -1383,6 +1383,77 @@ INTERCOM_MAIL_ENV=VDX_INTERCOM
 # also focused: deaf wins).
 intercom_mail_session() { [ "${!INTERCOM_MAIL_ENV:-}" = 1 ] && ! intercom_focused; }
 
+# ---------------------------------------------------------------------------
+# An HQ session's letters are its work (docs/tasks/hq-session-active). The owner,
+# 2026-11-03: letters go to it, it should be more active, and their word is for
+# when an answer needs it. A hook line that said "one line that it waits" made a
+# session hand them the command instead of the two questions in its letters.
+#
+# What it leaves is a note (DL #1): a letter a session of this project wrote to
+# this project with the owner at it, for the next such session. A letter an
+# intercom session wrote to its own project carries `session: mail`: nobody sat
+# there to ask, so it is the HQ session's to take. A question is never a note.
+# ---------------------------------------------------------------------------
+
+# intercom_hq_session — this session is its project's HQ session. Focused and
+# intercom win, as they do when another session's mode is read (_intercom_pid_mode).
+intercom_hq_session() {
+  local e="${VDM_HQ_ENV:-VDX_HQ}"
+  [ "${!e:-}" = 1 ] && ! intercom_focused && ! intercom_mail_session
+}
+
+# _intercom_note_fields <from> <session> <ask> <identity> — these envelope fields
+# make a note. No process: the arrival line asks it on every message.
+_intercom_note_fields() { [ "$1" = "$4" ] && [ "$2" != mail ] && [ -z "$3" ]; }
+
+# intercom_hq_work <identity> — how many letters wait for the HQ session: no note,
+# none released to wait for something else, none another session holds by its mark,
+# its topic or the letter it answers. One pass over the inbox; a holder is looked up
+# only for a letter that names one.
+intercom_hq_work() {
+  local id="$1" f files=() from sess ask taken topic forsid n=0 state
+  while IFS= read -r f; do [ -n "$f" ] && files+=("$f"); done < <(intercom_inbox_list "$id")
+  [ ${#files[@]} -gt 0 ] || { printf '0'; return 0; }
+  while IFS=$'\037' read -r f from sess ask taken topic forsid; do
+    [ -n "$f" ] || continue
+    ! _intercom_note_fields "$from" "$sess" "$ask" "$id" || continue
+    if [ -n "$taken" ]; then
+      case "$(intercom_mark_state "$taken")" in self|gone) ;; *) continue ;; esac
+    fi
+    if [ -n "$topic" ]; then
+      state="$(intercom_letter_topic "$f")"
+      [ "${state%%$'\037'*}" != held ] || continue
+    fi
+    if [ -n "$forsid" ]; then
+      state="$(intercom_letter_for "$f")"
+      case "${state%%$'\037'*}" in live|away) continue ;; esac
+    fi
+    n=$((n + 1))
+  done < <(awk '
+    function val(line, n) { v = substr(line, n); gsub(/^[ \t]+|[ \t]+$/, "", v); gsub(/^"|"$/, "", v); return v }
+    BEGIN {
+      for (i = 1; i < ARGC; i++) {
+        f = ARGV[i]; first = 1; from = sess = ask = taken = deferred = topic = forsid = ""
+        while ((getline line < f) > 0) {
+          if (first) { first = 0; if (line != "---") break; continue }
+          if (line == "---") break
+          if (line ~ /^from:/)        from = val(line, 6)
+          if (line ~ /^session:/)     sess = val(line, 9)
+          if (line ~ /^ask:/)         ask = val(line, 5)
+          if (line ~ /^taken:/)       taken = val(line, 7)
+          if (line ~ /^deferred:/)    deferred = val(line, 10)
+          if (line ~ /^topic:/)       topic = val(line, 7)
+          if (line ~ /^for-session:/) forsid = val(line, 13)
+        }
+        close(f)
+        if (deferred != "") continue
+        printf "%s\037%s\037%s\037%s\037%s\037%s\037%s\n", f, from, sess, ask, taken, topic, forsid
+      }
+      exit
+    }' "${files[@]}")
+  printf '%s' "$n"
+}
+
 # _intercom_pid_mode <pid> — the mode that live process was started in:
 # `focused`, `mail`, `hq`, or `plain`. One read of its environment: Linux exposes it
 # in /proc, macOS shows it to `ps -E` for the owner's own processes.
@@ -1837,8 +1908,8 @@ intercom_elsewhere_line() {
 # TAB: TAB is whitespace to `read`, and the empty fields of "wait" would collapse.
 #   "wake<US><name><US><status><US><why><US><mode>"   wake this one session
 #   "wait<US><US><US><why>"                           wake nobody here
-# <mode> is `mail` when the session is the project's intercom session: the pointer
-# into it says "handle it", not "not urgent".
+# <mode> is `mail` when the session is the project's intercom session and `hq` when
+# it is its HQ session: the pointer into either says "handle it", not "not urgent".
 #
 # A live intercom session here comes first, before the owner's last turn and the
 # quiet window: nobody sits at it (intercom-session-wake, DL #4). Two of them
@@ -1860,8 +1931,10 @@ intercom_wake_choice() {
   fi
   # A live HQ session comes next (hq-session-quiet, DL #4): while it lives the
   # ordinary sessions of the project are working ones and are not woken at all,
-  # wherever the owner typed last. The owner sits at it, so it goes by the rule of
-  # such a session: engaged, the letter waits for it and no other is woken instead.
+  # wherever the owner typed last. Its letters are its work, so an idle one is woken
+  # at once, with no quiet window (hq-session-active, DL #2): asked without a stamp,
+  # idle is no verdict. Busy or waiting on the owner, the letter waits for it and no
+  # other is woken instead.
   local hq="" hq_status="" hq_upd="" hq_best=-1 hq_engaged
   while IFS=$'\t' read -r name status sid mode upd; do
     [ "$mode" = hq ] || continue
@@ -1869,12 +1942,12 @@ intercom_wake_choice() {
     if [ "$u" -gt "$hq_best" ]; then hq="$name"; hq_status="$status"; hq_upd="$upd"; hq_best="$u"; fi
   done <<<"$live"
   if [ -n "$hq" ]; then
-    if hq_engaged="$(_intercom_engaged "$hq_status" "$hq_upd")"; then
+    if hq_engaged="$(_intercom_engaged "$hq_status" "")"; then
       printf 'wait\037\037\037the HQ session of `%s`, %s, is %s — the owner is likely at it; the letter reaches it as one line with their next message there\n' \
         "$id" "$hq" "$hq_engaged"
       return 0
     fi
-    printf 'wake\037%s\037%s\037the HQ session of `%s` — its ordinary sessions are quiet while it lives\037plain\n' \
+    printf 'wake\037%s\037%s\037the HQ session of `%s` — its letters are its work, and its ordinary sessions are quiet while it lives\037hq\n' \
       "$hq" "$hq_status" "$id"
     return 0
   fi

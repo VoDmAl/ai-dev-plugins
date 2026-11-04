@@ -2697,13 +2697,11 @@ says "…and only it" "$out" "hop-b-work (idle)"
 says "RED: an HQ session idle for 60 min is the one woken" "$out" "→ wake one: hop-b-hq"
 says "…and the line says why" "$out" "the HQ session of \`hop-b\`"
 says_not "RED: the ordinary session is not" "$out" "→ wake one: hop-b-work"
-stamp hq-hq.json idle 5
-out="$(wake_out hq-fresh)"
-says "RED: idle for 5 min — the owner may be at it, the letter waits" "$out" "do not wake here"
+stamp hq-hq.json busy 60
+out="$(wake_out hq-busy)"
+says "RED: busy — the owner may be at it, the letter waits" "$out" "do not wake here"
 says "…for that session" "$out" "the HQ session of \`hop-b\`, hop-b-hq"
 says_not "RED: …and the ordinary one is not woken instead" "$out" "→ wake one"
-stamp hq-hq.json busy 60
-says "…busy waits the same" "$(wake_out hq-busy)" "do not wake here"
 stamp hq-hq.json idle 60
 turn hq "sid-work" "$TMP/hop-b" "2026-10-04T10:59:00Z"
 out="$(wake_out hq-turn)"
@@ -2735,7 +2733,7 @@ says_not "RED: …no count of letters" "$out" "pending message"
 says_not "…nothing it wrote that lies unread" "$out" "📤"
 says "RED: an answer to its own letter is still named" "$out" "1 answer(s) to this session's letters"
 out="$(VDX_HQ=1 start_of sid-hq)"
-says "RED: the HQ session gets the count" "$out" "pending message"
+says "RED: the HQ session is told of its letters" "$out" "👑 HQ session of \`hop-b\`"
 says_not "…and no such line" "$out" "🔕"
 out="$(VDX_FOCUSED=1 start_of sid-f)"
 says "a focused session keeps its own line" "$out" "🔇 Focused session"
@@ -2763,6 +2761,137 @@ says_not "…no longer quiet" "$out" "🔕"
 says "RED: …and the next letter wakes the ordinary session" "$(wake_out hq-gone)" "→ wake one: hop-b-work"
 kill "$HQW_PID" "$HQM_PID" 2>/dev/null
 rm -f "$SESS"/hq-*.json
+
+echo ""
+echo "== an active HQ session: letters are its work, its word only for a decision (hq-session-active) =="
+# Field case 2026-11-03: two letters with questions for the owner came to a pilot
+# project's HQ session, the hook told it «one line that it waits», and the owner got
+# «/vdm:intercom check» in place of the questions.
+rm -f "$SESS"/*.json; rm -rf "${PROJ:?}"/*
+find "$VDM_INTERCOM_ROOT/hop-b" -maxdepth 1 -name '*.md' -delete
+hq_sleeper VDX_HQ=1; HAS_PID="$HQ_SLEEPER"
+hq_sleeper VDX_INTERCOM=1; HAM_PID="$HQ_SLEEPER"
+trap 'kill "$LIVE_PID" "$HAS_PID" "$HAM_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
+mksock "$SOCKS/ha1.sock"; mksock "$SOCKS/ha2.sock"
+mksession ha-hq.json "$HAS_PID" "$HOPB" hop-b-hq idle "$SOCKS/ha1.sock" sid-hq
+stamp ha-hq.json idle 1
+
+out="$(wake_out ha-fresh)"
+says "RED: idle for a minute, the HQ session is woken at once" "$out" "→ wake one: hop-b-hq"
+says "RED: …and told to handle it" "$out" "You are the HQ session: take it and handle it now"
+says "…its word only for a decision" "$out" "only where the answer needs their decision"
+says_not "…not that it can wait" "$out" "not urgent"
+stamp ha-hq.json shell 1
+says "RED: a finished turn with a background task is woken the same" "$(wake_out ha-shell)" "→ wake one: hop-b-hq"
+stamp ha-hq.json busy 60
+says "busy: the letter waits" "$(wake_out ha-busy)" "do not wake here"
+stamp ha-hq.json waiting 60
+says "waiting on the owner: the letter waits" "$(wake_out ha-waiting)" "do not wake here"
+stamp ha-hq.json idle 1
+
+out="$(note_out sid-work ha-note)"
+says "a note from a working session still wakes nobody" "$out" "a letter to your own project is a note"
+says_not "…the HQ session least of all" "$out" "→ wake one"
+out="$(VDX_INTERCOM=1 note_out sid-mail ha-mail)"
+says "RED: a letter the intercom session wrote to its project wakes the HQ session" "$out" "→ wake one: hop-b-hq"
+says "…as its work" "$out" "You are the HQ session"
+says "…and says who wrote it" "$(grep '^session:' "$VDM_INTERCOM_ROOT/hop-b/ha-mail.md")" "session: mail"
+stamp ha-hq.json busy 60
+out="$(VDX_INTERCOM=1 note_out sid-mail ha-mail-busy)"
+says "…busy, it waits like any other" "$out" "do not wake here"
+stamp ha-hq.json idle 1
+mksession ha-mail.json "$HAM_PID" "$HOPB" hop-b-mail idle "$SOCKS/ha2.sock" sid-mail
+out="$(VDX_INTERCOM=1 CLAUDE_CODE_SESSION_ID=sid-mail note_out sid-mail ha-mail-2)"
+says "RED: …and not the intercom session itself, live beside it" "$out" "→ wake one: hop-b-hq"
+rm -f "$SESS/ha-mail.json"
+
+# The inbox now: wake_out ha-*, the note, ha-mail, ha-mail-busy, ha-mail-2.
+hq_start() { ( cd "$TMP/hop-b" && printf '{"session_id":"sid-hq"}' | VDX_HQ=1 CLAUDE_CODE_SESSION_ID=sid-hq bash "$HOOK" 2>&1 ); }
+hq_count="$(find "$VDM_INTERCOM_ROOT/hop-b" -maxdepth 1 -name '*.md' | wc -l | tr -d ' ')"
+out="$(hq_start)"
+says "RED: the start line calls it to work" "$out" "/vdm:intercom check now"
+says "…in the session itself, not on a list" "$out" "The user sits here. Ask them only where the answer needs their decision"
+says "…counting all but the note" "$out" "$((hq_count - 1)) wait now"
+says_not "RED: …not a count that calls the owner" "$out" "pending message"
+says_not "…and not the rule of the intercom session" "$out" "is not asked in this"
+says_not "…nor its name" "$out" "📮"
+out="$( cd "$TMP/hop-b" && printf '{"session_id":"sid-f"}' | VDX_HQ=1 VDX_FOCUSED=1 CLAUDE_CODE_SESSION_ID=sid-f bash "$HOOK" 2>&1 )"
+says_not "started focused as well, it is focused" "$out" "👑"
+out="$( cd "$TMP/hop-b" && printf '{"session_id":"sid-mail"}' | VDX_HQ=1 VDX_INTERCOM=1 CLAUDE_CODE_SESSION_ID=sid-mail bash "$HOOK" 2>&1 )"
+says "started intercom as well, it is intercom" "$out" "📮 Intercom session"
+says "…with the rule that it does not ask in its pane" "$out" "is not asked in this pane"
+says_not "…not this line" "$out" "👑"
+
+# What another session holds is not counted, and neither is a letter released to wait.
+N="$VDM_INTERCOM_ROOT/hop-b"
+mark_in() { awk -v l="$2" 'NR == 1 { print; print l; next } { print }' "$N/$1.md" > "$N/$1.tmp" && mv "$N/$1.tmp" "$N/$1.md"; }
+mark_in ha-mail-busy "deferred: 2026-10-04T11:00:00Z waits for something"
+mark_in ha-mail-2 "taken: other-machine/hop-b-x 2026-10-04T11:00:00Z"
+mksession ha-holder.json "$HAM_PID" "$HOPB" hop-b-holder idle "$SOCKS/ha2.sock" sid-holder
+mark_in ha-mail "taken: $machine/hop-b-holder 2026-10-04T11:00:00Z"
+says "RED: …one released, one held on another machine, one by a live session: not waiting for it" "$(hq_start)" "$((hq_count - 4)) wait now"
+says "…a mark whose session is gone counts" "$(rm -f "$SESS/ha-holder.json"; hq_start)" "$((hq_count - 3)) wait now"
+note_out sid-work ha-note-q >/dev/null
+mark_in ha-note-q "ask: owner"
+says "a question written here is no note: it counts" "$(hq_start)" "$((hq_count - 2)) wait now"
+mark_in ha-shell "taken: $machine/hop-b-hq 2026-10-04T11:00:00Z"
+says "…and so does what this session took itself" "$(hq_start)" "$((hq_count - 2)) wait now"
+mksession ha-asker.json "$HAM_PID" "$HOPB" hop-b-asker idle "$SOCKS/ha2.sock" sid-asker
+mark_in ha-busy "for-session: sid-asker"
+says "the answer to a letter of a session still here: not waiting for it" "$(hq_start)" "$((hq_count - 3)) wait now"
+env VDX_FOCUSED=1 TMUX="$TX/sock,4242,0" TMUX_PANE=%9 python3 -c 'import time; time.sleep(300)' & HAF_PID=$!; disown "$HAF_PID" 2>/dev/null || true
+trap 'kill "$LIVE_PID" "$HAS_PID" "$HAM_PID" "$HAF_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  { [ -r "/proc/$HAF_PID/environ" ] || ps -wwE -p "$HAF_PID" -o command= 2>/dev/null | grep -q 'TMUX_PANE=%9'; } && break
+  python3 -c 'import time; time.sleep(0.2)'
+done
+settopic 9 "ha topic"
+mksession ha-focus.json "$HAF_PID" "$HOPB" hop-b-focus idle "$SOCKS/ha2.sock" sid-focus
+mark_in ha-waiting 'topic: "ha topic"'
+says "a letter on the topic of a live focused session: not waiting for it" "$(TMUX_STUB_DIR="$TX" PATH="$TP" hq_start)" "$((hq_count - 4)) wait now"
+kill "$HAF_PID" 2>/dev/null
+rm -f "$SESS/ha-asker.json" "$SESS/ha-focus.json"
+
+hq_check() { ( cd "$TMP/hop-b" && VDX_HQ=1 CLAUDE_CODE_SESSION_ID=sid-hq bash "$IC" check 2>&1 ); }
+out="$(hq_check)"
+says "RED: check marks the note" "$out" "a note this project left for its next working session"
+says_not "RED: …and offers no pickup of it" "$out" "pickup: /vdm:intercom pickup ha-note"$'\n'
+says "…a letter from another agent is taken as ever" "$out" "take before work: /vdm:intercom take ha-fresh"
+says "the user sits here: a question is put to them in this session" "$out" "a question for the user: put it to them now"
+out="$( cd "$TMP/hop-b" && VDX_HQ=1 VDX_FOCUSED=1 CLAUDE_CODE_SESSION_ID=sid-f bash "$IC" check 2>&1 )"
+says_not "started focused as well, check is a focused session's" "$out" "a note this project left"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-work bash "$IC" check 2>&1 )"
+says_not "an ordinary session sees no such mark" "$out" "a note this project left"
+says "…and may pick the note up" "$out" "pickup: /vdm:intercom pickup ha-note"
+
+# The arrival line: this session started before all these letters.
+jq --argjson ms "$STARTED_MS" '.startedAt = $ms' "$SESS/ha-hq.json" > "$SESS/ha-hq.tmp" && mv "$SESS/ha-hq.tmp" "$SESS/ha-hq.json"
+hq_arrive_hq() { ( cd "$TMP/hop-b" && printf '{"session_id":"sid-hq"}' | VDX_HQ=1 CLAUDE_CODE_SESSION_ID=sid-hq TMPDIR="$TMP/ha-tmp" bash "$REM" 2>&1 ); }
+mkdir -p "$TMP/ha-tmp" "$TMP/ha-tmp2"
+VDX_INTERCOM=1 note_out sid-mail ha-mail-3 >/dev/null
+out="$(hq_arrive_hq)"
+says "RED: the arrival line says letters are its work" "$out" "letters are this HQ session's work"
+says "RED: …take each in this same turn" "$out" "in this same turn take each one and handle it"
+says "…the letter named" "$out" "ha-fresh"
+says "…and one the intercom session wrote" "$out" "ha-mail-3"
+says "…its word only for a decision" "$out" "only where the answer needs their decision"
+says_not "RED: …not a line that it waits" "$out" "one line that it waits"
+says_not "RED: …and not the note" "$out" "\`ha-note\`"
+says "…a question written here it does name" "$out" "\`ha-note-q\`"
+out="$( cd "$TMP/hop-b" && printf '{"session_id":"sid-hq"}' | CLAUDE_CODE_SESSION_ID=sid-hq TMPDIR="$TMP/ha-tmp2" bash "$REM" 2>&1 )"
+says "a session that is not HQ keeps the old line" "$out" "one line that it waits"
+
+# `ask` with nobody to ask through: the owner sits here.
+( cd "$TMP/hop-a" && env -u CLAUDE_CODE_SESSION_ID bash "$IC" send hop-b ha-orphan --body "$B/live.md" >/dev/null 2>&1 )
+out="$( cd "$TMP/hop-b" && VDX_HQ=1 CLAUDE_CODE_SESSION_ID=sid-hq bash "$IC" ask ha-orphan --question "What now?" 2>&1 )"; rc=$?
+eq "ask in an HQ session with nobody to ask through: nothing sent" "$rc" "3"
+says "RED: …it asks the user here" "$out" "You are the HQ session and the user sits here"
+says_not "RED: …not by a list at its own HQ" "$out" "one line on their list at HQ"
+out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-work bash "$IC" ask ha-orphan --question "What now?" 2>&1 )"
+says "elsewhere the list at HQ stays" "$out" "one line on their list at HQ"
+
+kill "$HAS_PID" "$HAM_PID" 2>/dev/null
+rm -f "$SESS"/ha-*.json
 
 echo ""
 echo "== a letter taken elsewhere: the session whose last answer named it hears (intercom-stale-mention) =="

@@ -416,7 +416,8 @@ cmd_check() {
   fi
   _ic_print_unclaimed "$id" "   "
   printf '📬 intercom: %s pending message(s) for `%s`\n   inbox: %s\n\n' "$n" "$id" "$(intercom_inbox_dir "$id")"
-  local f from created slug title prev taken deferred tstate ttopic tname trest fstate fa fb fc owner_word
+  local f from created slug title prev taken deferred tstate ttopic tname trest fstate fa fb fc owner_word hq=""
+  intercom_hq_session && hq=1
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     from="$(intercom_fm_field "$f" from)"
@@ -427,6 +428,12 @@ cmd_check() {
     [ -n "$title" ] || title="$slug"
     printf '  • %s\n    from: %s   created: %s\n    file: %s\n' \
       "$title" "${from:-?}" "${created:-?}" "$f"
+    # What an HQ session leaves alone (hq-session-active, DL #1). No pickup offered:
+    # archived here, the note never reaches the session it was written for.
+    if [ -n "$hq" ] && _intercom_note_fields "$from" "$(intercom_fm_field "$f" session)" "$(intercom_fm_field "$f" ask)" "$id"; then
+      printf '    a note this project left for its next working session, not for this HQ session: leave it untaken\n\n'
+      continue
+    fi
     taken="$(intercom_fm_field "$f" taken)"
     deferred="$(intercom_fm_field "$f" deferred)"
     if [ -n "$deferred" ]; then
@@ -535,6 +542,11 @@ _ic_word_line() {
 # _ic_hq_way <letter ref> — where a question for the owner goes when no session
 # of theirs can put it.
 _ic_hq_way() {
+  if intercom_hq_session; then
+    printf '   You are the HQ session and the user sits here: put it to them in this session, in words, with your\n'
+    printf '   recommendation, and go on with `%s` by what they decide.\n' "$1"
+    return 0
+  fi
   printf '   Put it to the owner instead: one line on their list at HQ — the access layer'"'"'s `hq <project root>\n'
   printf '   --obligations` names the HQ (the access layer: intercom role access-layer) — a new letter there, naming\n'
   printf '   `%s`, with the question the owner has to answer. Then take your next letter.\n' "$1"
@@ -1109,10 +1121,14 @@ cmd_send() {
     # A letter to this project's own inbox is a note for its next session, not
     # mail: its intercom session is not woken for it (intercom-session-wake, DL #12),
     # and while an HQ session lives nobody is: that one takes no notes, and the
-    # ordinary ones are not woken (hq-session-quiet, DL #4).
+    # ordinary ones are not woken (hq-session-quiet, DL #4). Unless an intercom
+    # session wrote it: nobody sat there to ask, and the HQ session is where the
+    # owner sits, so that one is woken (hq-session-active, DL #1).
     wlive="$live"
     if [ "$canon" = "$from" ]; then
-      if [ "${!VDM_HQ_ENV:-}" = 1 ] || printf '%s\n' "$live" | awk -F '\t' '$4 == "hq" { f = 1 } END { exit !f }'; then
+      if intercom_mail_session && printf '%s\n' "$live" | awk -F '\t' '$4 == "hq" { f = 1 } END { exit !f }'; then
+        wlive="$(printf '%s\n' "$live" | awk -F '\t' '$4 == "hq"')"
+      elif [ "${!VDM_HQ_ENV:-}" = 1 ] || printf '%s\n' "$live" | awk -F '\t' '$4 == "hq" { f = 1 } END { exit !f }'; then
         wlive=""
       else
         wlive="$(printf '%s\n' "$live" | awk -F '\t' 'NF && $4 != "mail"')"
@@ -1175,12 +1191,16 @@ _ic_wake_lines() {
 # _ic_pointer <slug> <from> <title> <mode> [<topic>] — the wake text. Into a mail
 # session it says what to do: the inbox is that session's work, and there are
 # no steps of the user's in it to come first (intercom-session-wake, DL #4).
+# Into an HQ session too, and the user sits there: their word only for a decision
+# (hq-session-active).
 # Into a focused session (mode `topic`) it names the topic: that is why the
 # session hears of this letter at all (intercom-focused-topic, DL #4). An answer
 # (mode `reply`) says whose it is, for the same reason.
 _ic_pointer() {
   if [ "$4" = mail ]; then
     printf '📬 intercom: `%s` from `%s` — %s. You are the intercom session: take it and handle it — /vdm:intercom check' "$1" "$2" "$3"
+  elif [ "$4" = hq ]; then
+    printf '📬 intercom: `%s` from `%s` — %s. You are the HQ session: take it and handle it now — /vdm:intercom check; ask the user only where the answer needs their decision, in words, with your recommendation' "$1" "$2" "$3"
   elif [ "$4" = topic ]; then
     printf '📬 intercom: `%s` from `%s` — %s. On your topic «%s»: /vdm:intercom check — not urgent: the user'"'"'s pending steps come first' "$1" "$2" "$3" "$5"
   elif [ "$4" = reply ]; then
