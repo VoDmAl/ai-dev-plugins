@@ -14,7 +14,8 @@
 # move HOME or the store root themselves.
 #
 # Output: for a suite that passed, one line — its last non-empty line, the
-# "N passed, 0 failed" summary; for one that failed, everything it printed. In
+# "N passed, 0 failed" summary, under the suite's name when the line does not
+# open with it; for one that failed, everything it printed. In
 # the order the suites were named, whatever order they finished in. Exit 0 when
 # every suite passed, 1 otherwise — a suite that could not start is a failure,
 # not a silence.
@@ -45,7 +46,11 @@ for s in "$@"; do
   rc=1
   [ -f "$out/$s.rc" ] && read -r rc < "$out/$s.rc"
   if [ "$rc" = 0 ]; then
-    awk 'NF { last = $0 } END { print last }' "$out/$s.log"
+    line=$(awk 'NF { last = $0 } END { print last }' "$out/$s.log")
+    case "$line" in
+      "$s:"*) printf '%s\n' "$line" ;;
+      *) printf '%s: %s\n' "$s" "$line" ;;
+    esac
   else
     failed=1
     printf '✗ %s/%s.test.sh exited %s:\n' "$dir" "$s" "$rc" >&2

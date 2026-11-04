@@ -252,8 +252,8 @@ actions просит выбрать.
       `answer` 15:59Z, `check` получателя 16:02Z — `🗣 … found in what they typed there`. Прочитано по обоим транскриптам.
       Второй такой вопрос, в другой паре сессий, задан владельцу в ответном ходу 15:46Z. Что не сработало: Sidetrack #1
 - [ ] Sidetrack #1: вопрос через сессию на другой машине лежит, пока владелец не напишет именно туда; решить по второму случаю
-- [ ] Итог этого прогона echelon (обещано в `reply-taken-by-intercom-session-result`): `intercom send echelon` с
-      `--reply-to` на него — что прогнано, что нашёл Sidetrack #1
+- [x] Итог этого прогона echelon (обещано в `reply-taken-by-intercom-session-result`) — 2026-11-04,
+      `echelon/hitl-first-real-run-result`; мяч у нас, без срока: Sidetrack #1
 - [x] Outcome to `echelon` — окончательный: intercom reply hitl-via-initiator --slug hitl-via-initiator-result --done
       "<как устроено, с какой версии vdm>" --ball "echelon — <что от него> ⏰ <дата>". Письмо в архиве `_done/` — 2026-11-01,
       `echelon/hitl-via-initiator-result`; мяч echelon без срока: приём слова для запроса доступа и первый вопрос через `ask`

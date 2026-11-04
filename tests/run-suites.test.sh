@@ -72,6 +72,9 @@ EOF
 cat > "$S/fast-d.test.sh" <<'EOF'
 echo "fast-d: 1 passed, 0 failed"
 EOF
+cat > "$S/nameless-g.test.sh" <<'EOF'
+printf '\n2 passed, 0 failed\n'
+EOF
 for n in e f; do
   cat > "$S/tmp-$n.test.sh" <<EOF
 printf '%s\n' "\$TMPDIR" > "$M/tmpdir-$n"
@@ -105,6 +108,11 @@ expect_exit "RED: one suite failed → the run fails" 1 "$RC"
 expect_says "…and the failure shows what it printed" "$OUT" "the detail that explains the failure"
 expect_says "…under a line that names it" "$OUT" "bad-b.test.sh exited 1"
 expect_says "the passing neighbour still reports" "$OUT" "ok-a: 3 passed, 0 failed"
+# Seen in the pre-commit's own output, 2026-11-04: "106 passed, 0 failed" among a
+# queue of nineteen, with nothing to say whose it was (crystal-wake, Sidetrack #21).
+run ok-a nameless-g
+expect_says "RED: a summary with no name in it gets the suite's" "$OUT" "nameless-g: 2 passed, 0 failed"
+expect_not_says "GREEN: one that has it does not get it twice" "$OUT" "ok-a: ok-a:"
 
 echo ""
 echo "== order: as named, not as finished =="
