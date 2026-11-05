@@ -215,9 +215,9 @@ stay in sync.
   an open card the change left without its marker — measured against HEAD,
   so older orphans are not recited on every edit. Write the marker in the
   same edit as the card, or first: a card written a step ahead of its marker
-  is reported in between. The number sits on the checkbox line itself, one
-  number per checkbox — a wrapped continuation line, "Sidetracks #1 и #2" or
-  "побег #N" is not seen.
+  is reported in between. The number sits in the open item, the checkbox line or
+  its wrapped continuation, one number per checkbox — "Sidetracks #1 и #2",
+  "побег #N", an example in a fence or a closed `- [x]` item is not seen.
 - **At `done`**: the orphan-sidetracks gate in `crystal-completion-guard.py`
   blocks the transition whenever any `Status: open` card lacks its inline
   marker. Implementation in `lib/crystal-path.sh` as

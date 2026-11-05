@@ -77,8 +77,9 @@ the assistant. On the machine this suite is developed on, the backlog was
 expect to meet some here.
 
 Logic: scan every sidetrack card heading `### #N. <title>` followed at some
-point by `**Status:** open[ ...]`. For each, look for a matching marker
-line `- [ ] ... Sidetrack #N` anywhere in the body. Cards lacking a marker
+point by `**Status:** open[ ...]`. For each, look for `Sidetrack #N` in an
+open item anywhere in the body, the checkbox line or its wrapped continuation;
+a fence and a closed `- [x]` item do not count. Cards lacking a marker
 are reported as orphans and block the done-transition with the combined
 diagnostic (orphans listed alongside unchecked items if both exist).
 

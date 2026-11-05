@@ -571,10 +571,50 @@ hook_lint
 expect_exit "GREEN: the number on the checkbox line ⇒ exit 0" 0 "$RC"
 expect_silent "…and nothing is said" "$OUT"
 
+# The item is its checkbox line and its continuation, the model `(due:)` has read
+# since crystal-wake DL #1: 7 markers on a wrapped line stood as orphans in the
+# census of 2026-09-25 (crystal-wake, Sidetrack #1).
 wi_cards '- [ ] Reply to the sender:\n  it covers Sidetrack #1' '1|open'
 hook_lint
-expect_exit "RED: the number on a wrapped continuation line is not seen ⇒ exit 2" 2 "$RC"
-expect_says "…and the message says why" "$OUT" "continuation line"
+expect_exit "RED: the number on a wrapped continuation line is the item's ⇒ exit 0" 0 "$RC"
+
+wi_cards '- [x] Reply to the sender:\n  it covered Sidetrack #1' '1|open'
+hook_lint
+expect_exit "RED-guard: …a closed item holds no marker ⇒ exit 2" 2 "$RC"
+
+wi_cards '- [ ] Reply to the sender\n- [x] done, Sidetrack #1' '1|open'
+hook_lint
+expect_exit "RED-guard: …nor the closed item after an open one ⇒ exit 2" 2 "$RC"
+
+wi_cards '- [ ] Reply to the sender\n\nprose about Sidetrack #1' '1|open'
+hook_lint
+expect_exit "RED-guard: …nor prose no deeper than the checkbox ⇒ exit 2" 2 "$RC"
+
+wi_cards '```\n- [ ] Sidetrack #1: an example\n```' '1|open'
+hook_lint
+expect_exit "RED: an example in a fence is not a marker ⇒ exit 2" 2 "$RC"
+expect_says "…and the message names what is not seen" "$OUT" "Sidetracks #1 и #2"
+expect_not_says "…and no longer calls a continuation unseen" "$OUT" "continuation line"
+
+# Two readers, one answer: the hook's bash and the done gate's python. Absolute
+# value first: two readers that both see nothing also agree.
+AGREE="$TMP/agree-markers.md"
+printf -- '---\nstatus: dormant\n---\n\n## Sidetracks\n\n### #1. wrapped\n\n**Status:** open\n\n### #2. fenced\n\n**Status:** open\n\n### #3. closed\n\n**Status:** open\n\n### #4. plural\n\n**Status:** open\n\n### #5. plain\n\n**Status:** open\n\n## Next actions\n\n- [ ] Reply:\n  it covers Sidetrack #1\n```\n- [ ] Sidetrack #2: example\n```\n- [x] Sidetrack #3: closed\n- [ ] Sidetracks #4 and more\n- [ ] Sidetrack #5: plain\n' > "$AGREE"
+agree_bash=$(bash -c ". '$REPO_ROOT/plugins/vdm/lib/crystal-path.sh' 2>/dev/null; audit_sidetracks_without_markers '$AGREE'" | sed 's/\..*//' | tr '\n' ' ')
+agree_git=$(bash -c ". '$REPO_ROOT/plugins/vdm-git/lib/crystal-path.sh' 2>/dev/null; audit_sidetracks_without_markers '$AGREE'" | sed 's/\..*//' | tr '\n' ' ')
+agree_py=$(python3 - "$REPO_ROOT/plugins/vdm/scripts/crystal-completion-guard.py" "$AGREE" <<'PYEOF2'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("guard", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+print(" ".join(x.split(".")[0] for x in m._audit_sidetracks_without_markers(open(sys.argv[2], encoding="utf-8").read())), end=" ")
+PYEOF2
+)
+if [ "$agree_bash" = "#2 #3 #4 " ]; then ok "RED: the lib: a wrapped marker counts, fenced, closed and plural do not"
+else bad "RED: the lib: a wrapped marker counts, fenced, closed and plural do not" "got [$agree_bash]"; fi
+if [ "$agree_py" = "$agree_bash" ]; then ok "RED: the done gate's python agrees"
+else bad "RED: the done gate's python agrees" "lib [$agree_bash] python [$agree_py]"; fi
+if [ "$agree_git" = "$agree_bash" ]; then ok "…and the vdm-git copy"
+else bad "…and the vdm-git copy" "vdm [$agree_bash] vdm-git [$agree_git]"; fi
 
 wi_cards '- [ ] Sidetracks #1 и #2: reply' '1|open' '2|open'
 hook_lint

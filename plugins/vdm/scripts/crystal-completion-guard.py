@@ -169,9 +169,47 @@ def _unchecked_lines(content: str) -> list[str]:
     return out
 
 
+def _unchecked_items(content: str) -> list[str]:
+    """One string per unchecked item outside a fence: the checkbox line with its
+    continuation joined on (crystal-wake DL #1, Sidetrack #1). The model of
+    `_unchecked_lines` in lib/crystal-path.sh and of `unchecked_items` in
+    crystal-lint.py; the marker audits are compared in tests/crystal-lint.test.sh.
+    """
+    items: list[str] = []
+    cur: str | None = None
+    ind = 0
+    fence = False
+    indent = lambda s: len(s) - len(s.lstrip(" \t"))
+    for line in content.splitlines():
+        if re.match(r"^[ \t]*(```|~~~)", line):
+            if cur is not None and indent(line) <= ind:
+                items.append(cur)
+                cur = None
+            fence = not fence
+            continue
+        if fence:
+            continue
+        if re.match(r"^[ \t]*-[ \t]*\[([ \t]|x|X)\]", line):
+            if cur is not None:
+                items.append(cur)
+            ind = indent(line)
+            cur = line if re.match(r"^[ \t]*-[ \t]*\[[ \t]\]", line) else None
+            continue
+        if cur is None or not line.strip():
+            continue
+        if indent(line) > ind:
+            cur += " " + line.strip()
+        else:
+            items.append(cur)
+            cur = None
+    if cur is not None:
+        items.append(cur)
+    return items
+
+
 def _audit_sidetracks_without_markers(content: str) -> list[str]:
-    """Open sidetrack cards (Status: open) that lack an inline `- [ ] Sidetrack #N`
-    marker in the workitem body. Returns "#N. <title>" entries.
+    """Open sidetrack cards (Status: open) that lack `Sidetrack #N` in an open
+    item of the workitem body. Returns "#N. <title>" entries.
 
     Card heading shape: `### #N. <title>` — the literal period after N
     distinguishes from Decision-Log entries (`### #N / date / title`).
@@ -197,12 +235,10 @@ def _audit_sidetracks_without_markers(content: str) -> list[str]:
             current_n = None
             current_title = None
     missing: list[str] = []
+    items = _unchecked_items(content) if open_cards else []
     for n, title in open_cards:
-        marker_re = re.compile(
-            rf"^[ \t]*-[ \t]*\[ \].*Sidetrack #{n}(?:[^0-9]|$)",
-            re.MULTILINE,
-        )
-        if not marker_re.search(content):
+        marker_re = re.compile(rf"Sidetrack #{n}(?:[^0-9]|$)")
+        if not any(marker_re.search(item) for item in items):
             missing.append(f"#{n}. {title}")
     return missing
 

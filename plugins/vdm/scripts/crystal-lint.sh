@@ -406,10 +406,10 @@ EOF
 An open sidetrack is an obligation, and only a \`- [ ]\` line counts as one: the
 done-transition refuses the workitem while such a card has none, and by then
 the reason is sessions old. Give each card its own checkbox, with the number
-on the checkbox line itself:
+in that item:
   - [ ] Sidetrack #${first_n}: <what closes it>
-Not seen: the number on a wrapped continuation line, "Sidetracks #1 и #2" (one
-checkbox per number), "побег #${first_n}". If a card is not actually open,
+Not seen: "Sidetracks #1 и #2" (one checkbox per number), "побег #${first_n}", an
+example in a fence, a closed \`- [x]\` item. If a card is not actually open,
 change its **Status:** instead. Sidetracks committed before this change are
 left to the done gate.
 EOF

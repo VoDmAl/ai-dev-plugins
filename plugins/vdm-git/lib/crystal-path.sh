@@ -850,16 +850,19 @@ audit_sidetracks_without_markers() {
   # (slash separator, no period) and never carry `**Status:**` — so they don't
   # collide with this parser.
   #
-  # Marker recognition: matches `- [ ] ... Sidetrack #N` anywhere in body
-  # (typically inside `## Pending sidetracks` block, but free placement is OK).
-  # Word-boundary on N uses `[^0-9]|$` instead of `\b` for grep -E portability.
+  # Marker recognition: `Sidetrack #N` in any open item of the body, as
+  # `_unchecked_lines` reads an item: the checkbox line with its continuation, a
+  # fence not counted (crystal-wake DL #1, Sidetrack #1). Typically inside a
+  # `## Pending sidetracks` block, but free placement is OK. One number, one
+  # marker: "Sidetracks #1 и #2" marks neither. Word-boundary on N uses
+  # `[^0-9]|$` instead of `\b` for grep -E portability.
   local file="$1"
   [ -f "$file" ] || return 0
 
   local current_n=""
   local current_title=""
   local missing=""
-  local line rest n_part status_text trimmed
+  local line rest n_part status_text trimmed items="" items_read=""
   while IFS= read -r line; do
     case "$line" in
       "### #"*)
@@ -889,7 +892,8 @@ audit_sidetracks_without_markers() {
           status_text="${status_text#"${status_text%%[![:space:]]*}"}"
           case "$status_text" in
             open*)
-              if ! grep -qE "^[[:space:]]*-[[:space:]]*\[[[:space:]]\].*Sidetrack #${current_n}([^0-9]|$)" "$file" 2>/dev/null; then
+              if [ -z "$items_read" ]; then items=$(_unchecked_lines "$file"); items_read=1; fi
+              if ! printf '%s\n' "$items" | grep -qE "Sidetrack #${current_n}([^0-9]|$)"; then
                 missing="${missing}#${current_n}. ${current_title}
 "
               fi
