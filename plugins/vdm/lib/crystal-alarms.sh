@@ -96,7 +96,7 @@ _crystal_alarm_scan() {
 # stand, nothing when no alarm rings. The status goes through the project's
 # aliases: call _load_status_aliases in the calling shell first.
 crystal_alarm_text() {
-  local kind file status value n title resolved tier slug out=""
+  local kind file status value n title resolved tier slug ref top="" out=""
   while IFS=$'\t' read -r kind file status value n title; do
     resolved="$(_apply_status_alias "$status")"
     case "$kind" in field|field-bad)
@@ -105,15 +105,19 @@ crystal_alarm_text() {
       ;;
     esac
     slug="$(extract_slug "$file")"
+    # The path as it stands from the project root, as in the list of active
+    # crystals. Asked once, and only when something rings.
+    [ -n "$top" ] || top=$(git rev-parse --show-toplevel 2>/dev/null) || top=$(pwd -P)
+    ref="${file#"$top"/}"
     case "$kind" in
       field)
-        out="${out}  - ${slug} (${resolved}): deferred until ${value}, and the date has come: bring it back to work, or move the date"$'\n' ;;
+        out="${out}  - ${slug} (${resolved}): deferred until ${value}, and the date has come: bring it back to work, or move the date  (Read ${ref})"$'\n' ;;
       field-bad)
-        out="${out}  - ${slug}: deferred-until: ${value} is not a date, this alarm will not ring"$'\n' ;;
+        out="${out}  - ${slug}: deferred-until: ${value} is not a date, this alarm will not ring  (Read ${ref})"$'\n' ;;
       card)
-        out="${out}  - ${slug} (${resolved}): Sidetrack #${n} «${title}» deferred until ${value}, and the date has come: come back to it: a new crystal, or cancelled"$'\n' ;;
+        out="${out}  - ${slug} (${resolved}): Sidetrack #${n} «${title}» deferred until ${value}, and the date has come: come back to it: a new crystal, or cancelled  (Read ${ref})"$'\n' ;;
       card-bad)
-        out="${out}  - ${slug}: Sidetrack #${n}: deferred (deadline: ${value}) is not a date, this alarm will not ring"$'\n' ;;
+        out="${out}  - ${slug}: Sidetrack #${n}: deferred (deadline: ${value}) is not a date, this alarm will not ring  (Read ${ref})"$'\n' ;;
     esac
   done < <(_crystal_alarm_scan "${1:-}")
   [ -n "$out" ] || return 0

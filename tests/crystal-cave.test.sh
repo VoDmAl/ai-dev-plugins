@@ -211,6 +211,7 @@ printf -- '---\ntitle: ahead\nslug: ahead\nstatus: dormant\nsession-type: resear
 out=$(cd "$AL" && bash "$CAVE" 2>&1)
 says "RED: the crystal past its date" "$out" "late-one (dormant): deferred until 2020-01-02"
 says "RED: the card past its date, in a closed crystal" "$out" "card-one (done): Sidetrack #3 «Move to PKCE» deferred until 2020-02-01"
+says "RED: …with the path" "$out" "(Read docs/tasks/late-one/workitem.md)"
 says_not "a date ahead is not named" "$out" "deferred until 2999-01-02"
 
 printf '\ncost: counted in launches, not seconds\n'

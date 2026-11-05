@@ -272,6 +272,8 @@ crystal_fm "$A" empty-field draft 'deferred-until:' '- [ ] one'
 out="$(hydrate "$A")"
 says "RED: dormant, past the date: named with its status and the date" "$out" "past-dormant (dormant): deferred until 2020-01-02"
 says "RED: …and what to do" "$out" "bring it back to work, or move the date"
+# Echelon's criterion, brief of 2026-09-25: slug, status, date, path.
+says "RED: …and its path, from the project root" "$out" "(Read docs/tasks/past-dormant/workitem.md)"
 says "RED: ready too: parking before work is parking" "$out" "past-ready (ready): deferred until 2020-01-03"
 says "RED: the day itself rings, as crystal-cut promises «on/after»" "$out" "today-blocked (blocked): deferred until $TODAY_ISO"
 says_not "GREEN: a date still ahead is silence" "$out" "future-dormant"
@@ -312,6 +314,7 @@ printf '\n## Sidetracks\n\n```\n### #9. An example\n**Status:** deferred (deadli
 out="$(hydrate "$C")"
 says "RED: a dormant crystal's card: number, title, date" "$out" "card-dormant (dormant): Sidetrack #3 «Move to PKCE» deferred until 2020-02-01"
 says "RED: …and what to do" "$out" "come back to it: a new crystal, or cancelled"
+says "RED: …and its path" "$out" "(Read docs/tasks/card-dormant/workitem.md)"
 says "RED: a closed crystal's card too" "$out" "card-done (done): Sidetrack #3"
 says "RED: the form the completion guard prints, deferred (date)" "$out" "deferred until 2020-02-03"
 says "RED: a card with no number keeps its title in place" "$out" "card-nonumber (dormant): Sidetrack #? «A card with no number» deferred until 2020-02-08"
