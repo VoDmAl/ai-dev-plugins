@@ -59,10 +59,12 @@ pending_in_scope() {
 pending_unverified() {
   pending_in_scope || exit 0
   if command -v vdm_gate_unverified >/dev/null 2>&1; then
+    local how="${2:-}"
+    [ -n "$how" ] || how=$(vdm_gate_how_python "install python3 (stdlib is enough — the plugin brings no dependencies), then re-run: \"\${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh\" --lint <file>, or")
     vdm_gate_unverified "comms-pending" "$1" \
       "a markdown file carrying open items was just written — whether its new items name an owner and a date was never checked" \
-      "install python3 (stdlib is enough — the plugin brings no dependencies), then re-run: \"\${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh\" --lint <file>" \
-      "or check it against \"\${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh\" --print-contract by hand"
+      "$how" \
+      "check it against \"\${CLAUDE_PLUGIN_ROOT}/scripts/comms-pending.sh\" --print-contract by hand"
   else
     printf '\n[comms-pending] NOT CHECKED — %s\n  A file with open items was written and the contract check could not run.\n\n' "$1" >&2
   fi
@@ -110,7 +112,7 @@ esac
 [ -f "$file_path" ] || exit 0
 
 command -v python3 >/dev/null 2>&1 || pending_unverified "python3 is not on PATH"
-[ -f "$LINTER" ] || pending_unverified "linter not found at $LINTER"
+[ -f "$LINTER" ] || pending_unverified "linter not found at $LINTER" "reinstall the plugin, or"
 
 # Only NEW lines. Every repository that keeps open items has a tail of old ones
 # written before the contract existed; re-reporting them on every edit is how a
@@ -120,7 +122,9 @@ rc=$?
 
 case "$rc" in
   0|1) ;;
-  *)   pending_unverified "the linter exited $rc without reaching a verdict" ;;
+  *)   last=$(printf '%s\n' "$out" | tail -n 1)
+       pending_unverified "the linter exited $rc without reaching a verdict${last:+: $last}" \
+         "$(vdm_gate_how_failed "install python3, then re-run the linter, or" 2>/dev/null)" ;;
 esac
 
 # The live now.md, when the project has one: is it behind what was just written?

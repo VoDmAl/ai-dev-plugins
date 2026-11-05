@@ -103,6 +103,29 @@ vdm_gate_missing_dep() {
   return 0
 }
 
+# vdm_gate_how_python <install line> — the first way out when a gate's parser gave
+# nothing. A machine with no python3 installs one; one whose python3 is there and
+# broken has nothing to install. Advice aimed at the wrong cause sends someone to
+# fix what is not broken: the .eml guard told a session to install the python3 it
+# had just crashed under (crystal-wake, Sidetrack #17, #20).
+vdm_gate_how_python() {
+  if command -v python3 >/dev/null 2>&1; then
+    printf '%s' "python3 is on PATH and did not answer: \`python3 -c 'print(1)'\` shows how it fails. Repair it and try again, or"
+  else
+    printf '%s' "$1"
+  fi
+}
+
+# vdm_gate_how_failed <install line> — the same when a gate ran and reached no
+# verdict: is it the interpreter, or the gate? One probe, on a path that is rare.
+vdm_gate_how_failed() {
+  if python3 -c 'pass' >/dev/null 2>&1; then
+    printf '%s' "python3 runs, so this is a defect of the gate, not of this machine: send the error above to whoever ships this plugin, or"
+  else
+    vdm_gate_how_python "$1"
+  fi
+}
+
 # vdm_gate_unverified <label> <reason> <scope> [<remedy-line>...]
 #
 # Emits the standard "NOT CHECKED" diagnostic on stderr. The caller exits 2

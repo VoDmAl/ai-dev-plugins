@@ -513,6 +513,25 @@ OUT=$(printf '%s' "$IN_SCOPE" | env -i HOME="$HOME" LC_ALL=C PATH="$FARM" \
       CLAUDE_PROJECT_DIR="$FX" bash -c "bash '$PENDSH' --hook" 2>&1); rc=$?
 expect_exit "RED: a write carrying an open item, no python3 ⇒ exit 2" 2 "$rc"
 expect_says "RED: it says NOT CHECKED" "$OUT" "NOT CHECKED"
+expect_says "…and here the way out is python3" "$OUT" "install python3"
+# The way out names the cause (crystal-wake, Sidetrack #20).
+PENDFARM="$TMP/bin-halfpy-pending"
+mkdir -p "$PENDFARM"
+for f in "$FARM"/*; do ln -sf "$(readlink "$f")" "$PENDFARM/${f##*/}"; done
+printf '#!/bin/bash\nif [ "$1" = -c ]; then exec "%s" "$@"; fi\necho "ZeroDivisionError: boom" >&2\nexit 3\n' "$(command -v python3)" > "$PENDFARM/python3"
+chmod +x "$PENDFARM/python3"
+OUT=$(printf '%s' "$IN_SCOPE" | env -i HOME="$HOME" LC_ALL=C PATH="$PENDFARM" \
+      CLAUDE_PROJECT_DIR="$FX" bash -c "bash '$PENDSH' --hook" 2>&1); rc=$?
+expect_exit "comms-pending: the linter failed ⇒ exit 2" 2 "$rc"
+expect_says "RED: …it is the gate" "$OUT" "defect of the gate, not of this machine"
+expect_says "RED: …with the error" "$OUT" "ZeroDivisionError: boom"
+expect_not_says "RED: …not «install»" "$OUT" "install python3"
+printf '#!/bin/sh\necho "ZeroDivisionError: boom" >&2\nexit 1\n' > "$PENDFARM/python3"
+OUT=$(printf '%s' "$IN_SCOPE" | env -i HOME="$HOME" LC_ALL=C PATH="$PENDFARM" \
+      CLAUDE_PROJECT_DIR="$FX" bash -c "bash '$PENDSH' --hook" 2>&1); rc=$?
+expect_exit "comms-pending: python3 broken ⇒ exit 2" 2 "$rc"
+expect_says "RED: …repair it" "$OUT" "python3 is on PATH and did not answer"
+expect_not_says "RED: …not «install»" "$OUT" "install python3"
 
 OUT_OF_SCOPE=$(payload Write "$FX/docs/plain.md" "ordinary prose, no obligations")
 OUT=$(printf '%s' "$OUT_OF_SCOPE" | env -i HOME="$HOME" LC_ALL=C PATH="$FARM" \

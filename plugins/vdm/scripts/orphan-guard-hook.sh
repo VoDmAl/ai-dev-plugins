@@ -68,9 +68,11 @@ orphan_in_scope() {
 orphan_unverified() {
   orphan_in_scope || exit 0
   if command -v vdm_gate_unverified >/dev/null 2>&1; then
+    local how="${2:-}"
+    [ -n "$how" ] || how=$(vdm_gate_how_python "install python3 or jq so the hook can read its payload, then write again, or")
     vdm_gate_unverified "orphan-guard" "$1" \
       "a long-lived doc was just written — whether it has a discovery hook was never checked" \
-      "install python3 or jq so the hook can read its payload, then write again, or" \
+      "$how" \
       "run the audit by hand: \"\${CLAUDE_PLUGIN_ROOT}/scripts/check-doc-orphans.sh\""
   else
     printf '\n[orphan-guard] NOT CHECKED — %s\n  A long-lived doc was written and the orphan audit could not run.\n\n' "$1" >&2
@@ -170,7 +172,7 @@ case "$file_path" in
 esac
 
 audit_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-doc-orphans.sh"
-[ -x "$audit_script" ] || orphan_unverified "audit script not found at $audit_script"
+[ -x "$audit_script" ] || orphan_unverified "audit script not found at $audit_script" "reinstall the plugin, or"
 
 # Run the audit on this single file. Capture stderr for the feedback message.
 # We deliberately let exit 1 propagate without triggering set -e (we don't
@@ -181,7 +183,10 @@ audit_exit=$?
 # 0 clean / 1 orphan. Anything else means the audit did not reach a verdict.
 case "$audit_exit" in
   0|1) ;;
-  *)   orphan_unverified "the audit exited $audit_exit without reaching a verdict" ;;
+  *)   # The audit is shell, so python3 is not the question here.
+       last=$(printf '%s\n' "$audit_stderr" | tail -n 1)
+       orphan_unverified "the audit exited $audit_exit without reaching a verdict${last:+: $last}" \
+         "this is a defect of the gate, not of this machine: send the error above to whoever ships this plugin, or" ;;
 esac
 
 if [ "$audit_exit" -eq 1 ]; then

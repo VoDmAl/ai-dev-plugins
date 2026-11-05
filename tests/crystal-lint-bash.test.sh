@@ -87,7 +87,7 @@ hook() {
   local payload err rc
   payload=$(python3 -c 'import json,sys; print(json.dumps({"session_id":"t","hook_event_name":"PostToolUse","tool_name":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":""}}))' "$2" "$3")
   rm -f "$TMP/git.log" "$TMP/py.log"
-  err=$( { cd "$1" && printf '%s' "$payload" | PATH="$SHIM:$PATH" bash "$LINT" --bash-hook 2>&1 >/dev/null; } ); rc=$?
+  err=$( { cd "$1" && printf '%s' "$payload" | PATH="${HOOK_SHIM:-$SHIM}:$PATH" bash "$LINT" --bash-hook 2>&1 >/dev/null; } ); rc=$?
   printf '%s|%s' "$rc" "$err"
 }
 rc_of()  { printf '%s' "${1%%|*}"; }
@@ -194,6 +194,23 @@ sed -i.bak 's/^status: in-progress$/status: done/' "$W"; rm -f "$W.bak"
 out=$(hook "$B" Bash "sed -i '' 's/^status: in-progress\$/status: done/' $DONOR_PATH")
 eq "RED: flipped to done against HEAD → named (exit 2)" "2" "$(rc_of "$out")"
 says "…with the obligations left" "$(err_of "$out")" "Unchecked items"
+
+echo "== the way out names the cause (crystal-wake, Sidetrack #20) =="
+# python3 is fine and the linter fails: a one-liner runs, a script does not.
+BADPY="$TMP/badpy"; mkdir -p "$BADPY"
+cat >"$BADPY/python3" <<EOF
+#!/bin/bash
+[ "\$1" = -c ] && exec "$REAL_PY" "\$@"
+echo "ZeroDivisionError: boom" >&2
+exit 3
+EOF
+chmod +x "$BADPY/python3"
+C20="$TMP/cause"; fresh "$C20"
+out=$(HOOK_SHIM="$BADPY" hook "$C20" Bash "$PY")
+eq "the linter failed → exit 2" "2" "$(rc_of "$out")"
+says "RED: …it is the gate" "$(err_of "$out")" "defect of the gate, not of this machine"
+says "RED: …with the error" "$(err_of "$out")" "ZeroDivisionError: boom"
+says_not "RED: …not «install»" "$(err_of "$out")" "install python3"
 
 printf '\ncrystal-lint-bash: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

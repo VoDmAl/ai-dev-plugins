@@ -73,6 +73,15 @@ expect_says() {
   esac
 }
 
+expect_not_says() {
+  # expect_not_says <desc> <output> <needle> — an empty output proves nothing
+  [ -n "$2" ] || { bad "$1" "output is empty — absence proves nothing there; assert silence instead"; return; }
+  case "$2" in
+    *"$3"*) bad "$1" "output should NOT mention: $3" ;;
+    *)      ok "$1" ;;
+  esac
+}
+
 TMP=$(mktemp -d 2>/dev/null || mktemp -d -t failclosed)
 cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT
@@ -82,10 +91,10 @@ TOOLS="bash sh grep sed awk cat tr mktemp date git printf head tail sort uniq
        wc find dirname basename cut env mv rm mkdir readlink stat diff cp touch
        ls tee xargs cmp true false test expr [ realpath id uname"
 
-for d in full nopy nojq crashpy; do mkdir -p "$TMP/bin-$d"; done
+for d in full nopy nojq crashpy halfpy; do mkdir -p "$TMP/bin-$d"; done
 for t in $TOOLS; do
   p=$(command -v "$t" 2>/dev/null) || continue
-  for d in full nopy nojq crashpy; do ln -sf "$p" "$TMP/bin-$d/$t"; done
+  for d in full nopy nojq crashpy halfpy; do ln -sf "$p" "$TMP/bin-$d/$t"; done
 done
 
 JQ=$(command -v jq 2>/dev/null || true)
@@ -98,11 +107,15 @@ if [ -z "$JQ" ]; then
   echo "hook-fail-closed: jq not available — skipping (the nojq/fallback cases need it present elsewhere)" >&2
   exit 0
 fi
-for d in full nopy crashpy; do ln -sf "$JQ" "$TMP/bin-$d/jq"; done
+for d in full nopy crashpy halfpy; do ln -sf "$JQ" "$TMP/bin-$d/jq"; done
 for d in full nojq;          do ln -sf "$PY" "$TMP/bin-$d/python3"; done
 printf '#!/bin/bash\necho "Traceback (most recent call last):" >&2\necho "  ModuleNotFoundError: simulated crash" >&2\nexit 1\n' \
   > "$TMP/bin-crashpy/python3"
 chmod +x "$TMP/bin-crashpy/python3"
+# python3 is fine and the gate's own script fails: a one-liner runs, a script crashes.
+printf '#!/bin/bash\nif [ "$1" = -c ]; then exec "%s" "$@"; fi\necho "Traceback (most recent call last):" >&2\necho "ZeroDivisionError: boom" >&2\nexit 1\n' "$PY" \
+  > "$TMP/bin-halfpy/python3"
+chmod +x "$TMP/bin-halfpy/python3"
 
 # --- fixture project ---------------------------------------------------------
 # Canonicalised with `pwd -P`, and that is load-bearing rather than tidy: on
@@ -310,6 +323,43 @@ echo "== the sidetrack check on PostToolUse needs no python3: jq reads the paylo
 run nopy p-workitem.json "bash '$LINT' --hook"; expect_exit "crystal-lint --hook: real verdict without python3" 0 "$?"
 run crashpy p-workitem.json "bash '$LINT' --hook"; expect_exit "crystal-lint --hook: crashing python3 ⇒ exit 2" 2 "$?"
 expect_says "  and says NOT CHECKED" "$OUT" "NOT CHECKED"
+
+echo ""
+echo "== the way out names the cause, not always python3 (crystal-wake, Sidetrack #20) =="
+# Field case (program, 2026-09-26, the .eml guard): a gate crashed, and the message
+# advised installing the python3 it had just crashed under. Three states, three moves.
+cause() { # cause <label> <payload> <command> — the three states of one gate
+  run nopy "$2" "$3"
+  expect_says "$1: no python3 → install it" "$OUT" "install python3"
+  run crashpy "$2" "$3"
+  expect_exit "$1: python3 broken ⇒ still exit 2" 2 "$?"
+  expect_says "RED: $1: python3 broken → repair it" "$OUT" "python3 is on PATH and did not answer"
+  expect_not_says "RED: $1: …not «install» what is plainly there" "$OUT" "install python3"
+  run halfpy "$2" "$3"
+  expect_exit "$1: the gate failed ⇒ still exit 2" 2 "$?"
+  expect_says "RED: $1: python3 fine, the gate failed → it is the gate" "$OUT" "defect of the gate, not of this machine"
+  expect_says "RED: $1: …with the error" "$OUT" "ZeroDivisionError: boom"
+  expect_not_says "RED: $1: …not «install»" "$OUT" "install python3"
+}
+cause "git-guard" p-commit-Bash.json "bash '$GITGUARD'"
+cause "completion-guard" p-done.json "bash '$GUARD'"
+cause "crystal-lint" p-workitem.json "bash '$LINT' --pre-hook"
+
+# The orphan audit is shell, so nothing makes it fail but a stand-in.
+O="$TMP/orphan-copy"; mkdir -p "$O/scripts"
+cp "$ORPHAN" "$O/scripts/"; cp -R "$REPO_ROOT/plugins/vdm/lib" "$O/lib"
+printf '#!/bin/bash\necho "audit: boom in the scan" >&2\nexit 5\n' > "$O/scripts/check-doc-orphans.sh"
+chmod +x "$O/scripts/check-doc-orphans.sh"
+run full p-llm.json "bash '$O/scripts/orphan-guard-hook.sh'"
+expect_exit "orphan-guard: the audit failed ⇒ exit 2" 2 "$?"
+expect_says "RED: orphan-guard: it is the gate" "$OUT" "defect of the gate, not of this machine"
+expect_says "RED: orphan-guard: …with the error" "$OUT" "audit: boom in the scan"
+expect_not_says "RED: orphan-guard: …no parser to install" "$OUT" "install python3"
+rm -f "$O/scripts/check-doc-orphans.sh"
+run full p-llm.json "bash '$O/scripts/orphan-guard-hook.sh'"
+expect_says "RED: orphan-guard: a file of the plugin gone → reinstall" "$OUT" "reinstall the plugin"
+run crashpy p-llm.json "bash '$ORPHAN'"
+expect_says "RED: orphan-guard: python3 broken → repair it, when it blocks unread" "$OUT" "python3 is on PATH and did not answer"
 
 printf '\nhook-fail-closed: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

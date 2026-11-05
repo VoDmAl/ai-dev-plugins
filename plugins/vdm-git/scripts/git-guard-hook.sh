@@ -58,9 +58,11 @@ guard_in_scope() {
 guard_unverified() {
   guard_in_scope || exit 0
   if command -v vdm_gate_unverified >/dev/null 2>&1; then
+    local how="${2:-}"
+    [ -n "$how" ] || how=$(vdm_gate_how_python "install python3 — the guard is a python script — and try again, or")
     vdm_gate_unverified "git-guard" "$1" \
       "a command that looks like \`git commit\` or \`git push\` — whether the guard would have allowed it was never decided" \
-      "install python3 — the guard is a python script — and try again, or" \
+      "$how" \
       "if this command is not a commit or a push, run it in a form that does not mention them"
   else
     printf '\n[git-guard] NOT CHECKED — %s\n  A commit/push-shaped command arrived and the guard could not run.\n\n' "$1" >&2
@@ -69,7 +71,7 @@ guard_unverified() {
 }
 
 command -v python3 >/dev/null 2>&1 || guard_unverified "python3 is not on PATH"
-[ -f "$GUARD" ] || guard_unverified "guard not found at $GUARD"
+[ -f "$GUARD" ] || guard_unverified "guard not found at $GUARD" "reinstall the plugin, or"
 
 printf '%s' "$payload" | python3 "$GUARD"
 rc=$?
@@ -78,5 +80,6 @@ rc=$?
 # payload it refused to parse, a killed process — is not a verdict.
 case "$rc" in
   0|2) exit "$rc" ;;
-  *)   guard_unverified "the guard exited $rc without reaching a verdict" ;;
+  *)   guard_unverified "the guard exited $rc without reaching a verdict" \
+         "$(vdm_gate_how_failed "install python3 — the guard is a python script — and try again, or" 2>/dev/null)" ;;
 esac

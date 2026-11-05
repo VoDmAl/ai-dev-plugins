@@ -116,9 +116,11 @@ guard_in_scope() {
 guard_unverified() {
   guard_in_scope || exit 0
   if command -v vdm_gate_unverified >/dev/null 2>&1; then
+    local how="${2:-}"
+    [ -n "$how" ] || how=$(vdm_gate_how_python "install python3 — the checker is a python script — and write again, or")
     vdm_gate_unverified "crystal-completion-guard" "$1" \
       "a workitem is being written with a terminal status — whether open \`- [ ]\` obligations remain was never checked" \
-      "install python3 — the checker is a python script — and write again, or" \
+      "$how" \
       "sweep the file by hand: every \`- [ ]\` must be resolved via one of the five paths (crystal-cut DL #9) before status:done"
   else
     printf '\n[crystal-completion-guard] NOT CHECKED — %s\n  A workitem is going terminal and the gate could not run. Blocking.\n\n' "$1" >&2
@@ -129,7 +131,7 @@ guard_unverified() {
 if ! command -v python3 >/dev/null 2>&1; then
   guard_unverified "python3 is not on PATH"
 fi
-[ -f "$simulator" ] || guard_unverified "checker not found at $simulator"
+[ -f "$simulator" ] || guard_unverified "checker not found at $simulator" "reinstall the plugin, or"
 
 printf '%s' "$payload" \
   | CRYSTAL_ROOTS="$roots_colon" \
@@ -142,5 +144,6 @@ rc=$?
 # means it did not reach a verdict — a crash, an import error, a killed process.
 case "$rc" in
   0|2) exit "$rc" ;;
-  *)   guard_unverified "the checker exited $rc without reaching a verdict" ;;
+  *)   guard_unverified "the checker exited $rc without reaching a verdict" \
+         "$(vdm_gate_how_failed "install python3 — the checker is a python script — and write again, or" 2>/dev/null)" ;;
 esac

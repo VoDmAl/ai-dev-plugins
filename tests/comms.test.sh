@@ -1283,6 +1283,25 @@ OUT=$(printf '%s' "$hook_payload" | env -i HOME="$HOME" LC_ALL=C PATH="$FARM" \
       bash -c "bash '$LINTSH' --hook" 2>&1); rc=$?
 expect_exit "RED: comms-lint hook without python3 ⇒ exit 2" 2 "$rc"
 expect_says "RED: it says NOT CHECKED" "$OUT" "NOT CHECKED"
+expect_says "…and here the way out is python3" "$OUT" "install python3"
+# The way out names the cause (crystal-wake, Sidetrack #20).
+LINTFARM="$TMP/bin-halfpy-lint"
+mkdir -p "$LINTFARM"
+for f in "$FARM"/*; do ln -sf "$(readlink "$f")" "$LINTFARM/${f##*/}"; done
+printf '#!/bin/bash\nif [ "$1" = -c ]; then exec "%s" "$@"; fi\necho "ZeroDivisionError: boom" >&2\nexit 3\n' "$(command -v python3)" > "$LINTFARM/python3"
+chmod +x "$LINTFARM/python3"
+OUT=$(printf '%s' "$hook_payload" | env -i HOME="$HOME" LC_ALL=C PATH="$LINTFARM" \
+      bash -c "bash '$LINTSH' --hook" 2>&1); rc=$?
+expect_exit "comms-lint: the linter failed ⇒ exit 2" 2 "$rc"
+expect_says "RED: …it is the gate" "$OUT" "defect of the gate, not of this machine"
+expect_says "RED: …with the error" "$OUT" "ZeroDivisionError: boom"
+expect_not_says "RED: …not «install»" "$OUT" "install python3"
+printf '#!/bin/sh\necho "ZeroDivisionError: boom" >&2\nexit 1\n' > "$LINTFARM/python3"
+OUT=$(printf '%s' "$hook_payload" | env -i HOME="$HOME" LC_ALL=C PATH="$LINTFARM" \
+      bash -c "bash '$LINTSH' --hook" 2>&1); rc=$?
+expect_exit "comms-lint: python3 broken ⇒ exit 2" 2 "$rc"
+expect_says "RED: …repair it" "$OUT" "python3 is on PATH and did not answer"
+expect_not_says "RED: …not «install»" "$OUT" "install python3"
 
 out_payload=$(payload Write "$FX/gaps/alpha/comms/2026-09-21-new-out.md" "$SENT")
 OUT=$(printf '%s' "$out_payload" | env -i HOME="$HOME" LC_ALL=C PATH="$FARM" \

@@ -263,10 +263,12 @@ if [ "$mode" = "hook" ] || [ "$mode" = "pre-hook" ]; then
   lint_unverified() {
     lint_in_scope || exit 0
     if command -v vdm_gate_unverified >/dev/null 2>&1; then
+      local how="${2:-}"
+      [ -n "$how" ] || how=$(vdm_gate_how_python "install python3 — the linter is a python script — then re-run: \"\${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh\" <file>, or")
       vdm_gate_unverified "crystal-lint" "$1" \
         "a workitem was just written — whether it matches the canonical shape was never checked" \
-        "install python3 — the linter is a python script — then re-run: \"\${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh\" <file>" \
-        "or compare the file against templates/workitem-template.md by hand"
+        "$how" \
+        "compare the file against templates/workitem-template.md by hand"
     else
       printf '\n[crystal-lint] NOT CHECKED — %s\n  A workitem was written and the canon check could not run.\n\n' "$1" >&2
     fi
@@ -341,8 +343,10 @@ if cur is not None:
     case "$rc" in
       0) exit 0 ;;
       1) printf '%s\n' "$out" | grep -q '^  ✗ ' \
-           || lint_unverified "the linter exited 1 without naming a finding" ;;
-      *) lint_unverified "the linter exited $rc without reaching a verdict" ;;
+           || lint_unverified "the linter exited 1 without naming a finding: $(printf '%s\n' "$out" | tail -n 1)" \
+                "$(vdm_gate_how_failed "install python3, then re-run the linter, or" 2>/dev/null)" ;;
+      *) lint_unverified "the linter exited $rc without reaching a verdict: $(printf '%s\n' "$out" | tail -n 1)" \
+           "$(vdm_gate_how_failed "install python3, then re-run the linter, or" 2>/dev/null)" ;;
     esac
     printf '%s\n' "$out" >&2
     cat >&2 <<'EOF'
@@ -439,10 +443,12 @@ if [ "$mode" = "bash-hook" ]; then
 
   bash_unverified() {
     if command -v vdm_gate_unverified >/dev/null 2>&1; then
+      local how="${2:-}"
+      [ -n "$how" ] || how=$(vdm_gate_how_python "install python3 — the linter is a python script — then re-run: \"\${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh\" <file>, or")
       vdm_gate_unverified "crystal-lint" "$1" \
         "a shell command named a workitem — whether what it left matches the canon and keeps its obligations was never checked" \
-        "install python3 — the linter is a python script — then re-run: \"\${CLAUDE_PLUGIN_ROOT}/scripts/crystal-lint.sh\" <file>" \
-        "or compare the file against templates/workitem-template.md by hand"
+        "$how" \
+        "compare the file against templates/workitem-template.md by hand"
     else
       printf '\n[crystal-lint] NOT CHECKED — %s\n  A shell command named a workitem and the check could not run.\n\n' "$1" >&2
     fi
@@ -512,9 +518,11 @@ if [ "$mode" = "bash-hook" ]; then
     case "$?" in
       0) ;;
       1) printf '%s\n' "$out" | grep -q '^  ✗ ' \
-           || bash_unverified "the linter exited 1 without naming a finding"
+           || bash_unverified "the linter exited 1 without naming a finding: $(printf '%s\n' "$out" | tail -n 1)" \
+                "$(vdm_gate_how_failed "install python3, then re-run the linter, or" 2>/dev/null)"
          found="${found}${out}"$'\n' ;;
-      *) bash_unverified "the linter ended without a verdict" ;;
+      *) bash_unverified "the linter ended without a verdict: $(printf '%s\n' "$out" | tail -n 1)" \
+           "$(vdm_gate_how_failed "install python3, then re-run the linter, or" 2>/dev/null)" ;;
     esac
 
     # 2. Open sidetracks without a checkbox — only those this change brought.
@@ -543,7 +551,8 @@ print(json.dumps({"tool_name": "Write", "tool_input": {"file_path": p, "content"
       case "$?" in
         0) ;;
         2) found="${found}${out}"$'\n' ;;
-        *) bash_unverified "the completion checker ended without a verdict" ;;
+        *) bash_unverified "the completion checker ended without a verdict: $(printf '%s\n' "$out" | tail -n 1)" \
+             "$(vdm_gate_how_failed "install python3, then re-run the checker, or" 2>/dev/null)" ;;
       esac
     fi
 

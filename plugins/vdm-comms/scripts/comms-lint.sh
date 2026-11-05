@@ -64,10 +64,12 @@ lint_in_scope() {
 lint_unverified() {
   lint_in_scope || exit 0
   if command -v vdm_gate_unverified >/dev/null 2>&1; then
+    local how="${2:-}"
+    [ -n "$how" ] || how=$(vdm_gate_how_python "install python3 (stdlib is enough — the plugin brings no dependencies), then re-run: \"\${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh\" <file>, or")
     vdm_gate_unverified "comms-lint" "$1" \
       "a file under the meetings tree was just written — whether it meets the contract was never checked" \
-      "install python3 (stdlib is enough — the plugin brings no dependencies), then re-run: \"\${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh\" <file>" \
-      "or check it against \"\${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh\" --print-contract by hand"
+      "$how" \
+      "check it against \"\${CLAUDE_PLUGIN_ROOT}/scripts/comms-lint.sh\" --print-contract by hand"
   else
     printf '\n[comms-lint] NOT CHECKED — %s\n  A meetings file was written and the contract check could not run.\n\n' "$1" >&2
   fi
@@ -115,14 +117,16 @@ esac
 [ -f "$file_path" ] || exit 0
 
 command -v python3 >/dev/null 2>&1 || lint_unverified "python3 is not on PATH"
-[ -f "$LINTER" ] || lint_unverified "linter not found at $LINTER"
+[ -f "$LINTER" ] || lint_unverified "linter not found at $LINTER" "reinstall the plugin, or"
 
 out=$(python3 "$LINTER" --quiet "$file_path" 2>&1)
 rc=$?
 
 case "$rc" in
   0|1) ;;
-  *)   lint_unverified "the linter exited $rc without reaching a verdict" ;;
+  *)   last=$(printf '%s\n' "$out" | tail -n 1)
+       lint_unverified "the linter exited $rc without reaching a verdict${last:+: $last}" \
+         "$(vdm_gate_how_failed "install python3, then re-run the linter, or" 2>/dev/null)" ;;
 esac
 
 # Warnings without errors do not block: they name a divergence (a `type` the
