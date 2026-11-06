@@ -968,8 +968,11 @@ printf '\n== conformance: four implementations of "what is an obligation" ==\n'
 # checkbox format could never be closed — and nothing compared them. Identical
 # wrongness is invisible; only an outside comparison sees it.
 #
-# So the answer is conformance, not consolidation: one fixture, three engines,
-# they must agree. This test is what makes the three copies safe to keep.
+# So the answer is conformance, not consolidation: one fixture, four engines
+# (the fourth, vdm-git's, was found on 2026-09-25), they must agree. This test is
+# what makes the copies safe to keep. Each engine is CALLED: this test used to hold
+# a copy of the pre-commit gate's awk, so it compared the lib with its own copy
+# and the gate could drift under it unseen (crystal-wake, Sidetrack #3).
 CONF="$TMP/conformance.md"
 cat >"$CONF" <<'FIXTURE'
 ---
@@ -996,12 +999,6 @@ Not a checkbox at all - [ ] mid-sentence
 FIXTURE
 
 conf_lib=$(bash -c ". '$REPO_ROOT/plugins/vdm/lib/crystal-path.sh' 2>/dev/null; count_unchecked '$CONF'")
-conf_gate=$(cat "$CONF" | awk '
-  /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
-  fence { next }
-  /^[[:space:]]*-[[:space:]]*\[[[:space:]]\]/ { n++ }
-  END { print n+0 }
-')
 conf_py=$(python3 -c "
 import sys, importlib.util
 spec = importlib.util.spec_from_file_location('g', '$REPO_ROOT/plugins/vdm/scripts/crystal-completion-guard.py')
@@ -1009,23 +1006,25 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 print(len(m._unchecked_lines(open('$CONF').read())))
 " 2>/dev/null)
-# vdm-git's copy reads what is staged, so the fixture is staged in a repo of its
-# own (no commit), and the count is read from the refusal it prints.
+# Both pre-commit gates read what is staged, so the fixture is staged in a repo of
+# its own (no commit), and the count is read from the refusal each prints.
 CONF_REPO="$TMP/conformance-repo"
 mkdir -p "$CONF_REPO/docs/tasks/conf"
 cp "$CONF" "$CONF_REPO/docs/tasks/conf/workitem.md"
 ( cd "$CONF_REPO" && git init -q . && git add -- docs/tasks/conf/workitem.md ) >/dev/null 2>&1
+conf_gate=$(cd "$CONF_REPO" && bash "$REPO_ROOT/scripts/check-crystal-completion.sh" 2>&1 \
+  | sed -n 's/.* \([0-9][0-9]*\) unchecked item(s).*/\1/p' | head -1)
 conf_ship=$(cd "$CONF_REPO" && bash "$REPO_ROOT/plugins/vdm-git/scripts/crystal-precommit-check.sh" 2>&1 \
   | sed -n 's/.* \([0-9][0-9]*\) unchecked item(s).*/\1/p' | head -1)
 
 # 8 real obligations; the two fenced examples and the mid-sentence text are not.
 # The wrapped item and the nested checkbox are there for crystal-wake DL #1: the
-# lib now JOINS an item's continuation onto its checkbox line, while the other two
+# lib now JOINS an item's continuation onto its checkbox line, while the other
 # engines count checkbox lines — so the join must never change the count (one
 # line per checkbox, a nested one included). The tab inside the brackets was a
 # quiet split until the same day: both awk engines took it (`[[:space:]]`), the
 # Python guard did not (`\[ \]`).
-# Absolute values FIRST, agreement second. Agreement alone is not the test: three
+# Absolute values FIRST, agreement second. Agreement alone is not the test: four
 # engines that all return 0 agree perfectly and are all wrong — which is exactly
 # the shape of the incident this guards against. Pinning the number is what makes
 # the agreement assertion mean something.
