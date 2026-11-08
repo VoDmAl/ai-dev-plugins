@@ -164,8 +164,9 @@ if [ -z "$missing" ]; then
   # Balls left here by letters picked up lately and written nowhere at home
   # (held-ball-after-pickup, DL #2): named until a crystal or a pending file says
   # them, or the letter says where they live. Not in an intercom session: the
-  # owner's sessions keep the project's open items.
-  if ! intercom_mail_session; then
+  # owner's sessions keep the project's open items — unless the owner sits at this
+  # one (intercom-session-stays, DL #5).
+  if ! intercom_mail_session || intercom_stays_session; then
     held="$(intercom_held_balls "$id" 2>/dev/null)"
     if [ -n "$held" ]; then
       msg="${msg}
@@ -213,7 +214,21 @@ fi
 # left for itself is not its mail, and the session ends itself with `close`.
 # The 📮 line is also the mark a sender on the other machine reads in this
 # session's transcript. @see intercom-common.sh → "Intercom sessions"
-if intercom_mail_session; then
+if intercom_stays_session; then
+  # One the owner started or joined (vdx 0.48.0, @vdx_stays): the same work, and the
+  # owner sits here — the start of the 📮 line is the mark a sender elsewhere reads,
+  # so it stays (intercom-session-stays, DL #5).
+  if [ "$pending" -gt 0 ]; then inbox_now="${pending} letter(s) are waiting now."; else inbox_now="The inbox is empty now."; fi
+  questions="$(intercom_questions_here "$id" "$own_sid" | grep -c .)"
+  [ "$questions" -eq 0 ] && q_now="" || q_now=" ❓ ${questions} of them: question(s) for the user — put them first."
+  msg="${msg}
+📮 Intercom session of \`${id}\`: the inbox is your work, not a reminder — the user started or joined this session (@vdx_stays), and the wakes for this project come here. ${inbox_now}${q_now} Now and at every wake: /vdm:intercom check, then each letter in turn — take it, read it, act, close it with reply or pickup, or release --note one that waits for something outside the inbox.
+  • Here you answer, check and do small things. Work that changes the code is left for the owner's main session as a crystal (/vdm:crystal-grow, or /vdm:crystal-bud on an active one): the two share one working tree.
+  • A question for the user is asked here, in a plain message, options too — the user is at this session. On a letter of another agent's that waits for it, /vdm:intercom ask still sends it to the session that wrote that letter, when it lives.
+  • A chain of letters between intercom sessions stops after ${INTERCOM_CHAIN_LIMIT} links in a row; send refuses the next one.
+  • A letter from \`${id}\` itself is a note for the owner's next working session, not mail: leave it untaken.
+  • Inbox handled: say what was done, then /vdm:intercom close — the session stays and waits for the next wake; vdx keeps it open."
+elif intercom_mail_session; then
   if [ "$pending" -gt 0 ]; then inbox_now="${pending} letter(s) are waiting now."; else inbox_now="The inbox is empty now."; fi
   msg="${msg}
 📮 Intercom session of \`${id}\`: the inbox is your work, not a reminder — nobody sits at this session, and the wakes for this project come here. ${inbox_now} Now and at every wake: /vdm:intercom check, then each letter in turn — take it, read it, act, and close it: reply for a brief, pickup for a note; one that waits for something outside the inbox goes back with release --note \"<what it waits for>\".

@@ -1021,6 +1021,29 @@ process, like focused; a session started with both is focused. Before vdm
 The user read that as a session for their e-mail (2026-10-28), so the name in
 anything the user reads is "intercom session" ("сессия intercom").
 
+**Two kinds, since vdx 0.48.0.** One a letter started (`--detach`) is what the
+bullets below describe: nobody sits at it, and it closes itself. One the user
+started from a terminal, or joined, stays when its inbox is handled: vdx marks its
+tmux session with the option `@vdx_stays`, possibly after it started, and
+`vdx ai --close` leaves it open. The user may sit at that one, so for it:
+
+- the live list marks it `(idle, mail, stays)`, and it is woken like an HQ
+  session — at once while idle, not while busy or waiting on the user, and
+  nobody else in its place; the pointer says the user is there;
+- its start line and `check` say the user started or joined it, a question for
+  the user is asked there in a plain message, and a question whose session went
+  is put there too, not on the list at HQ;
+- its letters carry `from-session:` beside `session: mail`: an answer and `ask`
+  find it while it lives, and the chain limit still counts the link, since the
+  user at the pane is not a move of theirs;
+- the questions and the balls of the start line, the arrival line and the line
+  about a mention gone stale all work in it;
+- `close` says what was handled and that the session stays; `vdx ai --close
+  --waiting <n>` still runs and marks the count.
+
+The mark is read at the moment of acting, never kept: the user may join after the
+start line said nobody sits there.
+
 - **Woken at once.** When the recipient has a live intercom session on this
   machine, `send`, `sent` and the receipt after `pickup` wake that one, ahead
   of the session where the user typed last and without the 15-minute window:

@@ -416,6 +416,11 @@ cmd_check() {
   fi
   _ic_print_unclaimed "$id" "   "
   printf '📬 intercom: %s pending message(s) for `%s`\n   inbox: %s\n\n' "$n" "$id" "$(intercom_inbox_dir "$id")"
+  # The owner may join an intercom session after its start line said nobody sits
+  # at it (intercom-session-stays, DL #5): said here, where it is asked anew.
+  if intercom_stays_session; then
+    printf '   👤 The user started or joined this intercom session (@vdx_stays): a question goes to them here, in a plain message, and close leaves the session waiting.\n\n'
+  fi
   local f from created slug title prev taken deferred tstate ttopic tname trest fstate fa fb fc owner_word hq=""
   intercom_hq_session && hq=1
   while IFS= read -r f; do
@@ -458,7 +463,7 @@ cmd_check() {
     esac
     # A question for the owner, and the owner's word back (intercom-hitl-via-initiator, DL #5).
     if [ -n "$(intercom_fm_field "$f" ask)" ] && [ "$fstate" != live ] && [ "$fstate" != away ]; then
-      if intercom_mail_session; then
+      if intercom_mail_session && ! intercom_stays_session; then
         printf '    ❓ a question for the user, and the session that wrote the letter is gone. Nobody sits here: one line on their list at HQ, naming this letter (the access layer'"'"'s `hq <project root> --obligations`), then pickup\n'
       else
         printf '    ❓ a question for the user: put it to them now, as written, in a plain message, options too; then /vdm:intercom answer %s --word "<their words, verbatim>"\n' "$(basename "$f" .md)"
@@ -926,6 +931,11 @@ cmd_send() {
   local session_line="" for_session=""
   if intercom_mail_session; then
     session_line="session: mail"
+    # The owner sits at one they started or joined: an answer or a question finds it
+    # while it lives, and the link still counts as one between agents (DL #5).
+    if intercom_stays_session && [ "$canon" != "$from" ] && [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+      session_line="$session_line"$'\n'"from-session: $CLAUDE_CODE_SESSION_ID"
+    fi
   elif [ "$canon" != "$from" ] && [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
     session_line="from-session: $CLAUDE_CODE_SESSION_ID"
   fi
@@ -1134,7 +1144,7 @@ cmd_send() {
       elif [ "${!VDM_HQ_ENV:-}" = 1 ] || printf '%s\n' "$live" | awk -F '\t' '$4 == "hq" { f = 1 } END { exit !f }'; then
         wlive=""
       else
-        wlive="$(printf '%s\n' "$live" | awk -F '\t' 'NF && $4 != "mail"')"
+        wlive="$(printf '%s\n' "$live" | awk -F '\t' 'NF && $4 != "mail" && $4 != "stays"')"
       fi
     fi
     if [ -n "$wlive" ]; then
@@ -1172,9 +1182,10 @@ _ic_novdx_line() {
   fi
 }
 
-# "name (status), name (status, mail), name (status, hq)" from intercom_live_sessions lines.
+# "name (status), name (status, mail), name (status, mail, stays), name (status, hq)"
+# from intercom_live_sessions lines.
 _ic_live_list() {
-  printf '%s\n' "$1" | awk -F '\t' '{ printf "%s%s (%s%s)", (NR > 1 ? ", " : ""), $1, $2, ($4 == "mail" ? ", mail" : ($4 == "hq" ? ", hq" : "")) }'
+  printf '%s\n' "$1" | awk -F '\t' '{ printf "%s%s (%s%s)", (NR > 1 ? ", " : ""), $1, $2, ($4 == "mail" ? ", mail" : ($4 == "stays" ? ", mail, stays" : ($4 == "hq" ? ", hq" : ""))) }'
 }
 
 # _ic_wake_lines <name> <why> <slug> <from> <title> <mode> <body set> [<topic>]
@@ -1202,6 +1213,8 @@ _ic_wake_lines() {
 _ic_pointer() {
   if [ "$4" = mail ]; then
     printf '📬 intercom: `%s` from `%s` — %s. You are the intercom session: take it and handle it — /vdm:intercom check' "$1" "$2" "$3"
+  elif [ "$4" = stays ]; then
+    printf '📬 intercom: `%s` from `%s` — %s. You are the intercom session, and the user started or joined it: take it and handle it now — /vdm:intercom check; ask them here where the answer needs their decision' "$1" "$2" "$3"
   elif [ "$4" = hq ]; then
     printf '📬 intercom: `%s` from `%s` — %s. You are the HQ session: take it and handle it now — /vdm:intercom check; ask the user only where the answer needs their decision, in words, with your recommendation' "$1" "$2" "$3"
   elif [ "$4" = topic ]; then
@@ -1385,7 +1398,13 @@ cmd_close() {
     exit 1
   fi
   command -v vdx >/dev/null 2>&1 || _ic_die "close: no vdx on PATH — the intercom session is vdx's to close."
-  printf '📮 intercom: inbox handled — %s letter(s) left for the owner: vdx ai --close --waiting %s\n' "$n" "$n"
+  if intercom_stays_session; then
+    # vdx leaves a session the owner started or joined open, and marks the count
+    # (intercom-session-stays, DL #1): nothing here promises an end.
+    printf '📮 intercom: inbox handled — %s letter(s) left for the owner; this session stays, the user started or joined it: vdx ai --close --waiting %s\n' "$n" "$n"
+  else
+    printf '📮 intercom: inbox handled — %s letter(s) left for the owner: vdx ai --close --waiting %s\n' "$n" "$n"
+  fi
   vdx ai --close --waiting "$n"
   exit $?
 }

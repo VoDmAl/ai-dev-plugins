@@ -221,7 +221,7 @@ case "$count" in ''|*[!0-9]*) count=0 ;; esac
 # A mention gone stale is not mail: it is this session's own sentence, so it is said
 # in every session the owner may sit at, focused or quiet, and with an empty inbox.
 stale_msg=""
-if [ "$arrival_on" = "true" ] && ! intercom_mail_session; then
+if [ "$arrival_on" = "true" ] && { ! intercom_mail_session || intercom_stays_session; }; then
   stale_tr="$(printf '%s' "$payload" | jq -r '.transcript_path // empty' 2>/dev/null)"
   stale_sid="$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null)"
   [ -z "$stale_tr" ] || stale="$(_ic_stale "$id" "$stale_tr" "$stale_sid")"

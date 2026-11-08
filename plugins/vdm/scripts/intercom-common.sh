@@ -1376,12 +1376,30 @@ intercom_focused() { [ "${VDX_FOCUSED:-}" = 1 ]; }
 # The mode is read like focused: from the environment of the session's own
 # process. The variable is vdx's to name; until it does, this is the one line
 # that knows it.
+#
+# Two kinds since vdx 0.48.0 (docs/tasks/intercom-session-stays, DL #1). One a
+# letter started (`--detach`) is as above, and closes itself. One the owner
+# started from a terminal, or joined, stays when its inbox is handled: vdx marks it
+# with the tmux option @vdx_stays, which may come after the session started. The
+# owner may sit at that one, so it is woken like an HQ session (DL #4), a question
+# goes to the owner there, and its letters carry `from-session:` besides
+# `session: mail` (DL #5). Its mode in the list of live sessions is `stays`.
 # ---------------------------------------------------------------------------
 INTERCOM_MAIL_ENV=VDX_INTERCOM
 
 # intercom_mail_session — this session is its project's intercom session (and not
 # also focused: deaf wins).
 intercom_mail_session() { [ "${!INTERCOM_MAIL_ENV:-}" = 1 ] && ! intercom_focused; }
+
+# intercom_stays_session — this intercom session is one the owner started or
+# joined: the tmux option @vdx_stays of its session reads 1. Asked at the moment
+# of acting, never cached: the owner may join after the session started.
+intercom_stays_session() {
+  intercom_mail_session || return 1
+  local v
+  v="$(_intercom_tmux_option "${TMUX:-}" "${TMUX_PANE:-}" @vdx_stays)"
+  [ "${v//[[:space:]]/}" = 1 ]
+}
 
 # ---------------------------------------------------------------------------
 # An HQ session's letters are its work (docs/tasks/hq-session-active). The owner,
@@ -1566,7 +1584,7 @@ _intercom_version_ge() {
 intercom_mail_start() {
   local id="$1" live="$2" sender="$3" clone ver
   [ "$id" != "$sender" ] || return 0
-  printf '%s\n' "$live" | awk -F '\t' '$4 == "mail" { f = 1 } END { exit !f }' && return 0
+  printf '%s\n' "$live" | awk -F '\t' '$4 == "mail" || $4 == "stays" { f = 1 } END { exit !f }' && return 0
   clone="$(_intercom_mail_clone "$id")"
   [ -n "$clone" ] || return 0
   ver="$(_intercom_vdx_version)"
@@ -1662,6 +1680,8 @@ _intercom_session_rows() {
     fi
     [ "$(_intercom_owner_of "$(_intercom_realpath "$cwd")" "$owners")" = "$id" ] || continue
     mode="$(_intercom_pid_mode "$pid")"
+    # One tmux call, and only for an intercom session (intercom-session-stays, DL #5).
+    if [ "$mode" = mail ] && _intercom_pid_stays "$pid"; then mode=stays; fi
     printf '%s\037%s\037%s\037%s\037%s\037%s\n' "$pid" "$name" "${status:-?}" "$sid" "${mode:-plain}" "$upd"
   done
   return 0
@@ -1927,6 +1947,26 @@ intercom_wake_choice() {
   if [ -n "$mail" ]; then
     printf 'wake\037%s\037%s\037the intercom session of `%s` — nobody sits at it, so it is woken at once\037mail\n' \
       "$mail" "$mail_status" "$id"
+    return 0
+  fi
+  # An intercom session the owner started or joined (vdx 0.48.0, @vdx_stays): its
+  # letters are its work and the owner may be at it, the pair an HQ session has, so
+  # it is woken the same way — idle at once, busy or waiting on the owner not, and
+  # nobody else in its place (intercom-session-stays, DL #4).
+  local stays="" stays_status="" stays_best=-1 stays_engaged
+  while IFS=$'\t' read -r name status sid mode upd; do
+    [ "$mode" = stays ] || continue
+    case "$upd" in ''|*[!0-9]*) u=0 ;; *) u="$upd" ;; esac
+    if [ "$u" -gt "$stays_best" ]; then stays="$name"; stays_status="$status"; stays_best="$u"; fi
+  done <<<"$live"
+  if [ -n "$stays" ]; then
+    if stays_engaged="$(_intercom_engaged "$stays_status" "")"; then
+      printf 'wait\037\037\037the intercom session of `%s`, %s, which the owner started or joined, is %s — the owner is likely at it; the letter reaches it as one line with their next message there\n' \
+        "$id" "$stays" "$stays_engaged"
+      return 0
+    fi
+    printf 'wake\037%s\037%s\037the intercom session of `%s`, which the owner started or joined — its letters are its work, so it is woken at once while idle\037stays\n' \
+      "$stays" "$stays_status" "$id"
     return 0
   fi
   # A live HQ session comes next (hq-session-quiet, DL #4): while it lives the
@@ -2253,15 +2293,39 @@ _intercom_topic_clean() { printf '%s' "$1" | tr '\n\r\t' '   ' | sed 's/  */ /g;
 # _intercom_tmux_topic <TMUX value> <TMUX_PANE value> — the session's topic as
 # tmux sees it from that pane, or nothing (no tmux, no pane, no option).
 _intercom_tmux_topic() {
+  _intercom_topic_clean "$(_intercom_tmux_option "$1" "$2" @vdx_topic)"
+}
+
+# _intercom_tmux_option <TMUX value> <TMUX_PANE value> <option> — that option of
+# the pane's tmux session, as tmux prints it; nothing without tmux, a pane, or the
+# option. One way to read every option vdx sets (@vdx_topic, @vdx_stays).
+_intercom_tmux_option() {
   local sock="${1%%,*}" pane="$2"
   [ -n "$sock" ] && [ -n "$pane" ] || return 0
   command -v tmux >/dev/null 2>&1 || return 0
-  _intercom_topic_clean "$(tmux -S "$sock" -u display-message -p -t "$pane" '#{@vdx_topic}' 2>/dev/null)"
+  tmux -S "$sock" -u display-message -p -t "$pane" "#{$3}" 2>/dev/null
 }
 
 # _intercom_pid_topic <pid> — the topic of that live process's tmux session.
 _intercom_pid_topic() {
-  local tp sock pane
+  local sock pane
+  IFS=$'\037' read -r sock pane <<<"$(_intercom_pid_tmux "$1")"
+  _intercom_tmux_topic "$sock" "$pane"
+}
+
+# _intercom_pid_stays <pid> — that live process's tmux session is marked
+# @vdx_stays: an intercom session the owner started or joined.
+_intercom_pid_stays() {
+  local sock pane v
+  IFS=$'\037' read -r sock pane <<<"$(_intercom_pid_tmux "$1")"
+  v="$(_intercom_tmux_option "$sock" "$pane" @vdx_stays)"
+  [ "${v//[[:space:]]/}" = 1 ]
+}
+
+# _intercom_pid_tmux <pid> — "<TMUX><US><TMUX_PANE>" of that live process, read
+# from its environment.
+_intercom_pid_tmux() {
+  local tp
   if [ -r "/proc/$1/environ" ]; then
     tp="$(LC_ALL=C tr '\0' '\n' < "/proc/$1/environ" 2>/dev/null \
           | awk '/^TMUX=/ { t = substr($0, 6) } /^TMUX_PANE=/ { p = substr($0, 11) } END { printf "%s\037%s", t, p }')"
@@ -2270,8 +2334,7 @@ _intercom_pid_topic() {
           | awk '{ for (i = 1; i <= NF; i++) { if ($i ~ /^TMUX=/) t = substr($i, 6); if ($i ~ /^TMUX_PANE=/) p = substr($i, 11) } }
                  END { printf "%s\037%s", t, p }')"
   fi
-  IFS=$'\037' read -r sock pane <<<"$tp"
-  _intercom_tmux_topic "$sock" "$pane"
+  printf '%s' "$tp"
 }
 
 # intercom_own_topic — this session's topic: started focused, in tmux, the

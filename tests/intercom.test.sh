@@ -1691,12 +1691,14 @@ echo "-- a letter on the topic of a focused session (intercom-focused-topic)"
 TX="$TMP/tmux-stub"; mkdir -p "$TX/panes" "$TMP/arr-tmp"
 cat > "$TX/tmux" <<'STUB'
 #!/bin/bash
-sock="" pane=""
+sock="" pane="" fmt=""
 while [ $# -gt 0 ]; do
-  case "$1" in -S) sock="$2"; shift 2 ;; -t) pane="$2"; shift 2 ;; *) shift ;; esac
+  case "$1" in -S) sock="$2"; shift 2 ;; -t) pane="$2"; shift 2 ;; -*|display-message) shift ;; *) fmt="$1"; shift ;; esac
 done
 [ "$sock" = "$TMUX_STUB_DIR/sock" ] || exit 1
-[ -f "$TMUX_STUB_DIR/panes/${pane#%}" ] && cat "$TMUX_STUB_DIR/panes/${pane#%}"
+f="$TMUX_STUB_DIR/panes/${pane#%}"
+case "$fmt" in *vdx_stays*) f="$f.stays" ;; esac   # @vdx_stays from <pane>.stays
+[ -f "$f" ] && cat "$f"
 exit 0
 STUB
 chmod +x "$TX/tmux"
@@ -2998,6 +3000,96 @@ eq "intercom.arrival-line: false turns it off" "$(sm_hear sid-said)" ""
 rm -rf "$TMP/hop-b/.claude"
 kill "$SMP_PID" "$SMF_PID" "$SMM_PID" 2>/dev/null
 rm -f "$SESS"/sm-*.json
+
+echo ""
+echo "== an intercom session the owner started or joined stays (intercom-session-stays) =="
+# vdx 0.48.0: `vdx ai --intercom` from a terminal, or `vdx ai` joining one, marks
+# the agent's tmux session with @vdx_stays; one a letter started is not marked. The
+# tmux stub answers @vdx_stays from <pane>.stays. DL #4: woken like an HQ session;
+# DL #5: the owner sits there, so nothing says nobody does.
+mkrepo "$TMP/hop-s" "git@example.com:acme/hop-s.git"
+( cd "$TMP/hop-s" && bash "$IC" register --name "hop-s" --describe "stays fixture" >/dev/null 2>&1 )
+SI="$VDM_INTERCOM_ROOT/hop-s"
+export TMUX_STUB_DIR="$TX"   # unset after the topics section; the stub answers again here
+env VDX_INTERCOM=1 TMUX="$TX/sock,4242,0" TMUX_PANE=%21 python3 -c 'import time; time.sleep(300)' & SS_PID=$!; disown "$SS_PID" 2>/dev/null || true
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  { [ -r "/proc/$SS_PID/environ" ] || ps -wwE -p "$SS_PID" -o command= 2>/dev/null | grep -q 'TMUX_PANE=%21'; } && break
+  python3 -c 'import time; time.sleep(0.2)'
+done
+mksession ss.json "$SS_PID" "$TMP/hop-s" hop-s-mail idle "$SOCKS/b.sock" sid-hop-s-mail
+jq '.startedAt = 1000' "$SESS/ss.json" > "$TMP/ss.json" && mv "$TMP/ss.json" "$SESS/ss.json"   # for the arrival line
+ssend() { ( cd "$TMP/hop-a" && PATH="$TP" CLAUDE_CODE_SESSION_ID=self-sid VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" send hop-s "$@" 2>&1 ); }
+# sown <pane> <command...> — a command in an intercom session of hop-s, on that pane
+# The vdx shim first: a real vdx must never be reached from a fixture.
+sown() { local pane="$1"; shift; ( cd "$TMP/hop-s" && PATH="$VX:$TP" VDX_INTERCOM=1 TMUX="$TX/sock,4242,0" TMUX_PANE="%$pane" \
+           CLAUDE_CODE_SESSION_ID=sid-hop-s-mail VDM_INTERCOM_NOW="$NOW_EPOCH" "$@" 2>&1 ); }
+
+out="$(ssend ss-plain --body "$B/live.md")"
+says "control: unmarked, the intercom session is woken at once, nobody at it" "$out" "nobody sits at it, so it is woken at once"
+printf '1\n' > "$TX/panes/21.stays"
+out="$(ssend ss-mark --body "$B/live.md")"
+says "RED: marked, it is listed as one the owner started or joined" "$out" "hop-s-mail (idle, mail, stays)"
+says "RED: …woken at once while idle: its letters are its work" "$out" "→ wake one: hop-s-mail — the intercom session of \`hop-s\`, which the owner started or joined"
+says "RED: …with a pointer that says the user is there" "$out" "and the user started or joined it: take it and handle it now"
+says_not "…not as one nobody sits at" "$out" "nobody sits at it"
+jq '.status = "busy"' "$SESS/ss.json" > "$TMP/ss.json" && mv "$TMP/ss.json" "$SESS/ss.json"
+out="$(ssend ss-busy --body "$B/live.md")"
+says "RED: busy, it is not woken: the owner is at it" "$out" "do not wake here: the intercom session of \`hop-s\`, hop-s-mail, which the owner started or joined, is busy"
+says_not "…nor anybody in its place" "$out" "→ wake one:"
+says_not "…nor started again: it is the project's intercom session" "$out" "start it with your shell tool"
+jq '.status = "idle"' "$SESS/ss.json" > "$TMP/ss.json" && mv "$TMP/ss.json" "$SESS/ss.json"
+
+printf '1\n' > "$TX/panes/22.stays"
+out="$(sown 22 bash -c "printf '{}' | bash '$HOOK'")"
+says "RED: the start line keeps its mark for senders elsewhere" "$out" "📮 Intercom session of \`hop-s\`"
+says "RED: …and says the user is here" "$out" "the user started or joined this session (@vdx_stays)"
+says_not "RED: …not that nobody sits" "$out" "nobody sits at this session"
+says_not "RED: …nor to end the session" "$out" "end this session"
+says "…a question goes to the user here" "$out" "A question for the user is asked here"
+out="$(sown 23 bash -c "printf '{}' | bash '$HOOK'")"
+says "control: unmarked, the start line as before" "$out" "nobody sits at this session"
+
+out="$(sown 22 bash "$IC" check)"
+says "RED: check says the user is here — the mark may come after the start line" "$out" "👤 The user started or joined this intercom session"
+out="$(sown 23 bash "$IC" check)"
+says_not "control: unmarked, check says nothing of it" "$out" "👤"
+
+printf -- '---\nintercom: v1\nfrom: hop-a\nto: hop-s\ncreated: 2026-10-04T10:00:00Z\nslug: ss-q\nreply-to: hop-s/ss-gone\nfor-session: sid-long-gone\nask: owner\nstatus: pending\n---\n\n# Question for the user: ставить?\n\nСтавить?\n' > "$SI/ss-q.md"
+out="$(sown 22 bash "$IC" check)"
+says "RED: a question whose session went is put to the user here" "$out" "❓ a question for the user: put it to them now"
+says_not "…not to their list at HQ" "$out" "Nobody sits here"
+out="$(sown 23 bash "$IC" check)"
+says "control: unmarked, it goes to the list at HQ" "$out" "Nobody sits here"
+out="$(sown 22 bash -c "printf '{}' | bash '$HOOK'")"
+says "RED: the start line counts the questions for the user" "$out" "❓ 1 of them: question(s) for the user"
+rm -f "$SI/ss-q.md"
+
+out="$(sown 22 bash "$IC" send hop-a ss-out --body "$B/live.md")"
+eq "RED: its letter still counts as a link between agents" "$(grep -c '^session: mail$' "$VDM_INTERCOM_ROOT/hop-a/ss-out.md")" "1"
+eq "RED: …and names its session, so an answer finds it" "$(grep '^from-session:' "$VDM_INTERCOM_ROOT/hop-a/ss-out.md")" "from-session: sid-hop-s-mail"
+out="$(sown 23 bash "$IC" send hop-a ss-out2 --body "$B/live.md")"
+eq "control: unmarked, no session named" "$(grep -c '^from-session:' "$VDM_INTERCOM_ROOT/hop-a/ss-out2.md")" "0"
+out="$( cd "$TMP/hop-a" && PATH="$TP" CLAUDE_CODE_SESSION_ID=self-sid VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" ask ss-out --question "Ставить?" 2>&1 )"; rc=$?
+eq "RED: a question on its letter goes back to it" "$rc" "0"
+[ -f "$SI/ss-out-ask.md" ] && ok "…as a letter in its inbox" || bad "…as a letter in its inbox" "$out"
+out="$( cd "$TMP/hop-a" && PATH="$TP" CLAUDE_CODE_SESSION_ID=self-sid VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" ask ss-out2 --question "Ставить?" 2>&1 )"; rc=$?
+eq "control: on an unmarked one's letter, the way to the list at HQ" "$rc" "3"
+
+out="$( cd "$TMP/hop-s" && printf '{"session_id":"sid-hop-s-mail"}' | PATH="$TP" VDX_INTERCOM=1 TMUX="$TX/sock,4242,0" TMUX_PANE=%22 \
+        CLAUDE_CODE_SESSION_ID=sid-hop-s-mail bash "$REM" 2>&1 )"
+says "RED: a letter that waited for the user reaches them in the arrival line" "$out" "ss-out-ask"
+
+for s in ss-plain ss-mark ss-busy ss-out-ask; do sown 22 bash "$IC" pickup "$s" >/dev/null; done
+: > "$TMP/vdx.log"
+out="$(sown 22 bash "$IC" close)"; rc=$?
+eq "close in a marked session runs" "$rc" "0"
+says "RED: …and promises no end: the session stays" "$out" "this session stays, the user started or joined it"
+says "…while vdx still gets the count" "$(cat "$TMP/vdx.log")" "ai --close --waiting 0"
+out="$(sown 23 bash "$IC" close)"
+says_not "control: unmarked, close as before" "$out" "this session stays"
+kill "$SS_PID" 2>/dev/null
+rm -f "$SESS/ss.json" "$TX/panes/21.stays" "$TX/panes/22.stays"
+unset TMUX_STUB_DIR
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
