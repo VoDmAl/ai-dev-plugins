@@ -717,7 +717,12 @@ So three things happen on top of the inbox, and none of them replaces it:
   nobody is woken here; with no turn of the user's in the last 12 hours, it
   wakes one session here, the most recently active of those nobody may be at.
   The session where the user typed last is not swapped for another when the
-  user may be at it: the letter waits for it.
+  user may be at it: the letter waits for it. An intercom session's launch is
+  not a turn of the user's, though the harness marks it so: vdx passes
+  `/vdm:intercom` as its prompt, and a transcript whose only such turn is that
+  launch is passed over. A session the user joined holds turns of theirs after
+  it, and those count. A closed session of this machine is named as one, not as
+  another machine's.
 - **The arrival line — on by default.** On the user's next message in a
   session, the `UserPromptSubmit` hook names every letter that came into the
   inbox after that session started and has not been named in it yet — each

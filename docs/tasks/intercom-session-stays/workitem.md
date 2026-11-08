@@ -5,7 +5,7 @@ description: "Убрать из close, строк и побудок «никто
 status: in-progress
 session-type: prd-work
 created: 2026-11-03
-last-updated: 2026-11-06
+last-updated: 2026-11-08
 ---
 
 # Сессия intercom, поднятая владельцем, остаётся: vdm читает `@vdx_stays`
@@ -176,7 +176,9 @@ last turn … (01:10:31Z) was in a session that is not on this machine`. 01:10:3
 (см. «Назначение»). Режим сессии уже читается из транскрипта (`_intercom_transcript_machine`), поэтому отличать надо
 запуск от набранного. Заодно проверить других читателей `intercom_owner_turns`.
 
-**Status:** open
+Замер 2026-11-08 по 59 транскриптам сессий intercom за три дня (определены по записи хука, а не по тексту): первый ход с `turnOrigin: human` — команда запуска `/vdm:intercom` во всех 59, единственный — в 57; в двух остальных за ним идут настоящие ходы владельца после подключения. Побудки других сессий такой пометки не несут. Сделано в vdm 2.78.1: одинокий запуск в транскрипте сессии intercom пропускается, текст `where` различает закрытую сессию этой машины, чужую машину и машину, которую транскрипт не назвал.
+
+**Status:** resolved
 
 ## Next actions
 
@@ -198,11 +200,12 @@ last turn … (01:10:31Z) was in a session that is not on this machine`. 01:10:3
 - [ ] Первый настоящий прогон на выпущенном vdm — when: владелец поднял сессию `vdx ai --intercom` из терминала; check:
       `tmux -S "${TMUX%%,*}" -u display-message -p -t "$TMUX_PANE" '#{@vdx_stays}'` в ней даёт `1`. Вторая половина той
       же проверки — у vdx (мяч в брифе)
-- [ ] Sidetrack #1: запуск сессии intercom не считать ходом владельца, а текст `where` не называть чужой машиной свою.
-      Red: закрытая сессия, поднятая письмом, побудку не держит; ход, набранный при `@vdx_stays`, держит
-- [ ] Outcome to `vdx`: intercom reply vdx-stays-option --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>".
+- [x] Sidetrack #1: запуск сессии intercom не считать ходом владельца, а текст `where` не называть чужой машиной свою.
+      Red: закрытая сессия, поднятая письмом, побудку не держит; ход, набранный при `@vdx_stays`, держит — 2026-11-08, vdm 2.78.1
+- [x] Outcome to `vdx`: intercom reply vdx-stays-option --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>".
       Он же закрывает мяч из промежуточного итога на `intercom-session-stays-start` (DL #3): правка по кристаллу, версия
-      vdm и окончательный итог ответом на vdx-stays-option, в основной сессии
+      vdm и окончательный итог ответом на vdx-stays-option, в основной сессии — 2026-11-08, `vdx/vdx-stays-option-result`; мяч у
+      vdx: живая проверка, без срока; у нас Sidetrack #1, сделан тем же днём
 
 ## References
 

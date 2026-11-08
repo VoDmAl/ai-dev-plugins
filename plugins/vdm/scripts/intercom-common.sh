@@ -1780,7 +1780,7 @@ _intercom_epoch_utc() {
 # for its `cwd` — read from the transcript, because the directory name the
 # harness derives from a path is lossy (`a-b` and `a/b` look the same).
 intercom_owner_turns() {
-  local id="$1" projects owners cutoff f cwd ts
+  local id="$1" projects owners cutoff f cwd ts humans
   projects="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"
   [ -d "$projects" ] || return 0
   owners="$(_intercom_owners)"
@@ -1797,7 +1797,20 @@ intercom_owner_turns() {
         cwd="$(grep -m1 -o '"cwd":"[^"]*"' "$f" 2>/dev/null | head -1 | sed 's/^"cwd":"//; s/"$//')"
         [ -n "$cwd" ] || continue
         [ "$(_intercom_owner_of "$(_intercom_realpath "$cwd")" "$owners")" = "$id" ] || continue
-        ts="$(grep -F '"turnOrigin":"human"' "$f" 2>/dev/null | tail -1 \
+        humans="$(grep -F '"turnOrigin":"human"' "$f" 2>/dev/null)"
+        # An intercom session's first turn is its launch: vdx passes /vdm:intercom
+        # as the prompt, and the harness marks it human though nobody typed it.
+        # Measured 2026-11-08 on 59 intercom transcripts of three days: it was the
+        # first such turn in every one, and 57 held no other; the 2 with more were
+        # sessions the owner joined, and those turns are theirs (intercom-session-stays,
+        # Sidetrack #1). So only a lone launch is passed over, and only in a
+        # transcript whose start line is an intercom session's.
+        if [ "$(printf '%s\n' "$humans" | grep -c .)" -eq 1 ] \
+           && printf '%s' "$humans" | grep -qF '<command-name>/vdm:intercom</command-name>' \
+           && [ "$(_intercom_transcript_machine "$f" | cut -d $'\037' -f2)" = mail ]; then
+          continue
+        fi
+        ts="$(printf '%s\n' "$humans" | tail -1 \
               | grep -o '"timestamp":"[^"]*"' | tail -1 | sed 's/^"timestamp":"//; s/"$//')"
         [ -n "$ts" ] || continue
         ts="${ts%%.*}"; ts="${ts%Z}Z"          # 2026-10-04T09:00:00.123Z → …:00Z
@@ -2035,12 +2048,17 @@ intercom_wake_choice() {
         return 0
       fi
     done <<<"$live"
-    local where="a session that is not on this machine" tf mm m mode
+    # Not live here: on another machine, closed here, or started where nothing
+    # recorded the machine. The default said "not on this machine" of all three,
+    # a closed session of this one included (intercom-session-stays, Sidetrack #1).
+    local where="a session whose transcript does not say its machine" tf mm m mode
     for tf in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"/*/"$top_sid".jsonl; do
       [ -f "$tf" ] || continue
       mm="$(_intercom_transcript_machine "$tf")"
       IFS=$'\037' read -r m mode <<<"$mm"
-      [ -n "$m" ] && [ "$m" != "$(_intercom_machine_name)" ] && where="a session on \`$m\`"
+      if [ "$m" = "$(_intercom_machine_name)" ]; then where="a session of this machine that is no longer live"
+      elif [ -n "$m" ]; then where="a session on \`$m\`"
+      fi
       break
     done
     printf 'wait\037\037\037your last turn in `%s` (%s) was in %s — the letter waits for it\n' \

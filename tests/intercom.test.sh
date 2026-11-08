@@ -1227,6 +1227,29 @@ turn hb "sid-elsewhere" "$TMP/hop-b" "2026-10-04T10:58:00Z"
 out="$(wake_out far-wait)"
 says "RED: the session the letter waits for is named by its machine" "$out" "was in a session on \`m-other\` — the letter waits for it"
 rm -f "$PROJ/hb/sid-elsewhere.jsonl" "$VDM_INTERCOM_ROOT/hop-b/far-wait.md"
+# An intercom session's first turn is its launch: vdx passes /vdm:intercom, and the
+# harness marks it human (intercom-session-stays, Sidetrack #1; 59 of 59 intercom
+# transcripts of three days, 2026-11-08).
+mailrec() {  # mailrec <sessionId> <timestamp> <machine> — an intercom session's start record and its launch
+  local o
+  o="$( cd "$TMP/hop-b" && printf '{}' | VDX_INTERCOM=1 bash "$HOOK" )"
+  o="${o//on \`$machine\`/on \`$3\`}"
+  mkdir -p "$PROJ/hb"
+  jq -cn --arg ts "$2" --arg sid "$1" --arg cwd "$TMP/hop-b" --arg out "$o" \
+    '{type:"attachment", timestamp:$ts, sessionId:$sid, cwd:$cwd,
+      attachment:{type:"hook_success", hookName:"SessionStart:startup", hookEvent:"SessionStart", stdout:$out}}' >> "$PROJ/hb/$1.jsonl"
+  jq -cn --arg ts "$2" --arg sid "$1" --arg cwd "$TMP/hop-b" \
+    '{type:"user", timestamp:$ts, sessionId:$sid, cwd:$cwd, turnOrigin:"human",
+      message:{role:"user", content:"<command-message>vdm:intercom</command-message>\n<command-name>/vdm:intercom</command-name>\n<command-args>check</command-args>"}}' >> "$PROJ/hb/$1.jsonl"
+}
+mailrec sid-mail-gone "2026-10-04T10:59:00Z" "$machine"
+out="$(wake_out launch-only)"
+says_not "RED: an intercom session's launch is not where the owner is" "$out" "(2026-10-04T10:59:00Z)"
+turn hb "sid-mail-gone" "$TMP/hop-b" "2026-10-04T10:59:30Z"
+out="$(wake_out launch-joined)"
+says "RED-guard: a turn the owner typed after joining it is theirs" "$out" "(2026-10-04T10:59:30Z)"
+says "RED: …and a closed session of this machine is not called another machine's" "$out" "was in a session of this machine that is no longer live"
+rm -f "$PROJ/hb/sid-mail-gone.jsonl" "$VDM_INTERCOM_ROOT/hop-b"/launch-*.md
 
 echo "-- an intercom session is woken at once (intercom-session-wake, DL #4)"
 # The owner, 2026-10-20: `vdx ai --intercom` starts a session of the project for
@@ -3076,7 +3099,7 @@ out="$( cd "$TMP/hop-a" && PATH="$TP" CLAUDE_CODE_SESSION_ID=self-sid VDM_INTERC
 eq "control: on an unmarked one's letter, the way to the list at HQ" "$rc" "3"
 
 out="$( cd "$TMP/hop-s" && printf '{"session_id":"sid-hop-s-mail"}' | PATH="$TP" VDX_INTERCOM=1 TMUX="$TX/sock,4242,0" TMUX_PANE=%22 \
-        CLAUDE_CODE_SESSION_ID=sid-hop-s-mail bash "$REM" 2>&1 )"
+        CLAUDE_CODE_SESSION_ID=sid-hop-s-mail TMPDIR="$TMP/arr-tmp" bash "$REM" 2>&1 )"
 says "RED: a letter that waited for the user reaches them in the arrival line" "$out" "ss-out-ask"
 
 for s in ss-plain ss-mark ss-busy ss-out-ask; do sown 22 bash "$IC" pickup "$s" >/dev/null; done
