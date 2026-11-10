@@ -17,7 +17,7 @@ covers:
   - tests/
   - .githooks/
   - docs/llm/soft-guidance-vs-deterministic-gates.md
-observed: 2026-11-09
+observed: 2026-11-10
 ---
 
 # Суита как система

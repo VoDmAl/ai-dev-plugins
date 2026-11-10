@@ -236,7 +236,7 @@ to self needs no pickup phrase either: its title says what it is.
 **The answer, and nothing else:**
 
 ```
-<Можно: всё в `<slug>`[, `<slug>`] | Можно: в чате не было ничего, чего нет в файлах | Пока нельзя: <один вопрос>>.
+<Можно: всё в кристалле `<slug>` — <о чём он>[; …] | Можно: в чате не было ничего, чего нет в файлах | Пока нельзя: <один вопрос>>.
 
 <строка коммита, если есть что коммитить>
 ```
@@ -246,6 +246,11 @@ count, no other session's files. «Можно» means every item was found by gr
 its marker (step 2): it is the only thing the user leaves on. The commit line
 stays, because it holds nothing unique. The one extra line is step 6: something
 still running whose result matters, with the item that checks it.
+
+Name each home in words, what it is and what it is about, and give the slug as
+its address: «Можно: всё в кристалле `wrap-skill` — история скила wrap», «…в
+записке себе `<slug>` — <о чём>». The user reads the verdict with nothing open, so a
+bare slug tells them neither that it is a crystal nor what it holds.
 
 ## Clean session or compact?
 
@@ -276,6 +281,7 @@ less visibly.
 | Retelling a crystal item without its date | «three words» instead of «a letter to the head of the company — by Friday»: the date and the addressee were in the crystal, the note lost both |
 | Deciding the session has no crystal because it never named one | a second crystal grows beside the one that holds the history, or the items land in a note nothing links to it |
 | Handing over a phrase after `--clear`, even a bare one «for convenience» | of 357 start phrases (2026-10-01…11-09) 194 carried a tail and 109 of those a step or an order; about one next session in three opened on something else; right after a wrap the user asked five times for no prompt at all (2026-11-03…05) |
+| A `--clear` verdict that names only a slug | «Можно: всё в `wrap-skill`» was the first run's whole answer; the user's next message asked what it meant (2026-11-10) |
 
 ## Integration
 
