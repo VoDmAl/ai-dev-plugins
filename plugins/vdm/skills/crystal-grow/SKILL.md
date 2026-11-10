@@ -1234,6 +1234,11 @@ one is not cosmetic: it either wastes the singleton slot or hides real work.
 - [ ] TaskCreate has populated Tasks UI from the workitem's unchecked items
 - [ ] User received the one-line confirmation with the path
 
+`/vdm:wrap --clear` is the one exception to the singleton line above: it grows at
+`in-progress` beside whatever is active, parks nothing and skips TaskCreate, since
+the session is ending. A crystal nobody sees at the next start is the loss that key
+exists to prevent, and the singleton warning is the accepted price (`wrap-skill` DL #17).
+
 **Mode B — grow as parking.** A backlog item gets a home; nobody is working on
 it, and nobody will today.
 

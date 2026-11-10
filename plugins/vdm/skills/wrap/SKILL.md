@@ -1,6 +1,6 @@
 ---
 name: wrap
-description: "Before leaving a session for a clean one — /clear, closing the terminal, or choosing between a clean session and /compact: find what exists only in the chat, write each item where the next session will see it, prepare one commit, and name the phrase that starts the next session. Takes an optional next goal. Use when the user asks whether it is safe to move on, with or without saying what comes next — and on your own, before YOU propose leaving into a new conversation: a restart after a plugin update (`vdx ai --restart`), `/clear` after a commit, a switch to another session. Triggers include: «можно в чистую сессию?», «можно переходить в чистую сессию», «тут что-то не переживёт?», «ничего не потеряется?», «в чате ничего не осталось?», «завершаю сессию», «новую сессию запускаю», «дай handoff», «через handoff», «идём в чистую сессию с …», «чистая сессия или compact?», clean session, wrap up, end the session, hand off, is anything lost?"
+description: "Before leaving a session for a clean one — /clear, closing the terminal, or choosing between a clean session and /compact: find what exists only in the chat, write each item where the next session will see it, prepare one commit, and name the phrase that starts the next session. Takes an optional next goal, or `--clear`: everything goes into a crystal or a note and no start phrase is handed over. Use when the user asks whether it is safe to move on, with or without saying what comes next — and on your own, before YOU propose leaving into a new conversation: a restart after a plugin update (`vdx ai --restart`), `/clear` after a commit, a switch to another session. Triggers include: «можно в чистую сессию?», «можно переходить в чистую сессию», «тут что-то не переживёт?», «ничего не потеряется?», «в чате ничего не осталось?», «завершаю сессию», «новую сессию запускаю», «дай handoff», «через handoff», «идём в чистую сессию с …», «чистая сессия или compact?», clean session, wrap up, end the session, hand off, is anything lost?"
 license: MIT
 ---
 
@@ -26,6 +26,7 @@ It is short by design. The user wants a verdict and a first phrase, not a report
 ```
 /vdm:wrap                                # check only
 /vdm:wrap механизм незаявленных групп    # check + the next goal
+/vdm:wrap --clear                        # everything into files, no start phrase
 ```
 
 It also runs on the user's own phrasing (see the triggers in the description).
@@ -180,8 +181,71 @@ list everything that was already in files.
 deadline first — not the assistant's. The user sees before leaving what the next
 session will start from, and can correct the order while it is still cheap.
 
+With `--clear`, the answer is the one in that section, not this one.
+
 After the user runs the commit, verify it with `git log -1 --stat` and answer in
 one line.
+
+## `--clear`: leave with nothing to carry
+
+The user is done for today and will open the project some other time, perhaps
+for other work. They must not receive anything the next session needs that
+exists nowhere else, so this mode hands over **no start phrase at all**, not even
+a bare one. A phrase is a copy the user has to keep. A crystal is listed at
+session start without anyone keeping anything.
+
+It runs only when the user names the key: `/vdm:wrap --clear`, `/vdm:wrap clear`,
+or in words. It takes no next goal, because what comes next is the next session's
+choice; a goal said beside the key is one more chat item to write down.
+
+Steps 1, 2, 3, 5 and 6 run as above. This section replaces step 4 and the answer
+of step 7.
+
+**Find the home first; the session may not know it has one.** Work often falls
+under a crystal the session never named. Run
+`"${CLAUDE_PLUGIN_ROOT}/scripts/crystal-cave.sh"`, read the slugs and descriptions
+of every status, and open `## Назначение` of any candidate before deciding that
+nothing fits.
+
+| What the project has | Home for the chat-only items |
+|---|---|
+| A crystal the session worked in | that crystal |
+| A crystal the work belongs to, named or not, in any status but a terminal one | that crystal |
+| Crystals, and none fits | a new one: `/vdm:crystal-grow` with `status: in-progress` |
+| No crystals | a note to self: `/vdm:intercom send <this-repo> <slug> --title "…"`, which the start line counts |
+
+Lessons still go to memory or `/vdm:learn`. Items of unrelated work go to the
+crystals they belong to; one session can fill several.
+
+**Make sure the home shows up by itself.** The start line lists active crystals;
+it does not list a `ready` or `dormant` one unless a date calls it.
+
+- A crystal not in work that received an open step goes to `status: in-progress`.
+  Exception: work that should come back on a known date gets
+  `deferred-until: YYYY-MM-DD` and keeps its status; the start line names it from
+  that date.
+- Leave the other active crystals as they are, even if that breaks the singleton.
+  The warning is the accepted price of nothing going unseen.
+
+**What would have been the phrase goes into the crystal.** The step to start from
+is the first open Next action, so «сначала проверить X» is an item at the top of
+that list, not a tail. Where things stand goes to `## Текущая модель`. A date is
+`(due: …)` on the item and an event is `when: …; check: …`, as in step 2. A note
+to self needs no pickup phrase either: its title says what it is.
+
+**The answer, and nothing else:**
+
+```
+<Можно: всё в `<slug>`[, `<slug>`] | Можно: в чате не было ничего, чего нет в файлах | Пока нельзя: <один вопрос>>.
+
+<строка коммита, если есть что коммитить>
+```
+
+No «Новая сессия», no «Ближайшее у тебя», no list of what went where, no letter
+count, no other session's files. «Можно» means every item was found by grep for
+its marker (step 2): it is the only thing the user leaves on. The commit line
+stays, because it holds nothing unique. The one extra line is step 6: something
+still running whose result matters, with the item that checks it.
 
 ## Clean session or compact?
 
@@ -210,13 +274,16 @@ less visibly.
 | Proposing a restart into a new conversation without running the check | a plugin was updated, the assistant handed over `vdx ai --restart` and its own handoff «всё в workitem»; the promise «удалять начну, когда сойдутся все 30» had no condition anywhere, and the next session started with the owner asking where it was being watched (field case, 2026-10-23) |
 | A promise bound to an event, written as a plain item | «22 open» at session start, the item that held an irreversible step indistinguishable from the rest; `when:` on the item is what the start line can show |
 | Retelling a crystal item without its date | «three words» instead of «a letter to the head of the company — by Friday»: the date and the addressee were in the crystal, the note lost both |
+| Deciding the session has no crystal because it never named one | a second crystal grows beside the one that holds the history, or the items land in a note nothing links to it |
+| Handing over a phrase after `--clear`, even a bare one «for convenience» | of 357 start phrases (2026-10-01…11-09) 194 carried a tail and 109 of those a step or an order; about one next session in three opened on something else; right after a wrap the user asked five times for no prompt at all (2026-11-03…05) |
 
 ## Integration
 
 | Skill | Role here |
 |---|---|
 | `/vdm:crystal-bud` | a chat-only item that is a sidetrack |
-| `/vdm:crystal-grow` | the next goal needs its own crystal (`status: ready`) |
+| `/vdm:crystal-grow` | the next goal needs its own crystal (`status: ready`); with `--clear`, work no crystal covers (`status: in-progress`) |
+| `crystal-cave.sh` | with `--clear`, finding the crystal the work belongs to |
 | `/vdm:intercom` | the note to a future session of this repository |
 | `/vdm:learn` | a lesson that is a rule, not a fact |
 | `vdm-git:guard` | the single commit at the end |
@@ -224,4 +291,5 @@ less visibly.
 Field source: Claude Code transcripts from 2026-09-03 to 2026-09-30, about 45 of
 the user's "can we move to a clean session?" asks in 10 projects. The analysis
 and decisions are in `cc-vdm-plugins → docs/tasks/wrap-skill/workitem.md`
-(upstream, not in your project).
+(upstream, not in your project). The `--clear` numbers: 365 runs in 23 projects,
+2026-10-01…11-09, `references/start-phrase-scan.py` beside that file.
