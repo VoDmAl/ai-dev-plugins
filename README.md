@@ -38,6 +38,7 @@ Until specialization is needed, everything lives here.
 | crystal-migrate | `/vdm:crystal-migrate` | Batch-migrate a repo's legacy task docs into the crystal folder-stem layout |
 | intercom | `/vdm:intercom` | Central cross-agent/cross-session message store (send / check / pickup / reply) outside all repos, with an agent directory (identity + the names the user says) kept complete by a SessionStart check |
 | wrap | `/vdm:wrap` | Before a clean session: find what exists only in the chat, write it where the next session reads it, one commit, a start phrase with a slug; `--clear` — everything into a crystal or a note, no phrase |
+| brainstorm | `/vdm:brainstorm` | Think a question through before doing anything about it: facts collected by the assistant, the need behind the question, options that differ in kind, the user's decisions as numbered questions with a recommended answer, the result written into a crystal |
 
 ### `vdm-git` — Git Safety (optional)
 
@@ -109,9 +110,9 @@ observed: 2026-07-14                          # absolute date of last verificati
 
 ### learn
 Systematically captures and preserves project knowledge. Auto-detects scenario type (problem/discovery/standard) and routes through appropriate analysis:
-- **Problems** → `/sc:troubleshoot` → root cause analysis → knowledge integration
+- **Problems** → root-cause analysis in the session (timeline from sources → cause with evidence → verification → fix at the mechanism) → knowledge integration
 - **Discoveries** → Technical documentation → `docs/llm/` patterns
-- **Standards** → Systematic documentation across CLAUDE.md, Serena Memory, and `docs/llm/`
+- **Standards** → Systematic documentation across CLAUDE.md and `docs/llm/`
 - **Lessons about the assistant itself** (true in any project) → `~/.claude/vdm/rules.md`, a machine-wide layer the plugin loads into every session at start — written once, not re-learned per project; a new lesson is folded into the whole layer by a subagent rather than appended, and installed by `rules-write.py`, which refuses over a newer file
 
 **Auto-activation**: Claude will proactively invoke this skill when:
@@ -159,6 +160,9 @@ Central **cross-agent / cross-session message store**. Leave a task brief or not
 
 ### wrap
 The check before leaving for a clean session — `/clear`, closing the terminal, or clean-vs-`/compact`. Runs on `/vdm:wrap [next goal]` or on the user's own phrasing («можно в чистую сессию?», «ничего не потеряется?», «дай handoff»). One snapshot call (git, `intercom.sh check`, `list-open-crystals.sh`); a sweep of the chat over seven classes — decisions and the user's words, the assistant's recommendations, open questions, promises with dates, **the user's own step announced in the chat** («I'll read it carefully», v2.56.0), lessons, facts obtained with effort — each checked by grep, not memory, with its date and addressee, and written to its home (Decision Log, Next actions, memory, intercom note) **without asking whether to**: a question in the last turn before `/clear` is itself what dies. The next goal goes to its crystal's `## Текущая модель`, to a new crystal at `status: ready`, or to a note to self. A note to self is ordered by the cost of missing — a deadline within two days or a letter to someone above the user first, the routine after — and every item it names keeps its date; a move bound to a time or an event keeps its condition («с утра 22.10») instead of «first», and `pickup` of a note to yourself prints the local time beside it (v2.57.0); the answer opens with «Ближайшее у тебя:», the user's own nearest moves. Then **one** commit, last, and a start phrase that names the slug. No hook and no gate: every item becomes something an existing mechanism already holds. Built from ~45 of the owner's asks in 10 projects (2026-09-03…30); decisions in `docs/tasks/wrap-skill/workitem.md`. **Since v2.59.0** the assistant runs it on its own before proposing to leave into a new conversation (a restart after a plugin update, `/clear` after a commit). An eighth class covers a promise bound to an event («I'll delete them once all 30 have arrived»): it becomes an item with `when: <event>; check: <command>`, and the session-start line of `crystal-hydrate` prints every open `when:` item of an active crystal on a line of its own. **Since v2.79.0** `/vdm:wrap --clear` is for ending the day: it hands over no start phrase at all, not even a bare one. Every chat-only item goes to the crystal the work belongs to, whether or not the session named it; if none fits, to a new crystal at `in-progress`; if the project has no crystals, to a note to self. A crystal that received an open step goes `in-progress` so that the start line lists it, or keeps its status with `deferred-until:` when it should come back on a date. The answer is the verdict and the commit line.
+
+### brainstorm
+Thinking a question through before doing anything about it. Runs on `/vdm:brainstorm [question]` or on the user's own phrasing («через brainstorm», «думай шире», «а есть решение лучше?»). Six steps: nothing changes on the subject until the user decides, while the rest of their turn is still answered; the assistant collects the facts itself and opens with what is established; it names the need behind the question, because the best option often removes the need; it lays out at least three options that differ in kind, with a recommendation, the smallest one that answers the need being the default; it puts the user's decisions to them as numbered questions with a recommended answer, only those whose prerequisites are settled; and it writes every answer into the crystal the work belongs to — Decision Log, `## Текущая модель`, Next actions — growing one first when there is none. Said with «grill», the questions run until no decision is left assumed. One file, no hook and no gate. Built from ten requests in eight projects (2026-09-27…11-05); it replaces a framework command of the same name, whose personas and tool servers never ran. Decisions in `docs/tasks/retire-superclaude/workitem.md` (**v2.80.0**).
 
 ### guard (vdm-git plugin)
 Prevents Claude from running `git commit` and `git push` without explicit user permission. All other git operations (merge, rebase, status, diff, etc.) are allowed freely.
@@ -226,7 +230,7 @@ qwen extensions install VoDmAl/ai-dev-plugins
 | Aspect | docs-sync | docs-distill | learn | changelog |
 |--------|-----------|--------------|-------|-----------|
 | Layer | **Fragments** (accumulate) | **Synthesis** (must be rebuilt) | Technical knowledge | History |
-| Focus | All project `.md` docs | Docs declaring `covers:` | `docs/llm/` + Serena Memory | `PROJECT_CHANGELOG.md` |
+| Focus | All project `.md` docs | Docs declaring `covers:` | `docs/llm/` | `PROJECT_CHANGELOG.md` |
 | Audience | Users, stakeholders | Anyone asking "how does this cohere?" | LLMs, developers | Project history |
 | Trigger | Code changes, before completion | **Drift** (synthesis older than its inputs); crystal harvest on cut | Knowledge capture | Significant changes |
 | Content | Product capabilities | The current whole — rewritten, never appended to | Technical patterns | Change summaries + refs |
@@ -511,7 +515,7 @@ See `plugins/vdm/skills/changelog/SKILL.md` for full documentation.
 
 ```bash
 # Auto-detection (most common usage)
-/vdm:learn "Database migration deleted prod tables"   # Problem → troubleshoot
+/vdm:learn "Database migration deleted prod tables"   # Problem → root cause
 /vdm:learn "Found caching pattern for API calls"      # Discovery → document
 /vdm:learn "All errors must use RFC 7807 format"      # Standard → systematic
 

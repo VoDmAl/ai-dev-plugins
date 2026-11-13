@@ -64,7 +64,7 @@ Maintains `PROJECT_CHANGELOG.md` as a concise record of significant project chan
 
 ### 🔧 TOOLING: Short Title
 Brief description (1-2 sentences max).
-**Ref**: docs/tasks/detailed-prd.md, .serena/memories/related_memory.md
+**Ref**: docs/tasks/detailed-prd.md, docs/llm/related-topic.md
 
 ### ✨ FEATURE: Feature Name
 What was added and why.

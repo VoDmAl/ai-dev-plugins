@@ -16,7 +16,7 @@ Systematically capture and preserve knowledge for future LLM sessions — projec
 
 ```bash
 /vdm:learn "Knowledge to capture or situation to analyze"
-/vdm:learn "Database migration failed and deleted tables"      # Problem → troubleshoot
+/vdm:learn "Database migration failed and deleted tables"      # Problem → root cause
 /vdm:learn "Found excellent caching pattern for API calls"     # Discovery → document
 /vdm:learn "API errors should follow RFC 7807 format"          # Standard → systematic
 ```
@@ -55,28 +55,38 @@ Systematically capture and preserve knowledge for future LLM sessions — projec
 
 ## EXECUTION INSTRUCTIONS
 
-**YOU MUST follow these tool invocation rules:**
+The whole route runs in this session, with the tools every harness has. No
+other skill and no named agent is called: the route used to hand a problem to
+a framework's troubleshooting command and a document to its writer agent, and
+where those were absent it had no step at all. A helper may draft a long
+document where the harness has helpers; nothing below depends on one.
 
-### For PROBLEM scenarios:
-```
-Use Skill tool: skill="sc:troubleshoot", args="--systematic"
-```
-After troubleshoot completes, extract insights and proceed to knowledge integration.
+### For PROBLEM scenarios: establish the cause before writing anything
+
+1. **Timeline.** What happened, in order. Each line comes from a source read
+   now — a log, a diff, a transcript, a command's output — not from memory.
+2. **Cause.** Ask «why» until the answer is a mechanism that can be changed: a
+   check that was missing, a rule that allowed it, a field nobody fills. A
+   person or a one-off is not a cause yet. Each «because» carries its evidence;
+   one without evidence is a hypothesis, marked so and tested. Test hardest the
+   hypothesis that explains the symptom at once.
+3. **Verify.** Reproduce the failure, or show the control: the place where the
+   signal appears with the cause and is gone without it.
+4. **Fix at the mechanism**, beside the instance. The instance alone is a
+   stopgap and is named as one. A check switched off or a test skipped is not
+   a fix.
+5. **Route** what was learned through the matrix below. The report to the user
+   names the cause with its evidence, the fix, and what was not verified.
 
 ### For DISCOVERY scenarios:
-```
-Use Task tool: subagent_type="technical-writer", prompt="Document the following pattern/discovery for docs/llm/: {user input}. Follow llm-template.md structure. Focus on: Purpose, When to Use, Implementation with code examples, Gotchas."
-```
+
+Write the pattern into `docs/llm/` from `llm-template.md`: Purpose, When to
+Use, Implementation with code examples, Gotchas ("Writing the document" below).
 
 ### For STANDARD scenarios:
-```
-Use Task tool: subagent_type="technical-writer", prompt="Create systematic documentation for this standard: {user input}. Determine if safety-critical (→ CLAUDE.md) or operational (→ docs/llm/)."
-```
 
-### For Serena Memory operations:
-```
-Use mcp__serena__write_memory tool: memory_file_name="{topic}_procedure", content="..."
-```
+Decide first whether the standard is safety-critical (→ CLAUDE.md, a brief
+rule) or operational (→ `docs/llm/`), then write it there.
 
 ### For docs/llm/ file creation/updates:
 ```
@@ -87,29 +97,29 @@ Use Write or Edit tools targeting docs/llm/{topic}.md
 
 The skill analyzes input to determine the best processing route:
 
-### Problem Indicators → Troubleshoot Route
+### Problem Indicators → Root-Cause Route
 
 **Triggers**: error, failed, broken, disaster, problem, issue, bug, crashed, "went wrong", "didn't work", unexpected
 
 **Process**:
-1. Invoke `/sc:troubleshoot --systematic --root-cause-analysis`
-2. Extract root cause and resolution insights
+1. Establish the cause in this session: timeline → cause → verification ("For PROBLEM scenarios" above)
+2. Fix at the mechanism, beside the instance
 3. Route findings to appropriate knowledge locations
 
 **Example**:
 ```
 /vdm:learn "Auth tokens keep expiring unexpectedly"
 → Detected: Problem scenario
-→ Route: /sc:troubleshoot
-→ Output: Root cause analysis → knowledge integration
+→ Route: root-cause analysis, in this session
+→ Output: cause with evidence → fix → knowledge integration
 ```
 
-### Discovery Indicators → Technical Writer Route
+### Discovery Indicators → Documentation Route
 
 **Triggers**: pattern, best practice, standard, approach, found, discovered, learned, observed, "working solution", "effective method"
 
 **Process**:
-1. Activate technical-writer mindset
+1. Write for the reader who will use it: a future LLM session ("Writing the document" below)
 2. Document pattern with context and examples
 3. Update `docs/llm/` with structured documentation
 
@@ -210,7 +220,8 @@ what comes back.
 5. The memory record the lesson came from, if any, becomes a pointer:
    `shared: rules.md → <rule heading>`.
 6. **Near the budget, the deep pass.** When the installed layer carries 8 100
-   bytes or more of the 9 000 (`--measure` prints it), brief the agent that
+   bytes or more of the 9 000 (`shared-rules.sh --measure <file>`, beside
+   `rules-write.py`, prints it), brief the agent that
    ships vdm: `/vdm:intercom send vdm rules-deep-pass-due`. There the same
    prompt runs in `deep` mode over the whole layer and the `conduct` records
    still waiting in every project; `/vdm:retro` hands its proposals there too.
@@ -279,33 +290,25 @@ missed.
 N. **Rule title** — Brief explanation (historical context if applicable)
 ```
 
-### → Serena Memory (write_memory) — OPTIONAL
+### → Transient knowledge
 
-**Requires**: [Serena MCP](https://github.com/oraios/serena) installed and configured. This is a **recommended enhancement**, not a requirement.
+Knowledge that goes stale by itself goes to `docs/llm/` like the rest, under a
+`⚠️ Transient` marker with the date it was observed and what will make it
+obsolete. The next reader then knows to check it before relying on it.
 
-**If Serena is unavailable**: Skip memory operations silently. Route transient knowledge to `docs/llm/` with a `⚠️ Transient` marker, or to CLAUDE.md for concise rules.
-
-**Best for TRANSIENT knowledge that may become outdated**:
+**Transient**:
 - Current environment configuration (may change with infrastructure updates)
 - Session workflows (processes that evolve over time)
-- Cross-session context (project-specific state that changes)
 - Temporary workarounds (until proper fix is implemented)
 
-**NOT for permanent technical knowledge**:
-- ❌ Version conflicts (e.g., PHPUnit 9.6 vs 10.5) → use docs/llm/ instead
-- ❌ API constraints that won't change → use docs/llm/ instead
-- ❌ Tool incompatibilities → use docs/llm/ instead
+**Not transient** — plain `docs/llm/`, no marker:
+- Version conflicts (e.g., PHPUnit 9.6 vs 10.5)
+- API constraints that won't change
+- Tool incompatibilities
 
 **Key question**: "Will this knowledge become stale if I don't update it?"
-- YES → Serena Memory (if available) or docs/llm/ with transient marker
-- NO → docs/llm/ + CLAUDE.md Quick Access (permanent)
-
-**Format**:
-```bash
-write_memory("{topic}_procedure", "Step-by-step operational knowledge")
-```
-
-**Availability check**: Before using Serena Memory, verify the MCP is available. If `mcp__serena__write_memory` tool is not accessible, fall back to file-based storage without error.
+- YES → `docs/llm/` with the transient marker
+- NO → `docs/llm/` + CLAUDE.md Quick Access (permanent)
 
 ### → docs/llm/ Technical Documentation
 
@@ -330,7 +333,7 @@ docs/llm/ exists?
    │  └─ Create docs/llm/ directory + file from template
    ├─ Knowledge is a single concise rule?
    │  └─ CLAUDE.md is acceptable (even if not safety-critical)
-   └─ NEVER fall back to auto-memory or Serena Memory just because docs/llm/ is missing
+   └─ NEVER fall back to auto-memory just because docs/llm/ is missing
 ```
 
 ### Routing Decision Tree
@@ -355,17 +358,17 @@ Is this a SAFETY-CRITICAL rule that prevents disasters?
    ├─ Is this PERMANENT technical knowledge (patterns, constraints, quirks)?
    │  └─ YES → docs/llm/ (create dir if needed) + CLAUDE.md Quick Access
    ├─ Is this TRANSIENT operational procedure (current env, workflow that may change)?
-   │  └─ YES → Serena Memory (session-persistent, may become outdated)
+   │  └─ YES → docs/llm/ under a `⚠️ Transient` marker, with the date observed
    └─ Is this TECHNICAL pattern knowledge (patterns, architecture)?
       └─ YES → docs/llm/ (create dir if needed)
 ```
 
 **Key distinction**:
 - **PERMANENT** = Version conflicts, API constraints, tool incompatibilities → docs/llm/ (won't change without code change)
-- **TRANSIENT** = Environment variables, current workflow steps, session context → Serena Memory (may need updates)
+- **TRANSIENT** = Environment variables, current workflow steps, session context → docs/llm/ under the transient marker (may need updates)
 - **NEVER** use auto-memory as a fallback for project knowledge — it's for the assistant's own operational state, not project docs
 
-## Integration with Technical Writer Principles
+## Writing the document
 
 When documenting discoveries and patterns, apply these principles:
 
@@ -393,30 +396,6 @@ When documenting discoveries and patterns, apply these principles:
 /vdm:learn "Pattern used"   # Capture technical knowledge
 ```
 
-## SuperClaude Integration
-
-### Agent Routing — EXPLICIT TOOL CALLS
-
-| Scenario | Tool Call |
-|----------|-----------|
-| Problem | `Skill(skill="sc:troubleshoot", args="--systematic")` |
-| Discovery | `Task(subagent_type="technical-writer", prompt="Document pattern...")` |
-| Standard | `Task(subagent_type="technical-writer", prompt="Create standard docs...")` |
-
-### MCP Server Usage — OPTIONAL
-
-Serena MCP enhances this skill but is **not required**. Check availability before use.
-
-| Purpose | Tool | Required? |
-|---------|------|-----------|
-| Write operational knowledge | `mcp__serena__write_memory(memory_file_name, content)` | Optional |
-| Read existing memories | `mcp__serena__read_memory(memory_file_name)` | Optional |
-| List memories | `mcp__serena__list_memories()` | Optional |
-| Create/update docs/llm/ | `Write` or `Edit` tools | **Core** |
-| Update CLAUDE.md | `Read` + `Edit` tools | **Core** |
-
-**If Serena is unavailable**: All memory operations are skipped. Knowledge routes to `docs/llm/` or `CLAUDE.md` instead.
-
 ## Execution Protocol
 
 ### Phase 1: Scenario Detection
@@ -432,7 +411,7 @@ STANDARD keywords: rule, convention, requirement, guideline, establish, define, 
 
 📋 Detected: {Problem|Discovery|Standard}
    Indicators: {matched keywords}
-   Route: {tool to invoke}
+   Route: {root cause | documentation | standard}
 ```
 
 ### Phase 1.5: Interactive Clarification
@@ -487,21 +466,20 @@ STANDARD keywords: rule, convention, requirement, guideline, establish, define, 
 
 **IF Problem detected:**
 ```
-→ Invoke: Skill(skill="sc:troubleshoot", args="--systematic")
-→ Wait for troubleshoot results
+→ Timeline from sources read now → cause, each «because» with its evidence → verification
+→ Fix at the mechanism, beside the instance
 → Extract: root cause, resolution, prevention measures
 ```
 
 **IF Discovery detected:**
 ```
-→ Invoke: Task(subagent_type="technical-writer", prompt="Document this pattern for docs/llm/: {input}. Use llm-template structure.")
-→ Wait for documentation draft
+→ Draft the pattern for docs/llm/ in the llm-template structure
 ```
 
 **IF Standard detected:**
 ```
-→ Invoke: Task(subagent_type="technical-writer", prompt="Analyze this standard for documentation: {input}. Determine criticality level.")
-→ Wait for analysis and documentation
+→ Determine the criticality level: safety-critical (CLAUDE.md) or operational (docs/llm/)
+→ Draft the standard for that location
 ```
 
 ### Phase 3: Knowledge Routing
@@ -511,8 +489,8 @@ Based on analysis results, determine storage locations:
 ```
 📍 Knowledge routing decision:
    CLAUDE.md: {Yes/No — only if safety-critical, max 2-3 rules}
-   Serena Memory: {Yes/No — if operational procedure}
    docs/llm/: {Yes/No — if technical pattern/details}
+   Transient marker: {Yes/No — if it will go stale by itself}
 ```
 
 ### Phase 4: Integration — ACTUAL TOOL CALLS
@@ -523,14 +501,9 @@ Based on analysis results, determine storage locations:
 → Edit(file_path="CLAUDE.md", old_string="...", new_string="...with new rule...")
 ```
 
-**For Serena Memory:**
-```
-→ mcp__serena__write_memory(memory_file_name="{topic}_procedure", content="...")
-```
-
 **For docs/llm/:**
 ```
-→ Check if file exists: Glob(pattern="docs/llm/{topic}*.md")
+→ Check if a file on the topic exists: list docs/llm/ for {topic}*.md
 → If exists: Edit(file_path="docs/llm/{topic}.md", ...)
 → If not: Write(file_path="docs/llm/{topic}.md", content="...from template...")
 ```
@@ -584,7 +557,6 @@ options:
 ```
 ✅ Knowledge integrated:
    - CLAUDE.md: {rule added, if any}
-   - Memory: {key written, if any}
    - docs/llm/: {file updated/created, if any}
 
 🔗 Cross-references verified
@@ -603,12 +575,9 @@ options:
 # CLAUDE.md (NEW RULE)
 N. **ALWAYS ask before git commits** — Prevents unauthorized commits to production
 
-# Serena Memory: git_safety_protocol
-"Pre-commit checklist: 1. Confirm user wants commit 2. Review staged files 3. Verify branch"
-
 # docs/llm/git-safety.md
 ## Git Commit Safety Protocol
-[Full documentation with context, examples, recovery procedures]
+[Root cause with its evidence, the pre-commit checklist, recovery procedures]
 ```
 
 ### Example 2: Discovery → Pattern Documentation
@@ -645,11 +614,8 @@ N. **ALWAYS ask before git commits** — Prevents unauthorized commits to produc
 # CLAUDE.md (if safety-critical)
 N. **Review all migrations before execution** — Prevents data loss from auto-generated SQL
 
-# Serena Memory: migration_checklist
-"1. Generate migration 2. Review SQL for DROP/DELETE 3. Test on dev 4. Execute"
-
 # docs/llm/database-migrations.md
-[Full migration safety protocol with examples]
+[Full migration safety protocol with examples: 1. Generate migration 2. Review SQL for DROP/DELETE 3. Test on dev 4. Execute]
 ```
 
 ### Example 4: Permanent vs Transient Knowledge
@@ -674,14 +640,14 @@ N. **Review all migrations before execution** — Prevents data loss from auto-g
 # CLAUDE.md Quick Access (PERMANENT reference)
 - **PHPUnit Tests**: `composer test:unit:phpunit` (NEVER use bin/phpunit — version conflict!)
 
-# ❌ NOT Serena Memory — this is permanent, not transient
+# ❌ No transient marker — this is permanent
 ```
 
 **Contrast with transient knowledge**:
 ```
 /vdm:learn "Current dev server uses port 8080 instead of 8000"
 → This IS transient (may change with next docker-compose update)
-→ Route to Serena Memory
+→ Route to docs/llm/ under a `⚠️ Transient` marker, with the date observed
 ```
 
 ## Manual Override Flags
@@ -689,7 +655,7 @@ N. **Review all migrations before execution** — Prevents data loss from auto-g
 When automatic detection needs adjustment:
 
 ```bash
-/vdm:learn "topic" --force-problem      # Force troubleshoot route
+/vdm:learn "topic" --force-problem      # Force root-cause route
 /vdm:learn "topic" --force-discovery    # Force direct documentation
 /vdm:learn "topic" --force-standard     # Force systematic establishment
 ```
@@ -702,7 +668,6 @@ Clarification control:
 Routing control:
 ```bash
 /vdm:learn "topic" --critical-only      # Only CLAUDE.md update
-/vdm:learn "topic" --memory-focus       # Prioritize Serena Memory
 /vdm:learn "topic" --docs-focus         # Prioritize docs/llm/
 ```
 
@@ -712,7 +677,7 @@ Routing control:
 
 - [ ] Interactive clarification passed (or skipped via --no-ask / auto-skip)
 - [ ] Scenario correctly detected and routed
-- [ ] Appropriate agents/analysis completed
+- [ ] Analysis completed — for a problem, the cause is shown with its evidence and verified
 - [ ] Knowledge routed to correct location(s)
 - [ ] CLAUDE.md updated ONLY if truly critical (max 2-3 rules)
 - [ ] docs/llm/ follows template structure
