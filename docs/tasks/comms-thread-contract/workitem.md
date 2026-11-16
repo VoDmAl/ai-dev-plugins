@@ -78,9 +78,16 @@ Echelon предлагает контракт из семи пунктов; ре
   `program/<год>/…#<id>`. Дата есть только в имени папки.
 - **Запасной разбор узла у echelon не видит ничего.** Его регулярка — `(at|plan)::` и сразу дата ISO по сырой
   строке пункта нашего `--json` (`runtime/echelon/ropes.py` в checkout echelon); на этих 22 997 строках — 0 совпадений.
-- **Дом штаба программы не объявлен:** у него нет `comms.pending-paths`, наш парсер его `dashboard.md` не читает
-  (у echelon это открытый пункт, письмо `ropes-declare-dashboard` от 02.11). Итог: до echelon сегодня не доходит ни
-  один узел, и держит это не наш парсер, а дом и форма значения.
+- **Дом штаба программы объявлен** (поправка echelon 16.11, письмо `thread-contract-knot-outcome`): в его конфиге
+  `pending-paths: ["dashboard.md"]` с 12.11, по слову владельца, и пункт echelon `ropes-declare-dashboard` закрыт.
+  Здесь до поправки стояло «не объявлен». Если ключ поставили 12.11, замер того же дня его не застал. Тот же вывод
+  ушёл в письмо `thread-contract-knot`, и echelon сам его поправил. До 0.43.0 узел до echelon не доходил из-за формы
+  значения, а не из-за дома.
+- **Живой прогон vdm-comms 0.43.0, 16.11** (`comms-pending --json` в доме штаба программы, только чтение): 13 открытых
+  строк `dashboard.md` несут `at::` или `plan::`. Двенадцать из них стали пунктами. `knot` есть у 11: значения вида
+  `meetings/<дата>-<встреча>`, у одной строки и `at::`, и `plan::`. У двенадцатого пункта `at::` пустой. Тринадцатая
+  строка — образец формы со значением `meetings/<встреча>`, пунктом она не стала. Все 265 пунктов несут одни и те же
+  18 ключей.
 - **Остальные поля контракта в поле:** `blocker::` — около 23 строк, только штаб программы, значения — id блокеров
   страниц контента через запятую; `отдать::` — 0, «→ отдать:» свободным текстом — 15; `every:` и `key::` — 0.
 
@@ -289,9 +296,10 @@ vdm-comms», держались на отсутствии публичного �
 - [x] Узел `at::` / `plan::` в парсере и в `--json` пункта — `at`, `plan`, `knot` (DL #2), и тест, закрепляющий
       ключи `--json` пункта, что есть сейчас, вместе с этими тремя (узкая часть п. 6 и вопроса 1.5); скил `pending`,
       версия vdm-comms, changelog. Сделано focused-сессией 16.11: vdm-comms 0.43.0 (DL #8)
-- [ ] Итог echelon по узлу — версия и ключи, письмом `intercom send echelon thread-contract-knot --reply-to
-      ai-dev-plugins/thread-contract` — when: коммит vdm-comms 0.43.0 в `git log` и push; check: `git log origin/master
-      --oneline -- plugins/vdm-comms/.claude-plugin/plugin.json` называет коммит 0.43.0 (due: 2026-11-20)
+- [x] Итог echelon по узлу — версия и ключи, письмом `intercom send echelon thread-contract-knot --reply-to
+      ai-dev-plugins/thread-contract` — отправлено 2026-11-16 после push 6b59793 (0.43.0 в `origin/master`):
+      ключи пункта, правило `knot`, договорённость п. 6; мяч у echelon — читать `knot` вместо регулярки по `line`,
+      ответ не нужен, если подходит
 - [ ] Итог echelon: что берём из п. 1–7 и с какой версии — письмом `thread-contract-result`
       (`intercom send echelon thread-contract-result --reply-to ai-dev-plugins/thread-contract`) — после разбора, без
       даты (DL #7). Прежний срок 06.11 прошёл, итог не отправлен. Echelon напомнил 2026-11-12 (`thread-contract-promise-watcher-dates`, лежит
