@@ -674,6 +674,79 @@ mv "$cur" "$cur.real" && ln -s "$cur.real" "$cur"
 expect_exit "RED: a script that is a symlink gives no short call (exit 3)" 3 "$rc"
 rm -f "$cur"; mv "$cur.real" "$cur"
 
+printf '\n=== a step before the commit: pre-commit-line ===\n'
+# Brief from the access layer (2026-11-08) and vdx's mechanism (2026-11-14),
+# crystal git-guard-line-wait-step, DL #2 and #3: where the machine assigns a
+# hook to the event `pre-commit-line`, the line runs it after the message-file
+# check and before the drift check and the commit, in every form; where none is
+# assigned, the line is the old one. The step may move index entries, so a check
+# made before it would pass a commit nobody checked — the whole-index form must
+# refuse after a step that changed the index.
+
+step='git hook run --allow-unknown-hook-name --ignore-missing pre-commit-line &&'
+# before <line> <a> <b> — 0 when <a> occurs in the line, and before <b>.
+before() { awk -v a="$2" -v b="$3" '{i=index($0,a); j=index($0,b); exit !(i>0 && j>0 && i<j)}' <<<"$1"; }
+
+d=$(new_repo step_none); cd "$d" || exit 1
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
+printf 'a\n' > a.txt; git add a.txt
+line=$("$PREP" "[*] no step" 2>/dev/null)
+expect_not_says "no hook on pre-commit-line → no step in the line" "$line" "pre-commit-line"
+expect_says "…the message-file check runs straight into the drift check, as before" "$line" "false; } && { git --no-pager"
+
+d=$(new_repo step_hook); cd "$d" || exit 1
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
+git config hook.wait.event pre-commit-line
+git config hook.wait.command "printf ran > '$d/tmp/step-ran'"
+printf 'a\n' > a.txt; git add a.txt
+line=$("$PREP" "[*] with step" 2>/dev/null)
+expect_says "RED: a hook on pre-commit-line → the step is in the line" "$line" "$step"
+if before "$line" "$step" "diff --stat --exit-code"; then ok "RED: …before the drift check"; else bad "RED: …before the drift check" "$line"; fi
+if before "$line" "] || {" "$step"; then ok "…and after the message-file check"; else bad "…and after the message-file check" "$line"; fi
+call=$("$PREP" --pending 2>/dev/null | head -1); script="${call#sh }"
+expect_says "RED: …and in the short call" "$(cat "$script" 2>/dev/null)" "$step"
+run_emitted "$line" >/dev/null 2>&1; rc=$?
+expect_exit "the line runs" 0 "$rc"
+if [ -f "$d/tmp/step-ran" ]; then ok "RED: …running the hook"; else bad "RED: …running the hook" "no $d/tmp/step-ran"; fi
+expect_eq "…and commits its path" "a.txt" "$(git show --format= --name-only HEAD)"
+
+git config hook.wait.command "echo 'the other machine has not arrived' >&2; exit 1"
+printf 'b\n' > b.txt; git add b.txt
+line=$("$PREP" "[*] step refuses" 2>/dev/null)
+base=$(git rev-parse HEAD)
+out=$(run_emitted "$line" 2>&1); rc=$?
+expect_exit "RED: a step that exits 1 stops the line" 1 "$rc"
+expect_says "…with the hook's own words" "$out" "the other machine has not arrived"
+expect_eq "…and nothing is committed" "$base" "$(git rev-parse HEAD)"
+git config hook.wait.command true
+
+for i in $(seq 1 25); do printf '%s\n' "$i" > "many$i.txt"; done
+git add many*.txt
+line=$("$PREP" --supersede "[*] many, with step" 2>/dev/null)
+expect_says "the long form uses --pathspec-from-file" "$line" "--pathspec-from-file"
+if before "$line" "$step" "xargs -0"; then ok "RED: …with the step before its drift check"; else bad "RED: …with the step before its drift check" "$line"; fi
+
+d=$(new_repo step_merge); cd "$d" || exit 1
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
+base_branch=$(git symbolic-ref --short HEAD)
+git checkout -q -b side
+printf 'side\n' > side.txt; git add side.txt; git commit -qm side
+git checkout -q "$base_branch"
+printf 'main\n' > main.txt; git add main.txt; git commit -qm main
+git merge -q --no-ff --no-commit side >/dev/null 2>&1
+git config hook.wait.event pre-commit-line
+# A step that moves the index, as the access layer's does for paths the other
+# machine changed: the line was made on the old index and must be made again.
+git config hook.wait.command "printf 'arrived\n' > arrived.txt && git add arrived.txt"
+line=$("$PREP" "[*] merge, with step" 2>/dev/null)
+expect_says "the whole-index form during a merge" "$line" "diff --cached --stat --exit-code"
+if before "$line" "$step" "diff --cached"; then ok "RED: …with the step before its index check"; else bad "RED: …with the step before its index check" "$line"; fi
+base=$(git rev-parse HEAD)
+out=$(run_emitted "$line" 2>&1); rc=$?
+expect_exit "RED: a step that changed the index stops the whole-index line" 1 "$rc"
+expect_says "…naming what changed" "$out" "arrived.txt"
+expect_eq "…and nothing is committed" "$base" "$(git rev-parse HEAD)"
+
 printf '\n=== detector: did the commit match what was prepared? ===\n'
 # The reason this exists: a commit lost six files and gained one that was never
 # named, and nothing noticed for two days. Three hypotheses about the cause were

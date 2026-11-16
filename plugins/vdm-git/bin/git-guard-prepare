@@ -177,6 +177,32 @@
 #   tree written at the prep. Anything staged in between — a neighbour's
 #   `git add` — is named, and nothing is committed.
 #
+# A step before the commit (pre-commit-line)
+#   When .git travels between two machines by Syncthing, two commits on one
+#   parent, one from each machine, are not merged: one branch ref stays, the
+#   other goes to a `*.sync-conflict-*` copy, and its commit drops out of the
+#   branch (field cases, the access layer, 2026-11-05 to 11-08: six, each
+#   merged back by hand). The cure is to wait, before committing, until the
+#   other machine's tip has arrived — a step that knows the machines, which
+#   this plugin does not.
+#
+#   So the line calls a git hook event of its own and leaves what runs on it to
+#   whoever wires the machine: `git hook run --allow-unknown-hook-name
+#   --ignore-missing pre-commit-line &&`. The owner's vdx profile assigns the
+#   command (`hook.<name>.event = pre-commit-line` in ~/.gitconfig). The step
+#   goes after the message-file check and before the drift check in all three
+#   forms: it may move index entries of paths the other machine changed, and a
+#   check made before it would let the commit through unchecked. The
+#   whole-index form then refuses on its tree check, and rightly: a line made
+#   on the old tip is prepared again. A step that exits non-zero stops the
+#   line; the hook says why.
+#
+#   The prep asks `git hook list --allow-unknown-hook-name pre-commit-line`,
+#   and only exit 0 — a hook assigned in the config, or a file of that name in
+#   the hooks directory — puts the step in. Otherwise the line is the old one
+#   byte for byte: with no hook, and with a git that has no config hooks
+#   (before 2.54), whose `hook list` does not answer 0 either.
+#
 # The short call
 #   A line waits while the conversation moves on, and a long one gets buried.
 #   Field case (echelon, 2026-10-23): ~900 characters handed off, then a new
@@ -1497,6 +1523,14 @@ gone_q=$(shell_quote "${stem}.gone")
 # (see "A line that dies says why").
 void_check="[ -f $msg_q ] || { { cat $gone_q 2>/dev/null || echo 'git-guard: this line is void — its message file was deleted outside git-guard; ask for a new one'; } >&2; false; } &&"
 
+# Then the step before the commit, where a hook is assigned to it — see "A step
+# before the commit (pre-commit-line)" in the header. Asked once, here; the line
+# carries the answer. With no hook, nothing is added, not even a space.
+pre_line="$void_check"
+if git -C "$path_base" hook list --allow-unknown-hook-name pre-commit-line >/dev/null 2>&1; then
+  pre_line="$pre_line git hook run --allow-unknown-hook-name --ignore-missing pre-commit-line &&"
+fi
+
 # The pathspec forms then repeat, at run time, the refusal this prep made on the
 # same paths: index and worktree must agree, or the commit takes an edit nobody
 # staged — see "A path changed after it was staged" in the header. The diff is
@@ -1565,18 +1599,18 @@ if [ "$whole_index" -eq 1 ]; then
   # `--cached <tree>`: the index against the tree this prep wrote. `--stat`, for
   # the person who runs the line, as in the pathspec forms.
   index_msg="echo 'git-guard: the index changed after this line was prepared (above); nothing committed - ask for a check before running it again' >&2; false;"
-  line="$void_check { git --no-pager -c core.quotePath=false diff --cached --stat --exit-code $index_tree >&2 || { $index_msg }; } && git commit -F $msg_q"
+  line="$pre_line { git --no-pager -c core.quotePath=false diff --cached --stat --exit-code $index_tree >&2 || { $index_msg }; } && git commit -F $msg_q"
 elif [ ${#paths[@]} -gt "$PATHSPEC_INLINE_MAX" ]; then
   # Long list: hand git a NUL-separated file instead of an unreadable line.
   # --pathspec-from-file requires git >= 2.25.
   pf_q=$(shell_quote "$paths_file")
-  line="$void_check { xargs -0 $drift_diff < $pf_q >&2 || { $drift_msg }; } && git commit -F $msg_q --pathspec-from-file=$pf_q --pathspec-file-nul"
+  line="$pre_line { xargs -0 $drift_diff < $pf_q >&2 || { $drift_msg }; } && git commit -F $msg_q --pathspec-from-file=$pf_q --pathspec-file-nul"
 else
   pathspec=""
   for p in "${paths[@]}"; do
     pathspec="$pathspec $(shell_quote "$p")"
   done
-  line="$void_check { $drift_diff$pathspec >&2 || { $drift_msg }; } && git commit -F $msg_q --$pathspec"
+  line="$pre_line { $drift_diff$pathspec >&2 || { $drift_msg }; } && git commit -F $msg_q --$pathspec"
 fi
 
 # The short call: the same line in a script with a short name, `sh <script>`.

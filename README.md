@@ -181,6 +181,8 @@ Prevents Claude from running `git commit` and `git push` without explicit user p
 
 **During a merge or a cherry-pick (v2.24.0)**: git refuses a partial commit while `MERGE_HEAD` or `CHERRY_PICK_HEAD` stands, so the helper prints the line without paths — the whole index — when the index holds nothing but the listed paths, and refuses with the extra paths named otherwise. A line without paths checks, when it runs, that the index is still the one the prep saw.
 
+**A step before the commit (v2.27.0)**: where a hook is assigned to the git event `pre-commit-line` (`hook.<name>.event = pre-commit-line` in git config), the line runs `git hook run --allow-unknown-hook-name --ignore-missing pre-commit-line &&` after its message-file check and before its drift check and the commit, in every form and in the short call. On machines whose `.git` travels by Syncthing the owner's vdx profile assigns a step that waits for the other machine's tip of the branch: two commits on one parent, one from each machine, are not merged and one drops out of the branch. The plugin names only the event; what runs on it is the machine's wiring. The prep asks `git hook list` once: with no hook assigned, or a git without config hooks, the line is as it was, byte for byte. A step that exits non-zero stops the line before anything is committed.
+
 ### `vdx` — Lifecycle Interface (optional, from another repository)
 
 Listed in this marketplace, developed in [VoDmAl/vdx](https://github.com/VoDmAl/vdx) (its `plugin/`

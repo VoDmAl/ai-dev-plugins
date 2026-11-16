@@ -256,6 +256,19 @@ Syncthing would overwrite the file or lay a conflict copy. Syncthing cannot tell
 and it is not a "caught up". A file outside Syncthing, or a machine without the
 command, is not asked about. `GIT_GUARD_SYNC_CHECK=off` switches the check off.
 
+**A step before the commit, where the machine has one.** Two commits on one
+parent, one from each machine, are not merged by Syncthing: one drops out of the
+branch. Where a hook is assigned to the git event `pre-commit-line`
+(`hook.<name>.event = pre-commit-line` in git config; on the owner's machines the
+vdx profile writes it), the line runs it right after its message-file check and
+before its drift check and the commit — `git hook run --allow-unknown-hook-name
+--ignore-missing pre-commit-line &&` — and the hook waits for the other machine's
+tip of the branch. With no hook assigned the line is as it always was. A line that
+stops at the step has committed nothing, and the hook printed why: tell the user
+what it said; once that is resolved, the same line is still the one to run. A
+line without a pathspec that stops at its index check right after the step was
+made on the tip that has just moved: prepare it again with `--supersede`.
+
 **Committing a subset.** When you want fewer paths than are staged, name them:
 
     git-guard-prepare "[+] Add foo helper" -- src/foo.ts
