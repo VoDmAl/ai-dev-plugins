@@ -5,7 +5,7 @@ description: "Ловит Markdown под разделителем чернови
 status: ready
 session-type: short-bug
 created: 2026-11-12
-last-updated: 2026-11-14
+last-updated: 2026-11-16
 relates-to:
   - "[[outgoing-text-unwrapped/workitem|outgoing-text-unwrapped]]"
   - "[[vdm-comms-letter-form/workitem|vdm-comms-letter-form]]"
@@ -276,7 +276,8 @@ intercom. Внести `zulip` в умолчание — значит смени
       брифа (агент проекта, где случилось; первый, «что берём», ушёл 2026-11-12 как
       `email-body-markup-unchecked-outcome`): intercom reply email-body-markup-unchecked
       --slug email-body-markup-unchecked-version --done "<версия, что вошло>" --link
-      <коммит> --ball "<чей мяч дальше>" (due: 2026-11-19)
+      <коммит> --ball "<чей мяч дальше>" (due: 2026-11-19). В том же ответе — мяч из письма echelon
+      `echelon-email-renders-emphasis`: почта через echelon показывает жирный и курсив (DL #3)
 
 ## References
 
