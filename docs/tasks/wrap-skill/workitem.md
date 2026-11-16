@@ -5,7 +5,7 @@ description: "Скилл проверки перед /clear: что есть т�
 status: in-progress
 session-type: prd-prep
 created: 2026-09-30
-last-updated: 2026-11-09
+last-updated: 2026-11-10
 ---
 
 # /vdm:wrap — уйти в чистую сессию, ничего не оставив в чате
@@ -373,6 +373,26 @@ UserPromptSubmit — только если описание не помогае�
 - [ ] Sidetrack #3 — § 2 и § 4 wrap: незаконченная работа с решением за владельцем → висяк в его списке у штаба, фраза — указатель; бамп vdm, changelog
 - [ ] Outcome to the sender (агент проекта, адрес — в конверте письма): intercom reply wrap-unfinished-owner-work --done "<что легло в § 2 и § 4, версия
       vdm>" --ball "nobody — closed". Письмо в архиве `_done/`
+
+### #4. Ассистент сам предложил другую сессию — wrap не запустился; echelon просит Stop-хук
+
+**Возникло в:** DL #3 (своего хука нет), DL #13 (wrap до собственного предложения уйти), Sidetrack #2; письмо
+echelon `wrap-before-session-switch` от 10.11 (intercom-ящик ai-dev-plugins, вне репозитория; пересказано)
+**Описание:** второй случай после 23.10. Focused-сессия echelon 09–10.11 закончила тему и в двух ответах подряд дала
+владельцу строку `vdx ai '…' --focused "<другая тема>"`. wrap не запускался, пометка в кристалле осталась без строки
+коммита. Владелец спросил, почему не подготовил, и не был ли wrap маркером конца сессии. Правка DL #13 живёт только в
+`description` и теле скилла и не сработала. echelon предлагает Stop-хук: в ответе ассистента строка `vdx ai … --focused`,
+`/clear`, «чистая сессия» или «новую сессию», а `/vdm:wrap` в этом ходу не вызывался → одна строка напоминания, как у
+git-guard о висящей строке. Довод DL #3 и Sidetrack #2 «первый хук суиты, ловящий фразу» устарел: `crystal-grow-nudge.sh`
+(Stop, late-grow) уже читает `last_assistant_message` и судит по форме ответа. Решить в рабочей сессии: хук или отказ с
+причиной в DL; признак (строки `vdx ai … --focused`/`--restart`, `/clear`, фразы), вызов Skill wrap в ходе по транскрипту
+(транскрипт на Stop может отставать — см. заголовок `crystal-grow-nudge.sh`), раз в сессию или на каждый ответ.
+
+**Status:** open
+
+- [ ] Sidetrack #4 — Stop-хук «предложил другую сессию без `/vdm:wrap`»: сделать или отказать с причиной в DL; бамп vdm, changelog
+- [ ] Outcome to echelon: intercom reply wrap-before-session-switch --done "<хук и версия vdm, или отказ и номер DL>" --ball
+      "nobody — closed". Письмо в архиве `_done/`
 
 ## Next actions
 

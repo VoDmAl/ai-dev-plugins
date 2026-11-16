@@ -1,0 +1,83 @@
+---
+title: "git-guard: запасной матчер не считает точку границей слова"
+slug: git-guard-fallback-dotted-word
+description: "_mentions() перестаёт читать `git.<домен>` в пути и `.push(` как `git push`"
+status: ready
+session-type: short-bug
+created: 2026-11-11
+last-updated: 2026-11-11
+---
+
+# git-guard: запасной матчер не считает точку границей слова
+
+> Бриф агента одного из сайтов владельца от 11.11, принят сессией intercom 11.11.
+
+## Назначение
+
+11.11 vdm-git 2.26.2 остановил Bash-команду как «BLOCKED — git push — affects remote». Команда
+писала JS-файл, в теле был вызов `rules.push(...)`; git в ней не вызывался. Рабочий каталог того
+проекта лежит под папкой с точкой в имени, начинающимся на `git.` (вида `git.example.org/`), и
+почти каждый `cd` в его сессиях проходит через неё.
+
+Причина — запасной путь хука. Когда `simple_commands()` не может разобрать команду (кавычка не
+закрыта → `ValueError`), `_command_invokes()` зовёт `_mentions()`
+(`plugins/vdm-git/scripts/git-guard-hook.py`, строка 108):
+
+```
+(?<![\w.-])git(?![\w-])[\s\S]*?(?<![\w-]){op}(?![\w-])
+```
+
+- `git(?![\w-])` пускает точку после `git`, и сегмент пути `git.example.org` считается словом `git`;
+- `(?<![\w-]){op}` пускает точку перед подкомандой, и `.push(` / `.commit(` считаются подкомандой.
+
+Готово, когда в `_mentions()` точка входит в слово с обеих сторон, тест с точечной папкой в пути и
+вызовом `.push(` / `.commit(` красный до правки и зелёный после, а отправитель получил итог.
+
+## Текущая модель
+
+- Ложное срабатывание воспроизводится на HEAD (vdm-git 2.26.2) только на неразбираемой команде:
+  разобранная команда с тем же текстом проходит (DL #1).
+- Предложенная граница `git(?![\w.-])` и `(?<![\w.-]){op}` снимает оба ложных случая и держит
+  настоящие `git push` / `git commit`, в том числе после `cd` в точечную папку (DL #1).
+- Код правит основная сессия владельца: сессия intercom делит рабочее дерево с ней.
+
+## Decision Log <!-- crystal-lint: optional -->
+
+### #1 / 2026-11-11 / Воспроизведено на HEAD; предложенная граница проверена на шести случаях
+
+**Source:** assistant
+**Basis:** observed
+**Basis-detail:** сессия intercom 11.11 загрузила `plugins/vdm-git/scripts/git-guard-hook.py` из
+рабочего дерева (vdm-git 2.26.2) и вызвала `_command_invokes()` на командах с префиксом
+`cd /Users/x/git.example.org/proj && `. Без правки: закрытая кавычка и heredoc — не блок;
+`agent-browser eval 'rules.push(1)` (кавычка не закрыта) — блок push; `node -e 'x.commit(1)` —
+блок commit; настоящие `git push … 'oops` и `git commit -m 'oops` после `cd` в точечную папку —
+блок. Регулярка с правкой, тот же набор плюс `/usr/bin/git push 'x` и `git -C . push 'x`: оба
+ложных — не блок, четыре настоящих — блок. Полный хук с правкой не запускался — проверена только
+сама регулярка. Бриф: `~/.claude/vdm/intercom/ai-dev-plugins/_done/git-guard-mentions-dotted-git.md`
+(store intercom, вне репозитория; пересказан здесь, Critical Rule 7: путь отправителя заменён
+вымышленным).
+**Context:** бриф предлагает правку с таблицей своих проб; нужно было понять, держится ли она на
+нашем HEAD и не открывает ли настоящий `git push` в неразбираемой команде.
+**Why:** запасной путь — последняя линия гарда; правка, которая пропустит настоящий push, хуже
+ложного блока. Шесть случаев покрывают оба направления.
+**Implication:** правка — две замены в одной регулярке плюс тест; дизайна не требует.
+
+## Sidetracks
+
+## Next actions
+
+- [ ] В `_mentions()` (`plugins/vdm-git/scripts/git-guard-hook.py`) — `git(?![\w.-])` и
+      `(?<![\w.-]){op}`; docstring называет, почему точка — часть слова
+- [ ] Тест в сьюте git-guard-hook: неразбираемая команда с точечной папкой в пути и `.push(` /
+      `.commit(` — не блок; настоящие `git push` / `git commit` в неразбираемой команде после `cd`
+      в такую папку — блок. RED на HEAD до правки
+- [ ] Версия vdm-git (PATCH), строка в marketplace, запись в `PROJECT_CHANGELOG.md`
+- [ ] Итог агенту сайта (получатель — из конверта письма): intercom reply git-guard-mentions-dotted-git --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>"
+
+## References
+
+- Бриф: `~/.claude/vdm/intercom/ai-dev-plugins/_done/git-guard-mentions-dotted-git.md` (store
+  intercom). Не скопирован: путь и проект отправителя — его данные; пересказ в Назначении и DL #1.
+- Код: `plugins/vdm-git/scripts/git-guard-hook.py` — `_mentions()` (строка 104),
+  `_command_invokes()` (строка 112, запасной путь на строках 139 и 143).

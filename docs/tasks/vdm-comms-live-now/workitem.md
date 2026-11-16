@@ -5,7 +5,7 @@ description: "Собирает signals/now.md из открытых пункто
 status: dormant
 session-type: prd-prep
 created: 2026-09-28
-last-updated: 2026-10-07
+last-updated: 2026-11-12
 relates-to:
   - "[[vdm-comms-pending/workitem|vdm-comms-pending]]"
   - "[[vdm-comms-commitment-form/workitem|vdm-comms-commitment-form]]"
@@ -39,6 +39,15 @@ echelon (календарь, «Мои задачи», счётчики для с
 реплика `>>` видна сессии первой.
 
 ## Текущая модель
+
+**2026-11-12: замысел `now.md` закрыт владельцем (DL #10).** Echelon `comms-now.sh` больше не зовёт, строку хука
+при `now.md` не меняет, лист дня остаётся единственным местом. В vdm-comms 0.42.1 остался код без вызывающего:
+`scripts/comms-now.py` (627 строк) и `comms-now.sh`, `tests/comms-now.test.sh` (444 строки), ключ `comms.now` в
+`comms_config.py`, раздел «The live `now.md`» скила `pending`, строки в `README.md` и `docs/model/suite.md`. Проверка
+`comms-now.py --check` при этом по-прежнему запускается на каждом старте сессии (`comms-pending-check.sh`) и на
+каждой записи дома (`comms-pending.sh --hook`) — процесс python ради файла, которого нет ни у кого. В том же
+скрипте живут `--new-id` и `--assign-ids` — метки `^id` пунктов; нужны ли они без `now.md`, не проверено. Что ниже —
+состояние до закрытия.
 
 Состояние на 2026-09-30:
 
@@ -209,6 +218,26 @@ Obsidian с отставшим временем молчит (закон суи�
 или не настроено, иначе одна строка с командой пересборки. Зовут: `comms-pending.sh --hook` после линтера
 (`additionalContext`) и `comms-pending-check.sh` при старте.
 
+### #10 / 2026-11-12 / Замысел `now.md` закрыт владельцем; судьба `comms.now` и `comms-now.sh` — наше решение
+
+**Source:** user
+**Basis:** user-stated
+**Basis-detail:** письмо echelon `echelon-drops-now-md` от 2026-11-12 (intercom, `ai-dev-plugins/_done/`): владелец
+10.11 в сессии echelon на вопрос «Закрываем ли замысел `now.md`?» с рекомендацией «лист остаётся единственным
+местом, спящую ветку убираем из хука и навыка, агенту плагинов сообщаем» ответил: «Согласен.» Сверено 12.11 в
+checkout echelon: запись #25 журнала решений их кристалла `live-now` с теми же словами; их коммит `a5132f5` есть.
+По замеру echelon 10.11 ключа `comms.now` не было ни у одного из четырёх штабов; сам не перемерял.
+**Context:** кристалл спал с 07.10 в ожидании приёмки штабом, которая так и не пришла: за шесть недель `now.md` не
+появился ни в одном проекте. Echelon убрал у себя шаг прохода, зовущий `comms-now.sh`, и ветку хука; что делать с
+нашей половиной, оставил нам.
+**Why:** решение о замысле принято владельцем и цитируется; у кода в vdm-comms не осталось ни вызывающего, ни
+читателя. Оставить его — значит платить запуском `--check` на каждом старте сессии и записи дома и держать в скиле
+`pending` раздел о файле, которого не будет.
+**Implication:** убрать — работа основной сессии (правка кода, тестов, скила, `README.md`, `suite.md`, версия
+vdm-comms); сессия intercom код не правит. Открытые пункты о приёмке, о приоритете в «Твоём ходе» (Sidetrack #5) и
+об ответе отправителю `owner-block-dig-and-path` теряют предмет: первые два закрываются отменой, третий — ответом,
+что `now.md` не будет и «выше — важнее, у строки путь» держит лист echelon. Echelon ничего от нас не ждёт.
+
 ## Sidetracks
 
 ### #1. Владелец пункта в проектах записан по-разному
@@ -311,6 +340,13 @@ N дней и проверить»), что решает владелец, с в
       что из этого берёт скилл листа echelon
 - [ ] Outcome to отправителю `owner-block-dig-and-path`: `intercom reply owner-block-dig-and-path` — что держится в
       `now.md` и с какой версии
+- [ ] DL #10: убрать из vdm-comms `comms-now.py`, `comms-now.sh`, `tests/comms-now.test.sh`, ключ `comms.now` и его
+      сообщения в `comms_config.py`, вызовы `--check` в `comms-pending-check.sh` и `comms-pending.sh --hook`, раздел
+      «The live `now.md`» скила `pending`, строки в `README.md` и `docs/model/suite.md`; до удаления решить, нужны ли
+      `--new-id` / `--assign-ids` и предупреждение линтера о пункте без `^id` без `now.md` — если да, им нужен другой
+      дом. Версия vdm-comms, каталог, changelog
+- [ ] DL #10: три открытых пункта выше — приёмку и Sidetrack #5 закрыть отменой, отправителю
+      `owner-block-dig-and-path` ответить, что `now.md` не будет; затем `/vdm:crystal-cut`
 
 ## References
 
