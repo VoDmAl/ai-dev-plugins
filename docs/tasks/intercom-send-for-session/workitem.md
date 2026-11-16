@@ -5,7 +5,7 @@ description: "send пишет for-session по ключу, с проверкой
 status: ready
 session-type: short-bug
 created: 2026-11-06
-last-updated: 2026-11-06
+last-updated: 2026-11-16
 relates-to:
   - "[[intercom-reply-own-project-session/workitem|intercom-reply-own-project-session]]"
   - "[[intercom-hitl-via-initiator/workitem|intercom-hitl-via-initiator]]"
@@ -121,11 +121,27 @@ id — отказ, или ключ сильнее? Решить в DL; по ум
 
 **Status:** resolved — `gone`: поле пишется, письмо обычное; `self`: отказ; DL #2.
 
+### #4. Продолжение своего письма теряет `for-session` нити
+
+**Возникло в:** разбор промахов темы для vdx, 2026-11-16 (кристалл
+[[intercom-focused-topic/workitem|intercom-focused-topic]], письмо `vdx/focused-topic-misses-review`)
+**Описание:** сессия A проекта P пишет бриф проекту Q, итог Q приходит ей правильно, с `for-session` A. Следующее
+письмо Q пишет как `send --reply-to` на **свой** итог. `for-session` пишется только в ответ на письмо адресата,
+поэтому здесь его нет, и письмо идёт как обычное. В поле так и вышло: отправитель угадал `--topic` соседней
+focused-сессии, она вернула письмо `--miss`, и до A оно дошло только после второй передачи. Сверено по конвертам
+цепочки (`intercom chain`). Правка: `send --reply-to` на своё письмо тому же адресату наследует его `for-session`,
+если оно было. Та же проверка состояния id, что у ответа: `gone` — поле пишется, письмо обычное. Красный тест — на
+цепочке из трёх писем.
+
+**Status:** open
+
 ## Next actions
 
 - [x] Sidetrack #1: решить, чей id, когда ключ дан вместе с `--reply-to`; записать в DL — DL #2
 - [x] Sidetrack #2: решить, отказ или предупреждение для id сессии чужого проекта; записать в DL — DL #2
 - [x] Sidetrack #3: решить, что делать с id в состоянии `gone` и `self`; записать в DL — DL #2
+- [ ] Sidetrack #4: `send --reply-to` на своё письмо тому же адресату наследует его `for-session`; красный тест на
+      цепочке из трёх писем
 - [ ] `send --for-session <id>`: разбор ключа; поле `for-session:` в конверте при рендере. Отказ до записи, ничего не
       записано (DL #2): id вне `[A-Za-z0-9_-]`; другой `from-session` при `--reply-to` (оба id в сообщении); сессия
       известна как сессия чужого проекта (транскрипт здесь не в каталоге получателя, или cwd живой сессии); `self`.

@@ -5,7 +5,7 @@ description: "Будить focused-сессию письмами по её те�
 status: dormant
 session-type: prd-prep
 created: 2026-10-27
-last-updated: 2026-10-31
+last-updated: 2026-11-16
 ---
 
 # intercom: письма по теме focused-сессии — к ней, остальным — нет
@@ -217,8 +217,14 @@ intercom такое письмо открытым не считает, а `send`
       slug свой. Назвать в тексте и `focused-topic-shipped` — 2026-10-31, `vdx/focused-topic-letters-result`: выпуск
       2.66.0 (`d0b65b9`, push 31.10), отличия от промежуточного, счёт; мяч vdx — не менять `@vdx_topic` без письма.
       Не будили: последний ход владельца в vdx был на m3, письмо ждёт ту сессию
-- [ ] Разбор промахов вместе с vdx: прислать vdx выдачу `intercom topic-misses --since 2026-10-31` и разобрать её
-      вместе — выпуск 2.66.0 был 2026-10-31, срок обещан vdx в `focused-topic-letters-result` (due: 2026-11-14)
+- [x] Разбор промахов вместе с vdx: прислать vdx выдачу `intercom topic-misses --since 2026-10-31` и разобрать её
+      вместе — выпуск 2.66.0 был 2026-10-31, срок обещан vdx в `focused-topic-letters-result` (due: 2026-11-14) —
+      отправлено 2026-11-16, на два дня позже, письмом `vdx/focused-topic-misses-review` (`--reply-to` на итог). По
+      теме направлено 89 писем; с 31.10 отметок три. К маршруту по теме относится одна: письмо продолжало своё же
+      письмо отправителя и потеряло `for-session` сессии, начавшей нить (побег в
+      [[intercom-send-for-session/workitem|intercom-send-for-session]]). Вторая — тема появилась после письма, третья —
+      ошибка адресата, а не темы. Мяч vdx — их взгляд и вопрос, годится ли тема из первой реплики владельца для
+      сравнения; ответ придёт в ящик
 - [x] Outcome to `echelon`: intercom reply focused-own-by-subject --done "<как мерило легло в
       устройство>" --ball "echelon — передать штабу; его запись памяти о focused-режиме становится
       указателем". Письмо в архиве `_done/` — 2026-10-31, `echelon/focused-own-by-subject-outcome`; сессия intercom
