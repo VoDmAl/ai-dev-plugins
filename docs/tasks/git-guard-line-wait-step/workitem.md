@@ -311,14 +311,19 @@ pre-commit-line`, команду назначает профиль vdx; пути
       ни одного: шаг есть только на машине, где vdx его проволочил, а соседние пункты о копии ссылки
       нужны и без него
 - [x] Бамп vdm-git (MINOR), marketplace, `PROJECT_CHANGELOG.md`, дрейф `docs/model/suite.md` — 2.27.0, 16.11
-- [ ] шаг guard wait в строке git-guard, итог echelon. Тот же мяч назван vdx в ответе
+- [x] шаг guard wait в строке git-guard, итог echelon. Тот же мяч назван vdx в ответе
       `vdx/commit-line-wait-via-hook-run-outcome` (14.11). Outcome to `echelon` (промежуточный ушёл
       08.11, `echelon/commit-line-wait-step-taken`): intercom reply commit-line-wait-step --done
-      "<что сделано, версия vdm-git>" --link <коммит> --ball "<у кого мяч — что>" (due: 2026-11-13)
-- [ ] push в строке git-guard, итог агенту машин. Outcome (промежуточный ушёл 08.11,
+      "<что сделано, версия vdm-git>" --link <коммит> --ball "<у кого мяч — что>" (due: 2026-11-13) —
+      отправлено 16.11, на три дня позже: `echelon/commit-line-wait-step-shipped`, vdm-git 2.27.0, коммит
+      `4e78a51`. Мячи: vdx — событие в профиль и `vdx doctor --fix`; echelon — обёртка `guard wait`; наш —
+      живой прогон (пункт выше). vdx получил то же письмом `vdx/commit-line-wait-via-hook-run-shipped`
+- [x] push в строке git-guard, итог агенту машин. Outcome (промежуточный ушёл 08.11,
       `git-guard-line-push-taken`; ответ на него с тем же мячом — `git-guard-line-push-taken-outcome`):
       intercom reply git-guard-line-push --done "<что сделано, версия
-      vdm-git>" --link <коммит> --ball "<у кого мяч — что>" (due: 2026-11-13)
+      vdm-git>" --link <коммит> --ball "<у кого мяч — что>" (due: 2026-11-13) — отправлено 16.11:
+      письмо агенту машин `git-guard-line-push-deferred` — push не в 2.27.0, отдельной работой, без даты (DL #4);
+      мяч наш, его держит пункт Sidetrack #1 выше
 
 ## References
 
