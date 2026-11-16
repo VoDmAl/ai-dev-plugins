@@ -5,7 +5,7 @@ description: "Напомнить в конце хода, когда в нём п
 status: ready
 session-type: prd-prep
 created: 2026-10-30
-last-updated: 2026-11-12
+last-updated: 2026-11-16
 relates-to:
   - "[[late-grow/workitem|late-grow]]"
   - "[[comms-thread-contract/workitem|comms-thread-contract]]"
@@ -90,8 +90,9 @@ relates-to:
 - [ ] Sidetrack #1: определить «ход записал в файл верёвки» — workitem кристалла, дома `pending` vdm-comms,
       `intercom send` штабу, любым инструментом, включая Bash
 - [ ] Итог echelon: в какой форме берём и с какой версии — письмом `promise-watcher-result`
-      (`intercom send echelon promise-watcher-result --reply-to ai-dev-plugins/promise-watcher`) (due: 2026-11-06)
-      — срок прошёл, итог не отправлен. Echelon напомнил 2026-11-12 (`thread-contract-promise-watcher-dates`, лежит
+      (`intercom send echelon promise-watcher-result --reply-to ai-dev-plugins/promise-watcher`) — без даты: слово
+      владельца 16.11, echelon сказано (DL #7 [[comms-thread-contract/workitem|comms-thread-contract]]). Прежний срок
+      06.11 прошёл, итог не отправлен. Echelon напомнил 2026-11-12 (`thread-contract-promise-watcher-dates`, лежит
       в ящике с пометкой ожидания): просит новую дату или «не делаем»; у них от сторожа ничего не зависит. Вопрос
       ушёл владельцу через сессию echelon (`echelon/thread-contract-promise-watcher-dates-ask`) с рекомендацией:
       без даты, echelon закрывает ожидание, напишем, когда возьмём. Слова владельца пока нет; придёт —

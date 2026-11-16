@@ -5,7 +5,7 @@ description: "Дать comms-new текст письма одним вызово
 status: ready
 session-type: prd-prep
 created: 2026-11-03
-last-updated: 2026-11-03
+last-updated: 2026-11-16
 relates-to:
   - "[[comms-thread-contract/workitem|comms-thread-contract]]"
   - "[[vdm-comms-letter-form/workitem|vdm-comms-letter-form]]"
@@ -119,7 +119,8 @@ vdm-comms.
 - [ ] Sidetrack #1: echelon читает письма через читатель vdm-comms — сверить его вызов после выпуска
 - [ ] Outcome to `echelon`: что сделано и в какой версии vdm-comms, или почему нет —
       `intercom reply mail-draft-file-letter-reader --slug mail-draft-file-letter-reader-result --done "<что>" --ball "<кто — что ⏰ дата>"`
-      (дата пересмотра echelon) (due: 2026-11-10)
+      — срок 10.11 прошёл; 16.11 echelon сказан новый, слово владельца (DL #7
+      [[comms-thread-contract/workitem|comms-thread-contract]]) (due: 2026-11-24)
 
 ## References
 

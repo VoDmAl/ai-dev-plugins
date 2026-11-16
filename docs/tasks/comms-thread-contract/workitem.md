@@ -5,7 +5,7 @@ description: "Нити и верёвки — публичное ядро в vdm-
 status: in-progress
 session-type: prd-prep
 created: 2026-10-30
-last-updated: 2026-11-12
+last-updated: 2026-11-16
 relates-to:
   - "[[vdm-comms-commitment-form/workitem|vdm-comms-commitment-form]]"
   - "[[vdm-comms-pending/workitem|vdm-comms-pending]]"
@@ -205,6 +205,24 @@ vdm-comms», держались на отсутствии публичного �
 три — сильный провис, обрыв только с узлом); `--json` — `every`, `last`, `next`; история — `git log` строки. Шапки
 `next-due:` / `care-next:` / `expires:` хранилища мигрируют в нити, второй формы парсер не читает.
 
+### #7 / 2026-11-16 / Echelon — даты до конца разбора: узел и тест ключей к 20.11, читатель и вложения к 24.11, остальное без даты
+
+**Source:** both
+**Basis:** user-stated
+**Basis-detail:** предложение ассистента в основной сессии 16.11 (рекомендация сессии intercom от 12.11, письмо
+`echelon/thread-contract-promise-watcher-dates-ask`); владелец: *«я за то чтобы ответить эшелону и сразу сделать -
+можно делегировать focused сессии чтобы параллельно это сделала»*. Напоминание echelon
+`thread-contract-promise-watcher-dates` (12.11) ждало в ящике с пометкой ожидания.
+**Context:** четыре итога echelon просрочены: `thread-contract-result` и `promise-watcher-result` с 06.11, читатель
+файла письма и вложения из 📎 с 10.11. Даты должен был дать вопрос 5 разбора, а разбор стоит на вопросе 1.3б. От узла
+`at::` зависит шаг 4 модели «что висит» у echelon; их запасной разбор на поле не видит ни одной строки.
+**Why:** форма узла решена DL #2 и от остальных вопросов разбора не зависит, поэтому ждать конца разбора незачем.
+Тест ключей в узкой части закрепляет то, что есть сейчас, вместе с `at`, `plan`, `knot`; ключи, которые даст разбор,
+он примет позже. Узел делает focused-сессия, параллельно основной.
+**Implication:** echelon ответили 16.11 одним письмом по всем четырём итогам. Вопрос 5 разбора для них закрыт; разбор
+продолжается с 1.3б. Новые сроки — в Next actions здесь, в `promise-watcher`, `comms-letter-file-reader` и
+`comms-attachments-from-paperclip`.
+
 ## Sidetracks
 
 ### #1. Дата кристалла и дата pending значат разное, а кристалл читает их одинаково
@@ -247,9 +265,13 @@ vdm-comms», держались на отсутствии публичного �
 - [ ] Sidetrack #1: развести или согласовать смысл даты пункта кристалла и даты пересмотра в pending
 - [ ] Закрепить ключи `--json` тестом как контракт с echelon и записать в скиле `pending`, что имена и смысл меняются
       только с письмом echelon заранее
+- [ ] Узел `at::` / `plan::` в парсере и в `--json` пункта — `at`, `plan`, `knot` (DL #2), и тест, закрепляющий
+      ключи `--json` пункта, что есть сейчас, вместе с этими тремя (узкая часть п. 6 и вопроса 1.5); скил `pending`,
+      версия vdm-comms, changelog. Делает focused-сессия от 16.11 (DL #7). Итог echelon — версия и ключи, письмом
+      `intercom send echelon thread-contract-knot --reply-to ai-dev-plugins/thread-contract` (due: 2026-11-20)
 - [ ] Итог echelon: что берём из п. 1–7 и с какой версии — письмом `thread-contract-result`
-      (`intercom send echelon thread-contract-result --reply-to ai-dev-plugins/thread-contract`) (due: 2026-11-06)
-      — срок прошёл, итог не отправлен. Echelon напомнил 2026-11-12 (`thread-contract-promise-watcher-dates`, лежит
+      (`intercom send echelon thread-contract-result --reply-to ai-dev-plugins/thread-contract`) — после разбора, без
+      даты (DL #7). Прежний срок 06.11 прошёл, итог не отправлен. Echelon напомнил 2026-11-12 (`thread-contract-promise-watcher-dates`, лежит
       в ящике с пометкой ожидания): просит новую дату или «не делаем»; от узла `at::` у них зависит шаг 4 модели
       «что висит», пока его разбирает их запасной код. Вопрос о дате ушёл владельцу через сессию echelon
       (`echelon/thread-contract-promise-watcher-dates-ask`) с рекомендацией: `at::` в парсере и в `--json` плюс тест

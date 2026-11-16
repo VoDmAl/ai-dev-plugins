@@ -5,7 +5,7 @@ description: "Сверить `attachments:` с пунктами 📎, прове
 status: ready
 session-type: prd-prep
 created: 2026-11-06
-last-updated: 2026-11-06
+last-updated: 2026-11-16
 relates-to:
   - "[[comms-letter-file-reader/workitem|comms-letter-file-reader]]"
   - "[[vdm-comms-command-center-onboarding/workitem|vdm-comms-command-center-onboarding]]"
@@ -124,7 +124,8 @@ vdm-comms планирует отдавать вложения, и разбор 
       письма переписать по принятому решению (из 📎, разрешённые пути, отказ при расхождении)
 - [ ] Outcome to `echelon`: что решено и в какой версии vdm-comms —
       `intercom reply comms-lint-attachments-vs-paperclip --slug comms-lint-attachments-vs-paperclip-result --done "<что>" --ball "<кто — что ⏰ дата>"`
-      (вместе с итогом по читателю письма) (due: 2026-11-10)
+      (вместе с итогом по читателю письма) — срок 10.11 прошёл; 16.11 echelon сказан новый, слово владельца (DL #7
+      [[comms-thread-contract/workitem|comms-thread-contract]]) (due: 2026-11-24)
 
 ## References
 
