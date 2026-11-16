@@ -170,7 +170,7 @@ _ic_arrivals() {
 # for the last week, this runs on every message. Costs a transcript's tail only when
 # some letter carries a mark.
 _ic_stale() {
-  local id="$1" t="$2" sid="$3" inbox cand reply when_reply text me="" slug who when f
+  local id="$1" t="$2" sid="$3" inbox cand reply when_reply text me="" slug who when msid f
   [ -f "$t" ] || return 0
   inbox="$(intercom_inbox_dir "$id")"
   [ -d "$inbox" ] || return 0
@@ -192,7 +192,12 @@ _ic_stale() {
           if (line ~ /^taken:/) { taken = substr(line, 7); gsub(/^[ \t]+|[ \t]+$/, "", taken) }
         }
         close(f)
-        if (slug != "" && taken ~ / /) { n = split(taken, p, " "); printf "%s\037%s\037%s\n", slug, p[1], p[n] }
+        if (slug != "" && taken ~ / /) {
+          # `<who> [session:<id>] <time>` (intercom-session-by-id, DL #4).
+          n = split(taken, p, " "); sid = ""
+          for (k = 2; k < n; k++) if (p[k] ~ /^session:/) sid = substr(p[k], 9)
+          printf "%s\037%s\037%s\037%s\n", slug, p[1], p[n], sid
+        }
       }
       exit
     }' "${files[@]}")"
@@ -201,11 +206,16 @@ _ic_stale() {
   [ -n "$reply" ] || return 0
   when_reply="$(intercom_reply_time "$reply")"
   text="${reply#*$'\t'}"
-  while IFS=$'\037' read -r slug who when; do
+  while IFS=$'\037' read -r slug who when msid; do
     [ -n "$slug" ] && [ "$when_reply" \< "$when" ] || continue
     intercom_reply_names "$text" "$slug" || continue
-    [ -n "$me" ] || me="$(CLAUDE_CODE_SESSION_ID="${CLAUDE_CODE_SESSION_ID:-$sid}" _intercom_taker)"
-    [ "$who" != "$me" ] || continue
+    # By the id where the mark carries one: a namesake's take is another session's.
+    if [ -n "$msid" ]; then
+      [ "$msid" != "${CLAUDE_CODE_SESSION_ID:-$sid}" ] || continue
+    else
+      [ -n "$me" ] || me="$(CLAUDE_CODE_SESSION_ID="${CLAUDE_CODE_SESSION_ID:-$sid}" _intercom_taker)"
+      [ "$who" != "$me" ] || continue
+    fi
     printf '`%s` — taken by %s\n' "$slug" "$who"
   done <<<"$cand"
 }

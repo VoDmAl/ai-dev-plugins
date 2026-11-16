@@ -498,16 +498,22 @@ pending messages:
 1. `intercom.sh check` → list what's waiting.
 2. Read the message file(s). A letter `check` shows as **taken by** another
    session is that session's — leave it. Unless `check` says *that session is
-   gone*: the mark names a session of this machine, and none by that name is
-   live here — its pid answers nothing, or its socket is gone. Nobody removes
-   the mark when a session ends, so the letter waits for no one: take it over
-   with `intercom.sh take <slug> --force`. A mark from the user's other machine
-   is not checked from here, and `check` says so; it stays that session's
-   unless the user says that session is over.
+   gone*: the mark names a session of this machine, and the session with the id
+   it carries is not live here — its pid answers nothing, or its socket is gone.
+   Nobody removes the mark when a session ends, so the letter waits for no one:
+   take it over with `intercom.sh take <slug> --force`. The session is told
+   apart by its id, not its name: the harness derives the name, two live
+   sessions of one project may share it, and `--resume` gives the same session
+   a new one. A mark from the user's other machine is not checked from here,
+   and `check` says so; it stays that session's unless the user says that
+   session is over. A mark written before marks carried an id, whose name no
+   live session here has, is *not checked* either — a session resumed since
+   goes by another name: look at its transcript, and `--force` only once it
+   shows that session ended.
 3. Before you start on a letter, take it: `intercom.sh take <slug>` — the first
    step, before you read it in depth or touch anything; `check` prints the
    command beside every letter nobody has taken. The mark
-   (`taken: <machine>/<session> <time>`) reaches the user's other machine within
+   (`taken: <machine>/<session name> session:<id> <time>`) reaches the user's other machine within
    about a minute, so the list you read may already be stale: `take` refuses a
    letter taken elsewhere, and that refusal is the check that holds — leave the
    letter and tell the user. `pickup`, `reply` and the wake leave a letter taken

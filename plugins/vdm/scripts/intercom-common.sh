@@ -2094,14 +2094,20 @@ intercom_wake_choice() {
 # Taken (docs/tasks/intercom-wake-one-machine, DL #3). Two sessions that each
 # find the same letter by themselves both start on it — the wake picks one, but
 # `check` and session start are not the wake. A session that takes a letter
-# writes `taken: <machine>/<session> <time>` into its envelope; the store
+# writes `taken: <machine>/<session> session:<id> <time>` into its envelope; the store
 # carries it to the other machine within about a minute, and pickup, reply and
 # the wake respect it. Two takes inside that minute leave a sync conflict copy
 # of the letter — visible, and the race the mark narrows rather than closes.
 # ---------------------------------------------------------------------------
 
-# _intercom_taker — who this session is, as the mark records it:
+# _intercom_taker [--sid] — who this session is, as the mark records it:
 # `<machine>/<session name>`, or `<machine>` where the harness names no session.
+# The name is for people: the harness derives it, two live sessions of one project
+# here may share it, and `--resume` gives the same session a new one
+# (docs/tasks/intercom-session-by-id). With --sid ` session:<id>` follows the name,
+# and that is what tells sessions apart. Only beside a name, that is where a session
+# file names this session: an id no file carries is never found live, and the mark
+# would read as gone the moment it is written.
 _intercom_taker() {
   local m name="" f
   m="$(_intercom_machine_name)"
@@ -2113,17 +2119,54 @@ _intercom_taker() {
       [ -n "$name" ] && break
     done
   fi
-  if [ -n "$name" ]; then printf '%s/%s' "$m" "$name"; else printf '%s' "$m"; fi
+  if [ -z "$name" ]; then
+    printf '%s' "$m"
+  elif [ "${1:-}" = --sid ] && _intercom_sid_ok "$CLAUDE_CODE_SESSION_ID"; then
+    printf '%s/%s session:%s' "$m" "$name" "$CLAUDE_CODE_SESSION_ID"
+  else
+    printf '%s/%s' "$m" "$name"
+  fi
 }
 
-# intercom_taken_elsewhere <letter> — prints the mark ("<who> <time>") when the
-# letter is taken by someone other than this session; silent otherwise.
+# _intercom_sid_ok <id> — only what a session id looks like: it comes from a file
+# anyone may write, and it names transcript files below.
+_intercom_sid_ok() { case "$1" in ''|*[!A-Za-z0-9_-]*) return 1 ;; esac; }
+
+# A mark reads `<who> [session:<id>] <time>` (intercom-session-by-id, DL #4). The id
+# sits between the two, so a session started on an older version — `who` its first
+# word, the time its last — reads a new mark as it read the old ones.
+intercom_mark_time() { printf '%s' "${1##* }"; }
+
+# intercom_mark_sid <mark> — the session id the mark carries; nothing for a mark
+# written before marks carried one, or one whose id is malformed.
+intercom_mark_sid() {
+  local s
+  case " $1 " in *" session:"*) ;; *) return 0 ;; esac
+  s="${1#* session:}"; s="${s%% *}"
+  _intercom_sid_ok "$s" && printf '%s' "$s"
+  return 0
+}
+
+# intercom_mark_mine <mark> — this session wrote it: by the id where the mark
+# carries one — a namesake is not this session, a resumed session still is — and
+# by `who` for a mark of the old form, as before.
+intercom_mark_mine() {
+  local sid
+  sid="$(intercom_mark_sid "$1")"
+  if [ -n "$sid" ]; then
+    [ "$sid" = "${CLAUDE_CODE_SESSION_ID:-}" ]
+    return
+  fi
+  [ "${1%% *}" = "$(_intercom_taker)" ]
+}
+
+# intercom_taken_elsewhere <letter> — prints the mark when the letter is taken by
+# someone other than this session; silent otherwise.
 intercom_taken_elsewhere() {
-  local mark who
+  local mark
   mark="$(intercom_fm_field "$1" taken)"
   [ -n "$mark" ] || return 0
-  who="${mark%% *}"
-  [ "$who" = "$(_intercom_taker)" ] && return 0
+  intercom_mark_mine "$mark" && return 0
   printf '%s' "$mark"
 }
 
@@ -2176,14 +2219,15 @@ intercom_reply_names() {
   printf '%s' "$1" | LC_ALL=C grep -qE "(^|[^A-Za-z0-9_-])${esc}([^A-Za-z0-9_-]|\$)"
 }
 
-# intercom_stale_sessions <identity> <slug> <time> [<name to skip>] — "<name><US><status>"
+# intercom_stale_sessions <identity> <slug> <time> [<session id to skip>] — "<name><US><status>"
 # of every live session of that agent here, other than this one, whose last answer
 # was written before <time> and names <slug>. Not an intercom session: nobody sits
-# at it. A focused one is: the sentence on its screen is its own.
+# at it. A focused one is: the sentence on its screen is its own. Skipped by id: a
+# namesake of the session skipped hears like any other (intercom-session-by-id).
 intercom_stale_sessions() {
   local id="$1" slug="$2" when="$3" skip="${4:-}" pid name status sid mode upd tf reply
   while IFS=$'\037' read -r pid name status sid mode upd; do
-    [ -n "$sid" ] && [ "$mode" != mail ] && [ "$name" != "$skip" ] || continue
+    [ -n "$sid" ] && [ "$mode" != mail ] && [ "$sid" != "$skip" ] || continue
     for tf in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"/*/"$sid".jsonl; do
       [ -f "$tf" ] || continue
       reply="$(intercom_last_reply "$tf")"
@@ -2205,6 +2249,8 @@ intercom_stale_sessions() {
 # sessions count: this asks whether the holder of a mark is alive, not whom to
 # wake (DL #2). With no jq it cannot tell, and says live: calling a live session
 # gone hands its letter to a second session, the double work the mark is for.
+# Only for a mark with no session id: a name may belong to two live sessions, or
+# to none any more while its session goes on under another (intercom-session-by-id).
 _intercom_session_live_here() {
   local f pid sock
   command -v jq >/dev/null 2>&1 || return 0
@@ -2224,19 +2270,40 @@ _intercom_session_live_here() {
 }
 
 # intercom_mark_state <mark> — what the holder of a `taken:` mark is now:
-#   self       this session;
-#   live       a live session by that name on this machine;
-#   gone       a named session of this machine that is not live;
-#   unchecked  another machine, or a mark with no session name — not checked from here.
+#   self                              this session;
+#   live<US><name>                    live on this machine, under the name it has now —
+#                                     after `--resume` not the one in the mark;
+#   away<US><machine><US><minutes>    by its id, written on another machine inside the
+#                                     presence window: the same conversation, open there;
+#   gone                              a session of this machine that is not live;
+#   unsure                            a mark of this machine with no session id, and no
+#                                     live session by its name: a session resumed under a
+#                                     new name is not found by its old one — not checked,
+#                                     and no ground to call it gone (intercom-session-by-id, DL #3);
+#   unchecked                         another machine, or a mark with no session name —
+#                                     not checked from here.
+# By the id where the mark carries one (DL #4), so a namesake live here neither
+# keeps a gone session's letter nor passes for this session.
 intercom_mark_state() {
-  local who="${1%% *}" m name
-  [ "$who" = "$(_intercom_taker)" ] && { printf 'self'; return 0; }
+  local who="${1%% *}" m name sid st
+  intercom_mark_mine "$1" && { printf 'self'; return 0; }
   case "$who" in
     */*) m="${who%%/*}"; name="${who#*/}" ;;
     *)   printf 'unchecked'; return 0 ;;
   esac
+  sid="$(intercom_mark_sid "$1")"
+  if [ -n "$sid" ]; then
+    st="$(intercom_session_state "$sid")"
+    case "$st" in
+      live*) st="${st#live$'\037'}"; printf 'live\037%s' "${st%%$'\037'*}"; return 0 ;;
+      away*) printf '%s' "$st"; return 0 ;;
+    esac
+    # Silence on another machine past the window is no end of a session there.
+    if [ "$m" = "$(_intercom_machine_name)" ]; then printf 'gone'; else printf 'unchecked'; fi
+    return 0
+  fi
   [ "$m" = "$(_intercom_machine_name)" ] || { printf 'unchecked'; return 0; }
-  if _intercom_session_live_here "$name"; then printf 'live'; else printf 'gone'; fi
+  if _intercom_session_live_here "$name"; then printf 'live\037%s' "$name"; else printf 'unsure'; fi
 }
 
 # _intercom_mark <letter> <taken value> <deferred value> — rewrite the two
@@ -2267,7 +2334,7 @@ _intercom_mark() {
 # taken again is in work again, so a `deferred:` note left by a release goes.
 intercom_take() {
   [ -f "$1" ] || return 1
-  _intercom_mark "$1" "$(_intercom_taker) $(date -u +%Y-%m-%dT%H:%M:%SZ)" "" \
+  _intercom_mark "$1" "$(_intercom_taker --sid) $(date -u +%Y-%m-%dT%H:%M:%SZ)" "" \
     && grep -q '^taken: ' "$1"
 }
 
