@@ -267,7 +267,7 @@ out=$(gate index); rc=$?
 expect_eq "one value on two lines: one question" "$(asked)" 1
 
 fresh
-stage docs/many.md "Бондаренко Волков Зайцев Козлов Котов Лебедев Морозов Смирнов"
+stage docs/many.md "Бондаренко Волков Зайцев Котов Лебедев Морозов Смирнов Соколов"
 out=$(gate index); rc=$?
 expect_exit "eight disputed values: blocked" 1 "$rc"
 expect_eq "eight values: five questions" "$(asked)" 5

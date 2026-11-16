@@ -102,7 +102,7 @@ Per-project memory: `~/.claude/projects/<encoded-cwd>/memory/promises/`
 
 ### Acceptance criteria
 
-1. Можно вручную захватить promise: `/vdm:promises Сохранить письмо Козловой 27.05`
+1. Можно вручную захватить promise: `/vdm:promises Сохранить письмо Соколовой 27.05`
 2. `/vdm:promises --list` показывает promise с ID и датой
 3. `/vdm:promises --resolve 1` закрывает promise
 4. Auto-detect срабатывает на phrase «сохраню после Y» — выводит suggestion с вопросом capture

@@ -23,6 +23,11 @@ common программа
 common контент
 # A placeholder for a file extension (`<name>[.<ext>]`) that is also a login in an address book.
 common ext
+# Ordinary words that became an agent's alias or a login in an address book after the gate went in
+# (tree scan 2026-11-16): a repository name in intercom's fixtures, a changelog entry type, a mode of learn.
+common widget
+common arch
+common light
 
 # --- agent: an agent the owner allowed to be named, by its registry identity
 # (public-repo-cleanup DL #15). All its names pass, in any form.
@@ -97,7 +102,6 @@ word Зайцев
 word Иван
 word Коваленко
 word Ковальчук
-word Козлов
 word Котов
 word Лебедев
 word Мария
