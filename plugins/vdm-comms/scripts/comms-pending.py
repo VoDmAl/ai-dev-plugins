@@ -72,7 +72,8 @@ whose ball it is, and repeating it on every line is noise.
     comms-pending.py --owner             the same, grouped by owner
     comms-pending.py --all               everything, including far-dated
     comms-pending.py --brief             one line, for a session-start reminder
-    comms-pending.py --json              machine-readable
+    comms-pending.py --json              machine-readable — a contract: keys are
+                                         added, never renamed without notice
     comms-pending.py --lint [files]      contract violations
     comms-pending.py --lint --changed F  only lines absent from HEAD (the hook)
 
@@ -130,7 +131,7 @@ EMOJI_RE = re.compile(r"[\U0001F100-\U0001F2FF\U0001F300-\U0001FAFF☀-➿️⬀
 # many times we reminded, where the matter lives. One project wrote exactly this
 # on 380 of its 381 open lines before the plugin read it; the old form below is
 # read during the transition and gives an item with no state.
-FIELD_RE = re.compile(r"\[(who|state|due|nudges|track)::\s*([^\]]*?)\s*\]")
+FIELD_RE = re.compile(r"\[(who|state|due|nudges|track|at|plan)::\s*([^\]]*?)\s*\]")
 # Dataview also takes a field in round brackets, `(due:: 2026-10-31)`, and
 # Obsidian Tasks may leave one when the line is edited there. It is the same
 # field, not the crystal's `(due: …)` with a stray colon, which read it as a
@@ -315,6 +316,44 @@ def parse_date(line, today):
     # deserve different words — a missing date is a gap, a broken one is a
     # promise that cannot fire.
     return None, "none"
+
+
+# The knot — a date that is not ours to move: a meeting, an event, the other
+# side's date (crystal `comms-thread-contract`, DL #2). `[due::]` is the day we
+# look again, and moving it never moves the knot; that is why the two are two
+# fields. `[at::]` is the knot itself, `[plan::]` a plan item there whose deed is
+# closing this line. In the field the knot is written as the meeting it is —
+# `[at:: meetings/2026-11-20-sync]`, `[plan:: meetings/2026-11-20-sync#a3f]` —
+# and the date lives only in the folder's name: a reader expecting an ISO date
+# right after `::` found none on 22 997 open lines (2026-11-12). So the date is
+# read from the start of the value, or else from the name of the last folder in
+# the path before `#` — the last name, or the one before it when the last is a
+# file in that folder (`meetings/2026-11-20-sync/agenda.md`). A dated folder
+# further up is not the meeting's, and the meeting's file is never opened.
+KNOT_DATE_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})(?!\d)")
+KNOT_FIELDS = ("at", "plan")
+
+
+def _knot_date(value):
+    value = (value or "").strip()
+    m = KNOT_DATE_RE.match(value)
+    if not m:
+        names = [n for n in value.split("#", 1)[0].strip().rstrip("/").split("/") if n]
+        for name in reversed(names[-2:]):
+            m = KNOT_DATE_RE.match(name)
+            if m:
+                break
+    d = _mkdate(*m.groups()) if m else None
+    return d.isoformat() if d else None
+
+
+def knot_of(fields):
+    """→ ISO date of the knot, or None: `[at::]` first, then `[plan::]`."""
+    for name in KNOT_FIELDS:
+        d = _knot_date(fields.get(name))
+        if d:
+            return d
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -662,16 +701,26 @@ def scan_file(path, root, cfg, sides, today, prx):
                 cell, text = row
                 due, dkind = parse_date(cell, today)
                 owner, okind, okey = parse_owner(cell, None, cfg, prx, today)
+                # The same keys as a line's, null where a table has none: a
+                # reader of --json gets one shape of item. The key set is a
+                # contract, held by tests/comms-pending.test.sh.
                 items.append({
                     "file": rel,
                     "line_no": lineno,
                     "section": side or "",
                     "strict": False,
+                    "full": False,
                     "owner": owner or NO_OWNER,
                     "owner_kind": okind,
                     "owner_key": okey,
                     "due": due.isoformat() if due else None,
                     "date_kind": dkind,
+                    "state": None,
+                    "nudges": None,
+                    "track": None,
+                    "at": None,
+                    "plan": None,
+                    "knot": None,
                     "text": text,
                     "line": line,
                 })
@@ -727,6 +776,9 @@ def scan_file(path, root, cfg, sides, today, prx):
             "state": fields.get("state"),
             "nudges": fields.get("nudges"),
             "track": fields.get("track"),
+            "at": fields.get("at"),
+            "plan": fields.get("plan"),
+            "knot": knot_of(fields),
             "text": re.sub(r"\s{2,}", " ", re.sub(r"\*\*", "", clean(FIELD_RE.sub("", body)))).strip().rstrip(" —–"),
             "line": line,
         })
@@ -1326,6 +1378,11 @@ def print_contract():
     print("form\twho: who moves now — us until they confirm (ack); a profile slug, a name from comms.owners, or we")
     print("form\ta line with [who::] is under the full contract wherever it stands; the bold is then the subject")
     print("form\twaiting for an event: ⏰ after: <event> in place of [due::]; [due::] holds a date and nothing else")
+    print("form\tthe knot, a date not ours to move: [at:: <YYYY-MM-DD | meetings/<date>-<slug>>], "
+          "[plan:: <path>#<id>]; before [due::], which stays the review date")
+    print("json\tknot: the date at the start of at:: (else plan::), or opening the last folder of its path before #; "
+          "null otherwise")
+    print("json\tevery item carries the same keys; new keys are added, a rename or a new meaning is announced first")
     print("form\tthe old form below is read during the transition and gives an item with no state")
     print("marker\t[due:: YYYY-MM-DD]\tthe full form's date; (due:: YYYY-MM-DD), Dataview's round brackets, is the same field")
     print("marker\t⏰ YYYY-MM-DD")

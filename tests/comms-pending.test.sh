@@ -855,5 +855,119 @@ OUT=$(cd "$WH" && COMMS_TODAY="$TODAY" python3 "$PEND" --brief --project-root "$
 expect_says "RED: overdue is split by owner, the most first" "$OUT" "5 overdue (агент 2 · Dmitry 1 · hr 1 · others 1)"
 expect_says "RED: …and so is due within 7 days" "$OUT" "1 due within 7 days (us 1)"
 
+printf '\n=== the knot: at:: and plan::, and the --json keys as a contract ===\n'
+
+# Crystal comms-thread-contract, DL #2: the knot is a date not ours to move, and
+# in the field it is written as the meeting it is — `meetings/<date>-<slug>`,
+# with `#<id>` for a plan item. A reader expecting an ISO date right after `::`
+# found none of the live lines (2026-11-12). DL #7 and п. 6 of that crystal:
+# `--json` is read by echelon, so its keys are a contract — added freely,
+# renamed or dropped only with notice. Its own fixture, carrying one of every
+# kind of record the JSON has, so that every key set below is checked on a
+# record and not on an empty list.
+KN="$TMP/knot"; mkdir -p "$KN/.claude" "$KN/t/comms" "$KN/meetings/2026-09-15-sync"
+( cd "$KN" && git init -q . ) >/dev/null 2>&1
+cat > "$KN/.claude/vdm-plugins.json" <<'JSON'
+{ "comms": { "pending-paths": ["ledger.md"],
+             "pending-sections": { "waiting": ["Ожидаем"] },
+             "series": ["sync"],
+             "pending-draft-days": 1,
+             "pending-transcript-days": 30 } }
+JSON
+cat > "$KN/ledger.md" <<'MD'
+# Ledger
+
+## Ожидаем
+
+- [ ] **Folder** — [who:: we] [state:: ask] [at:: meetings/2026-09-30-sync] [due:: 2026-09-25]
+- [ ] **Plan item** — [who:: we] [state:: ask] [plan:: meetings/2026-10-02-sync#a3f] [due:: 2026-09-25]
+- [ ] **File in it** — [who:: we] [state:: ask] [at:: ../meetings/2026-10-05-sync/agenda.md#^b4c] [due:: 2026-09-25]
+- [ ] **Date first** — [who:: we] [state:: sent] [at:: 2026-10-07 the board, prepared at meetings/2026-10-03-prep] [due:: 2026-09-25]
+- [ ] **Both dated** — [who:: we] [state:: ask] [at:: 2026-10-09] [plan:: meetings/2026-10-11-sync#c5d] [due:: 2026-09-25]
+- [ ] **At undated** — [who:: we] [state:: ask] [at:: the board] [plan:: meetings/2026-10-13-sync#d6e] [due:: 2026-09-25]
+- [ ] **Plan undated** — [who:: we] [state:: ask] [plan:: program/2026/q4#e7f] [due:: 2026-09-25]
+- [ ] **Impossible** — [who:: we] [state:: ask] [at:: meetings/2026-13-45-sync] [due:: 2026-09-25]
+- [ ] **Too deep** — [who:: we] [state:: ask] [at:: archive/2026-10-01-x/notes/memo] [due:: 2026-09-25]
+- [ ] **No knot** — [who:: we] [state:: ask] [due:: 2026-09-25]
+- [ ] **Old form** — the review alone ⏰ 2026-09-25
+MD
+cat > "$KN/meetings/sync.md" <<'MD'
+---
+type: meeting-series
+slug: sync
+next: 2026-09-24
+---
+
+| # | Topic | Format |
+|---|---|---|
+| 1 | a queued topic | ⏰ 2026-09-26 |
+MD
+printf -- '---\ntype: meeting\ndate: 2026-09-15\n---\n\n# m\n' > "$KN/meetings/2026-09-15-sync/index.md"
+printf -- '---\ndraft: true\n---\n\n# a letter\n' > "$KN/t/comms/2026-09-01-x-out.md"
+
+OUT=$(cd "$KN" && COMMS_TODAY="$TODAY" python3 "$PEND" --json --project-root "$KN" 2>&1)
+kn() { # kn <desc> <python expression over `doc` and `by` (text → item)>
+  local why
+  why=$(printf '%s' "$OUT" | python3 -c "
+import json, sys
+doc = json.load(sys.stdin)
+by = {i['text'].split(' —')[0]: i for i in doc['items']}
+try:
+    sys.exit(0 if ($2) else 1)
+except (KeyError, IndexError, TypeError) as e:
+    print('%s: %s' % (type(e).__name__, e)); sys.exit(1)
+" 2>&1) && ok "$1" || bad "$1" "$why"
+}
+kn "RED: [at::] naming a meeting folder — the knot is the folder's date" \
+  "by['Folder']['knot'] == '2026-09-30' and by['Folder']['at'] == 'meetings/2026-09-30-sync'"
+kn "RED: [plan::] with an id — the date before the #, the value kept as written" \
+  "by['Plan item']['knot'] == '2026-10-02' and by['Plan item']['plan'] == 'meetings/2026-10-02-sync#a3f'"
+kn "RED: a file in the meeting's folder — the folder's date" \
+  "by['File in it']['knot'] == '2026-10-05'"
+kn "RED: a date opening the value is the knot, whatever path follows it" \
+  "by['Date first']['knot'] == '2026-10-07'"
+kn "[at::] wins when both carry a date" \
+  "by['Both dated']['knot'] == '2026-10-09'"
+kn "…[plan::] gives it when [at::] carries none" \
+  "by['At undated']['knot'] == '2026-10-13' and by['At undated']['at'] == 'the board'"
+kn "GREEN: a path with no dated folder has no knot, the value is still given" \
+  "by['Plan undated']['knot'] is None and by['Plan undated']['plan'] == 'program/2026/q4#e7f'"
+kn "GREEN: an impossible date is no knot" \
+  "by['Impossible']['knot'] is None"
+kn "GREEN: a dated folder further up than the meeting's is not its date" \
+  "by['Too deep']['knot'] is None"
+kn "GREEN: no field, no knot" \
+  "by['No knot']['at'] is None and by['No knot']['plan'] is None and by['No knot']['knot'] is None"
+kn "the knot is not the review: [due::] stays the due" \
+  "by['Folder']['due'] == '2026-09-25' and by['Folder']['date_kind'] == 'iso'"
+kn "the fields are not part of the text" \
+  "not [i for i in doc['items'] if 'meetings/' in i['text'] or '::' in i['text']]"
+
+# The contract. A key added: add it here. A key renamed, dropped or given
+# another meaning: echelon is told first, by a letter (п. 6 of the crystal).
+kn "RED: the top-level keys" \
+  "set(doc) == {'today', 'items', 'drafts', 'meetings_without_transcript', 'series_upcoming'}"
+why=$(printf '%s' "$OUT" | python3 -c "
+import json, sys
+want = {'file', 'line_no', 'section', 'strict', 'full', 'owner', 'owner_kind', 'owner_key',
+        'due', 'date_kind', 'state', 'nudges', 'track', 'at', 'plan', 'knot', 'text', 'line'}
+items = json.load(sys.stdin)['items']
+kinds = {'table' if i['line'].startswith('|') else 'full' if i.get('full') else 'old' for i in items}
+if kinds != {'table', 'full', 'old'}:
+    print('the fixture lost a kind of item: %s' % sorted(kinds)); sys.exit(1)
+odd = sorted({k for i in items for k in set(i) ^ want})
+if odd:
+    print('keys differ from the contract: %s — a new key is added to the set here; a renamed or '
+          'dropped one is announced to echelon first' % odd); sys.exit(1)
+" 2>&1) && ok "RED: every item carries the same keys — a full-form line, an old-form one, a table row" \
+  || bad "RED: every item carries the same keys — a full-form line, an old-form one, a table row" "$why"
+kn "RED: the keys of an unsent draft" \
+  "doc['drafts'] and all(set(d) == {'file', 'age'} for d in doc['drafts'])"
+kn "RED: the keys of a meeting without a transcript" \
+  "doc['meetings_without_transcript'] and all(set(m) == {'meeting', 'age'} for m in doc['meetings_without_transcript'])"
+kn "RED: the keys of a series meeting ahead" \
+  "doc['series_upcoming'] and all(set(s) == {'series', 'date', 'days', 'passed', 'prepared', 'file'}
+   for s in doc['series_upcoming'])"
+
 printf '\ncomms-pending: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

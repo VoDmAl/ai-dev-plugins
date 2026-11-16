@@ -45,6 +45,17 @@ can query them:
 - **`nudges::`** — how many times we reminded; the report shows it from 1 up.
 - **`track::`** — where the matter lives, when the line is not in that track's
   own file (a central ledger).
+- **`at::` / `plan::` — the knot**, when the line has one: a date that is not
+  ours to move — a meeting, an event, the other side's date. `due::` stays the
+  review date, and moving it never moves the knot. `at::` is the knot itself;
+  `plan::` names a plan item there (`#<id>`), and closing this line is its deed.
+  Write it as the date or as the meeting it is — `[at:: 2026-11-20]`,
+  `[at:: meetings/2026-11-20-sync]`, `[plan:: meetings/2026-11-20-sync#a3f]` —
+  before `due::`. The date is read from the start of the value, or else from the
+  name of the last folder in the path before `#`; `meetings/2026-11-20-sync/agenda.md`
+  counts, its last name being a file in that folder. The meeting's file is not
+  opened. A knot does not make a line an item by itself: a section or `who::`
+  does.
 - **Not in a table, not nested, not in a callout.** A cell is neither a
   checkbox nor a queryable field, and the summary reads only lines that start
   the line: an indented line or one inside `> ` is never an item.
@@ -227,6 +238,19 @@ gets switched off, which costs the real findings too.
 **When to run it**: at the start of a session (the first question is always
 "what is waiting"), before preparing any recurring meeting, and before closing
 a session.
+
+**`--json` is a contract.** Other tools read it — echelon builds the tension of
+threads from it — so a key is added freely, while a key renamed, dropped or
+given another meaning is announced to its readers first. Read it by key and
+skip the keys you do not know. Top level: `today`, `items`, `drafts`,
+`meetings_without_transcript`, `series_upcoming`. Every item, a table row
+included, carries the same keys, `null` where the line has none: `file`,
+`line_no`, `section`, `strict`, `full`, `owner`, `owner_kind`, `owner_key`,
+`due`, `date_kind`, `state`, `nudges`, `track`, `at`, `plan`, `knot`, `text`,
+`line`. `due` is the review date; `date_kind` is the form it was written in
+(`iso`, `dmy`, `loose`, `event`, `broken`, `none`), not whether it is a
+deadline — that is `knot`, the knot's date in ISO, or `null`. `at` and `plan`
+are the values as written. The key sets are held by the plugin's tests.
 
 ## The two hooks
 
