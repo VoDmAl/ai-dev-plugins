@@ -39,8 +39,8 @@ last-updated: 2026-11-17
 
 ## Текущая модель
 
-- **Где стоим (2026-11-17).** Правка в коммите `ef5b408` (vdm 2.81.2), в `origin` его ещё нет. Дальше по порядку: push
-  владельца → итог отправителю (`when:` в Next actions) → Sidetrack #2 → cut. Срок отправителя — сегодня.
+- **Где стоим (2026-11-17).** Выпуск vdm 2.81.2 (`ef5b408`) в `origin/master`, итог отправителю ушёл. Осталось только
+  Sidetrack #2 (не про этот дефект); после него — cut.
 - Дефект воспроизведён на этой машине 2026-11-16 (BSD find): проба `link → real/`, в `real/p1/a.jsonl`;
   `find link -mindepth 2 -maxdepth 2 -name '*.jsonl'` → 0, `find -H link …` → 1, `find link/ …` → 1.
 - Ветка с непустым `dirs` (каталоги `$projects/<проект>`) не задета: ссылка там в середине пути, её разрешает ядро.
@@ -119,8 +119,12 @@ last-updated: 2026-11-17
       (тот же вызов без ссылки) зелёные, 2026-11-17
 - [x] `find -H` в `intercom-common.sh` на строках 1791 и 1904 (2.81.x), тест зелёный, выпуск vdm (due: 2026-11-17) —
       коммит `ef5b408` (vdm 2.81.2), `tests/intercom.test.sh` 1069 из 1069, pre-commit прошёл (2026-11-17)
-- [ ] Владелец — push `ef5b408` в `origin/master`: выпуск 2.81.2 выходит с ним (due: 2026-11-17)
-- [ ] Итог агенту инфраструктуры машин: `intercom reply intercom-find-symlinked-projects --done "vdm 2.81.2: find -H в
+- [x] Владелец — push `ef5b408` в `origin/master`: выпуск 2.81.2 выходит с ним (due: 2026-11-17) — push сделан
+      2026-11-17, `git branch -r --contains ef5b408` печатает `origin/master`
+- [x] Итог отправлен 2026-11-17: лёг во входящие отправителя как `intercom-find-symlinked-projects-outcome`; прочитан ли —
+      не известно, их сессия на другой машине. Мяч у них: заменить `projects/` ссылкой, когда 2.81.2 встанет на обе
+      станции. Исходный текст пункта:
+      Итог агенту инфраструктуры машин: `intercom reply intercom-find-symlinked-projects --done "vdm 2.81.2: find -H в
       обоих обходах projects/, тест на ссылку" --link <коммит ef5b408> --ball "<кто — что ⏰ дата>"` — when: `ef5b408`
       в `origin/master`; check: `git branch -r --contains ef5b408` печатает `origin/master`. Их проверка
       `grep -c 'find -H'` на установленном файле даст 3 (два вызова и комментарий), им нужно ≥ 2 (due: 2026-11-17)
