@@ -1135,6 +1135,22 @@ turn hb "sid-hop-b-11.sync-conflict-20261004-161533-ABCDEFG" "$TMP/hop-b" "2026-
 out="$(wake_out one-conflict)"
 says "RED: a sync-conflict copy of a transcript is not where the owner is" "$out" "→ wake one: hop-b-11"
 rm -f "$PROJ/hb/sid-hop-b-11.sync-conflict-20261004-161533-ABCDEFG.jsonl"
+# The owner moves the transcripts to an encrypted volume and leaves a link at the
+# old path (intercom-find-symlinked-projects, 2026-11-16). find does not follow a
+# link that is itself the starting point: both walks that start at projects/ came
+# back empty, with no error. The same transcripts, read through a link and
+# directly, must give the same answer; the direct read is the control.
+LINKCFG="$TMP/linkcfg"; mkdir -p "$LINKCFG"; ln -s "$PROJ" "$LINKCFG/projects"
+icfn() { ( export VDM_INTERCOM_NOW="$NOW_EPOCH"; . "$(dirname "$IC")/intercom-common.sh" 2>/dev/null; "$@" ); }
+direct="$(icfn intercom_owner_turns hop-b)"
+[ -n "$direct" ] && ok "control: the owner's turns are found in projects/ itself" || bad "control: the owner's turns are found in projects/ itself" "empty"
+eq "RED: …and the same through a link at projects/" "$(CLAUDE_CONFIG_DIR="$LINKCFG" icfn intercom_owner_turns hop-b)" "$direct"
+# Its fixture directory `hb` is not the name the harness derives from hop-b's
+# path, so this is the walk that starts at projects/ itself.
+direct="$(icfn intercom_seen_elsewhere hop-b)"
+[ -n "$direct" ] && ok "control: a session not of this machine is seen in projects/ itself" || bad "control: a session not of this machine is seen in projects/ itself" "empty"
+eq "RED: …and the same through a link at projects/" "$(CLAUDE_CONFIG_DIR="$LINKCFG" icfn intercom_seen_elsewhere hop-b)" "$direct"
+rm -rf "$LINKCFG"
 mksession live-a2.json "$LIVE_PID" "$TMP/hop-a" hop-a-34 idle "$SOCKS/a.sock"
 out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-x VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" pickup one-latest 2>&1 )"
 eq "RED: the receipt goes to one session of the sender, not each" "$(printf '%s\n' "$out" | grep -c '→ send a receipt to one:')" "1"

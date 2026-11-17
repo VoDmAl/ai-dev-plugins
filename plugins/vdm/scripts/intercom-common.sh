@@ -1788,7 +1788,10 @@ intercom_owner_turns() {
   cutoff="$(_intercom_iso_utc "$(( $(_intercom_now) - INTERCOM_PRESENCE_WINDOW_H * 3600 ))")"
   # A transcript with a turn inside the window was written inside it: the
   # modification time narrows the scan to the sessions of the last hours.
-  find "$projects" -mindepth 2 -maxdepth 2 -name '*.jsonl' -mmin "-$((INTERCOM_PRESENCE_WINDOW_H * 60 + 60))" 2>/dev/null \
+  # -H: projects/ may itself be a link (moved to another volume, the old path
+  # kept), and find does not follow a link it starts at — it finds nothing and
+  # says nothing (intercom-find-symlinked-projects).
+  find -H "$projects" -mindepth 2 -maxdepth 2 -name '*.jsonl' -mmin "-$((INTERCOM_PRESENCE_WINDOW_H * 60 + 60))" 2>/dev/null \
     | while IFS= read -r f; do
         # A conversation written from two machines leaves Syncthing's copy of
         # the losing side beside it — not a session, and its turns are not
@@ -1885,6 +1888,7 @@ intercom_seen_elsewhere() {
     p="$(printf '%s' "$p" | LC_ALL=C sed 's/[^A-Za-z0-9]/-/g')"
     for d in "$projects/$p" "$projects/$p"-*; do [ -d "$d" ] && dirs+=("$d"); done
   done <<<"$owners"
+  # Started at projects/ itself, the walk needs find -H: see intercom_owner_turns.
   local depth=1
   [ "${#dirs[@]}" -gt 0 ] || { dirs=("$projects"); depth=2; }
   while IFS= read -r f; do
@@ -1901,7 +1905,7 @@ intercom_seen_elsewhere() {
     IFS=$'\037' read -r m mode <<<"$mm"
     [ -n "$m" ] && [ "$m" = "$here" ] && continue
     best_ts="$ts"; best="${m}"$'\037'"${mode}"
-  done < <(find "${dirs[@]}" -mindepth "$depth" -maxdepth "$depth" -name '*.jsonl' -mmin "-$((INTERCOM_PRESENCE_WINDOW_H * 60 + 60))" 2>/dev/null)
+  done < <(find -H "${dirs[@]}" -mindepth "$depth" -maxdepth "$depth" -name '*.jsonl' -mmin "-$((INTERCOM_PRESENCE_WINDOW_H * 60 + 60))" 2>/dev/null)
   [ -n "$best_ts" ] || return 0
   local e mins
   e="$(_intercom_epoch_utc "$best_ts")"
