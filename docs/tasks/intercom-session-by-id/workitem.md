@@ -2,10 +2,10 @@
 title: "intercom узнаёт сессию по имени, а две живые сессии проекта носят одно имя"
 slug: intercom-session-by-id
 description: "Отметка taken: и проверка живости различают сессии по id, имя остаётся людям"
-status: in-progress
+status: done
 session-type: short-bug
 created: 2026-11-04
-last-updated: 2026-11-16
+last-updated: 2026-11-17
 relates-to: ["[[intercom-take-race/workitem|intercom-take-race]]", "[[intercom-taken-by-gone-session/workitem|intercom-taken-by-gone-session]]", "[[intercom-wake-one-machine/workitem|intercom-wake-one-machine]]"]
 ---
 
@@ -209,8 +209,8 @@ listing)`. Без tmux в файле строка названа времене�
 - [x] `/vdm:intercom`, § Receiving: новая форма отметки (сейчас `taken: <machine>/<session> <time>`) и шаг 2: `--force` по «gone» только для отметки с id
 - [x] Коммит 2.81.0 в истории (`git log`), прежде чем писать итоги отправителям: «сделано» — это в ветке, а не в рабочем дереве — `23fc341`, 16.11, `--verify-last` совпал
 - [x] Sidetrack #1: адрес пробуждения при тёзках — vdm 2.81.1
-- [ ] Outcome to `echelon`: `intercom reply taken-mark-session-name-clash --slug taken-mark-session-name-clash-outcome-2 --done "<что сделано>" --ball "<у кого мяч>"`, в тексте назвать и второе письмо, `taken-mark-gone-after-resume` (промежуточный итог ушёл 2026-11-04)
-- [ ] Outcome to отправителю третьего брифа: `intercom reply intercom-taken-this-session-name-collision --slug intercom-taken-this-session-name-collision-outcome-2 --done "<что сделано>" --ball "<у кого мяч>"` (промежуточный итог ушёл 2026-11-14)
+- [x] Outcome to `echelon`: `intercom reply taken-mark-session-name-clash --slug taken-mark-session-name-clash-outcome-2 --done "<что сделано>" --ball "<у кого мяч>"`, в тексте назвать и второе письмо, `taken-mark-gone-after-resume` (промежуточный итог ушёл 2026-11-04) — ушёл 2026-11-17, мяч «nobody — closed»; коммиты на тот момент не запушены, так и сказано; сессия intercom echelon запущена
+- [x] Outcome to отправителю третьего брифа: `intercom reply intercom-taken-this-session-name-collision --slug intercom-taken-this-session-name-collision-outcome-2 --done "<что сделано>" --ball "<у кого мяч>"` (промежуточный итог ушёл 2026-11-14) — ушёл 2026-11-17, мяч «nobody — closed»; сессия intercom получателя запущена
 
 ## References
 
