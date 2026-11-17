@@ -1939,7 +1939,7 @@ intercom_elsewhere_line() {
 # the live list first, and reading the session files twice doubled the cost of
 # a send (counted 2026-10-04: +786 jq launches in the intercom suite). Fields are joined by the unit separator (\037), not
 # TAB: TAB is whitespace to `read`, and the empty fields of "wait" would collapse.
-#   "wake<US><name><US><status><US><why><US><mode>"   wake this one session
+#   "wake<US><name><US><status><US><why><US><mode><US><sessionId>"   wake this one session
 #   "wait<US><US><US><why>"                           wake nobody here
 # <mode> is `mail` when the session is the project's intercom session and `hq` when
 # it is its HQ session: the pointer into either says "handle it", not "not urgent".
@@ -1951,26 +1951,26 @@ intercom_wake_choice() {
   local id="$1" live="${2-}" turns top_ts top_sid name status sid upd mode
   [ $# -ge 2 ] || live="$(intercom_live_sessions "$id")"
   [ -n "$live" ] || return 0
-  local mail="" mail_status="" mail_upd=-1 u
+  local mail="" mail_status="" mail_sid="" mail_upd=-1 u
   while IFS=$'\t' read -r name status sid mode upd; do
     [ "$mode" = mail ] || continue
     case "$upd" in ''|*[!0-9]*) u=0 ;; *) u="$upd" ;; esac
-    if [ "$u" -gt "$mail_upd" ]; then mail="$name"; mail_status="$status"; mail_upd="$u"; fi
+    if [ "$u" -gt "$mail_upd" ]; then mail="$name"; mail_status="$status"; mail_sid="$sid"; mail_upd="$u"; fi
   done <<<"$live"
   if [ -n "$mail" ]; then
-    printf 'wake\037%s\037%s\037the intercom session of `%s` — nobody sits at it, so it is woken at once\037mail\n' \
-      "$mail" "$mail_status" "$id"
+    printf 'wake\037%s\037%s\037the intercom session of `%s` — nobody sits at it, so it is woken at once\037mail\037%s\n' \
+      "$mail" "$mail_status" "$id" "$mail_sid"
     return 0
   fi
   # An intercom session the owner started or joined (vdx 0.48.0, @vdx_stays): its
   # letters are its work and the owner may be at it, the pair an HQ session has, so
   # it is woken the same way — idle at once, busy or waiting on the owner not, and
   # nobody else in its place (intercom-session-stays, DL #4).
-  local stays="" stays_status="" stays_best=-1 stays_engaged
+  local stays="" stays_status="" stays_sid="" stays_best=-1 stays_engaged
   while IFS=$'\t' read -r name status sid mode upd; do
     [ "$mode" = stays ] || continue
     case "$upd" in ''|*[!0-9]*) u=0 ;; *) u="$upd" ;; esac
-    if [ "$u" -gt "$stays_best" ]; then stays="$name"; stays_status="$status"; stays_best="$u"; fi
+    if [ "$u" -gt "$stays_best" ]; then stays="$name"; stays_status="$status"; stays_sid="$sid"; stays_best="$u"; fi
   done <<<"$live"
   if [ -n "$stays" ]; then
     if stays_engaged="$(_intercom_engaged "$stays_status" "")"; then
@@ -1978,8 +1978,8 @@ intercom_wake_choice() {
         "$id" "$stays" "$stays_engaged"
       return 0
     fi
-    printf 'wake\037%s\037%s\037the intercom session of `%s`, which the owner started or joined — its letters are its work, so it is woken at once while idle\037stays\n' \
-      "$stays" "$stays_status" "$id"
+    printf 'wake\037%s\037%s\037the intercom session of `%s`, which the owner started or joined — its letters are its work, so it is woken at once while idle\037stays\037%s\n' \
+      "$stays" "$stays_status" "$id" "$stays_sid"
     return 0
   fi
   # A live HQ session comes next (hq-session-quiet, DL #4): while it lives the
@@ -1988,11 +1988,11 @@ intercom_wake_choice() {
   # at once, with no quiet window (hq-session-active, DL #2): asked without a stamp,
   # idle is no verdict. Busy or waiting on the owner, the letter waits for it and no
   # other is woken instead.
-  local hq="" hq_status="" hq_upd="" hq_best=-1 hq_engaged
+  local hq="" hq_status="" hq_upd="" hq_sid="" hq_best=-1 hq_engaged
   while IFS=$'\t' read -r name status sid mode upd; do
     [ "$mode" = hq ] || continue
     case "$upd" in ''|*[!0-9]*) u=0 ;; *) u="$upd" ;; esac
-    if [ "$u" -gt "$hq_best" ]; then hq="$name"; hq_status="$status"; hq_upd="$upd"; hq_best="$u"; fi
+    if [ "$u" -gt "$hq_best" ]; then hq="$name"; hq_status="$status"; hq_upd="$upd"; hq_sid="$sid"; hq_best="$u"; fi
   done <<<"$live"
   if [ -n "$hq" ]; then
     if hq_engaged="$(_intercom_engaged "$hq_status" "")"; then
@@ -2000,8 +2000,8 @@ intercom_wake_choice() {
         "$id" "$hq" "$hq_engaged"
       return 0
     fi
-    printf 'wake\037%s\037%s\037the HQ session of `%s` — its letters are its work, and its ordinary sessions are quiet while it lives\037hq\n' \
-      "$hq" "$hq_status" "$id"
+    printf 'wake\037%s\037%s\037the HQ session of `%s` — its letters are its work, and its ordinary sessions are quiet while it lives\037hq\037%s\n' \
+      "$hq" "$hq_status" "$id" "$hq_sid"
     return 0
   fi
   turns="$(intercom_owner_turns "$id")"
@@ -2044,7 +2044,7 @@ intercom_wake_choice() {
             "$id" "$top_ts" "$name" "$engaged"
           return 0
         fi
-        printf 'wake\037%s\037%s\037your last turn in `%s` was there (%s)\037plain\n' "$name" "$status" "$id" "$top_ts"
+        printf 'wake\037%s\037%s\037your last turn in `%s` was there (%s)\037plain\037%s\n' "$name" "$status" "$id" "$top_ts" "$sid"
         return 0
       fi
     done <<<"$live"
@@ -2068,14 +2068,14 @@ intercom_wake_choice() {
   # No presence: the most recently active live session (its file's status
   # stamp), the first listed on a tie or when the harness writes none — among
   # those nobody may be at. When every one is engaged, the letter waits.
-  local best="" best_upd=-1 best_status="" why engaged skipped="" u
+  local best="" best_upd=-1 best_status="" best_sid="" why engaged skipped="" u
   while IFS=$'\t' read -r name status sid mode upd; do
     if engaged="$(_intercom_engaged "$status" "$upd")"; then
       skipped="${skipped:+$skipped; }$name is $engaged"
       continue
     fi
     case "$upd" in ''|*[!0-9]*) u=0 ;; *) u="$upd" ;; esac
-    if [ "$u" -gt "$best_upd" ]; then best="$name"; best_status="$status"; best_upd="$u"; fi
+    if [ "$u" -gt "$best_upd" ]; then best="$name"; best_status="$status"; best_sid="$sid"; best_upd="$u"; fi
   done <<<"$live"
   if [ -z "$best" ]; then
     printf 'wait\037\037\037%s — the letter reaches one as a line with your next message there\n' "$skipped"
@@ -2087,7 +2087,7 @@ intercom_wake_choice() {
     why="no turn of yours in \`$id\` in the last $INTERCOM_PRESENCE_WINDOW_H h — one session here, the most recently active"
   fi
   [ -z "$skipped" ] || why="$why; passed over: $skipped"
-  printf 'wake\037%s\037%s\037%s\037plain\n' "$best" "$best_status" "$why"
+  printf 'wake\037%s\037%s\037%s\037plain\037%s\n' "$best" "$best_status" "$why" "$best_sid"
 }
 
 # ---------------------------------------------------------------------------
@@ -2219,7 +2219,7 @@ intercom_reply_names() {
   printf '%s' "$1" | LC_ALL=C grep -qE "(^|[^A-Za-z0-9_-])${esc}([^A-Za-z0-9_-]|\$)"
 }
 
-# intercom_stale_sessions <identity> <slug> <time> [<session id to skip>] — "<name><US><status>"
+# intercom_stale_sessions <identity> <slug> <time> [<session id to skip>] — "<name><US><status><US><sessionId>"
 # of every live session of that agent here, other than this one, whose last answer
 # was written before <time> and names <slug>. Not an intercom session: nobody sits
 # at it. A focused one is: the sentence on its screen is its own. Skipped by id: a
@@ -2232,7 +2232,7 @@ intercom_stale_sessions() {
       [ -f "$tf" ] || continue
       reply="$(intercom_last_reply "$tf")"
       [ -n "$reply" ] && [ "$(intercom_reply_time "$reply")" \< "$when" ] || break
-      intercom_reply_names "${reply#*$'\t'}" "$slug" && printf '%s\037%s\n' "$name" "$status"
+      intercom_reply_names "${reply#*$'\t'}" "$slug" && printf '%s\037%s\037%s\n' "$name" "$status" "$sid"
       break
     done
   done <<<"$(_intercom_session_rows "$id")"

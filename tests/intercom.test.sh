@@ -1717,6 +1717,23 @@ out="$(sbin sid-twin-2 reply sb-twin --done x --ball "nobody — closed")"; rc=$
 eq "RED: …and its reply" "$rc" "1"
 out="$(sbin sid-twin-1 check)"
 says "…the session that took it reads it as its own (control)" "$(sbline "$out" sb-twin)" "— this session"
+# Waking one of the two: the bare name does not say which (Sidetrack #1). The ref the
+# message tool wants for it is in no file here; the tmux pane its listing shows is.
+for f in 1 2; do
+  jq --arg t "hop-b@m:@$f.%$f" '.tmux = $t' "$SESS/sb-t$f.json" > "$SESS/sb-t$f.tmp" && mv "$SESS/sb-t$f.tmp" "$SESS/sb-t$f.json"
+done
+for s in sb-addr sb-addr-one; do ( cd "$TMP/hop-a" && bash "$IC" send hop-b "$s" --body "$B/live.md" >/dev/null 2>&1 ); done
+forsid() { awk -v l="for-session: $2" 'NR == 1 { print; print l; next } { print }' "$VDM_INTERCOM_ROOT/hop-b/$1.md" > "$TMP/fs.tmp" \
+  && mv "$TMP/fs.tmp" "$VDM_INTERCOM_ROOT/hop-b/$1.md"; }
+forsid sb-addr sid-twin-2
+forsid sb-addr-one sid-hop-b-11
+out="$( cd "$TMP/hop-a" && VDM_INTERCOM_NOW="$NOW_EPOCH" VDM_INTERCOM_TODAY=2026-10-04 bash "$IC" sent 2>&1 )"
+al="$(printf '%s\n' "$out" | grep -A1 'hop-b/sb-addr ' | tail -1)"
+says "RED: waking one of two namesakes asks for the row's ref" "$al" "the answer to a letter of the session hop-b-twin [ref] (2 live sessions here go by hop-b-twin"
+says "…and names the row by that session's tmux pane" "$al" "the row with tmux hop-b@m:@2.%2"
+ol="$(printf '%s\n' "$out" | grep -A1 'hop-b/sb-addr-one' | tail -1)"
+says "…a name no other live session carries stays the address (control)" "$ol" "the answer to a letter of the session hop-b-11 → wake it with SendMessage: "
+says_not "…with no ref asked" "$ol" "[ref]"
 
 sbin sid-twin-1 take sb-gone >/dev/null
 rm -f "$SESS/sb-t1.json"                      # that session ended; its namesake lives on

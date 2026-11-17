@@ -1072,7 +1072,7 @@ cmd_send() {
         if fengaged="$(_intercom_engaged "$fb" "$fc")"; then
           printf '       → do not wake here: %s is %s — you are likely at it; the letter reaches it as one line with your next message there.\n' "$fa" "$fengaged"
         else
-          _ic_wake_lines "$fa" "the session that wrote the letter this answers" "$slug" "$from" "$title" "${_IC_ASK:-reply}" "$body_set"
+          _ic_wake_lines "$(_ic_addr "$fa" "$for_session")" "the session that wrote the letter this answers" "$slug" "$from" "$title" "${_IC_ASK:-reply}" "$body_set"
         fi
         return 0 ;;
       away)
@@ -1083,7 +1083,7 @@ cmd_send() {
         printf '    ↩ the session that wrote the letter this answers is gone — an ordinary letter.\n' ;;
     esac
   fi
-  local rows live wlive start choice verdict wname wstatus why wmode
+  local rows live wlive start choice verdict wname wstatus why wmode wsid
   rows="$(_intercom_session_rows "$canon")"
   live="$(intercom_live_sessions "$canon" "$rows")"
   # A letter on the topic of a live focused session here is that session's
@@ -1098,7 +1098,7 @@ cmd_send() {
       if engaged="$(_intercom_engaged "$hstatus" "$hupd")"; then
         printf '       → do not wake here: %s is %s — you are likely at it; the letter reaches it as one line with your next message there.\n' "$hname" "$engaged"
       else
-        _ic_wake_lines "$hname" "the focused session on «${topic}»" "$slug" "$from" "$title" topic "$body_set" "$topic"
+        _ic_wake_lines "$(_ic_addr "$hname" "$hsid")" "the focused session on «${topic}»" "$slug" "$from" "$title" topic "$body_set" "$topic"
       fi
       return 0
     fi
@@ -1163,9 +1163,9 @@ cmd_send() {
     else
       choice=$'wait\037\037\037a letter to your own project is a note for its next session, not mail for its intercom or HQ session'
     fi
-    IFS=$'\037' read -r verdict wname wstatus why wmode <<<"$choice"
+    IFS=$'\037' read -r verdict wname wstatus why wmode wsid <<<"$choice"
     if [ "$verdict" = "wake" ]; then
-      _ic_wake_lines "$wname" "$why" "$slug" "$from" "$title" "$wmode" "$body_set"
+      _ic_wake_lines "$(_ic_addr "$wname" "$wsid")" "$why" "$slug" "$from" "$title" "$wmode" "$body_set"
     else
       printf '       → do not wake here: %s.\n' "$why"
     fi
@@ -1199,7 +1199,45 @@ _ic_live_list() {
   printf '%s\n' "$1" | awk -F '\t' '{ printf "%s%s (%s%s)", (NR > 1 ? ", " : ""), $1, $2, ($4 == "mail" ? ", mail" : ($4 == "stays" ? ", mail, stays" : ($4 == "hq" ? ", hq" : ""))) }'
 }
 
-# _ic_wake_lines <name> <why> <slug> <from> <title> <mode> <body set> [<topic>]
+# _ic_addr <name> <session id> — the session as the cross-session message tool
+# addresses it (intercom-session-by-id, Sidetrack #1). The harness derives a
+# session's name, and two live sessions here may share it; the tool then wants the
+# name with the row's ref, `<name> [ref]`, which only its own listing shows — the
+# ref is in no file here. The listing shows each row's tmux pane too, and that the
+# session file carries: named, it picks the row. One live session by that name:
+# the name alone, as ever. Session files are read only where the name matches.
+_ic_addr() {
+  local name="$1" sid="$2" dir f pid fsid tmux started n=0 row=""
+  [ -n "$name" ] || return 0
+  dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"
+  if [ -d "$dir" ] && command -v jq >/dev/null 2>&1; then
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      case "${f##*/}" in *.sync-conflict-*) continue ;; esac
+      IFS=$'\037' read -r pid fsid tmux started < <(
+        jq -r --arg n "$name" 'select(.name == $n)
+          | [(.pid // "" | tostring), (.sessionId // ""), (.tmux // ""), ((.startedAt // "") | tostring)] | join("\u001f")' "$f" 2>/dev/null
+      ) || continue
+      case "$pid" in ''|*[!0-9]*) continue ;; esac
+      kill -0 "$pid" 2>/dev/null || continue
+      n=$((n + 1))
+      [ -n "$sid" ] && [ "$fsid" = "$sid" ] || continue
+      if [ -n "$tmux" ]; then
+        row="the row with tmux $tmux"
+      else
+        case "$started" in
+          ''|*[!0-9]*) ;;
+          *) row="the row started $(_intercom_ago $(( ($(_intercom_now) - started / 1000) / 60 ))) ago" ;;
+        esac
+      fi
+    done < <(grep -lF -e "\"name\":\"$name\"" -e "\"name\": \"$name\"" "$dir"/*.json 2>/dev/null)
+  fi
+  if [ "$n" -lt 2 ]; then printf '%s' "$name"; return 0; fi
+  printf '%s [ref] (%s live sessions here go by %s, and the bare name does not say which: the ref is in %s of your agent listing — Claude Code: ListAgents)' \
+    "$name" "$n" "$name" "${row:-the row of that session — not found from here; ask the user which}"
+}
+
+# _ic_wake_lines <address> <why> <slug> <from> <title> <mode> <body set> [<topic>]
 # — the lines of `send` that wake one session: which, when, and the pointer.
 _ic_wake_lines() {
   printf '       → wake one: %s — %s.\n' "$1" "$2"
@@ -1252,7 +1290,7 @@ cmd_sent() {
   fi
   n="$(printf '%s\n' "$list" | wc -l | tr -d ' ')"
   printf '📤 intercom: %s letter(s) from `%s` not picked up yet (oldest first):\n\n' "$n" "$id"
-  local age inbox slug title file live lines choice start verdict wname wstatus why wmode taken seen="" cache="" piled="" seen_pile=""
+  local age inbox slug title file live lines choice start verdict wname wstatus why wmode wsid taken seen="" cache="" piled="" seen_pile=""
   local ts tstate ttopic hname hstatus hsid hupd engaged fstate fa fb fc
   while IFS=$'\t' read -r age inbox slug title file; do
     [ -n "$inbox" ] || continue
@@ -1286,7 +1324,7 @@ cmd_sent() {
           local fmode=reply
           [ -z "$(intercom_fm_field "$file" ask)" ] || fmode=ask
           printf '      the answer to a letter of the session %s → wake it with SendMessage: %s\n' \
-            "$fa" "$(_ic_pointer "$slug" "$id" "$title" "$fmode")"
+            "$(_ic_addr "$fa" "$(intercom_fm_field "$file" for-session)")" "$(_ic_pointer "$slug" "$id" "$title" "$fmode")"
         fi
         continue ;;
       away)
@@ -1303,7 +1341,7 @@ cmd_sent() {
           printf '      on the topic «%s» of the focused session %s — do not wake here: it is %s\n' "$ttopic" "$hname" "$engaged"
         else
           printf '      on the topic «%s» of the focused session %s → wake it with SendMessage: %s\n' \
-            "$ttopic" "$hname" "$(_ic_pointer "$slug" "$id" "$title" topic "$ttopic")"
+            "$ttopic" "$(_ic_addr "$hname" "$hsid")" "$(_ic_pointer "$slug" "$id" "$title" topic "$ttopic")"
         fi
         continue ;;
       free)
@@ -1350,10 +1388,10 @@ cmd_sent() {
     fi
     [ -z "$start" ] || printf '      %s\n' "$(_ic_novdx_line "$inbox" "$start")"
     if [ -n "$live" ]; then
-      IFS=$'\037' read -r verdict wname wstatus why wmode <<<"$choice"
+      IFS=$'\037' read -r verdict wname wstatus why wmode wsid <<<"$choice"
       if [ "$verdict" = "wake" ]; then
         printf '      live now: %s → wake one: %s (%s) with SendMessage: %s\n' \
-          "$live" "$wname" "$why" "$(_ic_pointer "$slug" "$id" "$title" "$wmode")"
+          "$live" "$(_ic_addr "$wname" "$wsid")" "$why" "$(_ic_pointer "$slug" "$id" "$title" "$wmode")"
       else
         printf '      live now: %s — do not wake here: %s\n' "$live" "$why"
       fi
@@ -1495,14 +1533,14 @@ _ic_topic_route() {
       if engaged="$(_intercom_engaged "$hstatus" "$hupd")"; then
         printf '       → do not wake here: %s is %s — you are likely at it; the letter reaches it as one line with your next message there.\n' "$hname" "$engaged"
       else
-        _ic_wake_lines "$hname" "the focused session on «${ttopic}»" "$slug" "$from" "$title" topic 1 "$ttopic"
+        _ic_wake_lines "$(_ic_addr "$hname" "$hsid")" "the focused session on «${ttopic}»" "$slug" "$from" "$title" topic 1 "$ttopic"
       fi
       return 0 ;;
     free)
       printf '    topic «%s»: no live focused session of `%s` on this machine is on it — an ordinary letter here; a session on another machine compares it with its own topic.\n' \
         "${ts#free$'\037'}" "$id" ;;
   esac
-  local live start choice verdict wname wstatus why wmode
+  local live start choice verdict wname wstatus why wmode wsid
   live="$(intercom_live_sessions "$id")"
   start="$(intercom_mail_start "$id" "$live" "$from")"
   if [ "${start%%$'\037'*}" = start ]; then
@@ -1510,9 +1548,9 @@ _ic_topic_route() {
     printf '         %s\n' "$(intercom_mail_start_cmd "${start#start$'\037'}")"
   elif [ -n "$live" ]; then
     choice="$(intercom_wake_choice "$id" "$live")"
-    IFS=$'\037' read -r verdict wname wstatus why wmode <<<"$choice"
+    IFS=$'\037' read -r verdict wname wstatus why wmode wsid <<<"$choice"
     if [ "$verdict" = wake ]; then
-      _ic_wake_lines "$wname" "$why" "$slug" "$from" "$title" "$wmode" 1
+      _ic_wake_lines "$(_ic_addr "$wname" "$wsid")" "$why" "$slug" "$from" "$title" "$wmode" 1
     else
       printf '       → do not wake here: %s.\n' "$why"
     fi
@@ -1917,13 +1955,13 @@ cmd_take() {
 # on that screen already. One that is engaged hears through intercom-reminder.sh, once
 # the letter carries a mark; `idle-only` is for a letter that has none yet.
 _ic_stale_lines() {
-  local id="$1" slug="$2" what="$3" skip="${4:-}" idle_only="${5:-}" name status now
+  local id="$1" slug="$2" what="$3" skip="${4:-}" idle_only="${5:-}" name status sid now
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  while IFS=$'\037' read -r name status; do
+  while IFS=$'\037' read -r name status sid; do
     [ -n "$name" ] || continue
     case "$status" in
       idle|shell|''|'?')
-        printf '    🗣 the last answer of %s names `%s`, and may stand on the user'"'"'s screen as an open question.\n' "$name" "$slug"
+        printf '    🗣 the last answer of %s names `%s`, and may stand on the user'"'"'s screen as an open question.\n' "$(_ic_addr "$name" "$sid")" "$slug"
         printf '       → tell it now with your cross-session message tool (Claude Code: SendMessage), quiet window or not:\n'
         printf '         🗣 intercom: `%s`, named in your last answer, %s — it is no longer yours. Say so to the user in one line, nothing more.\n' "$slug" "$what" ;;
       *)
@@ -2065,15 +2103,15 @@ cmd_pickup() {
 
   # The receipt: the sender otherwise learns "received" only by auditing the
   # store by hand. Offered only while the sender has a live session to tell.
-  local live choice verdict wname wstatus why wmode
+  local live choice verdict wname wstatus why wmode wsid
   if [ -n "$sender" ] && [ "$sender" != "$id" ]; then
     live="$(intercom_live_sessions "$sender")"
     if [ -n "$live" ]; then
       printf '    📣 the sender `%s` has live session(s) on this machine: %s\n' "$sender" "$(_ic_live_list "$live")"
       choice="$(intercom_wake_choice "$sender" "$live")"
-      IFS=$'\037' read -r verdict wname wstatus why wmode <<<"$choice"
+      IFS=$'\037' read -r verdict wname wstatus why wmode wsid <<<"$choice"
       if [ "$verdict" = "wake" ]; then
-        printf '       → send a receipt to one: %s — %s — with your cross-session message tool (Claude Code: SendMessage):\n' "$wname" "$why"
+        printf '       → send a receipt to one: %s — %s — with your cross-session message tool (Claude Code: SendMessage):\n' "$(_ic_addr "$wname" "$wsid")" "$why"
         printf '         ✅ intercom: `%s` picked up by `%s`.\n' "$slug" "$id"
       else
         printf '       → no receipt here: %s.\n' "$why"

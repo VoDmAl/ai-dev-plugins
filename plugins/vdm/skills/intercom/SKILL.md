@@ -703,6 +703,10 @@ So three things happen on top of the inbox, and none of them replaces it:
   you wake at once. When it prints `→ do not wake here`, wake nobody: the
   letter waits, and the line says for what. When it prints `📮 … start it`,
   run the command it names instead, and wake nobody (§ Intercom sessions).
+  When the address reads `<session> [ref] (… live sessions here go by …)`, two
+  live sessions share that name: take the ref from the row your agent listing
+  (Claude Code: `ListAgents`) shows with the tmux pane the line names, and
+  address `<session> [<ref>]` — the bare name does not say which.
 - **Not a session the user may be at.** A message into an idle session starts a
   turn at once, and into a busy one it lands in the middle of the work — either
   way on the screen the user is reading or typing into. So the session is woken
