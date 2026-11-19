@@ -16,10 +16,13 @@
 #   git-guard-prepare --pending              # the waiting line's short call
 #   git-guard-prepare --check ["<message>"] [-- <path>...]
 #                                            # the prep's checks for a look only
+#   <answer> | git-guard-prepare --check-handoff
+#                                            # does the answer name only the waiting line?
 #
 # Output (stdout):
 #   <single-line shell command>           # the user copy-pastes this
-# The same commit is also kept as a short call, `sh <script>`; --pending prints it.
+#   # short call: sh <script>             # the same commit, a shell comment
+# --pending prints the short call again.
 #
 # Why the pathspec is there
 #   The index is shared per-repository, but the command is emitted by the
@@ -730,6 +733,7 @@ Usage: git-guard-prepare "<commit message>" [-- <path>...]
        git-guard-prepare --verify-last
        git-guard-prepare --pending
        git-guard-prepare --check ["<commit message>"] [-- <path>...]
+       <answer> | git-guard-prepare --check-handoff
 
 Writes the message to a per-prep file under ${XDG_STATE_HOME:-~/.local/state}/vdm-git
 (GIT_GUARD_STATE_DIR overrides) and prints a single-line
@@ -811,6 +815,55 @@ if [ "$1" = "--pending" ]; then
   printf '%s%s\n' "$pd_subject" "$(when_said "$pd_epoch")"
   [ -n "$pd_short" ] && exit 0
   exit 3
+fi
+
+# --check-handoff: the answer the assistant is about to end its turn with, on
+# stdin. Every commit line or short call it names must be the line of this scope
+# still waiting in this repository; exit 1 and, on stdout, what is wrong and the
+# right line, otherwise exit 0 and silence. The Stop hook asks it at every turn
+# whose answer names one (scripts/git-guard-stop-check.sh). Field case (a
+# project, 2026-11-17): the prep refused twice — the subject over the ceiling —
+# the assistant's grep cut the refusal away, and it took the newest script in
+# the shared sh/ directory, another project's commit, and handed it to the owner
+# as this one's. A line is known by its prep's token, `<epoch>-<pid>[-<n>]`,
+# which names its message file (`…-commit-<token>.txt`) and its short call
+# (`<token>.sh`) alike, whatever directory the text spells.
+# (docs/tasks/git-guard-line-handoff)
+if [ "$1" = "--check-handoff" ]; then
+  ch_named=$(grep -oE -e '-commit-[0-9]{9,11}-[0-9]+(-[0-9]+)?\.(txt|paths|gone)' \
+                      -e '/[0-9]{9,11}-[0-9]+(-[0-9]+)?\.sh' 2>/dev/null \
+    | sed -E -e 's/^-commit-//' -e 's/^\///' -e 's/\.(txt|paths|gone|sh)$//' | sort -u)
+  [ -n "$ch_named" ] || exit 0
+  ch_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+  ch_tok=""; ch_waiting=""
+  if [ -n "$ch_root" ]; then
+    ch_branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null \
+      || git rev-parse --short HEAD 2>/dev/null || echo detached)
+    ch_branch=$(printf '%s' "$ch_branch" \
+      | sed -e 's|[^A-Za-z0-9_-]|-|g' -e 's|-\{2,\}|-|g' -e 's|^-||' -e 's|-$||')
+    [ -n "$ch_branch" ] || ch_branch=detached
+    ch_base="$(basename "$ch_root")-${ch_branch}-commit"
+    ch_waiting=$(waiting_line "$(session_scope)" "$ch_base" "$(git rev-parse --verify -q HEAD 2>/dev/null || true)")
+    if [ -n "$ch_waiting" ]; then
+      ch_stem="${ch_waiting#*$'\t'}"; ch_stem="${ch_stem%%$'\t'*}"
+      ch_tok="${ch_stem##*-commit-}"
+    fi
+  fi
+  ch_bad=""
+  while IFS= read -r t; do
+    [ -n "$t" ] && [ "$t" != "$ch_tok" ] && ch_bad="${ch_bad:+$ch_bad, }$t"
+  done <<< "$ch_named"
+  [ -n "$ch_bad" ] || exit 0
+  if [ -n "$ch_tok" ]; then
+    ch_subject="${ch_waiting##*$'\t'}"
+    ch_call=$(short_call "$ch_stem")
+    printf 'Your answer hands the user a commit line that is not the one waiting in this session here (prepared as %s). The one waiting is "%s"%s. Put that one in your answer instead; if you named the other only to say it is void, say so without its command, so it cannot be copied.\n' \
+      "$ch_bad" "$ch_subject" "${ch_call:+ — its short call: \`$ch_call\`}"
+  else
+    printf 'Your answer hands the user a commit line (prepared as %s), but no line of this session waits in %s. It belongs to another project or session, or it already ran, or git-guard-prepare refused and nothing was prepared. Run git-guard-prepare again, read its whole output unfiltered, and hand off only what it prints; take a short call only from its output, the reminder or --pending, never from the sh/ directory.\n' \
+      "$ch_bad" "${ch_root:-this directory, which is no repository}"
+  fi
+  exit 1
 fi
 
 # --verify-last audits the previous prep and exits; it prepares nothing. Useful

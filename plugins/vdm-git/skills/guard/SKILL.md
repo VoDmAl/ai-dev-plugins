@@ -144,6 +144,8 @@ When the assistant has finished work that warrants a commit — implementation d
 
 5. **While it waits, end every turn with its short call.** Besides the line, the helper keeps the same commit as a short call, `sh ~/.local/state/vdm-git/sh/<token>.sh` (see [The short call](#the-short-call)), and prints it as the second line of its output. Hand off the full line first. On every later turn until the user runs it, end the turn with the short call, as inline code on its own line. The reminder names it at the start of each such turn, and `git-guard-prepare --pending` prints it. Take the call only from those three — the prep's second line, the reminder, `--pending` — and never build its name or pick a file from `sh/`: the directory holds the calls of every project on the machine. Field cases (2026-11-17): a name built from the message file's gave the owner "No such file"; the newest file in `sh/` was another project's commit.
 
+   **The end of the turn checks it.** A `Stop` hook reads your answer and compares every commit line or short call in it with the line waiting in this session and repository — a line is known by its prep's token, `<epoch>-<pid>`, in its message file's name and its script's alike. One that is not that line — another project's, another session's, one already run, or any line while nothing waits because the prep refused — is named back to you with the right one, and the turn goes on: say the right line to the user right under the wrong one. Naming a line only to call it void is fine; leave its command out, so it cannot be copied.
+
    Example:
 
    > Implementation done. Type-check passes.
@@ -878,6 +880,7 @@ Block hook: `${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-hook.sh` — a thin wrapper
 keeps the guard fail-closed (a missing or crashing `python3` blocks a commit-shaped
 command instead of letting it through silently); the guard itself, including
 `BLOCKED_PATTERNS`, is `${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-hook.py`.
+Handoff check at the end of a turn: `${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-stop-check.sh` — passes the answer to `git-guard-prepare --check-handoff`, which knows the waiting line.
 Reminder: `${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-reminder.sh` — gated by `enabled` / `mode` in `.claude/vdm-plugins.json`.
 Subject ceiling: `git-guard.subject-max` in `.claude/vdm-plugins.json` (default 72) — see [The subject has a ceiling](#the-subject-has-a-ceiling-held-by-the-helper).
 Crystal backup: `${CLAUDE_PLUGIN_ROOT}/scripts/crystal-precommit-check.sh` — see [Crystal pre-commit backup](#crystal-pre-commit-backup) above.

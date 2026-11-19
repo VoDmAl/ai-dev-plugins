@@ -23,6 +23,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-stop-check.sh\"",
+            "timeout": 30
+          }
+        ]
+      }
     ]
   }
 }

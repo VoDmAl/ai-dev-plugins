@@ -107,6 +107,11 @@ payloads() {
       printf '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m x"},"session_id":"t","cwd":"%s"}\n' "$PROJ" ;;
     PostToolUse)
       printf '{"hook_event_name":"PostToolUse","tool_name":"Write","tool_input":{"file_path":"%s/notes.md","content":"x"},"session_id":"t","cwd":"%s"}\n' "$PROJ" "$PROJ" ;;
+    Stop)
+      # The second: an answer that hands off a commit line, so git-guard's end-of-turn
+      # check runs its git calls rather than stopping at "no line named".
+      printf '{"hook_event_name":"Stop","session_id":"t","cwd":"%s"}\n' "$PROJ"
+      printf '{"hook_event_name":"Stop","session_id":"t","cwd":"%s","last_assistant_message":"Run: `sh /tmp/sh/1795000000-1.sh`"}\n' "$PROJ" ;;
     *)
       printf '{"hook_event_name":"%s","session_id":"t","cwd":"%s"}\n' "$1" "$PROJ" ;;
   esac
