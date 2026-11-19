@@ -59,10 +59,12 @@ prep() { local d="$1" s="$2"; shift 2; ( cd "$d" && CLAUDE_CODE_SESSION_ID="$s" 
 # opening <line> — the line's opening check alone, cut before the rest; run, it
 # prints what a dead line prints and fails, or succeeds for a live one.
 opening() {
-  local l="$1" cut="${1%%false; \} &&*}"
+  local l="$1" cut="${1%%false; \} &&*}" close=""
   # A line the pattern does not cut would run whole, `git commit` included.
   [ "$cut" != "$l" ] && [ -n "$cut" ] || { echo "opening: the check was not cut off — nothing run"; return 99; }
-  sh -c "${cut}false; }" 2>&1
+  # The line runs in a subshell that changes into its directory (vdm-git 2.28.0).
+  case "$cut" in "( "*) close=" )" ;; esac
+  sh -c "${cut}false; }$close" 2>&1
 }
 # backdate <days> <file>… — move mtime and atime into the past.
 backdate() { local d="$1"; shift; python3 -c 'import os,sys,time

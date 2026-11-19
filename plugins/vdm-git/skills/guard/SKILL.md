@@ -122,7 +122,7 @@ When the assistant has finished work that warrants a commit — implementation d
 
        git-guard-prepare "[+] Add foo helper"
 
-   It writes the message to a per-prep file under `${XDG_STATE_HOME:-~/.local/state}/vdm-git` (see [Where the files live](#where-the-files-live)) and prints a single-line `git commit -F <path> -- <paths>` command on stdout, opening with a check that its message file still exists (`[ -f <path> ] || { echo …; false; } &&`) and then, in the pathspec forms, a check that the listed paths still match the index (`{ git --no-pager … diff --stat --exit-code -- <paths> >&2 || …; } &&`). Capture it and hand it off **verbatim** — the explicit pathspec is the point (see [Why the pathspec](#why-the-pathspec-is-not-optional)), the first check is what stops a dead line before any hook runs (see [A line that is still waiting](#a-line-that-is-still-waiting)), and the second stops an edit nobody staged (see [A file someone else staged](#a-file-someone-else-staged-is-not-yours-to-edit)).
+   It writes the message to a per-prep file under `${XDG_STATE_HOME:-~/.local/state}/vdm-git` (see [Where the files live](#where-the-files-live)) and prints a single-line `git commit -F <path> -- <paths>` command on stdout, followed by its short call as a second line, a shell comment: `# short call: sh <script>` (see [The short call](#the-short-call)). The line runs in a subshell that first changes into the directory its paths are named from (`( cd '<dir>' || exit 1; … )`), so it commits where it was prepared from whatever directory it is run, and leaves the user's shell where it stood. Inside, it opens with a check that its message file still exists (`[ -f <path> ] || { echo …; false; } &&`) and then, in the pathspec forms, a check that the listed paths still match the index (`{ git --no-pager … diff --stat --exit-code -- <paths> >&2 || …; } &&`). Capture it and hand it off **verbatim** — the explicit pathspec is the point (see [Why the pathspec](#why-the-pathspec-is-not-optional)), the first check is what stops a dead line before any hook runs (see [A line that is still waiting](#a-line-that-is-still-waiting)), and the second stops an edit nobody staged (see [A file someone else staged](#a-file-someone-else-staged-is-not-yours-to-edit)).
 
    For a multi-line message (subject + body), pipe via `-`:
 
@@ -142,7 +142,7 @@ When the assistant has finished work that warrants a commit — implementation d
 
    Write the full path verbatim — never abbreviate it with `…` or `~/.local/state/...` in your narration. The path is long (`/Users/<you>/.local/state/vdm-git/<session>/<repo>-<branch>-commit-<token>.txt`) and that is fine; the user copies the command line, they don't retype it.
 
-5. **While it waits, end every turn with its short call.** Besides the line, the helper keeps the same commit as a short call, `sh ~/.local/state/vdm-git/sh/<token>.sh` (see [The short call](#the-short-call)). Hand off the full line first. On every later turn until the user runs it, end the turn with the short call, as inline code on its own line. The reminder names it at the start of each such turn, and `git-guard-prepare --pending` prints it.
+5. **While it waits, end every turn with its short call.** Besides the line, the helper keeps the same commit as a short call, `sh ~/.local/state/vdm-git/sh/<token>.sh` (see [The short call](#the-short-call)), and prints it as the second line of its output. Hand off the full line first. On every later turn until the user runs it, end the turn with the short call, as inline code on its own line. The reminder names it at the start of each such turn, and `git-guard-prepare --pending` prints it. Take the call only from those three — the prep's second line, the reminder, `--pending` — and never build its name or pick a file from `sh/`: the directory holds the calls of every project on the machine. Field cases (2026-11-17): a name built from the message file's gave the owner "No such file"; the newest file in `sh/` was another project's commit.
 
    Example:
 
@@ -450,12 +450,15 @@ then gave a new task, and when the line was due it lay hundreds of lines up. The
 owner: past a hundred lines or so, pack it into a short call, and repeat that.
 
 So every prep also writes the line into a script named by the prep's own token,
-`<state>/sh/<token>.sh`, whose call is `sh <that script>`. The prep does
-not print the call: its stderr stays silent after a clean prep, because that
-silence is how the detector says the previous commit matched. The script holds
-the same line, with the message-file check and the path list inside. It changes into the directory the paths are named from, so the call
-works from anywhere. It dies with the prep: superseded, swept after the commit.
-Left behind, it would still stop at its first line.
+`<state>/sh/<token>.sh`, whose call is `sh <that script>`. The prep prints the
+call on stdout, after the line, as a shell comment — `# short call: sh <script>`
+— so stdout pasted whole or run through `eval` does no more than the line. Not
+on stderr: that stays silent after a clean prep, because the silence is how the
+detector says the previous commit matched. The script holds the same line, with
+the message-file check and the path list inside, and like the line it changes
+into the directory the paths are named from, so the call works from anywhere. It
+dies with the prep: superseded, swept after the commit. Left behind, it would
+still stop at its first line.
 
 - **Hand off the full line first**, as before: it shows what is committed.
 - **Then, on every turn while it waits, end with the short call.** The
@@ -471,9 +474,16 @@ Left behind, it would still stop at its first line.
   check dates from `/tmp`, where a directory found later may have been made by
   someone else, and stays for `GIT_GUARD_SHORT_DIR`, which moves it (tests).
   Failing it, no short call exists and the full line stands.
-- **The script removes itself when it ends, whatever the outcome** (the owner,
-  23.10). Run once, it cannot run again; a commit that failed needs a new line
-  with `--supersede`, as the full line does.
+- **Once its commit lands, the script cannot run again** (the owner, 23.10: a
+  script that removes itself once run). It puts a stub in its own place that
+  prints `git-guard: this line is void — already committed as <sha>` and exits 1,
+  so a second run says what became of it rather than a bare "No such file".
+- **When the line fails, the script stays**, as the full line stays runnable: a
+  check refused or git refused, nothing was committed, and the drift check's own
+  words say to run it again after a check. Field case (a project, 2026-11-13):
+  the owner ran the short call, the drift check stopped it on a neighbour's edit,
+  the session staged the path, and the second run found no file. Until vdm-git
+  2.28 the script removed itself whatever the outcome.
 
 ### Where the files live
 

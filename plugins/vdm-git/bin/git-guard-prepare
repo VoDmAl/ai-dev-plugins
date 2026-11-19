@@ -211,18 +211,27 @@
 #   короткий bash вызов и дублировать».
 #
 #   So every prep also writes the line into `$SHORT_DIR/<token>.sh`, whose call
-#   is `sh <that script>`. It is not printed at the prep: a clean prep keeps
-#   stderr silent, which is the detector's "matched". The script changes into the
-#   directory the paths are named from, then runs the same line — the message
-#   check and the path list stay inside, and the call works from anywhere. It
-#   is named by the prep's token, so it is as unique as the message file, and
+#   is `sh <that script>`, and prints the call on stdout as a second line, a
+#   shell comment (`# short call: sh …`): the assistant takes it from there and
+#   builds nothing (docs/tasks/git-guard-line-handoff, DL #1). Not on stderr: a
+#   clean prep keeps stderr silent, which is the detector's "matched". The
+#   script runs the same line — the message check and the path list stay inside.
+#   It is named by the prep's token, so it is as unique as the message file, and
 #   rm_trio retires it with the rest. `--pending` prints the call of the line
 #   still waiting; the reminder asks it on every prompt and tells the assistant
 #   to end the turn with it. The scripts sit in <state>/sh (see "Where the files
 #   live"); writer and reader both ask short_dir_ok, and the reader
 #   also wants the script to be the user's own regular file; failing that there
-#   is no short call, and the line works without one. The script removes itself
-#   when it ends, whatever the outcome (the owner, 23.10).
+#   is no short call, and the line works without one. Once its commit lands the
+#   script puts a stub in its own place, which prints "already committed as
+#   <sha>" (the owner, 23.10: a script that removes itself once run); when the
+#   line fails, it stays, as the full line does (git-guard-short-call-tombstone).
+#
+# The line runs from any directory
+#   It opens with `( cd '<the directory its paths are named from>' || exit 1;`
+#   and closes with `)`: run from another checkout — after /compact, from a
+#   worktree's parent — it still commits where it was prepared, and the subshell
+#   leaves a shell that pasted it where it stood (git-guard-line-handoff, DL #2).
 #
 # Where the files live
 #   Until vdm-git 2.26 the scope sat under ${TMPDIR:-/tmp} and the short calls
@@ -724,8 +733,10 @@ Usage: git-guard-prepare "<commit message>" [-- <path>...]
 
 Writes the message to a per-prep file under ${XDG_STATE_HOME:-~/.local/state}/vdm-git
 (GIT_GUARD_STATE_DIR overrides) and prints a single-line
-`git commit -F <path> -- <paths>` command for the user to run. The same commit
-is kept as a short call, `sh <state>/sh/<token>.sh`; --pending prints the call
+`git commit -F <path> -- <paths>` command for the user to run, in a subshell that
+first changes into the directory its paths are named from. The same commit is
+kept as a short call, `sh <state>/sh/<token>.sh`, printed as a second line,
+`# short call: sh …`; --pending prints the call
 of the line still waiting (exit 0), its subject alone when it has no script
 (exit 3), why it is lost when its message file was deleted outside git-guard
 (exit 4), or nothing (exit 1).
@@ -1613,21 +1624,40 @@ else
   line="$pre_line { $drift_diff$pathspec >&2 || { $drift_msg }; } && git commit -F $msg_q --$pathspec"
 fi
 
+# The line works from any directory: it changes into the one its paths are named
+# from, in a subshell, so a line pasted through `!` leaves the user's shell where
+# it stood. Field case (a project's agent, 2026-11-17): prepared in a worktree,
+# run after /compact from the main checkout — the pathspec matched no file, and
+# the drift check, run in the wrong tree, had passed in silence: no file there,
+# so no difference (docs/tasks/git-guard-line-handoff, DL #2). `|| exit 1;`
+# rather than `&&`: chained into the message-file check, a directory gone
+# would print that check's reason — "message file deleted" — instead of cd's.
+line="( cd $(shell_quote "$path_base") || exit 1; $line )"
+
 # The short call: the same line in a script with a short name, `sh <script>`.
 # Written in a directory of this user's own — not a symlink, closed to others —
-# or not at all: the line on stdout works without it. The script changes into
-# the directory the paths are named from, so the call works from anywhere.
+# or not at all: the line on stdout works without it.
 short=$(short_script "$stem")
 short_dir=${short%/*}
 #
-# The script removes itself when it ends, whatever the outcome — the owner,
-# 23.10: «уникальный скрипт в названии, который после выполнения самоудалит
-# себя». Run once, it cannot be run again; a commit that failed needs a new
-# line anyway (--supersede), as the full line does.
+# Run once and committed, the script cannot run again — the owner, 23.10:
+# «уникальный скрипт в названии, который после выполнения самоудалит себя».
+# It does not vanish, though: it puts a stub in its own place that prints what
+# became of it, as rm_trio's stubs do, so a second run says why instead of a
+# bare "No such file" (docs/tasks/git-guard-short-call-tombstone). When the line
+# fails — a check refused, git refused — nothing was committed and the script
+# stays, exactly as the full line stays runnable: the drift check's own words
+# say to run it again after a check. Field case (a project, 2026-11-13): the
+# owner ran the short call, the drift check stopped it, the session staged the
+# path, and the second run of the same call found no file.
+# The cd is the script's own as well as the line's: the stub's sha is read from
+# the repository after the line ends.
 if mkdir -p -m 700 "$short_dir" 2>/dev/null && short_dir_ok "$short_dir" \
    && {
         printf '#!/bin/sh\n# git-guard-prepare, %s: %s\n' "$(date '+%Y-%m-%d %H:%M')" "$subj"
-        printf "trap 'rm -f \"\$0\"' EXIT\n"
+        # shellcheck disable=SC2016 # written for the script, expanded when it runs
+        printf '%s\n' 'git_guard_ran() { rc=$?; [ "$rc" -eq 0 ] || exit "$rc"; sha=$(git rev-parse --short=7 HEAD 2>/dev/null); printf '"'"'#!/bin/sh\necho %s >&2\nexit 1\n'"'"' "'"'"'git-guard: this line is void — already committed as ${sha:-a commit}; ask for a new one'"'"'" > "$0.tmp.$$" && mv -f "$0.tmp.$$" "$0"; exit 0; }'
+        printf 'trap git_guard_ran EXIT\n'
         printf 'cd %s || exit 1\n%s\n' "$(shell_quote "$path_base")" "$line"
       } > "$short.tmp.$$" 2>/dev/null \
    && mv -f "$short.tmp.$$" "$short"; then
@@ -1636,7 +1666,14 @@ else
   rm -f "$short.tmp.$$" 2>/dev/null
 fi
 
-# Not announced here: stderr after a clean prep stays silent, since that silence
-# is how the detector says the previous commit matched. The call is due only
-# on later turns, and the reminder names it there.
+# The line, then its short call as a second line — a shell comment, so stdout
+# pasted whole or run through eval does nothing more than the line. Printed here
+# so the assistant has nothing to assemble: field cases (2026-11-17) — one
+# session built the script's name from the message file's and the owner got
+# "No such file"; another took the newest file in the shared sh/ directory and
+# handed the owner another project's commit (docs/tasks/git-guard-line-handoff,
+# DL #1). Not on stderr: stderr after a clean prep stays silent, since that
+# silence is how the detector says the previous commit matched.
 printf '%s\n' "$line"
+short_now=$(short_call "$stem")
+[ -z "$short_now" ] || printf '# short call: %s\n' "$short_now"

@@ -302,7 +302,11 @@ vdm-comms 0.37.2.
       Мяч из `mail-draft-body-versions-outcome-2`, уточнения — `mail-draft-body-versions-edited`
 - [ ] Решить, просить ли echelon перенести прошлое: тела черновиков 27.09–27.10 из `_drafts/trace.jsonl` к нему и связать
       их id с «Отправленными» (по нашему слову, срока нет). Это и есть Sidetrack #1, только руками echelon
-- [ ] Последний прогон сборщика — when: на обеих машинах не осталось живых сессий, начатых до vdm-comms 0.37.0;
+- [x] Последний прогон сборщика — сделан 2026-11-19: `old_sessions.py` дал `alive before: 0` на обеих машинах (код 0).
+      Сбор: 2292 транскрипта, 6362 новые строки следов, 1455 писем, 461 копия харнесса здесь и 355 со второй машины
+      (недостающих 0); `build_letter_versions.py --all` пересобрал `index.md` у 1643 писем в 11 проектах; хранилище
+      100 → 127 МиБ. Дальше версии пишет только снимок vdm-comms. Исходный текст пункта:
+      when: на обеих машинах не осталось живых сессий, начатых до vdm-comms 0.37.0;
       check: `python3 -I docs/tasks/letter-versions/references/old_sessions.py` (exit 0) и то же на m3 —
       `ssh -o BatchMode=yes m3 'python3 -I -' < docs/tasks/letter-versions/references/old_sessions.py`. Замер:
       28.10 — 15 на lft и 10 на m3; 29.10 — 0 на lft и 10 на m3 (DL #7). Пока условие не выполнено, сборщик

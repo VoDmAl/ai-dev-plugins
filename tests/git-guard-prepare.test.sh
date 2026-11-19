@@ -334,7 +334,8 @@ printf '\n=== superseding a prepared line ===\n'
 
 # msg_path <emitted command> — the -F argument, unquoted. shell_quote always
 # single-quotes, so the first quoted field after `-F` is the message path.
-msg_path() { printf '%s' "$1" | sed -e "s/.*git commit -F '//" -e "s/'.*$//"; }
+# The line is the first line of a prep's stdout; the second names its short call.
+msg_path() { printf '%s\n' "$1" | sed -n -e "1{s/.*git commit -F '//" -e "s/'.*$//" -e "p;}"; }
 
 d=$(new_repo supersede); cd "$d" || exit 1
 export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
@@ -457,7 +458,7 @@ dead=$("$PREP" "[*] dead")
 printf 'b\n' > b.txt; git add b.txt
 live=$("$PREP" --supersede "[*] live" 2>/dev/null)
 case "$dead" in
-  "[ -f "*) ok "the line opens with its message-file check" ;;
+  "( cd '"*"' || exit 1; [ -f "*) ok "the line opens with its message-file check, once in its directory" ;;
   *)        bad "the line opens with its message-file check" "${dead:0:80}" ;;
 esac
 out=$(run_emitted "$dead" 2>&1); rc=$?
@@ -619,15 +620,25 @@ printf '\n=== the short call: the same line, a short name ===\n'
 d=$(new_repo short_call); cd "$d" || exit 1
 export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
 mkdir -p sub; printf 'a\n' > sub/a.txt; git add sub/a.txt
-out=$(cd sub && "$PREP" "[*] short" -- a.txt 2>&1 >/dev/null)
-# Not announced at the prep: a clean prep's silent stderr is the detector's
-# "the previous commit matched", and the call is due only on later turns.
+printed=$(cd sub && "$PREP" "[*] short" -- a.txt 2>"$d/prep.err")
+out=$(cat "$d/prep.err")
+# Not on stderr: a clean prep's silent stderr is the detector's "the previous
+# commit matched".
 expect_silent "the prep itself stays silent on stderr" "$out"
+# On stdout, after the line: the short call, as a shell comment. Field cases
+# (2026-11-17): one session built the script's name itself and the owner got
+# "No such file"; another took the newest file of the shared sh/ directory and
+# handed over another project's commit (docs/tasks/git-guard-line-handoff, DL #1).
+printed_call=$(printf '%s\n' "$printed" | sed -n 's/^# short call: //p')
+expect_says "RED: the prep prints its short call, as a comment line after the line" "$printed_call" "sh $GIT_GUARD_SHORT_DIR/"
+if [ -f "${printed_call#sh }" ]; then ok "RED: …naming a script that exists"; else bad "RED: …naming a script that exists" "[$printed_call]"; fi
+expect_eq "…and the line comes first" "( cd " "$(printf '%s\n' "$printed" | head -1 | cut -c1-5)"
 pend=$("$PREP" --pending 2>/dev/null); rc=$?
 expect_exit "RED: --pending while it waits → 0" 0 "$rc"
 call=${pend%%$'\n'*}
 expect_says "RED: …and its first line is a short call" "$call" "sh $GIT_GUARD_SHORT_DIR/"
 expect_says "…its second, the subject" "$pend" "[*] short — prepared"
+expect_eq "…the same call the prep printed" "$printed_call" "$call"
 script="${call#sh }"
 if [ -f "$script" ]; then ok "RED: …whose script exists"; else bad "RED: …whose script exists" "call: [$call]"; fi
 expect_says "…holding the full line" "$(cat "$script" 2>/dev/null)" "git commit -F"
@@ -640,11 +651,16 @@ expect_says "RED: …and the refusal gives the short call to hand off again" "$o
 expect_exit "the short call commits, run from another directory" 0 "$rc"
 expect_eq "…with the prepared message" "[*] short" "$(git log -1 --format=%s)"
 expect_eq "…and only its path" "sub/a.txt" "$(git show --format= --name-only HEAD)"
-# The owner, 23.10: a script unique by name that removes itself once run.
-if [ -e "$script" ]; then
-  bad "RED: …and the script removed itself" "$script is still there"
+# The owner, 23.10: a script unique by name that removes itself once run. It
+# leaves a stub saying what became of it, so a second run is no bare "No such
+# file" (docs/tasks/git-guard-short-call-tombstone). Read before it is run.
+if [ -f "$script" ] && ! grep -qE 'git (commit|diff)|^cd ' "$script"; then
+  ok "RED: …and the script no longer runs its commit — a stub took its place"
+  out=$(sh "$script" 2>&1); rc=$?
+  expect_exit "RED: …a second run fails" 1 "$rc"
+  expect_says "RED: …saying it was already committed, and as what" "$out" "already committed as $(git rev-parse --short=7 HEAD)"
 else
-  ok "RED: …and the script removed itself"
+  bad "RED: …and the script no longer runs its commit — a stub took its place" "[$script] $( [ -f "$script" ] && head -3 "$script")"
 fi
 "$PREP" --pending >/dev/null 2>&1; rc=$?
 expect_exit "--pending once it has run → 1" 1 "$rc"
@@ -673,6 +689,50 @@ mv "$cur" "$cur.real" && ln -s "$cur.real" "$cur"
 "$PREP" --pending >/dev/null 2>&1; rc=$?
 expect_exit "RED: a script that is a symlink gives no short call (exit 3)" 3 "$rc"
 rm -f "$cur"; mv "$cur.real" "$cur"
+
+printf '\n=== a short call whose check refused stays, as the full line does ===\n'
+# Field case (a project, 2026-11-13): the owner ran the short call, the drift
+# check stopped it on a neighbour's edit, the session staged the path, and the
+# second run of the same call found no file — while the drift check's own words
+# say to run it again after a check (docs/tasks/git-guard-short-call-tombstone).
+
+d=$(new_repo short_call_refused); cd "$d" || exit 1
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
+printf 'a\n' > a.txt; git add a.txt
+"$PREP" "[*] refused, then run" -- a.txt >/dev/null 2>&1
+call=$("$PREP" --pending 2>/dev/null | head -1); script="${call#sh }"
+printf 'a, edited after the prep\n' > a.txt
+out=$(sh "$script" 2>&1); rc=$?
+expect_exit "the drift check refuses the short call" 1 "$rc"
+expect_says "…saying nothing was committed" "$out" "nothing committed"
+if [ -f "$script" ] && grep -q 'git commit' "$script"; then
+  ok "RED: …and the script stays, still holding the commit"
+else
+  bad "RED: …and the script stays, still holding the commit" "[$script] $( [ -f "$script" ] && head -3 "$script")"
+fi
+git add a.txt
+(cd / && sh "$script") >/dev/null 2>&1; rc=$?
+expect_exit "RED: …so after the check the same call commits" 0 "$rc"
+expect_eq "…with the prepared message" "[*] refused, then run" "$(git log -1 --format=%s)"
+
+printf '\n=== the full line runs from any directory ===\n'
+# Field case (a project's agent, 2026-11-17): prepared in a worktree, run after
+# /compact from the main checkout — the pathspec matched no file, and the drift
+# check had passed there in silence (docs/tasks/git-guard-line-handoff, DL #2).
+
+d=$(new_repo full_line_elsewhere); cd "$d" || exit 1
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
+other=$(new_repo full_line_other)
+printf 'a\n' > a.txt; git add a.txt
+other_head=$(git -C "$other" rev-parse HEAD)
+line=$("$PREP" "[*] from elsewhere" -- a.txt 2>/dev/null | head -1)
+out=$(cd "$other" && run_emitted "$line" 2>&1); rc=$?
+expect_exit "RED: the full line, run from another repository, commits" 0 "$rc"
+expect_eq "…into its own" "[*] from elsewhere" "$(git log -1 --format=%s 2>/dev/null)"
+expect_eq "RED: …and the other repository gains no commit" "$other_head" "$(git -C "$other" rev-parse HEAD)"
+# Run again (it has nothing left to commit): only where the shell stands after it matters.
+after=$(cd "$other" && run_emitted "$line" >/dev/null 2>&1; pwd -P)
+expect_eq "…and leaves the shell where it stood" "$(cd "$other" && pwd -P)" "$after"
 
 printf '\n=== a step before the commit: pre-commit-line ===\n'
 # Brief from the access layer (2026-11-08) and vdx's mechanism (2026-11-14),

@@ -2,10 +2,10 @@
 title: "intercom: обход транскриптов через find слепнет, когда ~/.claude/projects — ссылка"
 slug: intercom-find-symlinked-projects
 description: "Дать intercom находить транскрипты, когда каталог projects — символическая ссылка"
-status: in-progress
+status: done
 session-type: short-bug
 created: 2026-11-16
-last-updated: 2026-11-17
+last-updated: 2026-11-19
 ---
 
 # intercom: обход транскриптов через find слепнет, когда ~/.claude/projects — ссылка
@@ -102,7 +102,7 @@ last-updated: 2026-11-17
 
 ### #2. Вымышленная фамилия в старой записи changelog совпала с реальной из адресных книг
 
-**Status:** open
+**Status:** resolved
 **Возникло в:** PII-скан файлов этой правки, 2026-11-17
 `uv run scripts/pii-scan.py files PROJECT_CHANGELOG.md` даёт находку вида `book person` на строке примера «Инициал
 («<фамилия> В.») не считается концом…» — запись `db4004a` от 2026-09-30, старше гейта. Фамилию здесь не пишу: тот же
@@ -128,7 +128,7 @@ last-updated: 2026-11-17
       обоих обходах projects/, тест на ссылку" --link <коммит ef5b408> --ball "<кто — что ⏰ дата>"` — when: `ef5b408`
       в `origin/master`; check: `git branch -r --contains ef5b408` печатает `origin/master`. Их проверка
       `grep -c 'find -H'` на установленном файле даст 3 (два вызова и комментарий), им нужно ≥ 2 (due: 2026-11-17)
-- [ ] Sidetrack #2: заменить вымышленную фамилию в примере `PROJECT_CHANGELOG.md` (строка «Инициал («<фамилия> В.»)…»)
+- [x] Sidetrack #2 (19.11: заменена на «Петров», `pii-scan files PROJECT_CHANGELOG.md` чист): заменить вымышленную фамилию в примере `PROJECT_CHANGELOG.md` (строка «Инициал («<фамилия> В.»)…»)
       на ту, которой нет в адресных книгах, проверить `uv run scripts/pii-scan.py files PROJECT_CHANGELOG.md`; или
       записать, почему остаётся
 - [x] Sidetrack #1: grep по `find` с переменной в стартовой точке во всех плагинах; `-H` там, где старт — каталог

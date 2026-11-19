@@ -62,16 +62,19 @@ export GIT_GUARD_SHORT_DIR="$TMP/short"
 export GIT_GUARD_SYNC_CHECK=off
 export CLAUDE_CODE_SESSION_ID=check-session
 
-# run <dir> <args>... — prints "<exit>|<stdout>|<stderr>"
+# run <dir> <args>... — prints "<exit>\037<stdout>\037<stderr>". Not `|`: the
+# line itself holds `||` (from vdm-git 2.28.0 its first one comes before the
+# message file's path), and out_of cut it there.
+US=$'\037'
 run() {
   local d="$1" out err rc; shift
   out=$( { cd "$d" && bash "$PREP" "$@" 2>"$TMP/err"; } ); rc=$?
   err=$(cat "$TMP/err" 2>/dev/null)
-  printf '%s|%s|%s' "$rc" "$out" "$err"
+  printf '%s%s%s%s%s' "$rc" "$US" "$out" "$US" "$err"
 }
-rc_of()  { printf '%s' "${1%%|*}"; }
-out_of() { local r="${1#*|}"; printf '%s' "${r%%|*}"; }
-err_of() { local r="${1#*|}"; printf '%s' "${r#*|}"; }
+rc_of()  { printf '%s' "${1%%"$US"*}"; }
+out_of() { local r="${1#*"$US"}"; printf '%s' "${r%%"$US"*}"; }
+err_of() { local r="${1#*"$US"}"; printf '%s' "${r#*"$US"}"; }
 # sidecars — every file the helper keeps for this session, with its content's
 # checksum: what a look must leave as it was.
 sidecars() { ( cd "$TMPDIR" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do printf '%s %s\n' "$f" "$(cksum < "$f")"; done; ) ; ls "$GIT_GUARD_SHORT_DIR" 2>/dev/null; }
@@ -86,7 +89,8 @@ echo "== a line waiting, and a look at it =="
 out=$(run "$R" "[+] add a" -- src/a.txt)
 eq "the canary: a prep hands off a line" "0" "$(rc_of "$out")"
 line=$(out_of "$out")
-msgfile=$(printf '%s' "$line" | sed -n "s/^\[ -f '\([^']*\)'.*/\1/p")
+# The line is the first line of stdout (it opens with a cd into its directory); the second names its short call.
+msgfile=$(printf '%s\n' "$line" | sed -n "1s/.*\[ -f '\([^']*\)'.*/\1/p")
 [ -f "$msgfile" ] && ok "…and its message file is there" || bad "…and its message file is there" "$line"
 before=$(sidecars)
 says "the canary: the listing sees the waiting line's files" "$before" ".txt"
