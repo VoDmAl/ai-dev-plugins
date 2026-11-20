@@ -2,7 +2,7 @@
 title: "Строку коммита отдаёт git-guard: короткий вызов в выводе, полная строка из любой папки, чужая строка не уходит"
 slug: git-guard-line-handoff
 description: "Ассистенту нечего угадывать в строке коммита: всё, что владелец запускает, печатает и проверяет git-guard"
-status: in-progress
+status: done
 session-type: short-bug
 created: 2026-11-19
 last-updated: 2026-11-19
@@ -107,7 +107,7 @@ last-updated: 2026-11-19
 - [x] Прогон у владельца — pre-commit коммита `e588bbf` 19.11: все наборы зелёные после двух правок разборщиков в тестах.
       Было: `tests/git-guard-prepare.test.sh` и `tests/git-guard-line-lifetime.test.sh` (наборы коммитят в
       фикстурах); красное — правка до коммита
-- [ ] Итог штабу, приславшему `git-guard-short-call-cross-project`, о второй половине: `send <штаб> …` с
+- [x] Итог штабу (19.11, `git-guard-short-call-cross-project-outcome-2`, коммиты `e588bbf` и `7d967ff`, мяч закрыт), приславшему `git-guard-short-call-cross-project`, о второй половине: `send <штаб> …` с
       `--reply-to <штаб>/git-guard-short-call-cross-project-outcome` — проверка в конце хода выпущена, с версией и
       ссылкой на коммит (due: 2026-11-26)
 - [x] Итоги 19.11 со ссылкой на `e588bbf`: `git-guard-print-short-call` и `git-guard-full-line-cwd` — закрыты;

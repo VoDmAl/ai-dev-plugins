@@ -113,7 +113,7 @@ call», `rm_trio`, цикл с `consumed` → `rm_trio … "already committed as
       сессии, своим коммитом)
 - [ ] Итог отправителю второго случая: `reply git-guard-short-call-vanishes-after-failed-check` — письмо держит
       сессия intercom, замершая на недельном лимите; взять после того, как владелец её закроет
-- [ ] Outcome to `echelon`: intercom reply vdm-git-short-call-tombstone --done "<версия vdm-git и что печатает второй запуск>" --ball "nobody — closed"
+- [x] (19.11, `vdm-git-short-call-tombstone-outcome`, `e588bbf`) Outcome to `echelon`: intercom reply vdm-git-short-call-tombstone --done "<версия vdm-git и что печатает второй запуск>" --ball "nobody — closed"
 
 ## References
 

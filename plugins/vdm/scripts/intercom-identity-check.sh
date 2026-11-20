@@ -257,18 +257,6 @@ if intercom_hq_session; then
 ❓ ${questions} question(s) for the user on letters here — put them first: another agent waits on them."
 fi
 
-# Mail piling up here, with no intercom session switched on: offered once per
-# session start, to be put to the user in a line — unless the owner said no
-# since the oldest of those letters came (see intercom_mail_candidate).
-if ! intercom_mail_session; then
-  backlog="$(intercom_mail_candidate "$id" 2>/dev/null)"
-  b_n="${backlog%%$'\t'*}"; b_days="${backlog#*$'\t'}"
-  if [ -n "$backlog" ] && ! intercom_mail_switched_on "$id"; then
-    msg="${msg}
-📨 ${b_n} letters from other agents wait in this inbox, the oldest ${b_days}d. An intercom session — a separate agent session that takes letters as they come — would answer them without waiting for a session here: offer it to the user once, in one line. It is switched on by this project's own commit, \`\"intercom\": {\"session\": true}\` in .claude/vdm-plugins.json, and costs a whole agent session per project and machine. The user says no: \`intercom mail-candidates decline ${id}\` — asked again only when mail piles up anew."
-  fi
-fi
-
 # Delivery is not receipt, from the sender's side. A letter this agent wrote
 # that has sat unpicked for three days is a promise nobody is keeping, and
 # `check` shows only what came in. Three days, because that is how long the

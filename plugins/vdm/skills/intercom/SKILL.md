@@ -365,7 +365,6 @@ re-derive its logic:
 | `ask <letter> --question "<q>" [--option "<o>"]… [--slug S] [--force]` | A question for the user on a letter you received: it goes to the session that wrote that letter, and your letter is released with a note of what it waits for. Exit 3 and the way to the list at HQ when there is no such session (§ A question for the user goes through the session that asked). |
 | `answer <question letter> --word "<their words>" [--slug S] [--force]` | The user's word back to whoever asked, with the session and machine it was said on. Refused (exit 2, nothing sent) unless the words stand as whole words in what the user typed in this session after the question came. The question is archived in the same step. |
 | `sent` (aka `outbox`) | Every letter **you** wrote that still lies unpicked in someone's inbox, oldest first, with its age and whether the recipient has a live session to wake now — or an intercom session to start (§ Intercom sessions). |
-| `mail-candidates [--json]` · `mail-candidates decline <agent> [--undo]` | The projects on this machine whose mail piles up past the threshold with no intercom session switched on and no standing no from the owner — the view an HQ's hook reads; `decline` records the owner's no in the agent's registry entry until mail piles up anew (§ Intercom sessions). |
 | `ball-home <letter> "<where>"` | The balls a picked-up letter left with you live somewhere the session-start check does not read: written into the letter's envelope (`ball-home:`), and they are named no more (§ Closing a brief with its outcome). |
 | `close` | In an intercom session, once its inbox is handled: run `vdx ai --close --waiting <n>`, n being the letters it took and left for the user. Refused outside an intercom session and while a letter nobody took is in the inbox (§ Intercom sessions). |
 | `topics [<agent>]` | The topics of that agent's live focused sessions on this machine — this repository's without an argument, this session included (§ A focused session's topic). |
@@ -991,7 +990,7 @@ the user's word sends either one to the other's work.
   the access layer names the role.
 
 - **While an HQ session of the project lives on this machine, an ordinary session
-  is quiet on its hooks.** No `[comms]` lines, no inbox count, no 📤, ↪, 📨, 📂 or
+  is quiet on its hooks.** No `[comms]` lines, no inbox count, no 📤, ↪, 📂 or
   📥, no ⏳ or ⏰ of crystals, no line about lessons to lift; the arrival line names
   only answers to its own letters. Its start line says who it is and why (🔕). The
   rules, the guards and the list of active crystals stay. An intercom session keeps
@@ -1107,25 +1106,15 @@ start line said nobody sits there.
   session is woken: two sessions would only do the letter twice. `sent` names
   the same start for a letter still lying there. With vdx missing or older, a
   line says so and the letter goes as without it. The key is off by default
-  and is set by hand, because every intercom session is a whole agent session. The
-  user's word (2026-10-22): only where it was switched on. And (2026-10-27):
-  where mail piles up, the key is offered. With five letters from other agents
-  in the inbox, the oldest three days old, and no key, the session-start line
-  says so (`📨`): offer the intercom session to the user once, in one line; the key
-  is the project's own commit. The sender's `sent` names such recipients in one
-  line after the list. A note to oneself is not counted, nor is a recipient
-  with no working checkout here, nor a letter released with a note or taken by a
-  session that is live here or runs on another machine — those are handled or
-  in work; one whose session is gone counts. **The owner's answer holds**
-  (2026-10-28): `intercom.sh mail-candidates decline <agent>` records a no in
-  the agent's registry entry, dated, and neither line asks again until the
-  mail piles up anew — until the oldest counted letter is younger than the no
-  (`--undo` takes it back). **An HQ asks across projects**:
-  `intercom.sh mail-candidates [--json]` lists the projects on this machine past
-  the threshold with no key and no standing no — identity, count, the oldest,
-  the checkout, what switches it on, the decline command. This repository shows
-  no other project anything at the start of a session; the HQ's hook reads that
-  view and puts the question to the owner where they work. When the start
+  and is set by hand, because every intercom session is a whole agent session
+  (the user's word, 2026-10-22: only where it was switched on). **The key is on
+  its way out** (2026-11-17): the owner took it away — a letter is routed by its
+  kind, and the brake on cost becomes vdx's limit of intercom sessions per
+  machine. Until vdx ships that limit, the key still decides the start here; the
+  offer to switch it on went first (vdm 2.82.0). Before it, five letters from
+  others in an inbox, the oldest three days old, made the session-start line and
+  `sent` offer the key (`📨`), and `mail-candidates [decline]` listed such
+  projects and recorded the owner's no. Crystal `intercom-session-no-key`. When the start
   fails, the command exits 4: the agent did not come up, whatever stopped it,
   and vdx prints the text of its pane; the letter waits in the inbox meanwhile.
   One such case has a move of its own: a checkout Claude Code does not trust yet
