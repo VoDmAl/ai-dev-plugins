@@ -1117,11 +1117,12 @@ cmd_send() {
   start="$(intercom_mail_start "$canon" "$live" "$from")"
   [ -z "$live" ] || printf '    📣 live session(s) of `%s` on this machine: %s\n' "$canon" "$(_ic_live_list "$live")"
   if [ "${start%%$'\037'*}" = start ]; then
-    # Its intercom session is switched on and none is live here: the sender starts
-    # it, and it takes the letter on its first turn — so nobody else is woken
+    # No intercom session of it is live here: the sender starts one — in any
+    # project with a checkout here, no key (intercom-session-no-key) — and it
+    # takes the letter on its first turn — so nobody else is woken
     # (intercom-session-wake, DL #11). After a scaffold the start waits for the
     # body, as a wake does.
-    printf '    📮 `%s` has its intercom session switched on, and none is live here — start it with your shell tool' "$canon"
+    printf '    📮 no intercom session of `%s` is live here — start it with your shell tool' "$canon"
     if [ "$body_set" -eq 1 ]; then
       printf ' now:\n'
     else
@@ -1138,6 +1139,10 @@ cmd_send() {
     # command to run at a terminal. Whether it is trusted is the harness's own
     # record, read by vdx, not here.
     printf '       Exit 4: the agent did not start, whatever stopped it, and vdx prints why; the letter waits.\n'
+    # vdx 0.63.0: at most N intercom sessions live per machine, the rest queued —
+    # the brake the project key used to be (intercom-session-no-key, DL #2).
+    printf '       Exit 5 is no error: the machine has its intercom sessions in full, vdx prints its `⏸ queued:` line\n'
+    printf '       and starts this one when another closes; the letter waits in the inbox — nothing more to do.\n'
     printf '       In a checkout Claude Code does not trust yet it prints a command —\n'
     printf '       hand it to the user, who runs it once at a terminal and answers the trust prompt.\n'
   elif [ -n "$live" ]; then
@@ -1179,18 +1184,13 @@ cmd_send() {
   fi
 }
 
-# _ic_novdx_line <identity> <novdx line of intercom_mail_start> — why a mail
-# session that is switched on is not started from here.
+# _ic_novdx_line <identity> <novdx line of intercom_mail_start> — why its
+# intercom session is not started from here: the vdx here holds no machine limit.
 _ic_novdx_line() {
   local kind clone ver
   IFS=$'\037' read -r kind clone ver <<<"$2"
-  if [ -n "$ver" ]; then
-    printf '📮 `%s` has its intercom session switched on (%s), but vdx here is %s — %s or later starts one; the letter goes as without it' \
-      "$1" "$clone" "$ver" "$INTERCOM_VDX_MIN"
-  else
-    printf '📮 `%s` has its intercom session switched on (%s), but there is no vdx here to start one; the letter goes as without it' \
-      "$1" "$clone"
-  fi
+  printf '📮 no intercom session of `%s` is started from here (%s): vdx here is %s, and only %s or later keeps them to a limit per machine; the letter goes as without it' \
+    "$1" "$clone" "$ver" "$INTERCOM_VDX_MIN"
 }
 
 # "name (status), name (status, mail), name (status, mail, stays), name (status, hq)"
@@ -1369,7 +1369,7 @@ cmd_sent() {
     start="${live##*$'\036'}"; live="${live%$'\036'*}"
     choice="${live#*$'\036'}"; live="${live%%$'\036'*}"
     if [ "${start%%$'\037'*}" = start ]; then
-      printf '      its intercom session is switched on and none is live here → start it with your shell tool: %s\n' \
+      printf '      no intercom session of it is live here → start it with your shell tool (exit 5: queued, no error): %s\n' \
         "$(intercom_mail_start_cmd "${start#start$'\037'}")"
       continue
     fi
@@ -1528,7 +1528,7 @@ _ic_topic_route() {
   live="$(intercom_live_sessions "$id")"
   start="$(intercom_mail_start "$id" "$live" "$from")"
   if [ "${start%%$'\037'*}" = start ]; then
-    printf '    📮 `%s` has its intercom session switched on, and none is live here — start it with your shell tool:\n' "$id"
+    printf '    📮 no intercom session of `%s` is live here — start it with your shell tool (exit 5: queued, no error):\n' "$id"
     printf '         %s\n' "$(intercom_mail_start_cmd "${start#start$'\037'}")"
   elif [ -n "$live" ]; then
     choice="$(intercom_wake_choice "$id" "$live")"

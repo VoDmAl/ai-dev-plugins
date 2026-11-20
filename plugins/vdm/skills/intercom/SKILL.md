@@ -1003,8 +1003,8 @@ the user's word sends either one to the other's work.
 - **Asked at every hook, with nothing stored:** an HQ session may start or close in
   the middle of a working one. A letter not named while it lived is named on the
   first message after it closes.
-- **Wakes.** An intercom session comes first, and starting one where it is switched
-  on, as ever. Otherwise the live HQ session is the one woken: at once when it is
+- **Wakes.** An intercom session comes first, and starting one where none is
+  live, as ever. Otherwise the live HQ session is the one woken: at once when it is
   idle, with no 15-minute window, and not while it is busy or waiting on the user,
   when the letter reaches it as a line with their next message there. The price is
   named: a letter may start a turn while the user reads its last answer. Its pointer
@@ -1089,32 +1089,34 @@ start line said nobody sits there.
   from any other session — one the user works in — ends the run. The user
   accepted the rule as a condition of the mode, since agents answering each
   other fast may agree on what is the user's to decide; the count of 3 is ours.
-- **Started by the sender, where it is switched on.** A letter that arrives by
-  sync starts nothing by itself, so the sender starts the recipient's mail
+- **Started by the sender, in any project.** A letter that arrives by sync
+  starts nothing by itself, so the sender starts the recipient's intercom
   session on its own machine. That happens when three things hold: the
-  recipient's checkout here has `intercom.session: true` in its
-  `vdm-plugins.json` (the older key `intercom.mail-session` is still read;
-  when both are set, `session` decides), no intercom session of it is live here, and the vdx here is
-  0.36 or later. A checkout is a working clone: the harness's own copy of a
-  plugin's repository (`…/plugins/marketplaces/<name>`, `…/plugins/cache/…`)
-  gets the committed key too and is passed over — nobody works there, and the
-  harness does not trust it. `role --path` passes it over the same way. Then `send` (and `reply`) prints `📮 … start it with your shell
-  tool` and the command, `vdx ai --intercom --detach '<checkout>'`. Run it in
-  the same turn — after the body is written, as with a wake. vdx keeps one mail
-  session per project and machine, so a second start does nothing. Its first
-  turn is `/vdm:intercom check`, so no wake follows the start and no other
-  session is woken: two sessions would only do the letter twice. `sent` names
-  the same start for a letter still lying there. With vdx missing or older, a
-  line says so and the letter goes as without it. The key is off by default
-  and is set by hand, because every intercom session is a whole agent session
-  (the user's word, 2026-10-22: only where it was switched on). **The key is on
-  its way out** (2026-11-17): the owner took it away — a letter is routed by its
-  kind, and the brake on cost becomes vdx's limit of intercom sessions per
-  machine. Until vdx ships that limit, the key still decides the start here; the
-  offer to switch it on went first (vdm 2.82.0). Before it, five letters from
-  others in an inbox, the oldest three days old, made the session-start line and
-  `sent` offer the key (`📨`), and `mail-candidates [decline]` listed such
-  projects and recorded the owner's no. Crystal `intercom-session-no-key`. When the start
+  recipient has a working checkout here, no intercom session of it is live here,
+  and the vdx here is 0.63 or later. A checkout is a working clone: the
+  harness's own copy of a plugin's repository (`…/plugins/marketplaces/<name>`,
+  `…/plugins/cache/…`) is passed over — nobody works there, and the harness does
+  not trust it. `role --path` passes it over the same way. Then `send` (and
+  `reply`) prints `📮 … start it with your shell tool` and the command,
+  `vdx ai --intercom --detach '<checkout>'`. Run it in the same turn — after the
+  body is written, as with a wake. vdx keeps one intercom session per project
+  and machine, so a second start does nothing. Its first turn is
+  `/vdm:intercom check`, so no wake follows the start and no other session is
+  woken: two sessions would only do the letter twice. `sent` names the same
+  start for a letter still lying there.
+  **No key, and the brake is vdx's.** Every intercom session is a whole agent
+  session; until vdm 2.83.0 a project switched it on with `intercom.session:
+  true`, and only there was it started (the user's word, 2026-10-22). The owner
+  took the key away on 2026-11-17: a letter is routed by its kind, and the brake
+  on cost is vdx's limit of intercom sessions per machine (0.63.0: one per 5 GB
+  of memory, at least two; one waiting over 30 minutes and one the user started
+  are not counted). A start past the limit exits 5: no error — vdx prints
+  `⏸ queued: …` with the place, starts it when another closes, and the letter
+  waits in the inbox meanwhile; nothing more to do. A vdx older than 0.63 holds
+  no limit, so it starts nothing, and a line says so; with no vdx at all,
+  nothing is said and the letter goes as without it. A `session` or
+  `mail-session` left in a project's settings decides nothing. Crystal
+  `intercom-session-no-key`. When the start
   fails, the command exits 4: the agent did not come up, whatever stopped it,
   and vdx prints the text of its pane; the letter waits in the inbox meanwhile.
   One such case has a move of its own: a checkout Claude Code does not trust yet
@@ -1158,7 +1160,7 @@ above, behave as the regular skill described here.
 | `reset` | Remove the `intercom` key (revert to defaults) |
 
 **Defaults when the section is missing:** `enabled: false` (opt-in), `mode: "smart"`,
-`identity-check: true`, `arrival-line: true`, `session: false` (no subcommand for the last two: set them in the file). The two defaults differ on purpose: the *reminder*
+`identity-check: true`, `arrival-line: true` (no subcommand for the last: set it in the file; the former `session` key decides nothing since vdm 2.83.0). The two defaults differ on purpose: the *reminder*
 interrupts ongoing work, so it is opt-in (see § Automatic activation); the
 *identity check* fires once at session start and never mid-session, so it is on.
 Once the reminder is on: throttle window `intercom.throttle` seconds (default

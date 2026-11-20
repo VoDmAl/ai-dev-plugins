@@ -1384,14 +1384,19 @@ intercom_mail_run() {
 # recipient's intercom session on its own machine: `vdx ai --intercom --detach
 # '<the recipient's checkout here>'`. One intercom session per project and machine,
 # so a second start is a no-op, and its first turn is `/vdm:intercom check`.
-# Only where the owner switched it on (DL #10): `intercom.session: true` (the older
-# `intercom.mail-session` is still read; when both are set, `session` decides)
-# in that checkout's settings — every intercom session is a whole agent session.
-# vdx before 0.36 refuses `--intercom` with exit 2, so its version is asked
-# first. Started, the intercom session replaces the wake of any other session
-# (DL #11); a letter to the sender's own project starts nothing (DL #12).
+# In any project with a working checkout here — no key (vdm 2.83.0, crystal
+# intercom-session-no-key). Until then only where the owner switched it on with
+# `intercom.session: true` (DL #10 of intercom-session-wake): every intercom
+# session is a whole agent session, and the key was the brake on that cost. The
+# owner took the key away on 2026-11-17 and gave the brake to vdx: from 0.63.0 it
+# keeps at most N intercom sessions alive per machine and queues the rest
+# (exit 5, one `⏸ queued:` line). So the version asked first is 0.63: an older
+# vdx would start sessions in every project with nothing to hold them, and its
+# start is not named — the letter waits. Started, the intercom session replaces
+# the wake of any other session (DL #11); a letter to the sender's own project
+# starts nothing (DL #12).
 # ---------------------------------------------------------------------------
-INTERCOM_VDX_MIN=0.36
+INTERCOM_VDX_MIN=0.63
 
 # intercom_checkouts <identity> — that agent's checkouts on this machine, in
 # registry order, one per line, without the harness's own copies of a plugin's
@@ -1411,21 +1416,13 @@ intercom_checkouts() {
   done <<<"$(intercom_registry_get "$1" '(.paths // [])[]')"
 }
 
-# _intercom_mail_clone <identity> — that agent's checkout on this machine with
-# its intercom session switched on, or nothing. Every checkout is looked at, not the
-# first: the registry also lists clones nobody configures. The settings file is
-# found as resolve_config_path finds it: .claude/ when present, else .qwen/.
+# _intercom_mail_clone <identity> — the checkout on this machine where that
+# agent's intercom session is started: its first working checkout in registry
+# order (intercom_checkouts passes the harness's copies of a plugin repository
+# over), or nothing. No key is read: a `session` or `mail-session` left in a
+# project's settings decides nothing any more.
 _intercom_mail_clone() {
-  command -v jq >/dev/null 2>&1 || return 0
-  local p cfg
-  while IFS= read -r p; do
-    [ -n "$p" ] || continue
-    if [ -d "$p/.claude" ]; then cfg="$p/.claude/vdm-plugins.json"; else cfg="$p/.qwen/vdm-plugins.json"; fi
-    [ -f "$cfg" ] || continue
-    jq -e '(.intercom // {}) as $i | if ($i | has("session")) then $i.session == true else $i["mail-session"] == true end' \
-      "$cfg" >/dev/null 2>&1 && { printf '%s' "$p"; return 0; }
-  done <<<"$(intercom_checkouts "$1")"
-  return 0
+  intercom_checkouts "$1" | head -n 1
 }
 
 # _intercom_vdx_version — the version of the vdx on PATH, or nothing.
@@ -1446,9 +1443,10 @@ _intercom_version_ge() {
 # agent's intercom session here. <live> is the caller's `intercom_live_sessions`
 # output. One line, or nothing:
 #   "start<US><checkout>"                 start it there
-#   "novdx<US><checkout><US><version>"    switched on, but this vdx cannot (no version: no vdx)
+#   "novdx<US><checkout><US><version>"    a checkout here, but this vdx is older than the limit
 # Nothing when an intercom session of it is live here (the wake takes the letter),
-# when none is switched on here, and for a letter to the sender's own project.
+# when it has no working checkout here, when there is no vdx here, and for a
+# letter to the sender's own project.
 intercom_mail_start() {
   local id="$1" live="$2" sender="$3" clone ver
   [ "$id" != "$sender" ] || return 0
@@ -1456,7 +1454,10 @@ intercom_mail_start() {
   clone="$(_intercom_mail_clone "$id")"
   [ -n "$clone" ] || return 0
   ver="$(_intercom_vdx_version)"
-  if [ -n "$ver" ] && _intercom_version_ge "$ver" "$INTERCOM_VDX_MIN"; then
+  # No vdx at all: nothing to say. With no key every project would otherwise
+  # hear "no vdx here" on every send, on machines that never meant to run one.
+  [ -n "$ver" ] || return 0
+  if _intercom_version_ge "$ver" "$INTERCOM_VDX_MIN"; then
     printf 'start\037%s\n' "$clone"
   else
     printf 'novdx\037%s\037%s\n' "$clone" "$ver"

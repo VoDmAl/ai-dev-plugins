@@ -90,6 +90,14 @@ trap cleanup EXIT
 export VDM_INTERCOM_ROOT="$TMP/store"
 export HOME="$TMP/home"          # so ~/.claude/vdm-plugins.json cannot leak in
 mkdir -p "$HOME"
+# Nor this machine's vdx: with no project key (intercom-session-no-key) a send
+# names the recipient's intercom session start wherever a vdx with the machine
+# limit is on PATH, and that would decide every wake below. A vdx that answers no
+# version is "no vdx", about which a send says nothing; a section that means a
+# start puts its own shim in front ($VX).
+NOVDX="$TMP/novdx"; mkdir -p "$NOVDX"
+printf '#!/bin/sh\nexit 1\n' > "$NOVDX/vdx"; chmod +x "$NOVDX/vdx"
+export PATH="$NOVDX:$PATH"
 # This machine as intercom names it: the identity of $HOME, the `on` of the
 # session-start line, the `taken:` mark.
 machine="$( { scutil --get LocalHostName 2>/dev/null || hostname -s 2>/dev/null || echo localhost; } \
@@ -1365,55 +1373,54 @@ out="$(msend hop-b hop-a ch-5 --reply-to hop-b/ch-4)"; rc=$?
 eq "…and after that move the intercom sessions may answer again" "$rc" "0"
 rm -f "$VDM_INTERCOM_ROOT"/hop-a/ch-*.md "$VDM_INTERCOM_ROOT"/hop-b/ch-*.md
 
-echo "-- the sender starts the recipient's intercom session (intercom-session-wake, DL #9–#12)"
-# A letter that arrives by sync starts nothing, so the sender starts the mail
-# session on its own machine — only where the owner switched it on
-# (`intercom.session: true` in the recipient's checkout; the older
-# `intercom.mail-session` is still read, and `session` decides when both are set), and only with a
-# vdx that knows `--intercom` (0.36). Started, it takes the letter on its first
+echo "-- the sender starts the recipient's intercom session, no key (intercom-session-no-key)"
+# A letter that arrives by sync starts nothing, so the sender starts the
+# intercom session on its own machine — in any project with a working checkout
+# here: the owner took the project key away (2026-11-17), and the brake on cost
+# is vdx's limit per machine, from 0.63.0, which queues a start past it (exit 5).
+# So an older vdx starts nothing. Started, it takes the letter on its first
 # turn, so no other session is woken. A note to one's own project is not mail.
 # The machine's own vdx must not decide a case: every send below names its shim.
 VX="$TMP/vdx-shim"; mkdir -p "$VX"
-printf '#!/bin/sh\n[ "$1" = --version ] && { [ -n "${VDX_SHIM_VERSION-0.36.0}" ] && echo "${VDX_SHIM_VERSION-0.36.0}"; exit 0; }\necho "$*" >> "%s/vdx.log"\n' "$TMP" > "$VX/vdx"
+printf '#!/bin/sh\n[ "$1" = --version ] && { [ -n "${VDX_SHIM_VERSION-0.63.0}" ] && echo "${VDX_SHIM_VERSION-0.63.0}"; exit 0; }\necho "$*" >> "%s/vdx.log"\n' "$TMP" > "$VX/vdx"
 chmod +x "$VX/vdx"
 vsend() { ( cd "$TMP/hop-a" && PATH="$VX:$PATH" CLAUDE_CODE_SESSION_ID=self-sid bash "$IC" send hop-b "$@" 2>&1 ); }
-mkdir -p "$TMP/hop-b/.claude"
-printf '{"intercom":{"session":true}}\n' > "$TMP/hop-b/.claude/vdm-plugins.json"
+rm -rf "$TMP/hop-b/.claude"
 HB_PATH="$(jq -r '.paths[0]' "$VDM_INTERCOM_ROOT/_registry/hop-b.json")"
 out="$(vsend ms-start --body "$B/live.md")"
-says "RED: switched on and none live here — the start is named" "$out" "has its intercom session switched on, and none is live here — start it with your shell tool now"
+says "RED: no key anywhere, none live here — the start is named" "$out" "no intercom session of \`hop-b\` is live here — start it with your shell tool now"
 says "…as the command vdx takes, with the recipient's checkout here" "$out" "vdx ai --intercom --detach '$HB_PATH'"
 says "…and the start replaces the wake" "$out" "no other session is woken"
-says "RED: …and says what exit 4 means, whatever stopped the agent (vdx, 2026-11-03)" "$out" "Exit 4: the agent did not start, whatever stopped it"
+says "RED: …and says exit 5 is a queue, not an error (vdx 0.63.0)" "$out" "Exit 5 is no error"
+says "…naming vdx's queue line" "$out" "⏸ queued:"
+says "…and that nothing more is to be done" "$out" "nothing more to do"
+says "…and says what exit 4 means, whatever stopped the agent (vdx, 2026-11-03)" "$out" "Exit 4: the agent did not start, whatever stopped it"
 says "…the letter meanwhile" "$out" "the letter waits"
 says "…and names the one case with a move of its own: the trust prompt" "$out" "does not trust yet"
 says "…and whose move it then is" "$out" "hand it to the user, who runs it once at a terminal"
 says_not "…so no session is woken beside it" "$out" "→ wake one:"
 out="$( cd "$TMP/hop-a" && PATH="$VX:$PATH" VDM_INTERCOM_TODAY=2026-10-04 bash "$IC" sent 2>&1 )"
-says "RED: sent names the same start for a letter still lying there" "$(printf '%s\n' "$out" | grep -m1 'hop-b/ms-start' -A1)" "start it with your shell tool: vdx ai --intercom --detach '$HB_PATH'"
+says "RED: sent names the same start for a letter still lying there" "$(printf '%s\n' "$out" | grep -m1 'hop-b/ms-start' -A1)" "start it with your shell tool (exit 5: queued, no error): vdx ai --intercom --detach '$HB_PATH'"
 out="$(vsend ms-scaffold)"
 says "after a scaffold the start waits for the body" "$out" "once the body is written — not before"
-out="$(VDX_SHIM_VERSION=0.35.2 vsend ms-old --body "$B/live.md")"
-says "RED: an older vdx does not start one, and says why" "$out" "but vdx here is 0.35.2 — 0.36 or later starts one"
+out="$(VDX_SHIM_VERSION=0.62.9 vsend ms-old --body "$B/live.md")"
+says "RED: a vdx without the machine limit starts none, and says why" "$out" "vdx here is 0.62.9, and only 0.63 or later keeps them to a limit per machine"
 says_not "…and no start is named" "$out" "vdx ai --intercom"
 says "…the letter goes as before: the wake is chosen" "$out" "wake"
 out="$(VDX_SHIM_VERSION=0.100.0 vsend ms-newer --body "$B/live.md")"
-says "versions compare as numbers: 0.100 is past 0.36" "$out" "vdx ai --intercom --detach"
+says "versions compare as numbers: 0.100 is past 0.63" "$out" "vdx ai --intercom --detach"
 out="$(VDX_SHIM_VERSION= vsend ms-novdx --body "$B/live.md")"
-says "a vdx that gives no version starts nothing, and that is said" "$out" "there is no vdx here to start one"
-printf '{"intercom":{"session":false}}\n' > "$TMP/hop-b/.claude/vdm-plugins.json"
+# Not a RED against vdm 2.82.0: with no key that one said nothing either. It holds
+# the no-vdx branch of intercom_mail_start, which a key no longer hides.
+says_not "no vdx here — nothing about an intercom session: a project without vdx hears nothing of it" "$out" "📮"
+says "…and the letter goes as before" "$out" "staged message"
+# A key left in a project's settings decides nothing any more: the projects remove
+# it themselves after the release, and until they do it must not stop a start.
+mkdir -p "$TMP/hop-b/.claude"
+printf '{"intercom":{"session":false,"mail-session":false}}\n' > "$TMP/hop-b/.claude/vdm-plugins.json"
 out="$(vsend ms-off --body "$B/live.md")"
-says_not "switched off — nothing about an intercom session" "$out" "📮"
-# The owner, 2026-10-29 (intercom-session-name, DL #3): the key the owner reads
-# names no mail. The old key is committed in five projects and keeps working;
-# when both are set, the new one decides — so `session: false` switches it off.
-printf '{"intercom":{"mail-session":true}}\n' > "$TMP/hop-b/.claude/vdm-plugins.json"
-out="$(vsend ms-oldkey --body "$B/live.md")"
-says "RED: the older key alone still switches it on" "$out" "has its intercom session switched on, and none is live here"
-printf '{"intercom":{"session":false,"mail-session":true}}\n' > "$TMP/hop-b/.claude/vdm-plugins.json"
-out="$(vsend ms-both --body "$B/live.md")"
-says_not "RED: both set — the new key decides, and false switches it off" "$out" "📮"
-printf '{"intercom":{"session":true}}\n' > "$TMP/hop-b/.claude/vdm-plugins.json"
+says "RED: a key set to false no longer stops the start" "$out" "vdx ai --intercom --detach '$HB_PATH'"
+rm -rf "$TMP/hop-b/.claude"
 mksession mail-b.json "$MAIL_PID" "$TMP/hop-b" hop-b-mail idle "$SOCKS/b.sock"
 out="$(vsend ms-live --body "$B/live.md")"
 says "an intercom session live here is woken, as before" "$out" "→ wake one: hop-b-mail"
@@ -1424,28 +1431,18 @@ rm -f "$SESS/mail-b.json"
 out="$( cd "$TMP/hop-b" && PATH="$VX:$PATH" bash "$IC" send hop-b ms-self2 --body "$B/live.md" 2>&1 )"
 says_not "RED: …nor starts one" "$out" "vdx ai --intercom"
 [ ! -s "$TMP/vdx.log" ] && ok "send never runs vdx itself: it names the start" || bad "send ran vdx" "$(cat "$TMP/vdx.log")"
-# The registry lists every checkout seen, a marketplace clone among them: the
-# one started is the one where the owner switched it on.
-rm -f "$TMP/hop-b/.claude/vdm-plugins.json"
+# The registry lists every checkout seen, the harness's copy of a plugin
+# repository among them — listed first in this repository's own entry (vdx,
+# 2026-10-27). Started there, the session would wait on a trust prompt (exit 4),
+# or work in a copy nobody works in: the first working checkout is the one.
 cp "$VDM_INTERCOM_ROOT/_registry/hop-b.json" "$TMP/hop-b.reg.keep"
-mkrepo "$TMP/hop-b-work" "git@example.com:acme/hop-b.git"
-( cd "$TMP/hop-b-work" && bash "$IC" register --same-project >/dev/null 2>&1 )
-mkdir -p "$TMP/hop-b-work/.claude"
-printf '{"intercom":{"session":true}}\n' > "$TMP/hop-b-work/.claude/vdm-plugins.json"
-out="$(vsend ms-clone --body "$B/live.md")"
-says "the checkout started is the one with the key, not the first listed" "$out" "--detach '$(cd "$TMP/hop-b-work" && pwd -P)'"
-# A committed key reaches every clone, the harness's copy of a plugin repository
-# too — listed first in this repository's own entry (vdx, 2026-10-27). Started
-# there, the session would wait on a trust prompt (exit 4), or work in a copy
-# nobody works in.
-MKT="$TMP/claude/plugins/marketplaces/hop-b"; mkdir -p "$MKT/.claude"
-printf '{"intercom":{"session":true}}\n' > "$MKT/.claude/vdm-plugins.json"
+MKT="$TMP/claude/plugins/marketplaces/hop-b"; mkdir -p "$MKT"
 reg_b="$VDM_INTERCOM_ROOT/_registry/hop-b.json"
 jq --arg m "$MKT" '.paths = [$m] + .paths' "$reg_b" > "$reg_b.tmp" && mv "$reg_b.tmp" "$reg_b"
 out="$(vsend ms-market --body "$B/live.md")"
-says "RED: the plugin copy with the committed key, listed first, is passed over" "$out" "--detach '$(cd "$TMP/hop-b-work" && pwd -P)'"
+says "RED: the plugin copy listed first is passed over — the first working checkout is started" "$out" "--detach '$HB_PATH'"
 mv -f "$TMP/hop-b.reg.keep" "$VDM_INTERCOM_ROOT/_registry/hop-b.json"
-rm -rf "$TMP/hop-b-work" "$TMP/hop-b/.claude" "$VDM_INTERCOM_ROOT"/hop-b/ms-*.md
+rm -rf "$VDM_INTERCOM_ROOT"/hop-b/ms-*.md
 
 echo "-- an intercom session ends itself with close (intercom-session-wake, DL #13)"
 # `vdx ai --close --waiting <n>`, n being the letters it took and leaves for the
@@ -2032,12 +2029,10 @@ eq "…and the only one" "$(printf '%s\n' "$out" | grep -c '→ wake one:')" "1"
 says "…with a pointer that says whose it is" "$out" "The answer to a letter of this session"
 says_not "RED: …not the intercom session, which is woken first otherwise" "$out" "hop-r-mail"
 
-mkdir -p "$TMP/hop-r/.claude"
-printf '{"intercom":{"session":true}}\n' > "$TMP/hop-r/.claude/vdm-plugins.json"
 kill "$RM_PID" 2>/dev/null; rm -f "$SESS/rm.json"
 rbrief ra-2
 out="$( cd "$TMP/hop-a" && PATH="$VX:$PATH" CLAUDE_CODE_SESSION_ID=sid-hop-a VDM_INTERCOM_NOW="$NOW_EPOCH" bash "$IC" reply ra-2 --done "done" --ball "nobody — closed" 2>&1 )"
-says_not "RED: no intercom session is started for it, where one is switched on and none is live" "$out" "start it with your shell tool"
+says_not "RED: no intercom session is started for it, though none is live and vdx could start one" "$out" "start it with your shell tool"
 says "…the session that wrote the letter is woken" "$out" "→ wake one: hop-r-focus"
 
 jq --argjson ms "$(( (NOW_EPOCH - 300) * 1000 ))" '.statusUpdatedAt = $ms' "$SESS/rf.json" > "$TMP/rf.json" && mv "$TMP/rf.json" "$SESS/rf.json"
