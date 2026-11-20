@@ -5,7 +5,7 @@ description: "Учесть тему focused-сессии другой машин
 status: ready
 session-type: short-bug
 created: 2026-11-03
-last-updated: 2026-11-03
+last-updated: 2026-11-19
 relates-to:
   - "[[intercom-focused-topic/workitem|intercom-focused-topic]]"
   - "[[intercom-hitl-via-initiator/workitem|intercom-hitl-via-initiator]]"
@@ -77,7 +77,24 @@ relates-to:
 
 ## Sidetracks
 
+### #1. С vdx 0.59 тема — опция панели tmux, а не сессии; комментарии и SKILL говорят «сессии»
+
+**Возникло в:** письмо vdx `focused-topic-misses-review-outcome`, 2026-11-17 (сессия intercom 2026-11-19; письмо в
+`_done/` ящика ai-dev-plugins)
+**Описание:** по письму vdx, с 0.59 `@vdx_topic` ставится на панель (два агента в одной tmux-сессии делили одну тему).
+Чтение не меняется: `_intercom_tmux_option` зовёт `tmux display-message -t "$TMUX_PANE"`, и tmux берёт опцию панели
+раньше сессии (сверено чтением кода 2026-11-19, не прогоном). Устарел текст: комментарий над блоком тем в
+`plugins/vdm/scripts/intercom-common.sh` («the tmux option `@vdx_topic` of the agent's tmux session (vdx 0.41.0)»),
+комментарии `_intercom_tmux_option`, `_intercom_pid_topic`, `_intercom_pid_stays` («the pane's tmux session», «that
+live process's tmux session») и `SKILL.md` § «A focused session's topic» («the tmux option `@vdx_topic` of the agent's
+tmux session»). Переехал ли и `@vdx_stays` — не сказано, спросить vdx или проверить `tmux show -p`. Файлы сейчас в
+индексе основной сессии — править после её коммита.
+
+**Status:** open
+
 ## Next actions
+
+- [ ] Sidetrack #1: текст про `@vdx_topic` — опция панели с vdx 0.59 (комментарии `intercom-common.sh`, SKILL § темы); `@vdx_stays` — сверить
 
 - [ ] Решить, откуда сессия этой машины узнаёт тему focused-сессии другой машины: строка старта в транскрипте и окно
       присутствия, как у `from-session`, или что-то, что vdx пишет при смене темы. Записать в DL

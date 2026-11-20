@@ -5,7 +5,7 @@ description: "HQ-сессия берёт письма в работу сразу
 status: in-progress
 session-type: prd-work
 created: 2026-11-03
-last-updated: 2026-11-05
+last-updated: 2026-11-19
 relates-to: ["[[hq-session-quiet/workitem|hq-session-quiet]]", "[[intercom-take-race/workitem|intercom-take-race]]"]
 ---
 
@@ -92,6 +92,8 @@ relates-to: ["[[hq-session-quiet/workitem|hq-session-quiet]]", "[[intercom-take-
 - [x] Red-тесты и код: строка прибытия, строка старта, `check`, побудка, письмо сессии intercom своему проекту, отказ `ask` в HQ-сессии. `intercom` 998 из 998 на копии, совпадающей с деревом; на коде из `HEAD` краснели 23 проверки из первого варианта раздела. Мутации по одной на копии плагина: `ask`, своя отметка, тема, ответ на письмо, отложенное, каждая роняет свою проверку; общий мутант: окно побудки, фильтр получателя, focused и intercom в признаке
 - [x] Документы: `intercom/SKILL.md`, README, `PROJECT_CHANGELOG.md`, `suite.md`; версия `vdm` 2.76.0; поправить `hq-session-quiet` (DL #2, #4, Текущая модель)
 - [ ] Живая проверка: новая версия на настоящей HQ-сессии, письмо разобрано без команды владельцу — when: `vdm` 2.76.0 установлен и HQ-сессия пилотного проекта стартовала после установки; check: транскрипт этой HQ-сессии после следующего письма, и `/vdm:intercom check` не стоит в её ответе владельцу
+      С vdm 2.84.0 HQ-сессия не называет и не считает письма, которые заберёт сессия intercom (кристалл
+      `hq-arrival-intercom-letters`, его Sidetrack #2): читать прогон на 2.84.0 или новее, иначе в нём будет гонка за `take`.
 - [ ] Sidetrack #1: письмо во время занятого хода — по живому прогону
 - [x] Итог echelon отправлен 04.11: `hq-session-active-outcome`, vdm 2.76.0, коммит `7eccef0`; мяч у нас, живая проверка выше, срока нет
 

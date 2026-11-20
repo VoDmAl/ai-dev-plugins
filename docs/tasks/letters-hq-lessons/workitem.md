@@ -5,7 +5,7 @@ description: "Уроки штабов о письмах, этикете чужо
 status: ready
 session-type: prd-prep
 created: 2026-11-04
-last-updated: 2026-11-04
+last-updated: 2026-11-19
 relates-to:
   - "[[letters-mail-over-meetings/workitem|letters-mail-over-meetings]]"
   - "[[meetings-parse-section/workitem|meetings-parse-section]]"
@@ -63,7 +63,25 @@ DL #4–#5).
 
 ## Sidetracks
 
+### #1. Письмо, заменяющее прошлые, называет, что из прошлых обязательств остаётся и за кем
+
+**Возникло в:** письмо echelon `hq-lesson-superseding-letter`, 2026-11-18 (сессия intercom 2026-11-19; пересказ, письмо
+в `_done/` intercom-ящика ai-dev-plugins). Урок штаба `hq` из той же раскладки, которую владелец принял 04.11; пришёл
+к echelon письмом `echelon/draft-hook-close-criterion` 09.11
+**Описание:** 18.10 договорились: команду делает echelon, хук сверки черновиков пишет штаб. 19.10 письмо echelon
+заменило прошлые: команда описана абзацем, в конце «хук на старую сверку строить не нужно», раздела Ball нет. 21.10
+штаб заархивировал его пакетом из десяти писем. Хук не написан ни у кого, и 09.11 девять правок черновика прошли без
+проверки. Сторона отправителя → letters § 14: письмо, заменяющее прошлые, называет, что из прошлых обязательств
+остаётся и за кем, а что снято; возможность, которую адресат должен подключить у себя, — пунктом Ball с именем и
+датой, а не абзацем описания. Сторона получателя — Sidetrack #2 в
+[[intercom-hq-lessons/workitem|intercom-hq-lessons]]. Решить: лёг / уже был / не берём.
+
+**Status:** open
+
 ## Next actions
+
+- [ ] Sidetrack #1: письмо, заменяющее прошлые, в letters § 14 — лёг / уже был / не берём
+- [ ] Outcome to echelon after Sidetrack #1 here and Sidetrack #2 in `intercom-hq-lessons`: intercom reply hq-lesson-superseding-letter --done "<letters § 14 и intercom § …, версии vdm-comms и vdm — или «не берём» с причиной>" --link <commit> --ball "echelon — передать итог штабу, чтобы запись памяти стала указателем"
 
 - [ ] Прочитать свод echelon (путь в письме): тема 1 пп. 1–22, тема 2 пп. 1–4, тема 4 пп. 1–5, свод
       разбора пп. 9–11 — и сами записи памяти в проектах-источниках, где пункт неясен

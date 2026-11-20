@@ -989,6 +989,17 @@ the user's word sends either one to the other's work.
   for this session and says "check now"; with nothing waiting it says nothing, and
   the access layer names the role.
 
+- **The intercom session's letters are not the HQ session's.** A letter from another
+  agent with no question for the owner goes to the project's intercom session — live
+  here, or started by the sender (§ Intercom sessions) — and the HQ session's arrival
+  line does not name it, nor does 👑 count it: naming it would start a race of two
+  sessions for its `take`. The same rule `send` routes by decides, so the same vdx
+  does: with no vdx able to start one and no intercom session live, such a letter is
+  the HQ session's, as before. Its own stay: questions for the owner (`ask: owner`),
+  answers to its own letters, letters an intercom session wrote to this project. The
+  owner's model (2026-11-17): HQ is for the sheet, what comes from outside and the
+  owner's questions; intercom — what other agents want (vdm 2.84.0).
+
 - **While an HQ session of the project lives on this machine, an ordinary session
   is quiet on its hooks.** No `[comms]` lines, no inbox count, no 📤, ↪, 📂 or
   📥, no ⏳ or ⏰ of crystals, no line about lessons to lift; the arrival line names

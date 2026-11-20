@@ -94,7 +94,7 @@ _ic_arrivals() {
     fresh+=("$f")
   done < <(intercom_inbox_list "$id")
   [ ${#fresh[@]} -gt 0 ] || return 0
-  local taken created from topic forsid ask sess title ts mark
+  local taken created from topic forsid ask sess title ts mark mt=""
   while IFS=$'\037' read -r f taken created from topic forsid ask sess title; do
     [ -n "$f" ] || continue
     base="${f##*/}"; base="${base%.md}"
@@ -128,6 +128,17 @@ _ic_arrivals() {
     elif [ -n "$topic" ]; then
       ts="$(intercom_letter_topic "$f")"
       if [ "${ts%%$'\037'*}" = held ]; then
+        printf '%s\n' "$base" >> "$seen" 2>/dev/null
+        continue
+      fi
+    fi
+    # In an HQ session, a letter the intercom session takes is not named: send
+    # gave it to that session, and naming it here starts a race for `take`
+    # (crystal hq-arrival-intercom-letters). Asked once per message, and only
+    # when a letter of that kind came.
+    if [ -n "$hq" ] && _intercom_mail_letter "$from" "$ask" "$id"; then
+      [ -n "$mt" ] || { if intercom_mail_takes "$id"; then mt=1; else mt=0; fi; }
+      if [ "$mt" = 1 ]; then
         printf '%s\n' "$base" >> "$seen" 2>/dev/null
         continue
       fi

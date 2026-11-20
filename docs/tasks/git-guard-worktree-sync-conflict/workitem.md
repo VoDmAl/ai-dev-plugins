@@ -5,7 +5,7 @@ description: "Подготовка коммита называет копию <�
 status: ready
 session-type: prd-work
 created: 2026-10-30
-last-updated: 2026-11-11
+last-updated: 2026-11-19
 relates-to:
   - "[[git-guard-sync-conflicts/workitem|git-guard-sync-conflicts]]"
   - "[[git-guard-sync-lag/workitem|git-guard-sync-lag]]"
@@ -160,6 +160,24 @@ Sidetrack #4.
 предел, что в [[git-guard-line-other-machine/workitem|git-guard-line-other-machine]]. Проверка копий из этого
 кристалла его не закрывает: при одновременной правке копии конфликта могло и не быть. Решить, где он закрывается.
 
+### #5. Третий случай: копия видна на следующей правке того же файла, раньше коммита
+
+**Возникло в:** письмо echelon `crystal-edit-sync-conflict-third-case`, 2026-11-17 (сессия intercom 2026-11-19; пересказ,
+письмо в `~/.claude/vdm/intercom/ai-dev-plugins/_done/` после архивации)
+**Описание:** сессия intercom echelon правила свой кристалл на одной машине, сессия на другой машине за минуту до неё
+переписала там же абзац побега. Через ~30 с Syncthing оставил в дереве одну версию, а правку другой машины положил рядом
+как `workitem.sync-conflict-<дата>-<время>-<устройство>.md`; `syncthing-caught-up` показал ✓ на всех трёх машинах.
+Хуки промолчали, копию заметили по `git status` перед концом хода и свели руками, до коммита. Отказ подготовки (Цель)
+поймал бы её только часы спустя, когда кто правил и зачем, уже никто не помнит. Предложение echelon: копия появляется
+не сразу, поэтому PostToolUse той же правки её не видит, а **следующая** правка того же файла или следующая реплика
+владельца — видит. Строка «сведи, пока обе версии в контексте», если рядом с файлом, правленным в этой сессии, лежит
+`<имя>.sync-conflict-*<расш>`. Места: `crystal-lint --hook` (и так срабатывает на каждую правку кристалла) или
+UserPromptSubmit по файлам, тронутым в сессии. У echelon через минуту была ещё одна правка того же файла — она бы
+показала конфликт сразу. Шире Sidetrack #2 (там — старт сессии): здесь момент — правка, и не только workitem'а.
+Мяч echelon — ничего; решить нам, брать ли проверку в момент правки рядом с отказом подготовки, без даты.
+
+**Status:** open
+
 ## Next actions
 
 - [ ] Сверить правило имён Syncthing (`<основа>.sync-conflict-…<расш>`; файл без расширения, dotfile, `a.tar.gz`) с исходником Syncthing до теста
@@ -173,6 +191,8 @@ Sidetrack #4.
 - [ ] Sidetrack #4: решить, где закрывается ждущая строка другой машины по тем же путям — здесь, в `git-guard-staged-neighbour-sweep` или в `git-guard-line-other-machine`
 - [ ] Outcome to агент машин after the release: intercom reply git-guard-sync-conflict-sibling --slug git-guard-sync-conflict-sibling-done --done "<what was done>" --link <commit> --ball "nobody — closed"
 - [ ] Outcome to `executor` after the release: intercom reply git-guard-worktree-sync-conflict --slug git-guard-worktree-sync-conflict-done --done "<what was done>" --link <commit> --ball "nobody — closed"
+- [ ] Sidetrack #5: решить, брать ли проверку копии на следующей правке того же файла (`crystal-lint --hook` или UserPromptSubmit по тронутым в сессии файлам) рядом с отказом подготовки
+- [ ] Outcome to echelon after Sidetrack #5: intercom reply crystal-edit-sync-conflict-third-case --done "<что решено и где>" --link <commit> --ball "nobody — closed"
 
 ## References
 

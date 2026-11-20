@@ -2852,7 +2852,11 @@ rm -f "$SESS"/*.json; rm -rf "${PROJ:?}"/*
 find "$VDM_INTERCOM_ROOT/hop-b" -maxdepth 1 -name '*.md' -delete
 hq_sleeper VDX_HQ=1; HAS_PID="$HQ_SLEEPER"
 hq_sleeper VDX_INTERCOM=1; HAM_PID="$HQ_SLEEPER"
-trap 'kill "$LIVE_PID" "$HAS_PID" "$HAM_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
+# An ordinary session, for the holders below: one started as an intercom session
+# takes the project's letters from other agents (hq-arrival-intercom-letters), and
+# would change what the HQ session counts for a reason the case is not about.
+hq_sleeper; HAO_PID="$HQ_SLEEPER"
+trap 'kill "$LIVE_PID" "$HAS_PID" "$HAM_PID" "$HAO_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
 mksock "$SOCKS/ha1.sock"; mksock "$SOCKS/ha2.sock"
 mksession ha-hq.json "$HAS_PID" "$HOPB" hop-b-hq idle "$SOCKS/ha1.sock" sid-hq
 stamp ha-hq.json idle 1
@@ -2908,7 +2912,7 @@ N="$VDM_INTERCOM_ROOT/hop-b"
 mark_in() { awk -v l="$2" 'NR == 1 { print; print l; next } { print }' "$N/$1.md" > "$N/$1.tmp" && mv "$N/$1.tmp" "$N/$1.md"; }
 mark_in ha-mail-busy "deferred: 2026-10-04T11:00:00Z waits for something"
 mark_in ha-mail-2 "taken: other-machine/hop-b-x 2026-10-04T11:00:00Z"
-mksession ha-holder.json "$HAM_PID" "$HOPB" hop-b-holder idle "$SOCKS/ha2.sock" sid-holder
+mksession ha-holder.json "$HAO_PID" "$HOPB" hop-b-holder idle "$SOCKS/ha2.sock" sid-holder
 mark_in ha-mail "taken: $machine/hop-b-holder session:sid-holder 2026-10-04T11:00:00Z"
 says "RED: …one released, one held on another machine, one by a live session: not waiting for it" "$(hq_start)" "$((hq_count - 4)) wait now"
 says "…a mark whose session is gone counts" "$(rm -f "$SESS/ha-holder.json"; hq_start)" "$((hq_count - 3)) wait now"
@@ -2917,11 +2921,11 @@ mark_in ha-note-q "ask: owner"
 says "a question written here is no note: it counts" "$(hq_start)" "$((hq_count - 2)) wait now"
 mark_in ha-shell "taken: $machine/hop-b-hq 2026-10-04T11:00:00Z"
 says "…and so does what this session took itself" "$(hq_start)" "$((hq_count - 2)) wait now"
-mksession ha-asker.json "$HAM_PID" "$HOPB" hop-b-asker idle "$SOCKS/ha2.sock" sid-asker
+mksession ha-asker.json "$HAO_PID" "$HOPB" hop-b-asker idle "$SOCKS/ha2.sock" sid-asker
 mark_in ha-busy "for-session: sid-asker"
 says "the answer to a letter of a session still here: not waiting for it" "$(hq_start)" "$((hq_count - 3)) wait now"
 env VDX_FOCUSED=1 TMUX="$TX/sock,4242,0" TMUX_PANE=%9 python3 -c 'import time; time.sleep(300)' & HAF_PID=$!; disown "$HAF_PID" 2>/dev/null || true
-trap 'kill "$LIVE_PID" "$HAS_PID" "$HAM_PID" "$HAF_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
+trap 'kill "$LIVE_PID" "$HAS_PID" "$HAM_PID" "$HAO_PID" "$HAF_PID" 2>/dev/null; rm -rf "$TMP" "$SOCKS"' EXIT
 for _ in 1 2 3 4 5 6 7 8 9 10; do
   { [ -r "/proc/$HAF_PID/environ" ] || ps -wwE -p "$HAF_PID" -o command= 2>/dev/null | grep -q 'TMUX_PANE=%9'; } && break
   python3 -c 'import time; time.sleep(0.2)'
@@ -2962,6 +2966,36 @@ says "…a question written here it does name" "$out" "\`ha-note-q\`"
 out="$( cd "$TMP/hop-b" && printf '{"session_id":"sid-hq"}' | CLAUDE_CODE_SESSION_ID=sid-hq TMPDIR="$TMP/ha-tmp2" bash "$REM" 2>&1 )"
 says "a session that is not HQ keeps the old line" "$out" "one line that it waits"
 
+# The intercom session's letters are its own (hq-arrival-intercom-letters). The
+# owner's model (2026-11-17): a letter from another agent with no question for the
+# owner is the intercom session's — live here, or started by the sender, which
+# since vdm 2.83.0 needs no key, only a vdx holding the machine limit. The HQ
+# session keeps questions for the owner, answers to its own letters and letters an
+# intercom session wrote here. Same rule as send's, so the same vdx decides both.
+hq_waits() { hq_start | sed -n 's/.* \([0-9][0-9]*\) wait now.*/\1/p'; }
+w_novdx="$(hq_waits)"; w_vdx="$(PATH="$VX:$PATH" hq_waits)"
+[ -n "$w_novdx" ] && [ -n "$w_vdx" ] && [ "$w_vdx" -lt "$w_novdx" ] \
+  && ok "RED: a vdx that would start the intercom session — 👑 counts fewer ($w_vdx of $w_novdx)" \
+  || bad "RED: a vdx that would start the intercom session — 👑 counts fewer" "no vdx: [$w_novdx], with vdx: [$w_vdx]"
+( cd "$TMP/hop-a" && env -u CLAUDE_CODE_SESSION_ID bash "$IC" send hop-b ha-agent-late --body "$B/live.md" >/dev/null 2>&1 )
+( cd "$TMP/hop-a" && env -u CLAUDE_CODE_SESSION_ID bash "$IC" send hop-b ha-ask-late --body "$B/live.md" >/dev/null 2>&1 )
+mark_in ha-ask-late "ask: owner"
+VDX_INTERCOM=1 note_out sid-mail ha-mail-late >/dev/null
+out="$(PATH="$VX:$PATH" hq_arrive_hq)"
+says_not "RED: a letter from another agent goes to the intercom session — the HQ arrival line does not name it" "$out" "ha-agent-late"
+says "…a question for the owner it does" "$out" "ha-ask-late"
+says "…and a letter an intercom session wrote to this project" "$out" "ha-mail-late"
+( cd "$TMP/hop-a" && env -u CLAUDE_CODE_SESSION_ID bash "$IC" send hop-b ha-agent-novdx --body "$B/live.md" >/dev/null 2>&1 )
+says "with no vdx to start one, such a letter is the HQ session's, as before" "$(hq_arrive_hq)" "ha-agent-novdx"
+mksession ha-mail.json "$HAM_PID" "$HOPB" hop-b-mail idle "$SOCKS/ha2.sock" sid-mail
+( cd "$TMP/hop-a" && env -u CLAUDE_CODE_SESSION_ID bash "$IC" send hop-b ha-agent-live --body "$B/live.md" >/dev/null 2>&1 )
+( cd "$TMP/hop-a" && env -u CLAUDE_CODE_SESSION_ID bash "$IC" send hop-b ha-ask-live --body "$B/live.md" >/dev/null 2>&1 )
+mark_in ha-ask-live "ask: owner"
+out="$(hq_arrive_hq)"
+says "the canary: the question beside it is named" "$out" "ha-ask-live"
+says_not "RED: …nor while an intercom session lives here, vdx or not" "$out" "ha-agent-live"
+rm -f "$SESS/ha-mail.json"
+
 # `ask` with nobody to ask through: the owner sits here.
 ( cd "$TMP/hop-a" && env -u CLAUDE_CODE_SESSION_ID bash "$IC" send hop-b ha-orphan --body "$B/live.md" >/dev/null 2>&1 )
 out="$( cd "$TMP/hop-b" && VDX_HQ=1 CLAUDE_CODE_SESSION_ID=sid-hq bash "$IC" ask ha-orphan --question "What now?" 2>&1 )"; rc=$?
@@ -2971,7 +3005,7 @@ says_not "RED: …not by a list at its own HQ" "$out" "one line on their list at
 out="$( cd "$TMP/hop-b" && CLAUDE_CODE_SESSION_ID=sid-work bash "$IC" ask ha-orphan --question "What now?" 2>&1 )"
 says "elsewhere the list at HQ stays" "$out" "one line on their list at HQ"
 
-kill "$HAS_PID" "$HAM_PID" 2>/dev/null
+kill "$HAS_PID" "$HAM_PID" "$HAO_PID" 2>/dev/null
 rm -f "$SESS"/ha-*.json
 
 echo ""

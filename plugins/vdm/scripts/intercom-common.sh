@@ -1292,12 +1292,33 @@ intercom_hq_session() {
 # make a note. No process: the arrival line asks it on every message.
 _intercom_note_fields() { [ "$1" = "$4" ] && [ "$2" != mail ] && [ -z "$3" ]; }
 
+# intercom_mail_takes <identity> — the project's intercom session takes its letters
+# from other agents here: one is live on this machine (mail, or one the owner
+# started and stays at), or a send would start one (intercom_mail_start: a
+# checkout here and a vdx holding the machine limit). The rule send routes by, so
+# the HQ session names and counts only what is its own: questions for the owner,
+# answers to its own letters, and letters an intercom session wrote to this
+# project (crystal hq-arrival-intercom-letters; the owner's model, 2026-11-17).
+intercom_mail_takes() {
+  local live start
+  live="$(intercom_live_sessions "$1")"
+  printf '%s\n' "$live" | awk -F '\t' '$4 == "mail" || $4 == "stays" { f = 1 } END { exit !f }' && return 0
+  start="$(intercom_mail_start "$1" "$live" "")"
+  [ "${start%%$'\037'*}" = start ]
+}
+
+# _intercom_mail_letter <from> <ask> <identity> — a letter of the kind the
+# intercom session takes: from another agent, with no question for the owner.
+# No process, like _intercom_note_fields.
+_intercom_mail_letter() { [ "$1" != "$3" ] && [ -z "$2" ]; }
+
 # intercom_hq_work <identity> — how many letters wait for the HQ session: no note,
 # none released to wait for something else, none another session holds by its mark,
-# its topic or the letter it answers. One pass over the inbox; a holder is looked up
-# only for a letter that names one.
+# its topic or the letter it answers, none the intercom session takes. One pass
+# over the inbox; a holder is looked up only for a letter that names one, and the
+# intercom session once, for the first letter of its kind.
 intercom_hq_work() {
-  local id="$1" f files=() from sess ask taken topic forsid n=0 state
+  local id="$1" f files=() from sess ask taken topic forsid n=0 state mt=
   while IFS= read -r f; do [ -n "$f" ] && files+=("$f"); done < <(intercom_inbox_list "$id")
   [ ${#files[@]} -gt 0 ] || { printf '0'; return 0; }
   while IFS=$'\037' read -r f from sess ask taken topic forsid; do
@@ -1313,6 +1334,10 @@ intercom_hq_work() {
     if [ -n "$forsid" ]; then
       state="$(intercom_letter_for "$f")"
       case "${state%%$'\037'*}" in live|away) continue ;; esac
+    fi
+    if _intercom_mail_letter "$from" "$ask" "$id"; then
+      [ -n "$mt" ] || { if intercom_mail_takes "$id"; then mt=1; else mt=0; fi; }
+      [ "$mt" = 0 ] || continue
     fi
     n=$((n + 1))
   done < <(awk '

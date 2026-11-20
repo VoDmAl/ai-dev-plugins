@@ -5,7 +5,7 @@ description: "Пять уроков штабов о работе через inte
 status: ready
 session-type: prd-prep
 created: 2026-11-04
-last-updated: 2026-11-04
+last-updated: 2026-11-19
 relates-to:
   - "[[held-ball-after-pickup/workitem|held-ball-after-pickup]]"
   - "[[hq-lessons-core/workitem|hq-lessons-core]]"
@@ -57,6 +57,21 @@ relates-to:
 - [ ] Sidetrack #1: решить — выровнять `reply` с `pickup` (slug письма в открытом пункте держит мяч) или оставить
 
 **Status:** open
+
+### #2. Перед архивом письма, заменяющего прошлые, — сверить, что из прошлых было на нас
+
+**Возникло в:** письмо echelon `hq-lesson-superseding-letter`, 2026-11-18 (сессия intercom 2026-11-19; пересказ). Случай
+и сторона отправителя — Sidetrack #1 в [[letters-hq-lessons/workitem|letters-hq-lessons]]
+**Описание:** сторона получателя. Перед архивом письма, которое заменяет прошлые, сверить, что из прошлых было на нас,
+и записать в дом ход или «снято, потому что». Возможность «подключить у нас», описанная абзацем, — мяч и без раздела
+Ball. Пакетом архивировать только письма без хода. Сейчас § «A ball a letter leaves with you» (vdm 2.81.2) ловит
+только пункты `<you> — <what>`; в письме 19.10 такого пункта не было. Решить: правило в SKILL, проверка в `pickup`
+(письмо с `reply-to`/упоминанием прошлых писем нам — назвать их открытые мячи) или не берём. Итог echelon — один,
+пунктом в `letters-hq-lessons`.
+
+**Status:** open
+
+- [ ] Sidetrack #2: письмо, заменяющее прошлые, на стороне получателя — лёг / уже был / не берём
 
 ## Next actions
 

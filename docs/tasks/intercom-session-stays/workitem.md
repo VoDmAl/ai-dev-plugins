@@ -2,10 +2,10 @@
 title: "Сессия intercom, поднятая владельцем, остаётся: vdm читает `@vdx_stays`"
 slug: intercom-session-stays
 description: "Убрать из close, строк и побудок «никто не сидит», когда за сессией intercom сидит владелец"
-status: in-progress
+status: done
 session-type: prd-work
 created: 2026-11-03
-last-updated: 2026-11-08
+last-updated: 2026-11-19
 ---
 
 # Сессия intercom, поднятая владельцем, остаётся: vdm читает `@vdx_stays`
@@ -197,9 +197,14 @@ last turn … (01:10:31Z) was in a session that is not on this machine`. 01:10:3
 - [x] Остаток таблицы: `check` ❓, `ask`, `session: mail` и предел цепочки, `intercom_questions_here`, мячи. По каждому —
       правка или запись в Decision Log, почему оставлено — 2026-11-06, DL #5, vdm 2.78.0
 - [x] `SKILL.md` § Intercom sessions и комментарий над `INTERCOM_MAIL_ENV`: два рода сессии. Версия, marketplace, changelog — 2026-11-06, vdm 2.78.0
-- [ ] Первый настоящий прогон на выпущенном vdm — when: владелец поднял сессию `vdx ai --intercom` из терминала; check:
+- [x] Первый настоящий прогон на выпущенном vdm — when: владелец поднял сессию `vdx ai --intercom` из терминала; check:
       `tmux -S "${TMUX%%,*}" -u display-message -p -t "$TMUX_PANE" '#{@vdx_stays}'` в ней даёт `1`. Вторая половина той
-      же проверки — у vdx (мяч в брифе)
+      же проверки — у vdx (мяч в брифе) — 2026-11-19, сверено по транскриптам обеих машин (сессия intercom, по письму
+      штаба `hq`, которое спросило про этот пункт): метку прочёл наш код в живых сессиях, к которым владелец подключился
+      после старта. `check` начинался строкой 👤 в трёх других проектах 13.11, 15.11, 18.11 и здесь 16.11; `close`
+      ответил «this session stays» здесь 14.11 и в двух других проектах 16.11 и 18.11 (даты местные). Строки 📮 с
+      `@vdx_stays` на самом старте не нашлось ни в одном транскрипте: во всех случаях метка вставала после старта, тот
+      случай, ради которого `check` и читает её в момент действия (DL #5)
 - [x] Sidetrack #1: запуск сессии intercom не считать ходом владельца, а текст `where` не называть чужой машиной свою.
       Red: закрытая сессия, поднятая письмом, побудку не держит; ход, набранный при `@vdx_stays`, держит — 2026-11-08, vdm 2.78.1
 - [x] Outcome to `vdx`: intercom reply vdx-stays-option --done "<what was done>" --link <url> --ball "<who holds the ball — what ⏰ date>".

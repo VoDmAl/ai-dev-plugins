@@ -141,13 +141,17 @@ vdx тут ничего не зависит. Заглушка была бы те
       `intercom_backlog`; тесты набора intercom на это — красные до правки (vdm 2.82.0, 19.11; набор 1050/0)
 - [x] `send`: ответ vdx «в очереди» — строка отправителю, не ошибка и не «прежнее поведение» (2.83.0: код 5 описан в тексте старта)
 - [ ] HQ-сессия не называет и не считает письма, которые возьмёт сессия intercom: условие «где включена» в
-      `hq-arrival-intercom-letters` становится «всегда» — сделать там или перенести сюда, решить
+      `hq-arrival-intercom-letters` становится «всегда» — сделать там или перенести сюда, решить. Обещано штабу и
+      штабу-пилоту в итогах 19.11 (due: 2026-11-26)
 - [x] SKILL.md intercom: § Intercom sessions, умолчания (`session: false`), «The key is off by default…»; README, если
       там есть ключ (2.83.0)
-- [ ] Sidetrack #1: замершая сессия intercom — в этом кристалле или своим, решить до выпуска
-- [ ] Версия vdm, `PROJECT_CHANGELOG.md`, синтез `docs/model/suite.md` — первая часть сделана в 2.82.0 (19.11); вторая — со
-      снятием ключа
-- [ ] Итоги: `reply intercom-session-no-key` (штабу и агенту машин — с версией vdm), `reply intercom-session-default-on`
+- [ ] Sidetrack #1: замершая сессия intercom — в этом кристалле или своим; обещано штабу в итоге 19.11 (due: 2026-11-26)
+- [ ] Итог штабу о второй половине (HQ и замершая сессия) — `send` с `--reply-to <штаб>/intercom-session-no-key-outcome`,
+      и штабу-пилоту — с `--reply-to <штаб-пилот>/intercom-hq-live-letters-to-hq-outcome` (due: 2026-11-26)
+- [x] Версия vdm, `PROJECT_CHANGELOG.md`, синтез `docs/model/suite.md` — 2.82.0 и 2.83.0 (19.11)
+- [x] Итоги 19.11 (`75071c1`, `711b1cb`): `intercom-session-no-key` — частично, мяч у нас (HQ, замершая сессия) до 26.11;
+      `default-on` и `hold` — закрыты как заменённые; `hq-live-letters-to-hq` и `-code` — одним итогом, мяч у нас до 26.11.
+      Было: `reply intercom-session-no-key` (штабу и агенту машин — с версией vdm), `reply intercom-session-default-on`
       и `reply intercom-default-hq-exclusion-hold` («заменено брифом о трёх путях»), `reply intercom-hq-live-letters-to-hq`
       и `-code` (модель и ссылка на выпуск)
 
