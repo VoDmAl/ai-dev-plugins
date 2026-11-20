@@ -1497,6 +1497,75 @@ out=$(env -u GIT_GUARD_SYNC_CHECK PATH="${bare_path%:}" STUB_RC=1 "$PREP" --supe
 expect_exit "no command on PATH → no check, prepared" 0 "$rc"
 unset STUB_LOG
 
+printf '\n=== the assistant%ss grant: git-guard.assistant in the committed config ===\n' "'"
+# docs/tasks/git-commit-privilege, DL #2, #3. Where HEAD's vdm-plugins.json names
+# `commit`, the prep commits itself and leaves no line. A grant only in the
+# working tree grants nothing; a commit that changes the grant goes to the user;
+# a commit that fails retires its line instead of leaving it waiting.
+grant_repo() {
+  local d; d=$(new_repo "$1")
+  ( cd "$d" && mkdir -p .claude && printf '%s\n' "$2" > .claude/vdm-plugins.json \
+      && git add .claude/vdm-plugins.json && git commit -qm config ) >/dev/null 2>&1
+  printf '%s' "$d"
+}
+changed_in_head() { git diff-tree --no-commit-id --name-only -r HEAD; }
+
+d=$(grant_repo grant_commit '{"git-guard":{"assistant":["commit","push"]}}'); cd "$d" || exit 1
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
+out=$("$PREP" --grant 2>&1); rc=$?
+expect_exit "--grant → exit 0" 0 "$rc"
+expect_eq "RED: --grant names both, one per line" "commit
+push" "$out"
+before=$(git rev-parse HEAD)
+printf 'a\n' > a.txt; git add a.txt
+out=$("$PREP" "[*] granted" 2>&1); rc=$?
+expect_exit "RED: a granted prep → exit 0" 0 "$rc"
+expect_says "RED: …says it commits now" "$out" "committing now"
+expect_says "RED: …and prints what it committed" "$out" "committed $(git rev-parse --short=7 HEAD) [*] granted"
+if [ "$(git rev-parse HEAD)" != "$before" ]; then ok "RED: …HEAD moved"; else bad "RED: …HEAD moved" "HEAD stayed at $before"; fi
+expect_eq "…the commit holds the staged file and only it" "a.txt" "$(changed_in_head)"
+expect_not_says "…no short call is handed off" "$out" "# short call:"
+"$PREP" --pending >/dev/null 2>&1; rc=$?
+expect_exit "…and no line waits" 1 "$rc"
+
+d=$(new_repo grant_tree); cd "$d" || exit 1
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
+mkdir -p .claude; printf '{"git-guard":{"assistant":["commit"]}}\n' > .claude/vdm-plugins.json
+out=$("$PREP" --grant 2>&1); rc=$?
+expect_eq "RED: a grant only in the working tree → --grant prints nothing" "" "$out"
+before=$(git rev-parse HEAD)
+printf 'a\n' > a.txt; git add a.txt
+out=$("$PREP" "[*] not granted" -- a.txt 2>&1); rc=$?
+expect_exit "…the prep → exit 0" 0 "$rc"
+expect_says "RED: …hands off the line" "$out" "git commit -F"
+expect_eq "RED: …and commits nothing itself" "$before" "$(git rev-parse HEAD)"
+
+d=$(grant_repo grant_change '{"git-guard":{"assistant":["commit"]}}'); cd "$d" || exit 1
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
+printf '{"git-guard":{"assistant":["commit","push"]}}\n' > .claude/vdm-plugins.json
+git add .claude/vdm-plugins.json
+before=$(git rev-parse HEAD)
+out=$("$PREP" "[*] widen the grant" 2>&1); rc=$?
+expect_exit "a commit that changes the grant → exit 0" 0 "$rc"
+expect_says "RED: …says the grant changes only by the user's run" "$out" "the grant changes only by the user"
+expect_says "RED: …hands off the line" "$out" "git commit -F"
+expect_eq "RED: …and commits nothing itself" "$before" "$(git rev-parse HEAD)"
+
+d=$(grant_repo grant_fail '{"git-guard":{"assistant":["commit"]}}'); cd "$d" || exit 1
+export TMPDIR="$d/tmp" GIT_GUARD_STATE_DIR="$d/tmp"
+mkdir -p .git/hooks
+printf '#!/bin/sh\necho "fixture hook refuses" >&2\nexit 1\n' > .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+before=$(git rev-parse HEAD)
+printf 'a\n' > a.txt; git add a.txt
+out=$("$PREP" "[*] refused" 2>&1); rc=$?
+expect_exit "RED: a granted commit the hook refuses → exit 1" 1 "$rc"
+expect_says "…git's refusal is shown" "$out" "fixture hook refuses"
+expect_says "RED: …and it says nothing was committed" "$out" "nothing committed"
+expect_eq "…HEAD stayed" "$before" "$(git rev-parse HEAD)"
+"$PREP" --pending >/dev/null 2>&1; rc=$?
+expect_exit "RED: …and its line is retired, not left waiting" 1 "$rc"
+
 # ---------------------------------------------------------------------------
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

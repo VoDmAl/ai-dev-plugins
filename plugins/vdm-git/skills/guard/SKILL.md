@@ -29,7 +29,7 @@ The user installed git-guard knowingly. The point of the gate is the **review** 
 
 **Defaults when the section is missing:** `enabled: true`, `mode: "proactive"`.
 
-> **Important:** these subcommands only affect the **UserPromptSubmit reminder** (the visible text). The PreToolUse blocking hook that intercepts `git commit` / `git push` is **not** affected by config and remains active. To fully disable git-guard in a project, uninstall the plugin.
+> **Important:** these subcommands only affect the **UserPromptSubmit reminder** (the visible text). The PreToolUse blocking hook that intercepts `git commit` / `git push` is **not** affected by them and remains active; the one key it reads is `git-guard.assistant`, and only as committed (see [A project that grants commit or push](#a-project-that-grants-commit-or-push)). To fully disable git-guard in a project, uninstall the plugin.
 
 ### Config file path detection
 
@@ -104,13 +104,48 @@ is the guard. If the user explicitly asks you to run such a script, running it i
 following their instruction, not routing around their guard — the distinction is
 whose decision it was.
 
+## A project that grants commit or push
+
+A project may let the assistant commit or push itself. The grant is one key, named project by project at the
+user's word, never inferred: `git-guard.assistant` in `.claude/vdm-plugins.json` — `["commit"]`, `["push"]` or
+`["commit", "push"]` (one of the two as a plain string works too).
+
+```json
+{ "git-guard": { "assistant": ["commit", "push"] } }
+```
+
+- **Read from the committed file, never the working tree.** The hook, the reminder and the helper all ask
+  `git-guard-prepare --grant`, which reads `HEAD:<config path>`. An edit nobody committed grants nothing. No
+  `jq`, no file in `HEAD`, a value that is neither word — no grant, and everything works as it always did.
+- **The grant changes only by the user's run.** Write the key when the user asks for it, then prepare the commit
+  as usual: a commit whose index changes `git-guard.assistant` is always handed off as a line, even where commit is
+  granted. The grant takes effect once the user runs that line.
+- **Commit, granted:** stage the block and run `git-guard-prepare "<subject>"`. The helper builds the same line,
+  with every check in it, runs it itself, prints git's output and `committed <sha> <subject>`, and leaves no line
+  to hand off. A raw `git commit` stays blocked: the hook sends it back to the prep. If the commit fails (a hook, a
+  check), the helper prints why, retires the line and exits 1: fix it and prepare again. If it prints SWEPT IN or
+  NOT COMMITTED, stop, show the user `git show --stat`, and make no commit of your own in this session until they
+  say so. Never `--no-verify`. In a project whose pre-commit hook is slow, give the prep's Bash call a long
+  timeout or run it in the background.
+- **Push, granted:** a plain `git push [remote] [branch]` run as its own command goes through the hook. What it
+  may carry is a list of what is allowed, because git takes any unambiguous prefix of a long option (`--forc` is
+  `--force`): options only from `-u`/`--set-upstream`, `--tags`, `--follow-tags`, `-q`, `-v`, `-n`/`--dry-run`,
+  `--atomic`, `--porcelain`, `--progress`; a remote by name, not a URL or a path; refspecs without `+`, without a
+  leading `:` and without patterns. Refused too: a `cd` or `git -C` in front, a push inside `bash -c` or `$( )`,
+  and any push from a repository whose config sets `remote.<x>.mirror` or a `+` push refspec — there even a plain
+  push forces. Push once the commits of the block are in, and not for notes alone into a branch under review.
+- **Nothing marks the commit as the assistant's** — the author and the committer stay what git is configured with
+  (decided with the user: docs/tasks/git-commit-privilege in the plugin repository, DL #2).
+
+Where nothing is granted, everything below holds as written.
+
 ## Auto-prep workflow
 
 When the assistant has finished work that warrants a commit — implementation done, type-check / tests passing where applicable — **prepare the commit and hand off a single command**, without waiting for verbal "go ahead." Do not stop at "should I commit?" — the user can decline by simply not running the command.
 
 **Notes alone are no commit.** The assistant's own working record — a crystal's files (the workitem, its `references/`) and its memory in `.claude/memory/` — is on disk the moment it is written, and the next session reads it from there. It rides with the next commit that carries work, or with the session's last one (`/vdm:wrap` → one commit, at the end). A line of notes alone is prepared only when the user asks for it. The `UserPromptSubmit` reminder knows the difference: on a tree where only notes changed it says nothing. A long-lived doc — `docs/llm/`, a synthesis document — is not a note: it is part of the work it documents.
 
-**A push is the user's, and never for notes alone.** The hand-off is a commit line; offering `git push` beside it is a second proposal. Every push to the branch of an open merge request reruns its pipeline and shows the reviewer one more commit, so notes alone are never pushed there except at the user's word. Field case (a project, 2026-10-22): a crystal in the branch of a merge request under review took three of its four commits, each pushed on its own; the owner asked why so many commits and pushes.
+**A push is the user's, and never for notes alone** — unless the project grants push (see above). The hand-off is a commit line; offering `git push` beside it is a second proposal. Every push to the branch of an open merge request reruns its pipeline and shows the reviewer one more commit, so notes alone are never pushed there except at the user's word. Field case (a project, 2026-10-22): a crystal in the branch of a merge request under review took three of its four commits, each pushed on its own; the owner asked why so many commits and pushes.
 
 ### Steps
 
@@ -883,5 +918,6 @@ command instead of letting it through silently); the guard itself, including
 Handoff check at the end of a turn: `${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-stop-check.sh` — passes the answer to `git-guard-prepare --check-handoff`, which knows the waiting line.
 Reminder: `${CLAUDE_PLUGIN_ROOT}/scripts/git-guard-reminder.sh` — gated by `enabled` / `mode` in `.claude/vdm-plugins.json`.
 Subject ceiling: `git-guard.subject-max` in `.claude/vdm-plugins.json` (default 72) — see [The subject has a ceiling](#the-subject-has-a-ceiling-held-by-the-helper).
+The assistant's grant: `git-guard.assistant` in the committed `.claude/vdm-plugins.json`, printed by `git-guard-prepare --grant` — see [A project that grants commit or push](#a-project-that-grants-commit-or-push).
 Crystal backup: `${CLAUDE_PLUGIN_ROOT}/scripts/crystal-precommit-check.sh` — see [Crystal pre-commit backup](#crystal-pre-commit-backup) above.
 U+FFFD guard: `${CLAUDE_PLUGIN_ROOT}/scripts/fffd-precommit-check.sh` — see [U+FFFD](#ufffd-corruption-that-arrives-by-batch-write) above; the same check runs inside `git-guard-prepare`, where it needs no installation.

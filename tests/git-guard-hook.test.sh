@@ -110,6 +110,56 @@ says_not "RED: …and the message does not claim nothing is staged" "$OUT" "STAG
 says "…with both entries counted" "$OUT" "STAGED (2 file(s))"
 
 # ---------------------------------------------------------------------------
+printf '\nthe grant: a project that lets the assistant push or commit\n'
+# ---------------------------------------------------------------------------
+# docs/tasks/git-commit-privilege, DL #2, #3. The hook asks the helper for the
+# grant, read from the committed vdm-plugins.json: a plain push goes through, a
+# forced one does not, a raw commit is still sent to the prep, and a grant that
+# lives only in the working tree grants nothing.
+payload() {
+  python3 -c 'import json, sys; json.dump({"tool_name": "Bash", "tool_input": {"command": sys.argv[1]}, "cwd": sys.argv[2]}, open(sys.argv[3], "w"))' \
+    "$1" "$2" "$3"
+}
+FG="$TMP/grant"
+mkdir -p "$FG/.claude"
+( cd "$FG" && git init -q . && git config user.email t@t && git config user.name t ) >/dev/null 2>&1
+printf '{"git-guard":{"assistant":["commit","push"]}}\n' > "$FG/.claude/vdm-plugins.json"
+( cd "$FG" && git add -A && git commit -qm init ) >/dev/null 2>&1
+pcmd="git "; pcmd="${pcmd}push"
+
+payload "$pcmd origin master" "$FG" "$TMP/p-push.json"
+OUT=$(cd "$FG" && bash "$HOOK" < "$TMP/p-push.json" 2>&1); RC=$?
+eq "RED: a plain push under the grant goes through" 0 "$RC"
+
+payload "$pcmd --force origin master" "$FG" "$TMP/p-force.json"
+OUT=$(cd "$FG" && bash "$HOOK" < "$TMP/p-force.json" 2>&1); RC=$?
+eq "RED: …a forced one does not" 2 "$RC"
+says "…and the refusal says why" "$OUT" "is not among the options a granted push may carry"
+
+( cd "$FG" && git config remote.origin.mirror true )
+payload "$pcmd origin master" "$FG" "$TMP/p-mirror.json"
+OUT=$(cd "$FG" && bash "$HOOK" < "$TMP/p-mirror.json" 2>&1); RC=$?
+eq "RED: …nor a plain one from a repository whose config mirrors" 2 "$RC"
+says "…and the refusal names the key" "$OUT" "remote.origin.mirror"
+( cd "$FG" && git config --unset remote.origin.mirror )
+
+payload "$cmd" "$FG" "$TMP/p-gcommit.json"
+OUT=$(cd "$FG" && bash "$HOOK" < "$TMP/p-gcommit.json" 2>&1); RC=$?
+eq "a raw commit under the grant is still blocked" 2 "$RC"
+says "RED: …and sent to the prep, which commits itself" "$OUT" "goes through the helper"
+
+FW="$TMP/grant-tree"
+mkdir -p "$FW/.claude"
+( cd "$FW" && git init -q . && git config user.email t@t && git config user.name t ) >/dev/null 2>&1
+printf 'x\n' > "$FW/README.md"
+( cd "$FW" && git add -A && git commit -qm init ) >/dev/null 2>&1
+printf '{"git-guard":{"assistant":["push"]}}\n' > "$FW/.claude/vdm-plugins.json"
+payload "$pcmd" "$FW" "$TMP/p-tree.json"
+OUT=$(cd "$FW" && bash "$HOOK" < "$TMP/p-tree.json" 2>&1); RC=$?
+eq "RED: a grant only in the working tree grants nothing" 2 "$RC"
+says "…the push is blocked as before" "$OUT" "BLOCKED — git push"
+
+# ---------------------------------------------------------------------------
 printf '\nthe command matcher: every case in scripts/test-git-guard-hook.py\n'
 # ---------------------------------------------------------------------------
 # The table was written with the matcher and run by hand only: no gate called

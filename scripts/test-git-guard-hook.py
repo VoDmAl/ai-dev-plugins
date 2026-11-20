@@ -127,6 +127,51 @@ CASES = [
 ]
 
 
+# A push under the project's grant (git-guard.assistant naming `push`) goes
+# through only when it is plain — push_refusal() returns None. Pure: no git, no
+# grant read; docs/tasks/git-commit-privilege, DL #2.
+PUSH_CASES = [
+    # (allowed, description, command)
+    (True,  "plain push",                    'git push'),
+    (True,  "remote and branch",             'git push origin master'),
+    (True,  "set upstream",                  'git push -u origin feature-x'),
+    (True,  "tags",                          'git push --tags'),
+    (True,  "a refspec that only renames",   'git push origin HEAD:refs/heads/main'),
+    (True,  "after a status, in sequence",   'git status --short && git push'),
+    (False, "--force",                       'git push --force'),
+    (False, "-f",                            'git push -f origin master'),
+    (False, "-f inside a cluster",           'git push -uf origin master'),
+    (False, "--force-with-lease",            'git push --force-with-lease'),
+    (False, "--force-with-lease=ref",        'git push --force-with-lease=main:abc origin main'),
+    (False, "+refspec forces",               'git push origin +main'),
+    (False, "--delete",                      'git push origin --delete old'),
+    (False, ":branch deletes",               'git push origin :old'),
+    (False, "--mirror",                      'git push --mirror'),
+    (False, "--prune",                       'git push --prune origin'),
+    (False, "--no-verify",                   'git push --no-verify'),
+    (False, "cd elsewhere first",            'cd /other/repo && git push'),
+    (False, "git -C elsewhere",              'git -C /other/repo push'),
+    (False, "git -c before push",            'git -c core.hooksPath=/dev/null push'),
+    (False, "env assignment in front",       'GIT_DIR=/other/.git git push'),
+    (False, "inside bash -c",                "bash -c 'git push'"),
+    (False, "inside a substitution",         'echo "$(git push)"'),
+    (False, "a second push forces",          'git push && git push --force'),
+    (False, "unclosed quote",                'git push "origin'),
+    # git takes any unambiguous prefix of a long option: a deny-list let these
+    # through (automated security review, 2026-11-20), the allow-list does not.
+    (False, "--forc, a prefix of --force",   'git push --forc origin master'),
+    (False, "--no-ver, a prefix of --no-verify", 'git push --no-ver'),
+    (False, "--receive-pack runs a program", 'git push --receive-pack=x origin'),
+    (False, "-o push option",                'git push -o ci.skip origin master'),
+    (False, "a URL, not a remote name",      'git push https://example.com/r.git master'),
+    (False, "a path, not a remote name",     'git push ../other master'),
+    (False, "a pattern refspec",             "git push origin 'refs/heads/*:refs/heads/*'"),
+    (True,  "-uq cluster",                   'git push -uq origin feature-x'),
+    (True,  "--dry-run",                     'git push --dry-run origin master'),
+    (True,  "tags after the branch",         'git push origin master --follow-tags'),
+]
+
+
 def main():
     fails = 0
     for expected, desc, cmd in CASES:
@@ -138,11 +183,22 @@ def main():
               f"got={'BLOCK' if got else 'PASS '}  {desc}")
         if got != expected:
             print(f"      cmd={cmd!r}")
+    for allowed, desc, cmd in PUSH_CASES:
+        why = ggh.push_refusal(cmd)
+        got = why is None
+        ok = "✓" if got == allowed else "✗"
+        if got != allowed:
+            fails += 1
+        print(f"  {ok} expect={'GRANT' if allowed else 'BLOCK'}  "
+              f"got={'GRANT' if got else 'BLOCK'}  push: {desc}")
+        if got != allowed:
+            print(f"      cmd={cmd!r}  why={why!r}")
+    total = len(CASES) + len(PUSH_CASES)
     print()
     if fails:
-        print(f"FAIL: {fails}/{len(CASES)} cases")
+        print(f"FAIL: {fails}/{total} cases")
         return 1
-    print(f"OK: {len(CASES)}/{len(CASES)} cases")
+    print(f"OK: {total}/{total} cases")
     return 0
 
 

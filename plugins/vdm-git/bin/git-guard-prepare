@@ -320,6 +320,37 @@ short_dir_ok() {
   [ "${perm:5:1}" = - ] && [ "${perm:8:1}" = - ]
 }
 
+# ------------------------------------------------------ the assistant's grant
+#
+# grant_of <rev prefix> — what the project lets the assistant do itself:
+# `commit`, `push`, one per line, sorted; nothing when it lets nothing. Read from
+# `git-guard.assistant` in the project's vdm-plugins.json AS GIT HOLDS IT —
+# `HEAD:` for the committed file, `:` for the index — never from the working
+# tree: an edit nobody committed grants nothing (docs/tasks/git-commit-privilege,
+# DL #2, #3). The value is a list, `["commit", "push"]`, or one of the two as a
+# string. No jq, no file in that revision, a value that is neither — no grant,
+# and the line goes to the user as before: every failure lands on the side the
+# guard stood on.
+grant_of() {
+  local top cfg rel
+  command -v jq >/dev/null 2>&1 || return 0
+  top=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
+  # shellcheck disable=SC1091
+  . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/config-path.sh" 2>/dev/null || return 0
+  cfg=$(resolve_config_path) || return 0
+  rel=${cfg#"$top"/}
+  [ "$rel" != "$cfg" ] || return 0
+  git -C "$top" show "$1$rel" 2>/dev/null | jq -r '
+    (if type == "object" then (.["git-guard"] // {}) else {} end) as $s
+    | (if ($s | type) == "object" then ($s.assistant // empty) else empty end)
+    | (if type == "array" then .[] else . end)
+    | select(. == "commit" or . == "push")' 2>/dev/null | LC_ALL=C sort -u
+  return 0
+}
+
+# grant_has <grant text> <what> — the grant names <what>.
+grant_has() { case $'\n'"$1"$'\n' in *$'\n'"$2"$'\n'*) return 0 ;; esac; return 1; }
+
 # rm_trio <stem> [<why>] — retire one prep completely.
 #
 # All three go together or none do. Removing only `.meta` (which is all the
@@ -734,6 +765,13 @@ Usage: git-guard-prepare "<commit message>" [-- <path>...]
        git-guard-prepare --pending
        git-guard-prepare --check ["<commit message>"] [-- <path>...]
        <answer> | git-guard-prepare --check-handoff
+       git-guard-prepare --grant
+
+Where the project grants the assistant commit — `git-guard.assistant` naming
+`commit` in the COMMITTED vdm-plugins.json — a prep makes the commit itself, with
+the same line and checks, prints git's output and `committed <sha> <subject>`, and
+leaves no line to hand off; a commit that changes that grant always goes to the
+user as a line. --grant prints the grant, one word per line.
 
 Writes the message to a per-prep file under ${XDG_STATE_HOME:-~/.local/state}/vdm-git
 (GIT_GUARD_STATE_DIR overrides) and prints a single-line
@@ -781,6 +819,15 @@ fi
 
 if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
   usage
+  exit 0
+fi
+
+# --grant: what this project lets the assistant do itself, read from the
+# committed vdm-plugins.json — `commit`, `push`, one per line; nothing, and exit
+# 0, when nothing. The guard hook and the reminder ask it, so the grant is read
+# in one place (docs/tasks/git-commit-privilege, DL #2, #3).
+if [ "$1" = "--grant" ]; then
+  grant_of HEAD:
   exit 0
 fi
 
@@ -1717,6 +1764,48 @@ if mkdir -p -m 700 "$short_dir" 2>/dev/null && short_dir_ok "$short_dir" \
   :
 else
   rm -f "$short.tmp.$$" 2>/dev/null
+fi
+
+# Where the project grants the assistant commit, the prep makes the commit now,
+# through the same short call or line the user would have run — every check in
+# it included — and nothing is left to hand off (docs/tasks/git-commit-privilege,
+# DL #2). The grant is read from HEAD; a commit whose index changes it goes to
+# the user as a line, so the grant itself changes only by the user's run (DL #3).
+# Survey behind it: in 30 days the owner pasted 1614 lines and 490 pushes, and
+# 47 lines died on "paths changed" in the minutes between prep and run — the
+# window this closes.
+grant_now=$(grant_of HEAD:)
+if grant_has "$grant_now" commit; then
+  if [ "$(grant_of :)" != "$grant_now" ]; then
+    {
+      echo "git-guard-prepare: this commit changes \`git-guard.assistant\` — the grant changes only by the user's own"
+      echo "                   run of the line. Hand off the line below; no commit was made."
+    } >&2
+  else
+    echo "git-guard-prepare: this project grants the assistant commit (git-guard.assistant, committed) — committing now" >&2
+    sc_rc=0
+    if [ -f "$short" ]; then sh "$short" || sc_rc=$?; else sh -c "$line" || sc_rc=$?; fi
+    if [ "$sc_rc" -eq 0 ]; then
+      verify_dirty=0
+      verify_last "$scope" "$base"
+      printf 'committed %s %s\n' "$(git rev-parse --short=7 HEAD 2>/dev/null)" "$subj"
+      if [ "$verify_dirty" -ne 0 ]; then
+        {
+          echo "git-guard-prepare: the commit does not match what was prepared (above). Show the user \`git show --stat\`"
+          echo "                   and make no commit of your own in this session until they say so."
+        } >&2
+        exit 1
+      fi
+      exit 0
+    else
+      rm_trio "$stem" "the assistant's own commit failed (exit $sc_rc); prepare again after the fix"
+      {
+        echo "git-guard-prepare: nothing committed (exit $sc_rc) — the output above says why. Fix it and prepare again;"
+        echo "                   there is no line to hand off."
+      } >&2
+      exit 1
+    fi
+  fi
 fi
 
 # The line, then its short call as a second line — a shell comment, so stdout

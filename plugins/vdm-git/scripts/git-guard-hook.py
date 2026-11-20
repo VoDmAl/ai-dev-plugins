@@ -623,6 +623,136 @@ def build_block_message(op_name, reason, command):
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------- the grant
+#
+# A project may let the assistant commit or push itself: `git-guard.assistant`
+# in its vdm-plugins.json, read from the COMMITTED file by the helper — one
+# reader for the hook, the reminder and the prep alike (git-guard-prepare
+# --grant; docs/tasks/git-commit-privilege, DL #2, #3). A raw `git commit` stays
+# blocked even then: the commit goes through the prep, whose checks are the
+# point. A push under the grant goes through when it is a plain one.
+HELPER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bin", "git-guard-prepare")
+GRANT_WORDS = ("commit", "push")
+
+
+def committed_grant(cwd):
+    """What the project lets the assistant do itself, as a set. Any failure — no
+    helper, no bash, a slow git — is no grant: the guard stays where it stood."""
+    try:
+        r = subprocess.run(["bash", HELPER, "--grant"], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=10, cwd=cwd or None,
+                           env=_GIT_ENV)
+    except Exception:
+        return set()
+    if r.returncode != 0:
+        return set()
+    return {w.strip() for w in r.stdout.splitlines()} & set(GRANT_WORDS)
+
+
+# What a granted push may carry — a list of what is allowed, not of what is
+# not: git takes any unambiguous prefix of a long option, so a deny-list of
+# `--force` let `--forc` through (automated security review, 2026-11-20).
+_PUSH_LONG_OK = {"--set-upstream", "--tags", "--follow-tags", "--quiet", "--verbose",
+                 "--dry-run", "--atomic", "--porcelain", "--progress"}
+_PUSH_SHORT_OK = set("uqvn")
+_REMOTE_NAME = re.compile(r"[A-Za-z0-9._-]+")
+_REFSPEC_OK = re.compile(r"[A-Za-z0-9._/@^~-]+(:[A-Za-z0-9._/-]+)?")
+
+
+def push_refusal(command):
+    """Why this push cannot go under the grant, or None when it can. Allowed: a
+    plain `git push [remote] [refspec…]` run as its own command in the directory
+    the session is in — the one the grant was read for: options from a short
+    list, a remote by name (no URL), refspecs that neither force (+), delete (:x)
+    nor match by pattern."""
+    try:
+        commands = simple_commands(command)
+    except ValueError:
+        return "the command cannot be read word by word"
+    found = False
+    for argv in commands:
+        if argv and os.path.basename(argv[0]) in ("cd", "pushd"):
+            return "it changes directory first, and the grant was read for the directory the session is in"
+        for script in _inner_scripts(argv):
+            if _command_invokes(script, "push"):
+                return "the push runs inside a nested shell or a substitution"
+        if "push" not in _git_subcommands(argv):
+            continue
+        found = True
+        if os.path.basename(argv[0]) != "git":
+            return f"`{argv[0]}` stands in front of git — only a push run as its own command goes under the grant"
+        if len(argv) < 2 or argv[1] != "push":
+            return f"`{argv[1]}` stands between git and push — options of git itself can point it elsewhere"
+        positional = []
+        for a in argv[2:]:
+            if a.startswith("--"):
+                if a not in _PUSH_LONG_OK:
+                    return f"`{a}` is not among the options a granted push may carry"
+            elif a.startswith("-") and len(a) > 1:
+                if not set(a[1:]) <= _PUSH_SHORT_OK:
+                    return f"`{a}` is not among the options a granted push may carry"
+            else:
+                positional.append(a)
+        if positional and not _REMOTE_NAME.fullmatch(positional[0]):
+            return f"`{positional[0]}` is not a remote's name — a push to a URL or a path is the user's"
+        for ref in positional[1:]:
+            if ref.startswith("+"):
+                return f"the refspec `{ref}` forces"
+            if ref.startswith(":"):
+                return f"the refspec `{ref}` deletes a remote branch"
+            if not _REFSPEC_OK.fullmatch(ref):
+                return f"the refspec `{ref}` is not a plain one"
+    return None if found else "no push to check"
+
+
+def push_config_refusal(cwd):
+    """Why the repository's own config would make even a plain push force or
+    delete, or None. `remote.<x>.mirror` pushes every ref and removes the rest;
+    a configured push refspec with `+` forces whatever the command line says."""
+    out = run_git(["config", "--get-regexp", r"^remote\..*\.(push|mirror)$"], cwd=cwd)
+    for line in out.splitlines():
+        key, _, value = line.partition(" ")
+        if key.endswith(".mirror") and value.strip().lower() in ("true", "yes", "on", "1"):
+            return f"`{key}` is set: every push from here mirrors and deletes"
+        if key.endswith(".push") and value.strip().startswith(("+", ":")):
+            return f"`{key} = {value.strip()}` forces or deletes on every push"
+    return None
+
+
+def build_commit_granted(command):
+    return "\n".join([
+        "",
+        "git-guard: `git commit` goes through the helper — this project lets the assistant commit",
+        "(`git-guard.assistant` in the committed vdm-plugins.json).",
+        "",
+        f"Command: {command}",
+        "",
+        "Stage the block and run the prep; it runs its checks and commits itself, and there is",
+        "no line to hand off:",
+        "",
+        "    git add <files> && git-guard-prepare \"<subject>\"",
+        "",
+        "Do not retry `git commit`, and never with --no-verify.",
+        "",
+    ])
+
+
+def build_push_refusal(why, command):
+    return "\n".join([
+        "",
+        f"git-guard: BLOCKED — git push — {why}.",
+        "",
+        f"Command: {command}",
+        "",
+        "This project lets the assistant push, but only a plain push from the repository the",
+        "session is in: `git push [remote] [branch]` as its own command, a remote by name, options",
+        "only from -u/--set-upstream, --tags, --follow-tags, -q, -v, -n/--dry-run, --atomic,",
+        "--porcelain, --progress — no force, no deletion, no `cd` or `git -C` in front, and not",
+        "from a repository whose config mirrors or forces. Push plainly, or hand the user the command.",
+        "",
+    ])
+
+
 def main():
     try:
         input_data = json.load(sys.stdin)
@@ -638,11 +768,27 @@ def main():
 
     # Monitor may carry a WebSocket instead of a command — nothing to parse then.
     command = tool_input.get("command") or ""
+    cwd = input_data.get("cwd") or ""
+    if not os.path.isdir(cwd):
+        cwd = None
 
+    grant = None  # asked only when a commit or a push is in the command
     for op_subcommand, op_name, reason in BLOCKED_OPERATIONS:
-        if _command_invokes(command, op_subcommand):
-            print(build_block_message(op_name, reason, command), file=sys.stderr)
+        if not _command_invokes(command, op_subcommand):
+            continue
+        if grant is None:
+            grant = committed_grant(cwd)
+        if op_subcommand == "push" and "push" in grant:
+            why = push_refusal(command) or push_config_refusal(cwd)
+            if why is None:
+                continue
+            print(build_push_refusal(why, command), file=sys.stderr)
             sys.exit(2)
+        if op_subcommand == "commit" and "commit" in grant:
+            print(build_commit_granted(command), file=sys.stderr)
+            sys.exit(2)
+        print(build_block_message(op_name, reason, command), file=sys.stderr)
+        sys.exit(2)
 
     sys.exit(0)
 

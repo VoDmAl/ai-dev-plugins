@@ -142,5 +142,35 @@ says "…with what to do: prepare again, no --supersede" "$lost" "no --supersede
 printf '{"git-guard":{"mode":"silent"}}\n' > "$L/.claude/vdm-plugins.json"
 silent "silent stays silent, a waiting line or not" "$(remind_as "$L" sess-w)"
 
+echo "== a project that lets the assistant commit or push =="
+# docs/tasks/git-commit-privilege, DL #2. The grant is read by the helper alone
+# (git-guard-prepare --grant), so a copy of the plugin whose helper is a stub
+# shows every branch with no commit in any fixture.
+GP="$TMP/plugin"; cp -R "$REPO_ROOT/plugins/vdm-git" "$GP"
+G="$TMP/grant"; repo "$G" proactive
+grant_says() {
+  printf '#!/bin/bash\ncase "$1" in --grant) for w in %s; do echo "$w"; done ;; *) exit 1 ;; esac\n' "$1" \
+    > "$GP/bin/git-guard-prepare"
+  chmod +x "$GP/bin/git-guard-prepare"
+  ( cd "$G" && printf '{"session_id":"g%s"}' "$RANDOM" | bash "$GP/scripts/git-guard-reminder.sh" 2>/dev/null )
+}
+json_ok() {
+  if printf '%s' "$2" | python3 -c 'import json, sys; json.load(sys.stdin)' 2>/dev/null; then ok "$1"
+  else bad "$1" "not JSON: ${2:0:120}…"; fi
+}
+says_not_g() { case "$2" in *"$3"*) bad "$1" "output should not mention: $3" ;; *) ok "$1" ;; esac; }
+out=$(grant_says "")
+says "canary: no grant ⇒ the line reminder" "$out" "When work warrants a commit"
+says_not_g "…with nothing about a grant" "$out" "lets the assistant commit itself"
+out=$(grant_says commit)
+json_ok "commit granted ⇒ still a JSON answer" "$out"
+says "RED: commit granted ⇒ the prep makes the commit, no line" "$out" "makes the commit, and there is no line to hand off"
+says "…and push stays the user's" "$out" "Push stays with the user"
+out=$(grant_says "commit push")
+says "RED: commit and push granted ⇒ the push is the assistant's too" "$out" "Push is yours too"
+out=$(grant_says push)
+json_ok "push alone ⇒ still a JSON answer" "$out"
+says "RED: push alone ⇒ the line reminder, the push named the assistant's" "$out" "is yours here: this project grants push"
+
 printf '\ngit-guard-reminder: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

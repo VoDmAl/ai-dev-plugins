@@ -151,7 +151,27 @@ case "$mode" in
     ;;
 esac
 
-cat <<'EOF'
+# The project's grant — what it lets the assistant do itself — read from the
+# committed vdm-plugins.json by the helper, the one reader of it
+# (docs/tasks/git-commit-privilege, DL #2, #3). Where it grants commit, the
+# reminder says to commit through the prep, not to hand off a line.
+grant=$("$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../bin/git-guard-prepare" --grant 2>/dev/null || true)
+grant_push=0
+case $'\n'"$grant"$'\n' in *$'\n'push$'\n'*) grant_push=1 ;; esac
+case $'\n'"$grant"$'\n' in
+  *$'\n'commit$'\n'*)
+    if [ "$grant_push" -eq 1 ]; then
+      push_text='Push is yours too: a plain `git push` once the commits of the block are in, never --force, never a deletion, never --no-verify.'
+    else
+      push_text='Push stays with the user: when the commits are in, hand them `git push`.'
+    fi
+    text='[git-guard] This project lets the assistant commit itself (`git-guard.assistant` in the committed vdm-plugins.json). When a block of work is finished, run `git add <files>` and `git-guard-prepare "<subject>"` via Bash: the helper runs its checks and makes the commit, and there is no line to hand off. One commit per finished block; notes alone ride with the next work commit. A raw `git commit` stays blocked, and never with --no-verify or a bare --amend. If the helper prints SWEPT IN / NOT COMMITTED, or a check or a hook refuses, stop and show the user rather than working around it. A change to `git-guard.assistant` itself is never yours to commit: the helper hands that line to the user. '"$push_text"
+    text=${text//\\/\\\\}; text=${text//\"/\\\"}
+    printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "UserPromptSubmit",\n    "additionalContext": "%s"\n  }\n}\n' "$text"
+    exit 0 ;;
+esac
+
+std=$(cat <<'EOF'
 {
   "hookSpecificOutput": {
     "hookEventName": "UserPromptSubmit",
@@ -159,3 +179,15 @@ cat <<'EOF'
   }
 }
 EOF
+)
+# Push alone granted: the line stays, the push is the assistant's. Pattern and
+# replacement go through variables: written inline inside ${std/…/…}, the
+# backquotes in them are run as commands even within single quotes — a test of
+# this very line ran `git commit` and `git push` (2026-11-20). An expanded
+# variable is never parsed again.
+if [ "$grant_push" -eq 1 ]; then
+  push_from='Do not run `git commit` / `git push` yourself'
+  push_to='Do not run `git commit` yourself (a plain `git push` is yours here: this project grants push, never --force, never a deletion)'
+  std=${std/"$push_from"/"$push_to"}
+fi
+printf '%s\n' "$std"
