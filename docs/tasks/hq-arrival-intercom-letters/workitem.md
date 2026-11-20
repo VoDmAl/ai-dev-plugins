@@ -2,10 +2,10 @@
 title: "HQ-сессия не называет и не считает письма, которые возьмёт сессия intercom"
 slug: hq-arrival-intercom-letters
 description: "Строка прихода и счёт 👑 в HQ-сессии пропускают письма, которые по правилу send берёт сессия intercom"
-status: in-progress
+status: done
 session-type: short-bug
 created: 2026-11-04
-last-updated: 2026-11-19
+last-updated: 2026-11-20
 relates-to:
   - "[[hq-session-active/workitem|hq-session-active]]"
   - "[[hq-session-quiet/workitem|hq-session-quiet]]"
@@ -135,7 +135,7 @@ intercom написала этому проекту. Без vdx такое пи�
 - [x] (2.84.0) SKILL.md intercom → § HQ sessions: строка прихода и 👑 не называют письма сессии intercom
 - [x] Sidetrack #1 (DL #3: не называет): решено, считает ли HQ письмо со второй машины своим, пока ключ здесь включён; решение — в DL
 - [x] Sidetrack #2 (19.11, строка в пункте живой проверки hq-session-active): в hq-session-active записано, что его живая проверка с сессией intercom ждёт этого исправления
-- [ ] Итог отправителю (пилотный проект, адрес — в DL #1) после выпуска: `intercom.sh reply
+- [x] (20.11: `hq-arrival-line-names-intercom-letters-fixed` → отправителю брифа, `3c20ce9`; штабу-пилоту по его письмам 17.11 — отдельно, `intercom-hq-live-letters-to-hq-outcome-2`) Итог отправителю (пилотный проект, адрес — в DL #1) после выпуска: `intercom.sh reply
       hq-arrival-line-names-intercom-letters --slug hq-arrival-line-names-intercom-letters-fixed --done "<что
       сделано, версия>" --ball "<чей мяч>"` — письмо в `_done/`, первый итог (кристалл заведён) ушёл 04.11
 

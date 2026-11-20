@@ -1299,6 +1299,20 @@ says "RED: the pointer tells it to handle the letter" "$out" "You are the interc
 says_not "…not that the user's steps come first: there are none in it" "$(printf '%s\n' "$out" | grep '📬')" "pending steps"
 out="$( cd "$TMP/hop-a" && VDM_INTERCOM_NOW="$NOW_EPOCH" VDM_INTERCOM_TODAY=2026-10-04 bash "$IC" sent 2>&1 )"
 says "RED: sent offers the intercom session with the same pointer" "$(printf '%s\n' "$out" | grep -m1 'hop-b/mail-wake' -A1)" "You are the intercom session"
+# Stalled (intercom-session-no-key, Sidetrack #1): nobody sits at an intercom
+# session, so one that has stood `waiting` for half an hour — a prompt, a limit
+# screen — answers no wake. Field case: five days on the weekly limit screen, every
+# wake of the project into it, 27 letters piled up.
+jq --argjson ms "$(( (NOW_EPOCH - 45 * 60) * 1000 ))" '.status = "waiting" | .statusUpdatedAt = $ms' \
+  "$SESS/mail-b.json" > "$SESS/mail-b.tmp" && mv "$SESS/mail-b.tmp" "$SESS/mail-b.json"
+out="$(wake_out mail-stalled)"
+says "RED: an intercom session waiting for 45 min is not woken" "$out" "do not wake here"
+says "…said to be stalled, and for how long" "$out" "has stood waiting for 45 min"
+says "…with the move that frees it" "$out" "closing that session lets the next send start a fresh one"
+says_not "…and no wake goes into it" "$out" "→ wake one: hop-b-mail"
+jq --argjson ms "$(( (NOW_EPOCH - 5 * 60) * 1000 ))" '.statusUpdatedAt = $ms' \
+  "$SESS/mail-b.json" > "$SESS/mail-b.tmp" && mv "$SESS/mail-b.tmp" "$SESS/mail-b.json"
+says "waiting for 5 min — under the threshold, still woken, as before" "$(wake_out mail-waiting-fresh)" "→ wake one: hop-b-mail"
 rm -f "$SESS/mail-b.json"
 mksession both-b.json "$BOTH_PID" "$TMP/hop-b" hop-b-both idle "$SOCKS/b.sock"
 out="$(wake_out mail-both)"

@@ -1624,6 +1624,13 @@ INTERCOM_PRESENCE_WINDOW_H=12
 # `shell` counts as idle (DL #4): a finished turn with a background task of
 # the session still running.
 INTERCOM_WAKE_QUIET_MIN=15
+# An intercom session that has stood `waiting` this long is stalled: a prompt or a
+# limit screen nobody answers, since nobody sits at it. A wake into it reaches
+# nobody. Field case (this repository, 2026-11-14…19): one stood on the weekly
+# limit screen for five days and took every wake of the project while 27 letters
+# piled up. The same threshold vdx 0.63.0 uses to leave such a session out of its
+# machine limit (crystal intercom-session-no-key, Sidetrack #1).
+INTERCOM_STALLED_MIN=30
 
 # _intercom_now — seconds since the epoch; VDM_INTERCOM_NOW pins it for tests.
 _intercom_now() {
@@ -1856,6 +1863,16 @@ intercom_wake_choice() {
     if [ "$u" -gt "$mail_upd" ]; then mail="$name"; mail_status="$status"; mail_sid="$sid"; mail_upd="$u"; fi
   done <<<"$live"
   if [ -n "$mail" ]; then
+    local stalled=""
+    if [ "$mail_status" = waiting ] && [ "$mail_upd" -gt 0 ]; then
+      stalled=$(( ($(_intercom_now) - mail_upd / 1000) / 60 ))
+      [ "$stalled" -ge "$INTERCOM_STALLED_MIN" ] || stalled=""
+    fi
+    if [ -n "$stalled" ]; then
+      printf 'wait\037\037\037the intercom session %s of `%s` has stood waiting for %s min — a prompt or a limit screen nobody answers, so a wake reaches nobody; the letter waits. Tell the user once: closing that session lets the next send start a fresh one\n' \
+        "$mail" "$id" "$stalled"
+      return 0
+    fi
     printf 'wake\037%s\037%s\037the intercom session of `%s` — nobody sits at it, so it is woken at once\037mail\037%s\n' \
       "$mail" "$mail_status" "$id" "$mail_sid"
     return 0

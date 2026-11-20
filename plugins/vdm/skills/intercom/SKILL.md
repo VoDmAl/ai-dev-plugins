@@ -1079,6 +1079,14 @@ start line said nobody sits there.
   ago"*. Two kinds of letter are not its own: one on the topic of a live focused
   session, and the answer to a letter of a session still there (§ An answer goes
   to the session that asked).
+- **Not when it is stalled.** An intercom session that has stood `waiting` for 30
+  minutes or more — a prompt or a limit screen, and nobody sits there to answer —
+  is woken by nobody: `send` and `sent` say `→ do not wake here`, name it as
+  stalled and for how long, and the letter waits. Tell the user once: closing that
+  session lets the next send start a fresh one. The threshold is vdx's own, below
+  which a waiting intercom session still counts toward its machine limit. Field
+  case (this repository, 2026-11-14…19): one stood five days on the weekly-limit
+  screen and took every wake of the project while 27 letters piled up (vdm 2.85.0).
 - **The inbox is the work.** Its session-start line says so instead of the
   pending count: check now and at every wake, then each letter in turn — take,
   read, act, close with `reply` or `pickup`, or `release --note` one that waits
